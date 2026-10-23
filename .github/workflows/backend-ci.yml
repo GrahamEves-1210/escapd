@@ -1,0 +1,27 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  database:
+    name: Migrations + security tests
+    runs-on: ubuntu-24.04   # image ships PostgreSQL 16 server binaries
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run migrations, seed, and database tests on a throwaway Postgres
+        run: scripts/test-db.sh
+
+  edge-functions:
+    name: Edge Functions type-check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: deno check
+        working-directory: supabase/functions
+        run: deno check */index.ts
