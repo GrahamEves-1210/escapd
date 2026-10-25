@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import type { ReactElement } from "react";
 import { Platform, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { LightningIcon, LightningSlashIcon, XIcon } from "@/components/icons";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
@@ -15,7 +15,6 @@ import {
   LightPool,
   NoticeLine,
   Panel,
-  PillButton,
   Segment,
   Stamp,
   ThinkingStates,
@@ -30,62 +29,6 @@ function renderReduced(ui: ReactElement) {
 }
 
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
-
-describe("PillButton", () => {
-  it.each(["primary", "secondary", "signal", "quiet"] as const)("renders %s as a labelled button that presses", async (variant) => {
-    const onPress = jest.fn();
-    await render(<PillButton label="Open the camera" variant={variant} onPress={onPress} />);
-    const button = screen.getByRole("button", { name: "Open the camera" });
-    expect(button.props.accessibilityState).toMatchObject({ disabled: false, busy: false });
-    expect(styleOf(button).minHeight).toBe(variant === "quiet" ? ref.button.quiet.height : ref.button[variant].height);
-    await fireEvent.press(button);
-    expect(onPress).toHaveBeenCalledTimes(1);
-  });
-
-  it("pads filled pills to their height, but gives a quiet button no vertical padding (44 until its label outgrows it)", async () => {
-    await render(
-      <>
-        <PillButton label="Unlock Pro" variant="signal" />
-        <PillButton label="Not now" variant="quiet" />
-      </>,
-    );
-    expect(styleOf(screen.getByRole("button", { name: "Unlock Pro" })).paddingVertical).toBe(
-      (ref.button.signal.height - ref.type.button.lineHeight) / 2,
-    );
-    expect(styleOf(screen.getByRole("button", { name: "Not now" })).paddingVertical).toBe(0);
-  });
-
-  it("dims to disabledOpacity and ignores presses when disabled", async () => {
-    const onPress = jest.fn();
-    await render(<PillButton label="Not now" variant="quiet" disabled onPress={onPress} />);
-    const button = screen.getByRole("button", { name: "Not now" });
-    expect(button.props.accessibilityState).toMatchObject({ disabled: true });
-    expect(styleOf(button).opacity).toBe(ref.button.disabledOpacity);
-    await fireEvent.press(button);
-    expect(onPress).not.toHaveBeenCalled();
-  });
-
-  it("keeps its label and full opacity, shows the indicator and ignores taps while busy", async () => {
-    const onPress = jest.fn();
-    await render(<PillButton label="Unlock Pro" variant="signal" busy spinner onPress={onPress} testID="unlock" />);
-    const button = screen.getByRole("button", { name: "Unlock Pro" });
-    expect(screen.getByText("Unlock Pro")).toBeTruthy();
-    expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
-    expect(styleOf(button).opacity).toBeUndefined();
-    // 16 + 20 + 8 reserved on both sides so the label never shifts.
-    expect(styleOf(button).paddingHorizontal).toBe(ref.space.lg + ref.icon.header + ref.space.sm);
-    expect(screen.getByTestId("unlock-spinner", hidden)).toBeTruthy();
-    // A real tap through the Pressable (fireEvent would call the composite's own onPress prop).
-    await userEvent.setup().press(button);
-    expect(onPress).not.toHaveBeenCalled();
-  });
-
-  it("shows no indicator when busy without spinner", async () => {
-    await render(<PillButton label="Allow the camera" busy testID="allow" />);
-    expect(screen.getByRole("button", { name: "Allow the camera" }).props.accessibilityState).toMatchObject({ busy: true });
-    expect(screen.queryByTestId("allow-spinner", hidden)).toBeNull();
-  });
-});
 
 describe("icon buttons", () => {
   it("IconButton is a labelled 44 button with a 48 hit area", async () => {

@@ -1,19 +1,25 @@
-// The plate counter: a 72 x 72 panel window, like a film camera's exposure
-// counter. A mono label ("PLATE", "FULL" or "RETAKE") over the Roman numeral
-// of the plate about to be taken. It has no neighbouring numerals and never
-// rolls: a new numeral swaps in place with a ref.motion.control opacity
-// change. Display only. The window is fixed at every text size, so the label
-// and numeral cap at counterMaxFontScale; the accessibility label carries the
-// full sentence.
+// The plate counter, like a film camera's exposure counter: the last-plate
+// thumbnail's twin, a 72 x 72 walnut mount (color.surface, 1 pt
+// color.hairline, radius.thumbRing) around a 64 x 64 canvas plate 4 in
+// (radius.thumb, 1 pt color.rim). On it, in brass: a mono stamp ("PLATE",
+// "FULL" or "RETAKE") over the Roman numeral of the plate about to be taken
+// in the live code mono (JetBrains Mono SemiBold 28/34, tabular). It has no
+// neighbouring numerals and never rolls: a new numeral swaps in place with a
+// ref.motion.control opacity change. Display only. The window is fixed at
+// every text size, so the label and numeral cap at counterMaxFontScale; the
+// accessibility label carries the full sentence. The lines measure against
+// the whole 72 window, not the plate, so "III" never breaks at the cap.
 //
 // Display only, so it is no keyboard stop: on Android `accessible` would make
 // it keyboard-focusable, so there it is screenReaderFocusable instead, and its
 // texts stay out of Android's accessibility tree (Android 7-8.1 ignore
 // screenReaderFocusable and still read it once, by its label).
-import { Platform, StyleSheet } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from "react-native-reanimated";
-import { NoirText, Panel, toEasing } from "@/components/noir";
-import { ref } from "@/theme/tokens";
+import { toEasing, trackingPad } from "@/components/noir";
+import { Text } from "@/components/Text";
+import { color, curve, radius, ref, space, type as typeScale } from "@/theme/tokens";
+import { MOUNT_PAD } from "./LastPlate";
 
 const L = ref.layout.camera;
 
@@ -29,7 +35,7 @@ export interface PlateCounterProps {
 
 export function PlateCounter({ label, numeral, accessibilityLabel }: PlateCounterProps) {
   return (
-    <Panel
+    <View
       style={styles.window}
       accessible={Platform.OS === "ios"}
       screenReaderFocusable
@@ -37,51 +43,61 @@ export function PlateCounter({ label, numeral, accessibilityLabel }: PlateCounte
       accessibilityLabel={accessibilityLabel}
       testID="plate-counter"
     >
+      <View pointerEvents="none" style={styles.mount} />
+      <View pointerEvents="none" style={styles.plate} />
       {/* The first label and numeral appear with the screen; later ones fade in. */}
       <LayoutAnimationConfig skipEntering>
         <Animated.View key={`label-${label}`} entering={SWAP_IN}>
-          <NoirText
-            variant="label"
+          <Text
+            variant="stamp"
+            tone="accent"
             align="center"
-            centerTracking
             maxFontSizeMultiplier={L.counterMaxFontScale}
             importantForAccessibility="no"
-            style={styles.unclamped}
+            style={trackingPad(typeScale.stamp)}
           >
             {label}
-          </NoirText>
+          </Text>
         </Animated.View>
         <Animated.View key={`numeral-${numeral}`} entering={SWAP_IN}>
-          <NoirText
-            variant="code"
-            align="center"
-            centerTracking
-            maxFontSizeMultiplier={L.counterMaxFontScale}
-            importantForAccessibility="no"
-            style={styles.unclamped}
-          >
+          <Text variant="code" tone="accent" align="center" maxFontSizeMultiplier={L.counterMaxFontScale} importantForAccessibility="no">
             {numeral}
-          </NoirText>
+          </Text>
         </Animated.View>
       </LayoutAnimationConfig>
-    </Panel>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // 16 label line + 4 + 34 numeral line = 54, centred: 9 clear above and below.
+  // 14 label line + 2 + 34 numeral line = 50, centred: 11 clear above and
+  // below in the 72 window, 7 inside the plate. At the 1.25 cap, 17.5 + 2 +
+  // 42.5 = 62 still sits inside the 64 plate.
   window: {
     width: L.plateBox,
     height: L.plateBox,
     alignItems: "center",
     justifyContent: "center",
-    gap: ref.space.xs,
+    gap: space.xxs,
   },
-  // At the 1.25 cap "III" needs a little more than the 70 inner width: iOS
-  // tracks after the last glyph (plus the centring pad), and Android scales
-  // tracking by the uncapped text size. Measured against the 70 box it would
-  // break onto two lines and overflow the window, so each line measures
-  // against 70 + 2 x ref.space.sm and stays centred. Only the trailing
-  // tracking crosses the inner edge; the glyphs stay inside the window.
-  unclamped: { marginHorizontal: -ref.space.sm },
+  mount: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: color.surface,
+    borderWidth: L.hairline,
+    borderColor: color.hairline,
+    borderRadius: radius.thumbRing,
+    ...curve,
+  },
+  plate: {
+    position: "absolute",
+    top: MOUNT_PAD,
+    left: MOUNT_PAD,
+    right: MOUNT_PAD,
+    bottom: MOUNT_PAD,
+    backgroundColor: color.canvas,
+    borderWidth: L.hairline,
+    borderColor: color.rim,
+    borderRadius: radius.thumb,
+    ...curve,
+  },
 });

@@ -1,14 +1,15 @@
 // 04 · First-time photo guide (docs/DESIGN.md), in the play screen's look.
 // Four steps, each a warm line drawing on a film plate (SceneView's walnut
 // mount with a brass plate label), a Playfair title and a Jakarta instruction,
-// and one brass pill: the walnut "Next" for three steps, the brass "Open the
-// camera" on step 4. Silk still and grain under everything; no light pool.
+// and one live Button (the play screen's 8 pt-rounded button): the walnut
+// secondary "Next" for three steps, the brass primary "Open the camera" on
+// step 4. Silk still and grain under everything; no light pool.
 //
 // Layout on 393 x 852 (safe 59 / 34), top to bottom: the light table's top bar
 // at y 59-107 (gutter 20): Close (48, x 325-373) on the right, the brass step
 // stamp centred on it (line box 76-90), a 48 spacer on the left; the mount at
-// y 178-564; the title (620-650) and body (654-700), bottom-anchored; a 62
-// gap that holds the replay status line (724-742); the button at 762-814;
+// y 178-564; the title (620-650) and body (654-700), bottom-anchored; a 66
+// gap that holds the replay status line (724-742); the button at 766-814;
 // then safe bottom + space.xs, as Pro. Large text grows the block upward
 // from 814.
 import { useCallback, useEffect, useRef } from "react";
@@ -241,9 +242,9 @@ const styles = StyleSheet.create({
   stampSlot: { flex: 1 },
   stampLeaving: { position: "absolute", top: 0, left: 0, right: 0 },
   headerSpacer: { width: hit.min },
-  // y 111-762 on the base device: the swipe area, between the header and the button.
+  // y 111-766 on the base device: the swipe area, between the header and the button.
   swipeArea: { flex: 1 },
-  // The 62 gap above the button (y 700-762), holding replay's status line at y 724-742.
+  // The 66 gap above the button (y 700-766), holding replay's status line at y 724-742, 24 clear above and below.
   status: {
     minHeight: G.ctaGap,
     paddingTop: G.statusTop,

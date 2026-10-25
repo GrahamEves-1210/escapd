@@ -7,10 +7,11 @@
 // title once it has risen, scrolls past 64 % of the screen, and traps
 // VoiceOver (accessibilityViewIsModal).
 // Inside: the Show interactives row (a React Native Switch with the brass
-// track, as in Case options) and the guide replay as a brass secondary pill.
+// track, as in Case options) and the guide replay as the live secondary
+// Button (walnut, brass hairline, radius.control 8, as /play's buttons).
 // Render it conditionally: it animates in on mount and out on unmount.
 import { StyleSheet, Switch, View } from "react-native";
-import { PillButton } from "@/components/noir";
+import { Button } from "@/components/Button";
 import { Sheet } from "@/components/Sheet";
 import { Text } from "@/components/Text";
 import { usePreferences } from "@/game/preferences";
@@ -46,7 +47,7 @@ export function HowYouPlaySheet({ onClose, onGuide }: HowYouPlaySheetProps) {
           testID="hub-show-interactives"
         />
       </View>
-      <PillButton label="How to photograph a room" scheme="brass" variant="secondary" onPress={onGuide} testID="hub-guide-replay" />
+      <Button label="How to photograph a room" variant="secondary" onPress={onGuide} testID="hub-guide-replay" />
     </Sheet>
   );
 }

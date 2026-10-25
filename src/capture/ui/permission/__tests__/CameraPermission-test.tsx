@@ -1,5 +1,5 @@
-import { AccessibilityInfo, BackHandler, Linking, Platform, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { AccessibilityInfo, BackHandler, Linking, Platform, StyleSheet, processColor } from "react-native";
+import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
 import type { PermissionResponse } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
 import { addPlate, clearPlates, getPlates, usePlates } from "@/capture/roll";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { color, hit, radius, ref, space, type } from "@/theme/tokens";
 import { CameraPermission } from "../../CameraPermission";
 import type { CameraPermissionProps } from "../../types";
 import { COPY, PERMISSION_COPY } from "../copy";
@@ -44,6 +44,9 @@ const push = jest.mocked(router.push);
 const announce = jest.mocked(AccessibilityInfo.announceForAccessibility);
 const { refocus } = jest.requireMock<{ refocus: () => void }>("expo-router");
 const hidden = { includeHiddenElements: true } as const;
+const P = ref.layout.permission;
+// The live Button's own dimmed state (src/components/Button.tsx: inactive = disabled or loading).
+const LIVE_DIMMED = 0.45;
 
 // The base device: 393 x 852 with safe areas 59 / 34.
 const METRICS = { frame: { x: 0, y: 0, width: 393, height: 852 }, insets: { top: 59, bottom: 34, left: 0, right: 0 } };
@@ -105,6 +108,9 @@ async function renderScreen(overrides: Partial<ScreenProps> = {}, reducedMotion 
 
 const buttonLabels = () => screen.getAllByRole("button").map((b) => b.props.accessibilityLabel);
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
+/** The live Button draws its fill, edge, corners and dimming on an inner surface; layout stays on the pressable. */
+const surfaceOf = (button: Parameters<typeof within>[0]) => within(button).getByTestId("button-surface", { includeHiddenElements: true });
+const buttonLook = (button: Parameters<typeof within>[0]) => ({ ...styleOf(button), ...styleOf(surfaceOf(button)) });
 /** Opacity applied to a control by its own style or by an ancestor's. */
 function opacityOf(node: { props: { style?: unknown }; parent: unknown } | null): number {
   let opacity = 1;
@@ -115,13 +121,18 @@ function opacityOf(node: { props: { style?: unknown }; parent: unknown } | null)
   return opacity;
 }
 interface TreeNode {
+  type: unknown;
   props: Record<string, unknown>;
   children: readonly (TreeNode | string)[];
 }
+/** Host elements inside a node (not the node itself). */
+function inner(node: unknown): TreeNode[] {
+  const walk = (n: TreeNode): TreeNode[] => n.children.flatMap((c) => (typeof c === "string" ? [] : [c, ...walk(c)]));
+  return walk(node as TreeNode);
+}
 /** Host elements inside a node (not the node itself) that are accessibility elements of their own. */
 function innerAccessible(node: unknown): TreeNode[] {
-  const walk = (n: TreeNode): TreeNode[] => n.children.flatMap((c) => (typeof c === "string" ? [] : [c, ...walk(c)]));
-  return walk(node as TreeNode).filter((n) => n.props.accessible === true);
+  return inner(node).filter((n) => n.props.accessible === true);
 }
 
 beforeEach(() => {
@@ -135,7 +146,7 @@ describe("Checking", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it("is flat ground with the live back arrow only, and a thinking line only past ~1 s", async () => {
+  it("is the route's ground with the live back control only, and a thinking line only past ~1 s", async () => {
     const props = await renderScreen({ permission: null, checking: true });
     expect(screen.queryByTestId("permission-sheet", hidden)).toBeNull();
     expect(screen.queryByRole("button", { name: PERMISSION_COPY.default.action })).toBeNull();
@@ -160,35 +171,74 @@ describe("Checking", () => {
     expect(announce).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith(COPY.checking);
 
+    // The live IconButton: live in every state, Checking included.
     const back = screen.getByRole("button", { name: COPY.close });
-    expect(back.props.accessibilityState).toMatchObject({ disabled: false });
+    expect(back.props.accessibilityState?.disabled ?? false).toBe(false);
     await fireEvent.press(back);
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("Default", () => {
-  it("sets out the decision: statement title, body, white pill and a quiet way out", async () => {
+  it("sets out the decision: Playfair heading, Jakarta body, a brass button and a quiet way out", async () => {
     await renderScreen();
-    expect(screen.getByRole("header", { name: "Let ESCAPD use the camera" })).toBeTruthy();
-    expect(screen.getByText(PERMISSION_COPY.default.body)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Allow the camera" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Choose photos instead" })).toBeTruthy();
+    const title = screen.getByRole("header", { name: "Let ESCAPD use the camera" });
+    expect(styleOf(title)).toMatchObject({ ...type.narrativeTitle, color: color.text });
+    expect(styleOf(screen.getByText(PERMISSION_COPY.default.body))).toMatchObject({ ...type.body, color: color.textSecondary });
+    // The live Button: primary is brass with the dark label; quiet is transparent with a color.text label, centred.
+    const primary = screen.getByRole("button", { name: "Allow the camera" });
+    expect(buttonLook(primary)).toMatchObject({ backgroundColor: color.accent, borderRadius: radius.control, minHeight: hit.min });
+    expect(styleOf(within(primary).getByText("Allow the camera")).color).toBe(color.onAccent);
+    const quiet = screen.getByRole("button", { name: "Choose photos instead" });
+    expect(buttonLook(quiet)).toMatchObject({ backgroundColor: "transparent", alignSelf: "center", minHeight: hit.min });
+    expect(styleOf(within(quiet).getByText("Choose photos instead")).color).toBe(color.text);
     expect(screen.queryByRole("button", { name: "Go to the light table" })).toBeNull();
-    // The lit drawing is decoration: present, but hidden from screen readers.
+    // The drawing is decoration: present, but hidden from screen readers.
     expect(screen.queryByTestId("permission-illustration")).toBeNull();
     expect(screen.getByTestId("permission-illustration", hidden)).toBeTruthy();
   });
 
-  it("puts the back arrow on 02's back box with a 48 hit area, and the last button ctaBottom above the home indicator", async () => {
+  it("draws the phone on a small film plate, with no light pool", async () => {
+    await renderScreen();
+    expect(styleOf(screen.getByTestId("permission-mount", hidden))).toMatchObject({
+      backgroundColor: color.surface,
+      borderColor: color.hairline,
+      borderRadius: radius.thumbRing,
+    });
+    expect(styleOf(screen.getByTestId("permission-plate", hidden))).toMatchObject({
+      backgroundColor: color.canvas,
+      borderRadius: radius.thumb,
+      height: P.plate.height,
+      overflow: "hidden",
+    });
+    const art = inner(screen.getByTestId("permission-illustration", hidden));
+    expect(art.some((n) => String(n.type).includes("RadialGradient"))).toBe(false);
+    // Warm lines: the two brackets in brass, the phone's outline in color.textSecondary,
+    // its body walnut and its screen soot. No Noir grey or white anywhere.
+    const solid = (brush: unknown) => {
+      const b = brush as { type?: number; payload?: unknown } | null | undefined;
+      return b?.type === 0 ? b.payload : null;
+    };
+    const strokes = art.map((n) => solid(n.props.stroke));
+    const fills = art.map((n) => solid(n.props.fill));
+    expect(art.filter((n) => n.type === "RNSVGPath" && solid(n.props.stroke) === processColor(color.accent))).toHaveLength(2);
+    expect(strokes).toContain(processColor(P.line.mid.color));
+    expect(fills).toEqual(expect.arrayContaining([processColor(color.surface), processColor(color.canvas)]));
+    const noir = [ref.color.bright, ref.color.read, ref.color.meta, ref.color.hairline2, ref.color.panel, ref.color.ground].map((c) => processColor(c));
+    expect([...strokes, ...fills].some((c) => noir.includes(c as never))).toBe(false);
+  });
+
+  it("puts the live back control on 02's back centre (43, 89) with a 56 hit area", async () => {
     await renderScreen();
     const back = screen.getByTestId("permission-back");
-    expect(styleOf(back).width).toBe(ref.button.bare.hit);
-    expect(back.props.hitSlop).toBe((ref.hit.comfortable - ref.button.bare.hit) / 2);
-    const box = styleOf(back.parent as never);
-    expect(box.left).toBe(ref.layout.permission.backLeft - (ref.hit.comfortable - ref.button.bare.hit) / 2);
-    expect(box.top).toBe(METRICS.insets.top + ref.space.sm - (ref.hit.comfortable - ref.button.bare.hit) / 2);
-    expect(box.width).toBe(ref.hit.comfortable);
+    expect(styleOf(back)).toMatchObject({ width: hit.min, height: hit.min, borderRadius: radius.round, backgroundColor: "transparent" });
+    expect(back.props.hitSlop).toBe(space.xs);
+    // The wrapper holds the 48 circle and its slop, so every touch lands inside a parent.
+    const box = styleOf(back.parent as never) as { left: number; top: number; width: number; height: number };
+    expect(box.left).toBe(P.back.left - space.xs);
+    expect(box.top).toBe(METRICS.insets.top + P.back.top - space.xs);
+    expect(box.width).toBe(hit.min + space.xs * 2);
+    expect([box.left + box.width / 2, box.top + box.height / 2]).toEqual([43, 89]);
   });
 
   it("Android back does what the back arrow does", async () => {
@@ -200,7 +250,7 @@ describe("Default", () => {
     add.mockRestore();
   });
 
-  it("Requesting: the pill keeps its label, ignores taps and is busy; the quiet button dims; back stays live", async () => {
+  it("Requesting: the brass button shows the live spinner, ignores taps and is busy; the quiet button dims; back stays live", async () => {
     let answer: (value: PermissionResponse) => void = () => {};
     const requestPermission = jest.fn(() => new Promise<PermissionResponse>((resolve) => (answer = resolve)));
     await renderScreen({ requestPermission });
@@ -210,18 +260,25 @@ describe("Default", () => {
     await user.press(screen.getByRole("button", { name: "Allow the camera" }));
     expect(requestPermission).toHaveBeenCalledTimes(1);
     const pill = screen.getByRole("button", { name: "Allow the camera" });
-    expect(pill.props.accessibilityState).toMatchObject({ busy: true });
-    expect(opacityOf(pill)).toBe(1);
+    expect(pill.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+    // The live Button's loading: a spinner in place of the label, the control dimmed.
+    expect(within(pill).queryByText("Allow the camera")).toBeNull();
+    expect(inner(pill).some((n) => n.type === "ActivityIndicator" && n.props.color === color.onAccent)).toBe(true);
+    expect(opacityOf(surfaceOf(pill))).toBe(LIVE_DIMMED);
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
     expect(quiet.props.accessibilityState).toMatchObject({ disabled: true });
-    expect(opacityOf(quiet)).toBe(ref.button.disabledOpacity);
-    expect(screen.getByRole("button", { name: COPY.close }).props.accessibilityState).toMatchObject({ disabled: false });
+    expect(opacityOf(surfaceOf(quiet))).toBe(LIVE_DIMMED);
+    const back = screen.getByRole("button", { name: COPY.close });
+    expect(back.props.accessibilityState?.disabled ?? false).toBe(false);
+    expect(opacityOf(back)).toBe(1);
 
     await user.press(pill);
     expect(requestPermission).toHaveBeenCalledTimes(1);
 
     await act(async () => answer(permission()));
-    expect(screen.getByRole("button", { name: "Allow the camera" }).props.accessibilityState).toMatchObject({ busy: false });
+    const settled = screen.getByRole("button", { name: "Allow the camera" });
+    expect(settled.props.accessibilityState).toMatchObject({ busy: false, disabled: false });
+    expect(within(settled).getByText("Allow the camera")).toBeTruthy();
   });
 
   it("Request error: stays on Default with the error notice", async () => {
@@ -248,11 +305,15 @@ describe("Default", () => {
     expect(notice.props.accessible).toBe(false);
     expect(notice.props.accessibilityLabel).toBeUndefined();
     expect(notice.props.accessibilityLiveRegion).toBe("polite");
-    // The Warning is an icon, hidden from screen readers; the words are in read.
+    // The Warning is an icon, hidden from screen readers; the words are caption
+    // in color.textSecondary, never error-coloured on the dark sheet.
     expect(screen.queryByTestId("permission-notice-icon")).toBeNull();
     expect(screen.getByTestId("permission-notice-icon", hidden)).toBeTruthy();
-    expect(styleOf(screen.getByText("The camera didn't answer. Try again.")).color).toBe(ref.color.read);
-    // Keyboard and switch focus: back arrow, pill, quiet button.
+    expect(styleOf(screen.getByText("The camera didn't answer. Try again."))).toMatchObject({
+      ...type.caption,
+      color: color.textSecondary,
+    });
+    // Keyboard and switch focus: back, primary, quiet button.
     expect(buttonLabels()).toEqual([COPY.close, "Allow the camera", "Choose photos instead"]);
   });
 });
@@ -303,9 +364,12 @@ describe("Choose photos instead", () => {
     const notice = screen.getByTestId("permission-notice");
     expect(notice).toHaveTextContent("1 plate on the roll. A case needs at least three.");
     expect(notice.props.accessibilityLiveRegion).toBe("polite");
-    // Progress: no icon, the text in meta.
+    // Progress: no icon, the text in caption, color.textSecondary.
     expect(screen.queryByTestId("permission-notice-icon", hidden)).toBeNull();
-    expect(styleOf(screen.getByText("1 plate on the roll. A case needs at least three.")).color).toBe(ref.color.meta);
+    expect(styleOf(screen.getByText("1 plate on the roll. A case needs at least three."))).toMatchObject({
+      ...type.caption,
+      color: color.textSecondary,
+    });
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -327,7 +391,7 @@ describe("Choose photos instead", () => {
     expect(screen.getByTestId("permission-notice-icon", hidden)).toBeTruthy();
   });
 
-  it("Library busy: a thinking line with real progress; the pill and quiet button dim and the quiet one is busy", async () => {
+  it("Library busy: a warm thinking line with real progress; the buttons dim, and the quiet one is busy and keeps its label and focus", async () => {
     launch.mockResolvedValue(picked("file://picked-a.jpg", "file://picked-b.jpg"));
     const pending = holdProcessing();
     await renderScreen();
@@ -343,15 +407,22 @@ describe("Choose photos instead", () => {
     });
     expect(announce).toHaveBeenCalledWith("Re-encoding your photos");
     expect(screen.queryByText("Re-encoding photo 1 of 2")).toBeNull();
-    expect(screen.getAllByText("Re-encoding photo 1 of 2", hidden).length).toBeGreaterThan(0);
+    const drawn = screen.getAllByText("Re-encoding photo 1 of 2", hidden).map(styleOf);
+    // Warm tone: caption type; under reduced motion a still color.textSecondary line.
+    expect(drawn.some((s) => s.color === color.textSecondary && s.fontFamily === type.caption.fontFamily)).toBe(true);
 
     const pill = screen.getByRole("button", { name: "Allow the camera" });
     expect(pill.props.accessibilityState).toMatchObject({ disabled: true });
-    expect(opacityOf(pill)).toBe(ref.button.disabledOpacity);
+    expect(within(pill).getByText("Allow the camera")).toBeTruthy();
+    expect(opacityOf(surfaceOf(pill))).toBe(LIVE_DIMMED);
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
-    expect(quiet.props.accessibilityState).toMatchObject({ busy: true });
-    expect(opacityOf(quiet)).toBe(ref.button.disabledOpacity);
-    expect(screen.getByRole("button", { name: COPY.close }).props.accessibilityState).toMatchObject({ disabled: false });
+    expect(quiet.props.accessibilityState).toMatchObject({ disabled: true, busy: true });
+    expect(within(quiet).getByText("Choose photos instead")).toBeTruthy();
+    expect(inner(quiet).some((n) => n.type === "ActivityIndicator")).toBe(false);
+    expect(quiet.props.focusable).toBe(true);
+    expect(opacityOf(surfaceOf(quiet))).toBe(LIVE_DIMMED);
+    const back = screen.getByRole("button", { name: COPY.close });
+    expect(back.props.accessibilityState?.disabled ?? false).toBe(false);
 
     await act(async () => pending[0].finish());
     expect(screen.getAllByText("Re-encoding photo 2 of 2", hidden).length).toBeGreaterThan(0);
@@ -496,7 +567,7 @@ describe.each([
       accessibilityLiveRegion: "polite",
     });
     expect(innerAccessible(line)).toHaveLength(0);
-    // Keyboard and switch focus: back arrow, pill, quiet button.
+    // Keyboard and switch focus: back, primary, quiet button.
     expect(buttonLabels()).toEqual([COPY.close, "Allow the camera", "Choose photos instead"]);
   });
 });

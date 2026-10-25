@@ -1,16 +1,18 @@
 // 03 · Camera permission (docs/DESIGN.md 03): every state of /capture before
-// camera access is granted. A single decision, taken in the dark before the
-// rangefinder opens: flat ref.color.ground with only the bare back arrow (on
-// 02's back box), then, once Checking is over, a graphite sheet rising from
-// below with a cropped, lit drawing of a phone, a white statement, a grey
-// paragraph, one white pill and a quiet way out. No signal colour anywhere.
+// camera access is granted, in the play screen's look. A single decision,
+// taken in the darkroom before the rangefinder opens: the route's flat
+// color.canvas and grain with only the back control (the live IconButton, on
+// 02's back centre), then, once Checking is over, a walnut sheet in the live
+// Sheet's look rising from below, with a warm line drawing of a phone on a
+// small film plate, a Playfair heading, a Jakarta paragraph, one brass button
+// and a quiet way out. No oxblood, no light pool.
 //
-// States: Checking (ground and the arrow; a thinking line only past ~1 s),
+// States: Checking (ground and the back control; a thinking line only past ~1 s),
 // Default, Requesting, Denied (new copy, "Open Settings"), Library busy (a
 // thinking line with real progress; the buttons hold still), Library partial
 // and error, Request error, Roll ready (a second quiet button), Roll full and
 // Retake mode. On a grant the route shell swaps in the rangefinder: this
-// screen's arrow crossfades into 02's icon button and the sheet slides out
+// screen's back control crossfades into 02's and the sheet slides out
 // (exiting animations below).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Linking, StyleSheet, View } from "react-native";
@@ -20,10 +22,12 @@ import { router, useFocusEffect } from "expo-router";
 import { getPlates } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
-import { ArrowLeftIcon } from "@/components/icons";
-import { BareIconButton, PillButton, useShowAfter } from "@/components/noir";
+import { Button } from "@/components/Button";
+import { IconButton } from "@/components/IconButton";
+import { ArrowLeftIcon, ICON_SIZE, ICON_WEIGHT } from "@/components/icons";
+import { useShowAfter } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { color, hit, motion, ref, space } from "@/theme/tokens";
 import { COPY, PERMISSION_COPY } from "./permission/copy";
 import { PermissionNotice } from "./permission/PermissionNotice";
 import { PermissionSheet, type SheetNotice } from "./permission/PermissionSheet";
@@ -32,16 +36,18 @@ import { QuietAction } from "./permission/QuietAction";
 import type { CameraPermissionProps } from "./types";
 
 const P = ref.layout.permission;
-// The arrow's box is 44 (ref.button.bare.hit); its hitSlop takes it to 48, so
-// the wrapper is 48 and the slop stays inside a parent that receives touches.
-const SLOP = (ref.hit.comfortable - ref.button.bare.hit) / 2;
-// Granted: the arrow crossfades into 02's icon button as the rangefinder fades in.
+// The back control is the live IconButton, a 48 circle; its hitSlop of
+// space.xs takes the hit area to 56, so the wrapper is 56 and the slop stays
+// inside a parent that receives touches (native hit-testing drops the rest).
+const SLOP = space.xs;
+const BACK_BOX = hit.min + SLOP * 2;
+// Granted: the back control crossfades into 02's as the rangefinder fades in.
 const ARROW_OUT = FadeOut.duration(motion.sceneCrossfade).reduceMotion(ReduceMotion.Never);
 const ARROW_OUT_REDUCED = FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 const CHECKING_LINES = [COPY.checking] as const;
 
 interface Notice {
-  /** "error": Warning in ref.color.error and the text in read. "progress": text in meta. */
+  /** "error": the Warning icon in color.warning, then the text. "progress": the text alone. Both in color.textSecondary. */
   kind: "error" | "progress";
   text: string;
 }
@@ -73,7 +79,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     }, []),
   );
 
-  // Android hardware back does what the back arrow does, in every state. Only
+  // Android hardware back does what the back control does, in every state. Only
   // while /capture is the focused route, so it never reaches the light table.
   useFocusEffect(
     useCallback(() => {
@@ -194,22 +200,23 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} testID="camera-permission">
       <Animated.View
         exiting={reducedMotion ? ARROW_OUT_REDUCED : ARROW_OUT}
-        style={[styles.back, { top: insets.top + ref.space.sm - SLOP }]}
+        style={[styles.back, { top: insets.top + P.back.top - SLOP }]}
       >
-        <BareIconButton
-          icon={ArrowLeftIcon}
+        <IconButton
+          icon={<ArrowLeftIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
           accessibilityLabel={retake ? COPY.cancelRetake : COPY.close}
           onPress={onClose}
+          hitSlop={SLOP}
           testID="permission-back"
         />
       </Animated.View>
 
       {checking ? checkingLine : (
         <PermissionSheet copyKey={copyKey} title={copy.title} body={copy.body} notice={slot} testID="permission-sheet">
-          <PillButton
+          <Button
             label={copy.action}
             onPress={denied ? openSettings : request}
-            busy={requesting}
+            loading={requesting}
             disabled={busy}
             testID="permission-primary"
           />
@@ -234,12 +241,12 @@ export function CameraPermission({ permission, checking, requestPermission, reta
 }
 
 const styles = StyleSheet.create({
-  // 02's back box: x 21-65, top = safe top + ref.space.sm, plus the 2 pt slop all round.
+  // The 48 box at x 19-67, top = safe top + 6 (centre 43, 89 on 393 x 852), plus the slop all round.
   back: {
     position: "absolute",
-    left: P.backLeft - SLOP,
-    width: ref.hit.comfortable,
-    height: ref.hit.comfortable,
+    left: P.back.left - SLOP,
+    width: BACK_BOX,
+    height: BACK_BOX,
     alignItems: "center",
     justifyContent: "center",
   },

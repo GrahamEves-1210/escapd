@@ -237,8 +237,9 @@ export const ref = {
   border: {
     hairline: 1,
   },
-  // Every focusable control gets this outline, following its own shape.
-  focus: { width: 2, offset: 2, color: noirColor.bright },
+  // Every focusable control gets this outline, following its own shape. Brass
+  // since 2026-10-25 (the play screen's accent; 8:1 on canvas).
+  focus: { width: 2, offset: 2, color: color.accent },
   hit: {
     min: 44,
     comfortable: 48,
@@ -255,15 +256,6 @@ export const ref = {
     bare: { hit: 44, glyph: noirColor.bright, pressedGlyph: noirColor.read, iconSize: 24 },
     shutter: { ring: 76, ringWidth: 2, ringColor: noirColor.bright, disk: 64, fill: noirColor.bright, pressedFill: noirColor.brightPressed, glyph: noirColor.inverseInk, iconSize: 28 },
     segment: { height: 36, radius: 999, fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, thumbFill: noirColor.hairline2, active: noirColor.bright, inactive: noirColor.meta },
-    // The brass scheme: Noir's pill shape and motion in the play screen's own
-    // colours and button type (live color / type). The hub, the photo guide and
-    // Pro use it; the camera and permission screens keep the Noir pills.
-    brass: {
-      primary: { fill: color.accent, pressedFill: color.accentPressed, label: color.onAccent },
-      secondary: { fill: color.raised, pressedFill: color.surface, borderWidth: 1, border: color.hairline, label: color.text },
-      quiet: { label: color.textSecondary, pressedLabel: color.text },
-      labelType: type.control,
-    },
   },
   // Opaque graphite panels and frames. No glass, blur or coloured glow.
   panel: { fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, radius: 6 },
@@ -322,64 +314,78 @@ export const ref = {
       sheetExit: 200,
       sheetFocusMargin: 100,
     },
-    // 02 · Camera
+    // 02 · Camera, in the play screen's look (live tokens).
     camera: {
-      // Header buttons, control-row toggles, counter and thumbnail sit 21 from
-      // the screen edges: the measured 20.8-21.2, kept as ref.space.edge + 1
-      // so 03's back box matches (x 21-65).
-      edge: 21,
-      // Clear under the bottom row, above the bottom safe-area inset
-      // (852 - 34 - 797.7). On a 0-inset screen the row sits >= 20 above the edge.
-      bottomClear: 20.3,
-      // Viewfinder: exactly 3:4 (width / height), fitted by containBox. The feed
-      // is the sensor's 4:3 held upright (CameraView `ratio`, Android).
+      // Back, library, flash and grid: live 48 IconButtons centred on 02's
+      // columns (x 43 and 350 on 393 x 852), so 19 from the screen edges, and
+      // top = safe top + 6 (centre y 89): 03's back (permission.back) matches.
+      buttons: { edge: 19, top: 6 },
+      // The 1 pt lines: the mounts' brass hairline, the plates' rim, the
+      // privacy note's and the lens track's edge, the framing grid.
+      hairline: 1,
+      // Viewfinder: the inner plate is exactly 3:4 (width / height), fitted by
+      // containBox. The feed is the sensor's 4:3 held upright (CameraView
+      // `ratio`, Android).
       frameAspect: 0.75,
       feedRatio: "4:3",
+      // The film-plate mount (SceneView's Kodachrome mount): walnut padding
+      // inside the hairline around the plate, and the plate to its label.
+      mount: { pad: 6, labelGap: 6 },
       // Framing grid: rule of thirds.
       gridDivisions: 3,
-      // Corner brackets: 22 arms, 1.5 stroke, inset ref.space.lg. On camera
-      // ready they settle in from 6 further out (inset 10) over
+      // Corner brackets (brass): 22 arms, 1.5 stroke, inset space.lg. On
+      // camera ready they settle in from 6 further out (inset 10) over
       // motion.bracketSettle on this curve, fading in over bracketFade.
       bracketArm: 22,
       bracketStroke: 1.5,
       bracketTravel: 6,
       bracketFade: 200,
       bracketEasing: [0.2, 0, 0, 1],
-      // Plate counter and last-plate thumbnail: 72 x 72 windows.
+      // Plate counter and last-plate thumbnail: 72 x 72 walnut mounts
+      // (radius.thumbRing) around 64 x 64 plates (radius.thumb, 4 in).
       plateBox: 72,
-      // The thumbnail's continue cue from 3 plates: a 2 pt signal ring.
+      // The thumbnail's continue cue from 3 plates: a 2 pt brass ring.
       ringWidth: 2,
-      // Lens segment halves: a 100 x 36 track with 46 x 28 thumbs.
+      // The shutter: a 76 box, a 3 pt brass ring (the loupe's), a 5 gap and a
+      // 60 manila core carrying the 28 magnifier.
+      shutter: { size: 76, ringWidth: 3, core: 60, icon: 28 },
+      // Lens segment: a 100 x 36 track of two 50-wide halves (each a 50 x 48
+      // target), brass thumbs 46 x 28 inset space.xs.
       lensOptionWidth: 50,
-      // Large text caps, so the 72 window and the 46 thumbs hold.
+      lensTrack: 36,
+      // Large text caps, so the 72 windows, the 46 thumbs and the one-line
+      // plate label hold.
       counterMaxFontScale: 1.25,
       lensMaxFontScale: 1.25,
-      // Busy: the thinking line replaces the subtitle only past this many ms.
+      labelMaxFontScale: 1.25,
+      // The error line's Warning glyph, inside one caption line.
+      noticeIcon: 16,
+      // Busy: the thinking line replaces the detail only past this many ms.
       thinkingDelay: 1000,
     },
-    // 03 · Camera permission
+    // 03 · Camera permission, in the play screen's look (live tokens).
     permission: {
-      // Back arrow box: 02's header icon box exactly (x 21-65, top = safe top
-      // + ref.space.sm). 21 is the measured edge, ref.space.edge + 1.
-      backLeft: 21,
-      // Illustration zone at the top of the sheet: 150 tall, including the
-      // sheet's 1 pt top hairline and the 1 pt crop rule at its foot.
-      zone: 150,
-      // ref.light.object centre (194, 398) with the sheet top at 304: 2.5 left
-      // of the screen centre and 94 below the sheet top.
-      poolDx: -2.5,
-      poolDy: 94,
+      // Back: the live IconButton (48 round) centred on 02's back centre
+      // (43, 89 on 393 x 852): box x 19-67, top = safe top + 6.
+      back: { left: 19, top: 6 },
+      // The 1 pt lines: the sheet's top edge and inner brass rule, the mount's
+      // brass hairline, the plate's rim and the drawn screen's edge.
+      hairline: 1,
+      // The illustration plate: the column's width, 128 tall, on a small
+      // film-plate mount (radius.thumbRing around radius.thumb, 4 in).
+      plate: { height: 128 },
       // Phone line art, drawn in unrotated phone coordinates and rotated 14 deg
-      // clockwise about its top-left corner (142.7, 342): 53.8 left of the
-      // screen centre and 38 below the sheet top. Body 134 wide; inner screen
-      // inset 16 (sides, top); brackets inset 14 from it with 22 arms; the wall
-      // join starts 44 below the inner top edge; ceiling lines 30 long, rising
-      // outward at 15 deg.
+      // clockwise about its top-left corner: 53.8 left of the plate's centre
+      // and 20 below its top edge; the plate's foot crops it. Body 134 wide,
+      // corners 6; inner screen inset 16 (sides, top); brackets inset 14 from
+      // it with 22 arms; the wall join starts 44 below the inner top edge;
+      // ceiling lines 30 long, rising outward at 15 deg.
       phone: {
         cornerDx: -53.8,
-        cornerDy: 38,
+        cornerDy: 20,
         rotate: 14,
         width: 134,
+        radius: 6,
         screenInset: 16,
         bracketInset: 14,
         bracketArm: 22,
@@ -387,6 +393,19 @@ export const ref = {
         ceilingAngle: 15,
         ceilingLength: 30,
       },
+      // The line art, warm (as the guide's): stroke and the context fade over
+      // the last 40 before the crop; each depth a live colour and an opacity
+      // (react-native-svg ignores a stop colour's alpha). On color.canvas: mid
+      // 7.4:1, context 1.6:1, brackets 8.0:1.
+      line: {
+        stroke: 1.6,
+        fade: 40,
+        mid: { color: color.textSecondary, opacity: 1 },
+        context: { color: color.textSecondary, opacity: 0.3 },
+        bracket: color.accent,
+      },
+      // The notice's Warning glyph: one caption line square, as Pro's.
+      noticeIcon: 18,
       // A thinking line shows only once its wait has run past ~1 s (Checking,
       // a single library photo).
       thinkingDelay: 1000,
@@ -396,8 +415,9 @@ export const ref = {
     },
     // 04 · First-time photo guide, in the play screen's look (live tokens).
     guide: {
-      // The 1 pt edges: the mount's brass hairline, the plate's rim and the
-      // drawn phone screen's edge (art units).
+      // The 1 pt edges: the mount's brass hairline, the plate's rim, the
+      // drawn phone screen's edge (art units) and the live secondary Button's
+      // edge (the step button's slot reserves it).
       hairline: 1,
       // The film-plate mount (SceneView's Kodachrome mount): walnut padding
       // around the inner plate, and the plate to its plate label.
@@ -415,11 +435,12 @@ export const ref = {
       // The art box: the drawings' own units, centred in the plate (x 76.5-316.5,
       // y 228-494). Ink stays within inkMax.
       art: { width: 240, height: 266, inkMax: 170 },
-      // Body's last line to the button top (y 700-762), and the replay status
-      // line's box inside it (y 724-742).
-      ctaGap: 62,
+      // Body's last line to the button top (y 700-766, over the live Button's
+      // 48 at 766-814), and the replay status line's box inside it (y 724-742,
+      // 24 clear above and below).
+      ctaGap: 66,
       statusTop: 24,
-      statusBottom: 20,
+      statusBottom: 24,
       // Horizontal swipe: activation and vertical-fail offsets, then the
       // release commit thresholds (pt and pt/s).
       swipe: { activeOffsetX: 16, failOffsetY: 16, commitDistance: 56, commitVelocity: 500 },

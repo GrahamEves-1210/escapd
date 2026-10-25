@@ -1,20 +1,22 @@
 // The control row under the viewfinder: flash in the back-button column, the
-// lens segment centred, the framing grid in the library column. Utility
-// toggles, so never signal: bright when on, meta when off. Flash also swaps
-// its glyph (Lightning on, LightningSlash off) and the grid's state shows as
-// its lines on the viewfinder, so colour is never the only cue. The centre
-// slot stays empty when no ultra-wide lens is reported, and the row height
-// holds.
+// lens segment centred, the framing grid in the library column. Flash and
+// grid are the live IconButton (48 round, plain) as switches: the glyph is
+// color.text when on and color.textSecondary when off, eased over
+// ref.motion.control. Flash also swaps its glyph (Lightning on,
+// LightningSlash off) and the grid's state shows as its lines on the
+// viewfinder, so colour is never the only cue. Pressed and disabled are the
+// live IconButton's own (0.75 and 0.4). The centre slot stays empty when no
+// ultra-wide lens is reported, and the row height holds.
 //
-// The row is 44 tall plus SLOP above and below (the Rangefinder's padding), so
-// every hit area fits inside it: flash and grid are 44 boxes in 48 slop boxes,
-// and the lens halves are 50 x 48.
+// The row is 48 tall plus SLOP above and below (the Rangefinder's padding), so
+// the IconButtons' 56 hit boxes and the lens halves' 50 x 48 fit inside it.
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
-import { BareIconButton } from "@/components/noir";
-import { GridNineIcon, LightningIcon, LightningSlashIcon } from "@/components/icons";
-import { ref } from "@/theme/tokens";
+import { IconButton } from "@/components/IconButton";
+import { GridNineIcon, ICON_SIZE, LightningIcon, LightningSlashIcon } from "@/components/icons";
+import { GlyphStack, useStateProgress, type NoirIcon } from "@/components/noir";
+import { color, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
-import { Dimmable, SLOP, slopBox, undimmed } from "./Dimmable";
+import { Dimmable } from "./Dimmable";
 import { LensSegment } from "./LensSegment";
 import type { LensChoice } from "./useLenses";
 
@@ -50,17 +52,14 @@ export function ControlRow({
 }: ControlRowProps) {
   return (
     <View style={[styles.row, style]}>
-      <Dimmable dimmed={flashDisabled} style={slopBox}>
-        <BareIconButton
-          icon={flash ? LightningIcon : LightningSlashIcon}
-          accessibilityLabel={COPY.flash}
-          checked={flash}
-          disabled={flashDisabled}
-          onPress={onFlash}
-          style={undimmed}
-          testID="flash"
-        />
-      </Dimmable>
+      <Toggle
+        icon={flash ? LightningIcon : LightningSlashIcon}
+        label={COPY.flash}
+        on={flash}
+        disabled={flashDisabled}
+        onPress={onFlash}
+        testID="flash"
+      />
       <View style={styles.lensSlot}>
         {showLens ? (
           <Dimmable dimmed={lensDisabled} appear>
@@ -68,25 +67,37 @@ export function ControlRow({
           </Dimmable>
         ) : null}
       </View>
-      <Dimmable dimmed={gridDisabled} style={slopBox}>
-        <BareIconButton
-          icon={GridNineIcon}
-          accessibilityLabel={COPY.grid}
-          checked={grid}
-          disabled={gridDisabled}
-          onPress={onGrid}
-          style={undimmed}
-          testID="grid"
-        />
-      </Dimmable>
+      <Toggle icon={GridNineIcon} label={COPY.grid} on={grid} disabled={gridDisabled} onPress={onGrid} testID="grid" />
     </View>
   );
 }
 
+/** A utility switch on the live IconButton: role switch with `checked`; the glyph eases secondary to text as it turns on. */
+function Toggle({ icon, label, on, disabled, onPress, testID }: {
+  icon: NoirIcon;
+  label: string;
+  on: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
+  const lit = useStateProgress(on);
+  return (
+    <IconButton
+      icon={<GlyphStack icon={icon} size={ICON_SIZE} base={color.textSecondary} layers={[{ color: color.text, opacity: lit }]} />}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: on }}
+      disabled={disabled}
+      onPress={onPress}
+      testID={testID}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: L.edge },
-  // The centre slot spans the row's whole 48 band (its 44 plus the SLOP above
-  // and below) while taking 44 of its height, so the 48-tall lens halves sit
-  // inside every parent and the track stays centred on the row.
-  lensSlot: { flex: 1, alignSelf: "stretch", alignItems: "center", marginVertical: -SLOP },
+  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: L.buttons.edge },
+  // The centre slot takes the row's 48 band between the toggles; the 48-tall
+  // lens halves sit inside it, centred on the row.
+  lensSlot: { flex: 1, alignItems: "center" },
 });

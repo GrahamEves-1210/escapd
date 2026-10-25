@@ -1,38 +1,75 @@
-// The viewfinder: the screen's one window. A 3:4 frame with radius 6 holding
-// the live feed in full colour, with no filter, tint or overlay on it. Above
-// the feed, in order: the framing grid (when on), the frame's 1 pt hairline
-// edge (drawn over the feed, so it never disappears into the photo), the
-// corner brackets and the privacy note. The panel fill shows until frames arrive.
+// The viewfinder as a film plate, the way /play mounts the player's room
+// (SceneView's Kodachrome mount): a walnut mount (color.surface, 1 pt
+// color.hairline, radius.mount) with 6 of walnut around an inner plate
+// (color.canvas, radius.image) that holds the live feed in full colour, with
+// no filter, tint or overlay on it. Above the feed, in order: the framing grid
+// (when on), the plate's 1 pt color.rim edge (drawn over the feed), the brass
+// corner brackets and the privacy note. The canvas shows until frames arrive.
+// Under the plate, inside the mount, the brass mono plate label
+// ("ESCAPD 400  ·  PLATE I"), decorative: the counter carries it.
+//
+// The plate is exactly 3:4, fitted by containBox into the area the header and
+// the control row leave (less the mount's chrome) and centred, so the
+// viewfinder shrinks before any text does.
 import type { RefObject } from "react";
 import { StyleSheet, View } from "react-native";
 import { CameraView, type AvailableLenses, type CameraMountError, type FlashMode } from "expo-camera";
-import Animated, { FadeOut, ReduceMotion, useAnimatedStyle } from "react-native-reanimated";
-import { NoirText, Panel, toEasing, useStateProgress } from "@/components/noir";
-import { ref } from "@/theme/tokens";
+import Animated, { FadeIn, FadeOut, LayoutAnimationConfig, ReduceMotion, useAnimatedStyle } from "react-native-reanimated";
+import { toEasing, trackingPad, useStateProgress } from "@/components/noir";
+import { Text } from "@/components/Text";
+import { containBox } from "@/render/geometry";
+import { color, curve, radius, ref, space, type as typeScale } from "@/theme/tokens";
 import { Brackets } from "./Brackets";
 import { COPY } from "./copy";
 
 const L = ref.layout.camera;
 
-// After plate I the privacy note fades out over ref.motion.control. Opacity, so
-// reduced motion keeps it.
-const NOTE_EXIT = FadeOut.duration(ref.motion.control.duration)
-  .easing(toEasing(ref.motion.control.easing))
-  .reduceMotion(ReduceMotion.Never);
+const FADE = { duration: ref.motion.control.duration, easing: toEasing(ref.motion.control.easing) };
+// After plate I the privacy note fades out; a new plate label fades in. Opacity,
+// so reduced motion keeps both.
+const NOTE_EXIT = FadeOut.duration(FADE.duration).easing(FADE.easing).reduceMotion(ReduceMotion.Never);
+const LABEL_IN = FadeIn.duration(FADE.duration).easing(FADE.easing).reduceMotion(ReduceMotion.Never);
 
-// The note clears the bracket arms by ref.space.sm on each side.
-const NOTE_SIDE = ref.space.lg + L.bracketArm + ref.space.sm;
+// The mount's edge and walnut padding, on each side of the plate.
+const RIM = L.hairline + L.mount.pad;
+// The note clears the bracket arms by space.sm on each side.
+const NOTE_SIDE = space.lg + L.bracketArm + space.sm;
 
-export interface ViewfinderBox {
-  x: number;
-  y: number;
+export interface Size {
   width: number;
   height: number;
 }
 
+export interface ViewfinderLayout {
+  /** The mount, placed in the viewfinder area. */
+  mount: { x: number; y: number; width: number; height: number };
+  /** The inner plate: exactly 3:4. */
+  plate: Size;
+  /** The plate label's line box. */
+  label: number;
+}
+
+/**
+ * Fits the mount into `area`: the plate takes the largest 3:4 box that leaves
+ * room for the mount's edges, its walnut and the plate label (one stamp line,
+ * capped at labelMaxFontScale), and the mount is centred.
+ */
+export function viewfinderLayout(area: Size, fontScale: number): ViewfinderLayout {
+  const label = typeScale.stamp.lineHeight * Math.min(fontScale, L.labelMaxFontScale);
+  const chromeX = RIM * 2;
+  const chromeY = RIM * 2 + L.mount.labelGap + label;
+  const plate = containBox({ width: area.width - chromeX, height: area.height - chromeY }, L.frameAspect);
+  return {
+    mount: { x: plate.x, y: plate.y, width: plate.width + chromeX, height: plate.height + chromeY },
+    plate: { width: plate.width, height: plate.height },
+    label,
+  };
+}
+
 export interface ViewfinderProps {
-  /** The frame inside the viewfinder area, from containBox. */
-  box: ViewfinderBox;
+  layout: ViewfinderLayout;
+  /** The plate label under the plate, from plateLabel(). */
+  label: string;
   cameraRef: RefObject<CameraView | null>;
   flash: FlashMode;
   /** iOS deviceType of the chosen lens; undefined for the default main lens. */
@@ -49,7 +86,8 @@ export interface ViewfinderProps {
 }
 
 export function Viewfinder({
-  box,
+  layout,
+  label,
   cameraRef,
   flash,
   selectedLens,
@@ -60,51 +98,79 @@ export function Viewfinder({
   onMountError,
   onAvailableLensesChanged,
 }: ViewfinderProps) {
+  const { mount, plate } = layout;
   return (
-    <View style={[styles.frame, { left: box.x, top: box.y, width: box.width, height: box.height }]}>
-      {/* The feed is not a stop for screen readers: the viewfinder isn't tappable and the prompt says what to frame. */}
-      <View style={StyleSheet.absoluteFill} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          mode="picture"
-          ratio={L.feedRatio}
-          flash={flash}
-          selectedLens={selectedLens}
-          onCameraReady={onCameraReady}
-          onMountError={onMountError}
-          onAvailableLensesChanged={onAvailableLensesChanged}
-          testID="camera"
-        />
+    <View style={[styles.mount, { left: mount.x, top: mount.y, width: mount.width, height: mount.height }]} testID="viewfinder-mount">
+      <View style={[styles.plate, plate]} testID="viewfinder-plate">
+        {/* The feed is not a stop for screen readers: the viewfinder isn't tappable and the prompt says what to frame. */}
+        <View style={StyleSheet.absoluteFill} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            mode="picture"
+            ratio={L.feedRatio}
+            flash={flash}
+            selectedLens={selectedLens}
+            onCameraReady={onCameraReady}
+            onMountError={onMountError}
+            onAvailableLensesChanged={onAvailableLensesChanged}
+            testID="camera"
+          />
+        </View>
+        <FramingGrid visible={grid} width={plate.width} height={plate.height} />
+        <View pointerEvents="none" accessible={false} style={styles.rim} />
+        <Brackets settled={settled} />
+        {note ? (
+          <Animated.View exiting={NOTE_EXIT} style={styles.noteSlot}>
+            <View style={[styles.note, { maxWidth: plate.width - NOTE_SIDE * 2 }]} testID="privacy-note">
+              <Text variant="caption" tone="secondary" align="center" lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
+                {COPY.privacy}
+              </Text>
+            </View>
+          </Animated.View>
+        ) : null}
       </View>
-      <FramingGrid visible={grid} width={box.width} height={box.height} />
-      <View pointerEvents="none" accessible={false} style={styles.edge} />
-      <Brackets settled={settled} />
-      {note ? (
-        <Animated.View exiting={NOTE_EXIT} style={styles.noteSlot}>
-          <Panel style={[styles.note, { maxWidth: box.width - NOTE_SIDE * 2 }]} testID="privacy-note">
-            <NoirText variant="meta" tone="read" align="center" lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
-              {COPY.privacy}
-            </NoirText>
-          </Panel>
-        </Animated.View>
-      ) : null}
+      <View
+        pointerEvents="none"
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[styles.labelSlot, { height: layout.label }]}
+        testID="plate-label"
+      >
+        {/* The first label appears with the screen; later ones fade in. */}
+        <LayoutAnimationConfig skipEntering>
+          <Animated.View key={label} entering={LABEL_IN}>
+            <Text
+              variant="stamp"
+              tone="accent"
+              align="center"
+              numberOfLines={1}
+              maxFontSizeMultiplier={L.labelMaxFontScale}
+              style={trackingPad(typeScale.stamp)}
+            >
+              {label}
+            </Text>
+          </Animated.View>
+        </LayoutAnimationConfig>
+      </View>
     </View>
   );
 }
 
 /**
- * Rule of thirds, edge to edge inside the frame: 1 pt read lines, opaque.
- * Above the feed, below the brackets and the note. It shows and hides over
- * ref.motion.control, the grid toggle's state change.
+ * Rule of thirds, edge to edge inside the plate: 1 pt color.textSecondary
+ * lines, opaque (quieter than the brass brackets). Above the feed, below the
+ * rim, the brackets and the note. It shows and hides over ref.motion.control,
+ * the grid toggle's state change.
  */
 function FramingGrid({ visible, width, height }: { visible: boolean; width: number; height: number }) {
   const on = useStateProgress(visible);
   const fade = useAnimatedStyle(() => ({ opacity: on.get() }));
   const cuts = Array.from({ length: L.gridDivisions - 1 }, (_, i) => (i + 1) / L.gridDivisions);
   // Each line is centred on its third.
-  const half = ref.border.hairline / 2;
+  const half = L.hairline / 2;
   return (
     <Animated.View
       pointerEvents="none"
@@ -125,28 +191,46 @@ function FramingGrid({ visible, width, height }: { visible: boolean; width: numb
 }
 
 const styles = StyleSheet.create({
-  frame: {
+  // Width and height = plate + its chrome, so the 1 pt edge and the 6 of walnut
+  // sit outside the plate on every side and the label slot below it.
+  mount: {
     position: "absolute",
+    padding: L.mount.pad,
+    borderWidth: L.hairline,
+    borderColor: color.hairline,
+    borderRadius: radius.mount,
+    backgroundColor: color.surface,
+    ...curve,
+  },
+  plate: {
     overflow: "hidden",
-    backgroundColor: ref.panel.fill,
-    borderRadius: ref.panel.radius,
-    ...ref.curve,
+    backgroundColor: color.canvas,
+    borderRadius: radius.image,
+    ...curve,
   },
-  edge: {
+  // The plate's 1 pt rim, over the feed and the grid, as /play's plate and the light table's tiles.
+  rim: {
     ...StyleSheet.absoluteFill,
-    borderWidth: ref.panel.borderWidth,
-    borderColor: ref.panel.border,
-    borderRadius: ref.panel.radius,
-    ...ref.curve,
+    borderWidth: L.hairline,
+    borderColor: color.rim,
+    borderRadius: radius.image,
+    ...curve,
   },
-  vertical: { position: "absolute", top: 0, bottom: 0, width: ref.border.hairline, backgroundColor: ref.color.read },
-  horizontal: { position: "absolute", left: 0, right: 0, height: ref.border.hairline, backgroundColor: ref.color.read },
+  vertical: { position: "absolute", top: 0, bottom: 0, width: L.hairline, backgroundColor: color.textSecondary },
+  horizontal: { position: "absolute", left: 0, right: 0, height: L.hairline, backgroundColor: color.textSecondary },
   // Bottom-centred, its bottom level with the bottom bracket corners.
-  noteSlot: { position: "absolute", left: 0, right: 0, bottom: ref.space.lg, alignItems: "center" },
-  // Padding 12 / 8 measured from the panel's outer edge, as the layout does
-  // (the 1 pt hairline sits inside it): two lines make the 52 tall note.
+  noteSlot: { position: "absolute", left: 0, right: 0, bottom: space.lg, alignItems: "center" },
+  // A notice panel, as the case-closed stat panels: walnut, 1 pt brass
+  // hairline, radius.control. Padding 12 / 8 measured from its outer edge (the
+  // hairline sits inside it): two caption lines make it 52 tall.
   note: {
-    paddingHorizontal: ref.space.md - ref.panel.borderWidth,
-    paddingVertical: ref.space.sm - ref.panel.borderWidth,
+    backgroundColor: color.surface,
+    borderWidth: L.hairline,
+    borderColor: color.hairline,
+    borderRadius: radius.control,
+    ...curve,
+    paddingHorizontal: space.md - L.hairline,
+    paddingVertical: space.sm - L.hairline,
   },
+  labelSlot: { marginTop: L.mount.labelGap, justifyContent: "center" },
 });

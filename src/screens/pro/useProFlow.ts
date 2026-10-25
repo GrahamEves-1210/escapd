@@ -21,7 +21,7 @@ import * as copy from "./copy";
  */
 export type ProView = { kind: "loading" } | { kind: "ready"; cap: number | null; fadeIn: boolean };
 
-/** The action pill's own work: Purchasing (test builds) or Check again (test purchases off). */
+/** The action button's own work: Purchasing (test builds) or Check again (test purchases off). */
 export type ProBusy = "idle" | "purchasing" | "checking";
 
 /** The notice slot's error line. `offline` picks Phosphor WifiSlash over Warning. */

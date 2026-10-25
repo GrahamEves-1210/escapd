@@ -1,6 +1,6 @@
 # ESCAPD design spec: Noir, and the play screen's look
 
-> **Direction change (2026-10-25).** The play screen (`/play`) and the light table (`/capture/review`) are the visual identity: brass accent, Playfair case titles, film-plate framing, mono plate labels. The hub (01), the photo guide (04) and Pro (05) now follow that look, keeping two things from Noir: the silk background and the pill buttons. The camera (02) and camera permission (03) still use Noir as specified below. See **The play screen's look** after Global tokens.
+> **Direction change (2026-10-25).** The play screen (`/play`) and the light table (`/capture/review`) are the visual identity: brass accent, Playfair case titles, film-plate framing, mono plate labels. **All five screens now follow that look.** From Noir they keep only the silk background (hub, guide, Pro). Every button is the play screen's 8 pt-rounded `Button`, and the focus ring is brass. See **The play screen's look** after Global tokens. Global tokens below are the original Noir set: most of it is no longer used by any screen (that section says which parts still are).
 
 This document began as ESCAPD's **Noir** identity, applied to five screens: game mode (the new hub), camera, camera permission, the first-time photo guide, and the test paywall.
 
@@ -20,15 +20,17 @@ Noir in one paragraph: a near-black ground, quiet grey reading text and bright w
 - **Effects you supplied as web code** (Thinking states, the dither loader, the card tilt): rebuilt for React Native. Each is described where it's used, with what changed and why.
 
 **Status.**
-- All five screens are built (branch `redesign-noir`).
-- Noir tokens are the `ref` export in `src/theme/tokens.ts`; the play screen's look uses the live tokens above it (`color`, `type`, `space`, `radius`, `curve`, `motion`), plus `ref.background`, `ref.button.brass` and `ref.motion.thinking.shimmerWarm`.
-- Geist and Geist Mono are installed and loaded in `app/_layout.tsx`; only the Noir screens (02, 03) use them.
+- All five screens are built and follow the play screen's look (branch `redesign-noir`).
+- The look uses the live tokens at the top of `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `motion`, `hit`). From the `ref` export the screens still use `ref.background` (silk), `ref.focus` (now brass), `ref.motion.thinking` (with `shimmerWarm`), `ref.motion.tilt`, `ref.motion.shutterPress` and each screen's `ref.layout` block.
+- Geist and Geist Mono are still installed and loaded in `app/_layout.tsx`, but no screen uses them any more; they can be removed.
 
 **Base:** iPhone 393 × 852 pt, safe areas 59 top and 34 bottom, tap targets of at least 44 pt.
 
 **Contents:** Global tokens · 01 Game mode · 02 Camera · 03 Camera permission · 04 Photo guide · 05 Pro · Decisions · Needs you · Screens with no layout reference yet
 
 ## Global tokens
+
+> **Status since 2026-10-25: the original Noir set, mostly retired.** No screen uses Noir's colours, Geist type, pills, panels, oxblood signal or light pools any more; the screens use the play screen's look (next section) and the live tokens. Still in use from this set: `ref.background` (the silk still), `ref.focus` (geometry, now in brass), `ref.motion.thinking` (swap and sweep; screens use the `shimmerWarm` colours), `ref.motion.tilt` (the hub's glass), `ref.motion.shutterPress`, `ref.light.object` (only as the fixed, documented gradient component; no screen draws a pool now) and each screen's `ref.layout` block. The rest is kept below as the record of the Noir pass.
 
 Noir is a near-black, opaque ground with quiet grey reading text and bright white statements. Soft pools of white light fall only on key objects and hero areas. One oxblood signal marks what matters to the case, the way a stamp would: a selection that changes the case, a solved case, case stamps and the escape. The tone is murder-mystery noir, terse and procedural, never gore or horror.
 
@@ -440,9 +442,9 @@ This is the one exception to "no pointer effects", granted by the user: 01's pai
 
 **Glare stops.** `ref.motion.tilt.glare` holds one `color` (#FFFFFF) and, per layer, `opacities` beside `offsets` (95: 0.48 · 0.06 · 0; 200: 0.22 · 0.04 · 0; 360: 0.10 · 0). Each `<Stop>` is `stopColor={glare.color}` plus `stopOpacity`, for the reason given under light pools.
 
-## The play screen's look (hub, guide, Pro)
+## The play screen's look (all five screens)
 
-Since 2026-10-25 the hub (01), the photo guide (04) and Pro (05) follow the identity of the play screen and the light table, the live theme in `src/theme/tokens.ts` ("The Darkroom Dossier & Brass Mechanism"). Two things carry over from Noir: the **silk background** (`ref.background`) and the **pill buttons** (now in a brass scheme). The camera (02) and permission (03) keep Noir. Each screen's section below describes it as built.
+Since 2026-10-25 every screen in this document follows the identity of the play screen and the light table, the live theme in `src/theme/tokens.ts` ("The Darkroom Dossier & Brass Mechanism"): first the hub (01), the photo guide (04) and Pro (05), then the camera (02) and camera permission (03). The hub, guide and Pro keep Noir's **silk background** (`ref.background`); the camera route (02, 03) stays on flat canvas so photos are judged on a plain ground. Each screen's section below describes it as built.
 
 | Element | How it's built | Tokens |
 |---|---|---|
@@ -457,7 +459,8 @@ Since 2026-10-25 the hub (01), the photo guide (04) and Pro (05) follow the iden
 | Panels and notices | Walnut, 1 pt brass hairline, radius 8 | `color.surface`, `color.hairline`, `radius.control` |
 | Top bar | Live `IconButton` (48 round, glyph in `color.text`), a centred brass stamp, a 48 spacer: the light table's pattern | `hit.min` |
 | Sheets and switches | Live `Sheet` (as `/play`'s Case options) and React Native `Switch` with a brass track | `color.accent`, `color.hairline`, `color.text` |
-| Pill buttons | Noir's `PillButton` with `scheme="brass"`: primary is brass with the dark label (the screen's main "go"), secondary is walnut with a brass hairline, quiet is text. Same height, shape, pressed colour change (120 ms) and focus ring as Noir. Label in `type.control` (Jakarta SemiBold 15/20). No oxblood | `ref.button.brass` |
+| Buttons | The play screen's own `Button` (`src/components/Button.tsx`) on every screen: 8 pt corners, at least 48 tall, `space.gutter` / `space.md` padding, label in `type.control` (Jakarta SemiBold 15/20), centred. Primary is brass with the dark label (the main "go"), pressed `color.accentPressed`; secondary is walnut with a 1 pt brass hairline; quiet is text only; destructive is walnut with the error label. Pressed 0.82, disabled 0.45, `loading` swaps the label for a spinner. Icon buttons are the play screen's `IconButton` (48 round). No pills, no oxblood | `radius.control`, `hit.min`, `color.accent`, `color.onAccent`, `color.raised`, `color.hairline` |
+| Focus ring | A 2 pt **brass** ring 2 pt outside the control, following its shape (12 pt corners around an 8 pt button, round around an icon button, the control's own shape on custom controls such as cards, the shutter and the lens switch). `Button` and `IconButton` draw it themselves, stepping out by their 1 pt edge when they have one. Shown only for keyboard, D-pad and switch focus | `ref.focus` (`color.accent`, 8:1 on canvas) |
 | Waits | `ThinkingStates tone="warm"`: the same swap and sweep in live caption / body / stamp type, from `color.textSecondary` to `color.text`. Short waits with no status line: a small `ActivityIndicator` in brass | `ref.motion.thinking.shimmerWarm`, `color.accent` |
 | Case stamps ("SOLVED") | Brass stamp text in a 1 pt brass bordered box, never oxblood | `type.stamp`, `color.accent`, `radius.control` |
 | Errors on dark | An icon in `color.warning` or `color.error` beside text in `color.textSecondary`. Error-coloured text only on manila (5.0:1) | — |
@@ -466,7 +469,7 @@ Since 2026-10-25 the hub (01), the photo guide (04) and Pro (05) follow the iden
 
 ## 01 · Game mode (the hub at /)
 
-Reference: docs/refs/01-game-mode.png (layout only). The look is the play screen's: /play's Kodachrome mount and brass plate label (src/render/SceneView.tsx), the light table's heading and caption (app/capture/review.tsx), the case-closed panels and rule (app/tutorial/complete.tsx), Case options' sheet and switch (src/render/Player.tsx), and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), `ref.button.disabledOpacity` (the kit's 0.4, as the brass pill dims), `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), `ref.motion.tilt` (the glass), the kit's focus ring (`ref.focus`) and control timing (`ref.motion.control`), and the screen's own `ref.layout.hub` (`wordmarkHeight` 14, `hairline` 1, `glass` 128, `lens` (0.614, 0.331) r 0.252, `weights` 7 : 7 : 50 and 15 : 17, `fan` { height 226, sideOffset 105, sideDrop 10, tilt 6, cover 28, minWidth 375, maxFontScale 1 }, `card` { 122 × 209, art 48, artStroke 1.6 }, `stackedMinHeight` 96, `noticeIcon` 18, `sheetExit` 200, `sheetFocusMargin` 100). No Geist, no NoirText, no `ref.type` or `ref.color`, no light pool, no oxblood.
+Reference: docs/refs/01-game-mode.png (layout only). The look is the play screen's: /play's Kodachrome mount and brass plate label (src/render/SceneView.tsx), the light table's heading and caption (app/capture/review.tsx), the case-closed panels and rule (app/tutorial/complete.tsx), Case options' sheet and switch (src/render/Player.tsx), and /play's live buttons (src/components/Button.tsx, IconButton.tsx). 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), the live `Button` (`radius.control` 8, `minHeight` `hit.min` 48), `ref.button.disabledOpacity` (the kit's 0.4, for dimmed cards), `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), `ref.motion.tilt` (the glass), the kit's brass focus ring (`ref.focus`, `color.accent`) and control timing (`ref.motion.control`), and the screen's own `ref.layout.hub` (`wordmarkHeight` 14, `hairline` 1, `glass` 128, `lens` (0.614, 0.331) r 0.252, `weights` 7 : 7 : 50 and 15 : 17, `fan` { height 226, sideOffset 105, sideDrop 10, tilt 6, cover 28, minWidth 375, maxFontScale 1 }, `card` { 122 × 209, art 48, artStroke 1.6 }, `stackedMinHeight` 96, `noticeIcon` 18, `sheetExit` 200, `sheetFocusMargin` 100). No Geist, no NoirText, no `ref.type` or `ref.color`, no light pool, no oxblood.
 
 Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files: `HubScreen.tsx` (layout, routing, sheet, notice slot, focus return), `Deck.tsx` (fan, stack, fan focus ring), `GameCard.tsx` (mount, plate, labels, SOLVED stamp, busy), `CardArt.tsx`, `CardNote.tsx`, `HubNotice.tsx`, `HowYouPlaySheet.tsx`, `Magnifier.tsx` (the glass), `layout.ts` (geometry rules), `caseStatus.ts` (every word and state), `useHubData.ts` (fetch and follow). Tests: `src/screens/hub/__tests__/hub-test.tsx`, `layout-test.tsx`.
 
@@ -474,7 +477,7 @@ Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files: 
 
 Three case files laid on the silk under a brass reading glass, each one a small photographic plate on a walnut mount, the way /play mounts the player's room. The ground is the black silk still under the live grain, and nothing is lit from behind: the mounts' brass hairlines and the brass labels carry the page. One Playfair statement ("Choose a case") with a small warm caption under it, as the light table heads its plates. Each plate holds a fine warm line drawing (cream hero lines, taupe secondary lines, brass details), and under each plate sits a brass mono plate label (THE STUDY, YOUR ROOM, YOUR CASE) with a short status note. After the player solves their own case, a brass SOLVED stamp is pressed on the corner of that plate. Nothing moves unless something is happening: a mount warms and its hairline brightens to brass when pressed, the How you play sheet rises, a small brass indicator turns on a plate while its card opens, and a warm shimmer crosses DEVELOPING while the player's room is being built. The glass is the one exception: press and drag it and it leans toward the finger with a glint on its lens; let go and it settles flat. It never moves on its own. The voice is terse, procedural and case-file.
 
-**Accent on this screen:** brass only (`color.accent` #C89D54): the plate labels, the mounts' hairlines (`color.hairline`, brass at 0.32), the line art's details, the rule under the header, the SOLVED stamp, the busy indicator, the Show interactives track and the guide pill's hairline. The painted brass glass is art, not accent. There is no "go" button on the screen (the cards are the actions) and no `variant="signal"`.
+**Accent on this screen:** brass only (`color.accent` #C89D54): the plate labels, the mounts' hairlines (`color.hairline`, brass at 0.32), the line art's details, the rule under the header, the SOLVED stamp, the busy indicator, the Show interactives track and the guide button's hairline. The painted brass glass is art, not accent. There is no "go" button on the screen (the cards are the actions) and no `variant="signal"`.
 
 ### Layout, top to bottom
 
@@ -487,7 +490,7 @@ Three case files laid on the silk under a brass reading glass, each one a small 
 | Header row | y 63–111 (48): safe top + `space.xs` 4, the `hit.min` 48 row, `space.xs` 4 below (header box y 0–115). padX `space.gutter` 20 | /play's top-bar spacing with the light table's gutters: a spacer, a centred mark, a button | — |
 | Header, left slot | x 20–68, y 63–111 (48 × 48) | Empty `hit.min` spacer, not focusable (the hub has no account entry) | — |
 | Wordmark | Centred on x 196.5: 66.3 × 14 at x 163.4–229.6, y 80–94 (centre y 87, level with the button) | `<Wordmark height={14} />` (`ref.layout.hub.wordmarkHeight`) with its defaults: strokes `color.text` #F2ECE1, the D's doorway edge `color.accent` (the brass edge; the old bright edge is dropped). iOS: a wrapping View, `accessibilityRole="image"`, label "ESCAPD"; Android reads the Svg's own label | ESCAPD wordmark |
-| How you play | Button x 325–373, y 63–111, centre (349, 87). Its box (with the 4 hitSlop and the focus ring) x 321–377, y 59–115, inside the header | The live `IconButton` (48 round, `surface="plain"`: no fill, no border; pressed opacity 0.75, disabled 0.4). Glyph Phosphor `Question` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text`. The live button draws no focus ring, so the hub lays the kit's pill ring around it (State: Focus) | Help mark for How you play |
+| How you play | Button x 325–373, y 63–111, centre (349, 87). Its 4 hitSlop and its focus ring reach x 321–377, y 59–115, inside the header | The live `IconButton` (48 round, `surface="plain"`: no fill, no border; pressed opacity 0.75, disabled 0.4). Glyph Phosphor `Question` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text`. It draws its own brass focus ring (State: Focus); the hub composes none | Help mark for How you play |
 | Rule | y 115–116, x 20–373, 1 pt (`ref.layout.hub.hairline`) | `color.hairline` rgba(200,157,84,0.32), flat, as the case-closed screen rules off a section | — |
 | Column | y 116–818 (702): a flex column from the rule to the safe bottom | Holds the glass (128), the hero block (302) and three spacers at 7 : 7 : 50 over the remaining 272 | — |
 | Glass spacer, top | y 116–145.75 (29.75); flex 7 | Silk and grain | — |
@@ -509,13 +512,13 @@ Three case files laid on the silk under a brass reading glass, each one a small 
 | Lower spacer | y 605.5–818 (212.5); flex 50 | Silk and grain | The notice overlays this space |
 | Notice (when shown) | x 20–373 (353, `space.gutter` sides), top y 629.5 (`space.xl` below the fan container), 44 tall for one line (bottom 673.5). Text column 293 wide: both messages fit one line at the default size (283.6 and 202.2) | Panel as the case-closed stat panels: `color.surface`, 1 pt `color.hairline`, `radius.control` 8, `curve`, padding `space.md` 12 × `space.lg` 16. Icon Phosphor at 18 (`ref.layout.hub.noticeIcon`, as /play's failure banner) in `color.warning` #D4883A (6.6:1), centred on the first caption line; `space.sm` 8; text `caption` in tone primary. Absolutely positioned in an always-mounted slot, so the layout never shifts | See States |
 | Safe bottom | y 818–852 | — | — |
-| **How you play sheet** (over everything) | Scrim full screen. Sheet x 0–393, y 605–852 (247), `maxHeight` 64 % (545) | The live `Sheet`, `titleStyle="utility"`, as /play's Case options. Scrim `color.sheetScrim` rgba(9,8,7,0.55), fades in 200 / out 160. Sheet `color.surface` walnut with the live grain, 1 pt `color.hairline` top edge, top corners `radius.sheet` 20, a 1 pt `color.brassRule` inner rule 4 in, a 42 × 4 brass handle (`color.accent`) at y 614–618. Rises with `motion.sheetSpring` (damping 28, stiffness 320), leaves with a 200 ms slide | — |
-| Sheet: header row | y 626–674 (48) | Title at x 20, line box y 638–661: `sectionTitle` (Plus Jakarta Sans SemiBold 18/23), tone primary, `accessibilityRole="header"`. Close: live `IconButton` 48 at x 337–385 (8 from the right edge), `X` at 22 in `color.textSecondary` | **"How you play"** · Phosphor `X` |
-| Sheet: Show interactives row | y 686–726 (40), 12 below the header | Text column x 20–310 (290): label `control` (Plus Jakarta Sans SemiBold 15/20) tone primary, y 686–706, hidden from screen readers (the switch carries it); `space.xxs` 2; description `caption` tone secondary, y 708–726, one line at the default size (285.5 of 290), two at larger text. `space.md` 12. React Native `Switch` at x 322–373 (iOS 51 × 31), centred on the row: `trackColor={{ true: color.accent, false: color.hairline }}`, `thumbColor={color.text}` | **"Show interactives"** / "Keep the marks on objects you can use visible." (Case options' copy) |
-| Sheet: guide button | x 20–373, y 742–794 (353 × 52), `space.lg` 16 below the row | `PillButton scheme="brass" variant="secondary"`: radius pill, fill `color.raised` #1E1915 (pressed `color.surface`), 1 pt `color.hairline`, label `control` in `color.text` (14.8:1) | **"How to photograph a room"** |
+| **How you play sheet** (over everything) | Scrim full screen. Sheet x 0–393, y 609–852 (243), `maxHeight` 64 % (545) | The live `Sheet`, `titleStyle="utility"`, as /play's Case options. Scrim `color.sheetScrim` rgba(9,8,7,0.55), fades in 200 / out 160. Sheet `color.surface` walnut with the live grain, 1 pt `color.hairline` top edge, top corners `radius.sheet` 20, a 1 pt `color.brassRule` inner rule 4 in, a 42 × 4 brass handle (`color.accent`) at y 618–622. Rises with `motion.sheetSpring` (damping 28, stiffness 320), leaves with a 200 ms slide | — |
+| Sheet: header row | y 630–678 (48) | Title at x 20, line box y 642–665: `sectionTitle` (Plus Jakarta Sans SemiBold 18/23), tone primary, `accessibilityRole="header"`. Close: live `IconButton` 48 at x 337–385 (8 from the right edge), `X` at 22 in `color.textSecondary` | **"How you play"** · Phosphor `X` |
+| Sheet: Show interactives row | y 690–730 (40), 12 below the header | Text column x 20–310 (290): label `control` (Plus Jakarta Sans SemiBold 15/20) tone primary, y 690–710, hidden from screen readers (the switch carries it); `space.xxs` 2; description `caption` tone secondary, y 712–730, one line at the default size (285.5 of 290), two at larger text. `space.md` 12. React Native `Switch` at x 322–373 (iOS 51 × 31), centred on the row: `trackColor={{ true: color.accent, false: color.hairline }}`, `thumbColor={color.text}` | **"Show interactives"** / "Keep the marks on objects you can use visible." (Case options' copy) |
+| Sheet: guide button | x 20–373, y 746–794 (353 × 48), `space.lg` 16 below the row | The live `Button variant="secondary"` (/play's button): `radius.control` 8, `minHeight` `hit.min` 48, padding `space.md` 12 × `space.gutter` 20, fill `color.raised` #1E1915, 1 pt `color.hairline`, label `control` in `color.text` (14.8:1), centred; pressed opacity 0.82 | **"How to photograph a room"** |
 | Sheet: bottom | y 794–852: content `space.sm` 8 + sheet `space.lg` 16 + safe bottom 34 | — | — |
 
-**Totals on 852:** safe top 0–59; header 59–115 (buttons 63–111); rule 115–116; glass spacer 116–145.75; glass 145.75–273.75; glass spacer 273.75–303.5; title 303.5–333.5; gap 4; subtitle 337.5–355.5; gap 24; fan 379.5–605.5; lower spacer 605.5–818; safe bottom 818–852. Header 57 = 4 + 48 + 4 + 1. The column (116–818, 702) holds the glass (128) and the hero block (30 + 4 + 18 + 24 + 226 = 302), and splits the remaining 272 at 7 : 7 : 50 (29.75 : 29.75 : 212.5). Without the glass (States) the column falls back to two spacers at 15 : 17 around the hero block: 187.5 : 212.5 on this screen, which puts the title and fan exactly where they are with it. The sheet runs 605 + 1 + 8 + 4 + 8 + 48 + 12 + 40 + 16 + 52 + 8 + 16 + 34 = 852.
+**Totals on 852:** safe top 0–59; header 59–115 (buttons 63–111); rule 115–116; glass spacer 116–145.75; glass 145.75–273.75; glass spacer 273.75–303.5; title 303.5–333.5; gap 4; subtitle 337.5–355.5; gap 24; fan 379.5–605.5; lower spacer 605.5–818; safe bottom 818–852. Header 57 = 4 + 48 + 4 + 1. The column (116–818, 702) holds the glass (128) and the hero block (30 + 4 + 18 + 24 + 226 = 302), and splits the remaining 272 at 7 : 7 : 50 (29.75 : 29.75 : 212.5). Without the glass (States) the column falls back to two spacers at 15 : 17 around the hero block: 187.5 : 212.5 on this screen, which puts the title and fan exactly where they are with it. The sheet runs 609 + 1 + 8 + 4 + 8 + 48 + 12 + 40 + 16 + 48 + 8 + 16 + 34 = 852.
 
 **Fan card, card-local (default text size):** mount 0–122 × 0–209; plate x 4–118, y 4–155; art 48 on the axis, y 55.5–103.5; busy indicator and SOLVED stamp in the plate's lower band (indicator y 127–147, stamp y 123–147); plate label y 163–177; note y 179–197; 12 to the foot. The label block is laid out from the foot up (4 + 8, the caption line, 2, the stamp line, 8), so below the default text size the lines shrink and the plate takes what they give back.
 
@@ -532,10 +535,10 @@ Three case files laid on the silk under a brass reading glass, each one a small 
 | THE STUDY card | Exposed face ≈ 94–116 × 209 (the centre card takes 5.8–27.7 of its inner side; touches there go to the centre card) | `ensureSession()` (card busy), then `router.push('/tutorial')` (start_or_resume_session resumes or starts). The note comes from `getLatestSession(TUTORIAL_ROOM_ID)`: none or abandoned Unseal, active Continue, completed Replay. a11y labels: "The Study. Unseal the first case." / "…Continue the first case." / "…Replay the first case." A failure shows the notice |
 | YOUR ROOM card | Full 122 × 209 (on top) | **Access check first** (card busy): `openCapture()` runs `ensureSession()` and `getMyAccess()`, then routes a guest to `/account?next=back`, a player without `custom_rooms` to `/pro`, a player at the monthly cap to `/capture/develop?from=hub`, and a player with access to `/capture/guide` the first time (seen flag unset), otherwise `/capture`. If the check can't run it rejects without navigating and the card carries on to `/capture` (its backstop still shows a first-timer the guide; `/capture/develop` checks access again before anything is sent). a11y "Your room. Photograph a room." |
 | YOUR CASE card | Exposed face ≈ 94–116 × 209 | From `getLatestCustomRoom()` (drafts count as no room) and, for a ready room, `getLatestSession(room.id)`. Ready → `/play/<id>` (Open, Continue, or Replay with SOLVED). Queued or generating (DEVELOPING) and failed (See why) → `/capture/develop?roomId=<id>`. No room, offline or try later: disabled. a11y: one element, "Your case." plus the state (Case status); the label updates with the state |
-| Sheet scrim | Everything above the sheet (y 0–605) | Closes the sheet. Not focusable |
-| Sheet Close | 48 + `hitSlop` 4 = 56 × 56, x 333–389, y 622–678 | Closes the sheet; screen-reader focus returns to How you play once the sheet has left (States: Focus). a11y "Close" |
+| Sheet scrim | Everything above the sheet (y 0–609) | Closes the sheet. Not focusable |
+| Sheet Close | 48 + `hitSlop` 4 = 56 × 56, x 333–389, y 626–682 | Closes the sheet; screen-reader focus returns to How you play once the sheet has left (States: Focus). a11y "Close" |
 | Show interactives switch | The native switch (iOS 51 × 31; Android's Switch keeps its 48 minimum), exactly as Case options | Sets `hotspotAssist` through `usePreferences().setHotspotAssist` (AsyncStorage `escapd:pref:hotspot-assist`, shared with Case options). One a11y element: role switch, label "Show interactives", the native on/off value |
-| How to photograph a room | 353 × 52 | Closes the sheet (no focus return), then pushes `/capture/guide?replay=1` (section 04). Replay never clears the seen flag; the guide sets it when closed or finished |
+| How to photograph a room | 353 × 48 + the live `hitSlop` 4 = 361 × 56 | Closes the sheet (no focus return), then pushes `/capture/guide?replay=1` (section 04). Replay never clears the seen flag; the guide sets it when closed or finished |
 | Android back | — | Sheet open → closes it (true). A card busy → consumed (true) until navigation or the notice. Otherwise not handled: the system leaves the app (root) |
 | Not tappable | — | Wordmark, rule, title, subtitle, mounts, plates, plate labels, notes, line art, stamp, notice. Each card is one button; its children are not separately focusable. The glass takes drags only |
 | Focus order | — | Screen reader: ESCAPD (image) → How you play → "Choose a case" (header) → subtitle → THE STUDY → YOUR ROOM → YOUR CASE → notice. The glass is skipped. Cards render in that order; the centre card is stacked with `zIndex`, not render order. Keyboard: How you play → THE STUDY → YOUR ROOM → YOUR CASE. Sheet open: title → Close → Show interactives → How to photograph a room; VoiceOver is trapped by the sheet (`accessibilityViewIsModal`), and the screen behind is `importantForAccessibility="no-hide-descendants"` for TalkBack. The live Sheet moves focus to its title 300 ms after opening (50 under reduced motion) |
@@ -545,7 +548,7 @@ Three case files laid on the silk under a brass reading glass, each one a small 
 - **Appear:** No entry animation. The glass arrives flat and without glare. The screen arrives with the root Stack's fade.
 - **Loading (focus fetch):** Renders at once with THE STUDY "Unseal" and YOUR ROOM "Photograph". YOUR CASE keeps its caption line blank (a non-breaking space, so the line holds at any text size), ignores taps and is not dimmed, so nothing flashes; no spinner. For screen readers: `accessibilityState={{ busy: true, disabled: true }}`, label "Your case. Loading." until the fetch resolves. The fetch runs on every focus and only with a stored session (`currentSession()`), never creating a guest to label a card: `getLatestSession(TUTORIAL_ROOM_ID)` and `getLatestCustomRoom()` in parallel, then `getLatestSession(room.id)` for a ready room. No session → None yet.
 - **Developing (YOUR CASE queued or generating):** the note is `ThinkingStates tone="warm" variant="note" decorative`: one line, no rotation, the live `stamp` type (JetBrains Mono 11/14, +1.2), **DEVELOPING** 78.0 wide, centred in the 18 caption slot (card-local y 181–195). The shimmer runs from `ref.motion.thinking.shimmerWarm.base` `color.textSecondary` to `.highlight` `color.text` and back, band 0.8 × 78 = 62.4, the band centre sweeping −78 → +156 over 2000 ms linear and repeating while the room develops. Hidden from accessibility: the card's label says "Your case. Developing." and the shimmer is never announced. While it shows and the hub has focus, the room is followed with `watchRoom(id)` plus a 5 s poll (`POLL_MS`), stopping on blur. A flip to ready shows Open, to failed See why: the shimmer stops and the caption note appears at once (both rest in `color.textSecondary`, so there is nothing to ease). The flip is announced, "Your case is ready." or "Your case didn't develop. Open it to see why.", only when seen while the hub is open.
-- **Pressed:** Card: mount fill `color.surface` → `color.raised` #1E1915 and hairline `color.hairline` → `color.accent` over 120 ms ease-out (the kit's control timing), back on release; selection haptic on press-in (only with haptics on). No scale, no opacity change. How you play and Close: the live IconButton's opacity 0.75. Guide pill: `color.raised` → `color.surface`. Switch: native.
+- **Pressed:** Card: mount fill `color.surface` → `color.raised` #1E1915 and hairline `color.hairline` → `color.accent` over 120 ms ease-out (the kit's control timing), back on release; selection haptic on press-in (only with haptics on). No scale, no opacity change. How you play and Close: the live IconButton's opacity 0.75. Guide button: the live Button's opacity 0.82. Switch: native.
 - **Busy (after tapping THE STUDY or YOUR ROOM):** the tapped card keeps its label and note and adds a small native `ActivityIndicator` in `color.accent` on its plate: centred on its content axis, card-local y 127–147 (`space.sm` above the plate's foot, the band where SOLVED would sit). THE STUDY's is centred at ≈ (83.0, 527.6), 41.8 clear of the centre card; YOUR ROOM's at (196.5, 516.5). It rotates with its card. The card stays at full opacity, ignores taps, and sets `accessibilityState={{ busy: true, disabled: true }}`, keeping focus. The other two cards and How you play go to 0.4 (`ref.button.disabledOpacity`; the live IconButton's own 0.4) and are disabled until navigation or the notice. A dimmed centre card keeps an opaque `color.canvas` underlay, so the side cards don't show through it.
 - **Disabled (YOUR CASE: no room, only a draft, no session, offline, try later):** mount, plate, line art and plate label at 0.4 as one layer (`needsOffscreenAlphaCompositing`); the note explains why, so it stays at full strength (6.2:1 over the dimmed mount at the silk peak). `accessibilityState.disabled`; with no room, hint "Photograph a room first."
 - **Case status:**
@@ -564,7 +567,7 @@ Three case files laid on the silk under a brass reading glass, each one a small 
   Drafts: `getLatestCustomRoom()` returns a draft too; it maps to No room. Abandoned sessions map to Open on YOUR CASE and Unseal on THE STUDY.
 - **Error (THE STUDY only):** the notice panel: "You're offline. Connect to begin." (Phosphor `WifiSlash`) or "Couldn't start the case. Try again in a moment." (Phosphor `Warning`), icon in `color.warning`, text `caption` primary; never error-coloured text (`color.error` is 2.3:1 on the dark ground). It fades in over 120 ms (opacity, so it stays under reduced motion), is announced (iOS `announceForAccessibility`; Android through the always-mounted slot's `accessibilityLiveRegion="polite"`, since Android speaks a live region when its content changes, not when it mounts), and stays until the next card tap or the next focus. A repeat failure mounts a new panel, so it fades and is announced again. The card returns to idle; the layout does not move. One screen-reader element labelled by its text (`accessible` on iOS, `screenReaderFocusable` on Android, so it is never a keyboard stop).
 - **Fetch failure:** YOUR CASE shows Offline (network) or Try later (other errors), disabled at 0.4, and refetches on the next focus. THE STUDY and YOUR ROOM stay enabled with their defaults.
-- **Focus:** the kit ring (`ref.focus`: 2 pt `#F2F2F2` at a 2 pt offset), shown while a control has keyboard or switch focus. Fan cards: one overlay above the fan with the focused card's box, centre and rotation, `radius.thumbRing` 18, drawn with RN outline props (`outlineWidth` 2, `outlineOffset` 2), `zIndex` above the centre card, `pointerEvents="none"`, hidden from accessibility; the cards are never restacked, and the fan container never clips. Stacked cards: the same outline on the card. How you play: the kit's pill ring on its 56 box (48 + 2 offset + 2 width). The guide pill draws its own kit ring. The live Sheet's Close draws none (a live component). VoiceOver and TalkBack draw their own cursors. **Focus return:** closing the sheet (Close, scrim, Android back) returns screen-reader focus to How you play once the sheet has left: the live Sheet has no exit callback, so the hub waits its 200 ms slide (`ref.layout.hub.sheetExit`; `motion.reducedFade` 140 under reduced motion) plus a 100 ms margin (`sheetFocusMargin`) for the modal layer's removal: 300 ms, or 240. Reopening the sheet, leaving for the guide, or leaving the hub cancels it.
+- **Focus:** the kit ring (`ref.focus`: 2 pt brass `color.accent` #C89D54 at a 2 pt offset, 8:1 on the canvas), shown while a control has keyboard or switch focus. Fan cards: one overlay above the fan with the focused card's box, centre and rotation, `radius.thumbRing` 18, drawn with RN outline props (`outlineWidth` 2, `outlineOffset` 2), `zIndex` above the centre card, `pointerEvents="none"`, hidden from accessibility; the cards are never restacked, and the fan container never clips. Stacked cards: the same outline on the card. How you play: the live IconButton draws its own pill ring, a 56 circle (48 + 2 offset + 2 width); the hub composes none. The guide button (the live Button) draws its own control ring, radius `radius.control` + 4 = 12, concentric with its corners. The live Sheet's Close is a live IconButton and draws the same pill ring. VoiceOver and TalkBack draw their own cursors. **Focus return:** closing the sheet (Close, scrim, Android back) returns screen-reader focus to How you play once the sheet has left: the live Sheet has no exit callback, so the hub waits its 200 ms slide (`ref.layout.hub.sheetExit`; `motion.reducedFade` 140 under reduced motion) plus a 100 ms margin (`sheetFocusMargin`) for the modal layer's removal: 300 ms, or 240. Reopening the sheet, leaving for the guide, or leaving the hub cancels it.
 - **Permission:** none here. Camera permission is section 03.
 - **Large text / narrow screens:** the fan needs fontScale ≤ 1.0 and width ≥ 375 (`fan.maxFontScale`, `fan.minWidth`). Its visual width is 349.6, so the side margin is 12.7 at 375, 21.7 at 393. From the first larger text step (iOS 1.12, Android 1.15), or under 375 wide, the cards stack:
   - **Stacked cards:** three upright cards in reading order, width = screen − 2 × `space.gutter` 20 (353 at 393, 320 at 360), gap `space.lg` 16, in a scrolling column.
@@ -583,7 +586,9 @@ Three case files laid on the silk under a brass reading glass, each one a small 
 
 > "The play screen (/play) and light table are the visual identity — brass accent, Playfair case titles, film-plate framing, mono plate labels. Restyle the hub (/), the photo guide and the Pro screen to match THAT look (keep the silk background and pill buttons from Noir)."
 
-Applied. The hub keeps its structure, routing, data, states and accessibility, and takes the play screen's materials: the silk under the live grain, Playfair for the heading, the light table's caption, walnut mounts with brass hairlines around canvas plates, brass mono plate labels, a brass case stamp, the live Sheet and Switch from Case options, and a brass-scheme pill. The Noir light pools are gone.
+Applied. The hub keeps its structure, routing, data, states and accessibility, and takes the play screen's materials: the silk under the live grain, Playfair for the heading, the light table's caption, walnut mounts with brass hairlines around canvas plates, brass mono plate labels, a brass case stamp, the live Sheet and Switch from Case options, and /play's live secondary Button for the guide replay. The Noir light pools are gone.
+
+**2026-10-25, round 2: every button in the play screen's 8 pt-rounded style, and a brass focus ring.** Applied. The guide replay in the How you play sheet is the live `Button variant="secondary"` (was the kit's brass-scheme pill), 48 tall, so the sheet is 4 shorter (y 609–852). How you play's focus ring is the live IconButton's own brass ring; the ring the hub used to lay around it is gone. The cards, which the hub draws itself, keep the kit's ring (outline props), now brass.
 
 > "3 cards instead of 2."
 
@@ -602,8 +607,8 @@ Kept. Three cards (122 × 209, the reference's 0.584 aspect) in the reference's 
 9. **Side-card axis:** under the plate, the labels fall where the centre card covers 22.6–27.7 of a side card's inner edge. Each side card's content (art, labels, indicator) centres on the face left exposed: its content column is inset `fan.cover` 28 on the covered side and 4 on the other (axes 49 and 73, against 61 on the centre card). Labels then clear by ≥ 13.5 and DEVELOPING by 7.7; centred on the card they would clear by 1.5 and −4.3.
 10. **Busy:** the live short-wait pattern, a small `ActivityIndicator` in `color.accent`, on the plate's lower band.
 11. **Notice:** a case-closed panel with a `color.warning` icon and primary caption text, in an always-mounted polite live-region slot.
-12. **How you play:** the live `Sheet` (`titleStyle="utility"`), as Case options, with a React Native `Switch` (brass track, `color.text` thumb) and `PillButton scheme="brass" variant="secondary"`. The Noir panel sheet, segment and rule are gone, with their tokens (`segment`, `sheetMaxHeight`).
-13. **Help button:** the live IconButton (48, plain, `Question` 22 in `color.text`), with the kit's pill ring laid around it because the live button draws none.
+12. **How you play:** the live `Sheet` (`titleStyle="utility"`), as Case options, with a React Native `Switch` (brass track, `color.text` thumb) and the live `Button variant="secondary"` (/play's 8 pt-rounded button). The Noir panel sheet, segment and rule are gone, with their tokens (`segment`, `sheetMaxHeight`).
+13. **Help button:** the live IconButton (48, plain, `Question` 22 in `color.text`), which draws its own brass focus ring; nothing is composed around it.
 14. **Hero object and tilt:** unchanged: the painted brass glass at 128, centred between the rule and the title by the 7 : 7 : 50 spacers, tilting ±16° toward a press-and-drag with a lens-clipped glare; decorative; a still image under reduced motion. It has no pool behind it now.
 15. **Spacer weights without the glass:** 15 : 17 (were 23 : 25), which on 852 leaves the title and fan exactly where the glass layout puts them.
 16. **Pro check and guide replay:** unchanged: YOUR ROOM runs `openCapture()`; the replay lives in the sheet and never clears the seen flag.
@@ -612,388 +617,349 @@ Kept. Three cards (122 × 209, the reference's 0.584 aspect) in the reference's 
 
 1. **Switch touch area (iOS):** the native `Switch` is 51 × 31 on iOS, under the 44 rule. It matches /play's Case options exactly, so changing it here alone would split the two sheets. If you want ≥ 44 on both, the row could become the touch target (a `minHeight` 48 row that toggles on tap, the switch staying the one a11y element): a change to Case options too.
 2. **DEVELOPING type:** as asked, it is `ThinkingStates tone="warm" variant="note"`, which is the live `stamp` (mono, capitals), while the other notes are `caption`. If you would rather the note slot keep one type, `variant="meta"` gives the same shimmer in `caption` ("Developing"): a one-line change.
-3. **Live components without hooks the hub needs:** the live `Sheet` has no exit callback (focus return uses the 300 ms timer above) and its Close, like every live `IconButton`, draws no keyboard focus ring. An `onExited` prop on `Sheet` and a focus ring in `IconButton` would make both exact; both are outside the hub.
+3. **Live Sheet without an exit callback:** focus return uses the 300 ms timer above. An `onExited` prop on `Sheet` would make it exact; it is outside the hub. (The other half of this note is done: the live `IconButton` now draws the brass focus ring itself.)
 
 ## 02 · Camera
 
-Reference: docs/refs/02-camera.png (layout only)
+Reference: docs/refs/02-camera.png (layout only). The look is the play screen's: SceneView's Kodachrome mount, registration marks, loupe ring and plate label (src/render/SceneView.tsx), the light table's IconButton top bar and tiles (app/capture/review.tsx), the case-closed notice panels (app/tutorial/complete.tsx), the hub's small walnut mounts (src/screens/hub/GameCard.tsx), and the pre-Noir brass rangefinder (brass shutter ring with a manila core, brass corner brackets, a mono plate stamp). 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.button.disabledOpacity` (0.4, through the screen's Dimmable), `ref.motion.control` (120 ms ease-out) and `ref.motion.shutterPress` (0.96, 120 ms), `ref.motion.thinking` with `shimmerWarm` (through `ThinkingStates tone="warm"`), the kit's focus ring (`ref.focus`: 2 pt `color.accent` at a 2 pt offset), and the screen's own `ref.layout.camera`: `buttons` { edge 19, top 6 }, `hairline` 1, `frameAspect` 0.75, `feedRatio` "4:3", `mount` { pad 6, labelGap 6 }, `gridDivisions` 3, `bracketArm` 22, `bracketStroke` 1.5, `bracketTravel` 6, `bracketFade` 200, `bracketEasing` [0.2, 0, 0, 1], `plateBox` 72, `ringWidth` 2, `shutter` { size 76, ringWidth 3, core 60, icon 28 }, `lensOptionWidth` 50, `lensTrack` 36, `counterMaxFontScale` / `lensMaxFontScale` / `labelMaxFontScale` 1.25, `noticeIcon` 16, `thinkingDelay` 1000. No Geist, no NoirText, no `ref.type` / `ref.color` / `ref.panel` / `ref.button.{icon, bare, shutter, segment}`, no silk, no light pool, no oxblood.
 
-This section covers `/capture` and `/capture?retake=<i>` once camera permission is granted. Everything before that, including the checking state, belongs to section 03. Players reach it from 01's YOUR ROOM after the Pro check, and through 04 on their first visit. Sizes are in pt on 393 × 852 with safe areas 59 / 34. Geometry was measured at 2.165 px/pt (±0.5 pt) from the area above px 1843, then re-flowed where Noir changes it (marked "Noir:").
+This section covers `/capture` and `/capture?retake=<i>` once camera permission is granted. Everything before that, including the checking state, belongs to section 03. Players reach it from 01's YOUR ROOM after the Pro check, and through 04 on their first visit.
 
-### Feel (Noir)
+Route: `app/capture/index.tsx` (the shell over 02 and 03) renders `src/capture/ui/Rangefinder.tsx` once access is granted; the props contract is `src/capture/ui/types.ts`. Files in `src/capture/ui/rangefinder/`: `Header.tsx` (back, prompt, library, error line, thinking line), `Viewfinder.tsx` (mount, plate, feed, grid, rim, privacy note, plate label, and the fitting rule `viewfinderLayout`), `Brackets.tsx`, `ControlRow.tsx` (flash and grid switches, lens slot), `LensSegment.tsx`, `PlateCounter.tsx`, `Shutter.tsx`, `LastPlate.tsx`, `Dimmable.tsx` (eased disabled opacity, `SLOP`), `copy.ts` (every word, incl. `plateLabel`), `useLenses.ts`. Tests: `src/capture/ui/rangefinder/__tests__/rangefinder-test.tsx` (behaviour, hit areas, focus rings, the look, tokens only).
 
-A darkroom with one window. The ground is flat `ref.color.ground` #050505 edge to edge. The only light on the screen is the live feed: full colour, unfiltered, in a frame with radius 6 that fills 57% of the height. There is no `ref.light` pool, glow, Grain or gradient, because the viewfinder already is the pool. The chrome is graphite and hairline (`ref.panel`: fill #0E0E0E, 1 pt `ref.color.hairline` #222222).
+### Feel
 
-- **White** (`ref.color.bright` #F2F2F2) marks statements: the plate prompt, the four corner brackets, and the shutter. The shutter is a white disk inside a white ring with an inverse-ink magnifier. It is the brightest object and the one primary action.
-- **Grey** is for reading: prompt details in `ref.color.meta` #8A8D91 and the privacy rule in `ref.color.read` #A6A9AD.
-- **Type:** Geist sets the prompt. Geist Mono sets the plate numeral and the lens labels, so they read like a film camera's exposure counter and an evidence log.
-- **Oxblood** appears once. A 2 pt `ref.color.signal` #C8302B ring closes around the last-plate thumbnail when the roll reaches its 3-plate minimum, meaning the case can proceed.
-- **Motion** is limited to 120 ms colour changes, the 0.96 shutter press, the bracket settle when the lens opens, and the thinking line during a real wait. Nothing else moves.
+A rangefinder on the darkroom bench. The ground is soot (`color.canvas`) under the live film grain and nothing else: no silk still, no pool, no vignette, so a photo is judged on a plain ground. The live feed sits on a film plate exactly as /play will later mount the room: a walnut mount with a brass hairline, a soot plate with a faint rim, and the brass mono label "ESCAPD 400 · PLATE I" stamped under it, so what the player frames already looks like the plate they will play. Four brass brackets settle onto the plate when the lens opens. Above it, a Playfair prompt between two live icon buttons, with a warm Jakarta detail. Below it, the flash and grid glyphs and a small brass lens selector; then the bottom row: an exposure counter in brass mono on a small walnut mount, the brass shutter (a 3 pt brass ring, the play loupe's, around a manila core carrying an ink magnifier), and the last plate on its own small walnut mount. Motion is limited to 120 ms colour and opacity changes, the 0.96 shutter press, the bracket settle when the lens opens, and the warm thinking line during a real wait. The voice is terse and procedural.
 
-**Signal on this screen:** one mark, the 2 pt `ref.color.signal` ring on the last-plate thumbnail. It shows once the roll holds ≥ 3 plates (`MIN_PLATES`), outside retake mode.
-- Not used here: `ref.button.signal`, `ref.stamp`, and any red text (`ref.color.signalText`).
-- Signal "go" actions: 1 (the limit is 1). The ring-marked thumbnail ("continue to the light table") is the only signal-marked action.
-- The shutter is the primary action and is white, never signal. The flash and grid toggles are utility controls, also never signal.
+**Accent on this screen:** brass only (`color.accent` #C89D54): the brackets, the plate label, the counter's label and numeral, the shutter ring, the lens thumb, the thumbnail's continue ring and the focus rings; the mounts' and panels' hairlines are `color.hairline` (brass at 0.32). The shutter's manila core (`color.manila` #E8DFC8, 15.1:1 against the soot) is the brightest object and the one primary action. No oxblood anywhere; `color.error` is not used (error lines carry a `color.warning` glyph).
 
 ### Layout, top to bottom
 
-| Element | Position & size | Style | ESCAPD content |
-|---|---|---|---|
-| Canvas | 0,0 · 393 × 852 | `ref.color.ground` #050505, opaque and flat. No light pool, Grain, vignette, gradient or glow. | — |
-| Status bar | y 0–54 (safe top 59) | System, `light` content | — |
-| Header row | y 67–111 (top = safe top + 8) · 44 tall | — | Back · prompt · library |
-| Back button | Box x 21–65, y 67–111 · 44 × 44 · centre (43, 89). Section 03's back arrow sits on this exact box and crossfades into this button. | `ref.button.icon`: circle, `ref.radius.pill` 999, fill `ref.color.panel` #0E0E0E, 1 pt (`ref.border.hairline`) `ref.color.hairline` #222222. No shadow. | Phosphor `ArrowLeft`, regular, `ref.icon.header` 20, `ref.color.bright` #F2F2F2, centred |
-| Title | Centred on x 196.5. Max width 247 (x 73–320: the button inner edges minus 8 on each side). Line box y 69–91. 1 line (2 with large text). | `ref.type.headline` (Geist Medium 17/22, −0.2), `ref.color.bright`. Noir: the reference's serif is gone, because Playfair is only for case titles. | The plate prompt title from `src/capture/slots.ts`: "From the doorway" · "Opposite corner" · "The busiest wall" · "A close view" · "Another angle" · "Last plate". Roll full: "Six plates is a full roll" (≈ 180 wide). |
-| Subtitle | Centred, max width 247. Line box y 91–109; title plus subtitle is a 40 pt block centred on the button centre y 89. 1 line, 2 at most. A second line grows the header 18 downward and the viewfinder shrinks to match. | `ref.type.meta` (Geist Regular 13/18), `ref.color.meta` #8A8D91 | The plate detail: "Wide. Include the floor and two walls." (≈ 232, the widest that fits) · "Overlap the first plate." · "The wall with the most objects." · "A desk, shelf, or table." · plate V **"Optional. Anything still unseen."** (proposed, ≈ 193; today's "Optional. Something the first plates missed." is ≈ 270 and wraps) · "Optional. One more overlap." Roll full: "Continue to the light table." The error line replaces it (see States). |
-| Library button | Box x 328–372, y 67–111 · 44 × 44 · centre (350, 89). Right edge 21. | `ref.button.icon`, the same as Back | Phosphor `Images`, regular, 20, `ref.color.bright`. This replaces the reference's own glyph in this slot. |
-| Viewfinder frame | x 14–379, y 139–625.7 · 365 × 486.7 (exactly 3:4, 57% of the height) · `ref.radius.panel` 6. Top = header bottom 111 + `ref.space.band` 28. Sides are `ref.space.plate` 14. Noir: the reference's large round corners become radius 6, and the top moves 1 pt up to sit on the band token. | `ref.panel`: the fill `ref.color.panel` #0E0E0E shows until frames arrive. The 1 pt `ref.color.hairline` edge stays drawn over the feed. Overflow hidden. | `CameraView`: `facing="back"`, `mode="picture"`, 4:3, with `flash` and `selectedLens`. `containBox` fits the frame into the space that's left and centres it, so the viewfinder shrinks before any text does. |
-| Live feed | Fills the frame | Full colour. No filter, tint, scrim or overlay. | The room |
-| Framing grid (when on) | Inside the frame, edge to edge, at thirds: verticals at x 135.7 and 257.3, horizontals at y 301.2 and 463.4 | 1 pt (`ref.border.hairline`) `ref.color.read` #A6A9AD lines, opaque, `pointerEvents="none"`. Drawn above the feed and below the brackets and the privacy note. | Rule of thirds. Off by default. |
-| Corner brackets | Inset 16 (`ref.space.lg`) from each frame edge. Noir: the radius-6 corner no longer needs the old 20 inset. Corners at (30, 155), (363, 155), (30, 609.7), (363, 609.7). Arms 22, stroke 1.5. | `ref.color.bright`, butt caps, mitred corner, `pointerEvents="none"`. Hidden until `onCameraReady`, then they settle in (see States). | ESCAPD's bracket language, the same as hotspots in play |
-| Privacy note | Bottom-centred in the frame. Bottom y 609.7: 16 above the frame edge and level with the bottom bracket corners. Max width 273 (x 60–333 = 365 − 2 × (16 inset + 22 arm + 8)), which clears the bracket arms (they end at x 52 / 341) by 8. Two lines: y 557.7–609.7 · 52 tall. | `ref.panel` (opaque #0E0E0E, 1 pt `ref.color.hairline`, `ref.radius.panel` 6). Padding 12 / 8 (`ref.space.md` / `ref.space.sm`). Text `ref.type.meta` in `ref.color.read`, centred, ≈ 300 wide over two lines. | "Keep people, mail, and lit screens out of frame." Shown until plate I is taken, and never in retake mode. Section 04 carries it too. |
-| Control row | y 653.7–697.7 · 44 tall · centre y 675.7. Top = frame bottom + `ref.space.band` 28. Noir: the 40.2 measured row becomes the 44 hit row, and the segment sits at 36 inside it. | — | Flash · lens · grid |
-| Flash toggle | Box x 21–65 · 44 × 44 · centre (43, 675.7), in the back-button column | `ref.button.bare`: no container, `ref.icon.control` 24. Off: `ref.color.meta`. On: `ref.color.bright`. It is a utility toggle, so never signal. | Phosphor `LightningSlash`, regular (off, the default) / `Lightning`, regular (on) |
-| Lens segment, track | x 146.5–246.5, y 657.7–693.7 · 100 × 36, centred in the row | `ref.button.segment`: `ref.radius.pill`, fill `ref.color.panel`, 1 pt `ref.color.hairline` | Shown only on devices that report an ultra-wide lens, once the lens list resolves after `onCameraReady` (see States, Camera starting). Otherwise it is hidden and the centre slot stays empty. |
-| Lens segment, thumb | 46 × 28, inset 4 (`ref.space.xs`). Left x 150.5–196.5 or right x 196.5–242.5, y 661.7–689.7. | `ref.button.segment.thumbFill` `ref.color.hairline2` #303030, `ref.radius.pill`. When the side changes it crossfades over `ref.motion.control` 120 ms. It never slides. | Under the active lens |
-| Lens labels | Centred in each half at x 173.5 / 219.5, y 675.7 | `ref.type.label` (Geist Mono Medium 12/16, +1.2). Active `ref.color.bright`, inactive `ref.color.meta`. Fixed widths ≈ 33.6 / 16.8 (Geist Mono 0.6 em + 1.2 per glyph). | "0.5×" and "1×". The "×" (U+00D7) always shows, so nothing reflows when the lens changes. Default is 1×. |
-| Grid toggle | Box x 328–372 · 44 × 44 · centre (350, 675.7), in the library column | `ref.button.bare`, 24. Off: `ref.color.meta`. On: `ref.color.bright`. | Phosphor `GridNine`, regular. It takes the slot of the reference's flip control. |
-| Bottom row | y 721.7–797.7 · 76 tall · all three centres on y 759.7. Top = control row bottom + `ref.space.xl` 24. | — | Counter · shutter · last plate |
-| Plate counter | x 21–93, y 723.7–795.7 · 72 × 72 · `ref.radius.panel` 6. Noir: the 73 × 52.6 odometer pill becomes a square counter window that mirrors the thumbnail. | `ref.panel`. The text stack is centred: 16 label line + 4 gap + 34 numeral line = 54, leaving 9 above and below. Fixed at 72 × 72 at every text size: label and numeral cap at `maxFontSizeMultiplier` 1.25 (see Large text). Display only, with no pressed state. | Label `ref.type.label` in `ref.color.meta`: "PLATE" (≈ 42 wide). Numeral `ref.type.code` (Geist Mono Medium 28/34, +2, tabular) in `ref.color.bright`: the plate about to be taken, "I" to "VI" ("III" ≈ 54 of the 70 inner width). It has no neighbouring numerals and does not roll. |
-| Shutter ring | Ø 76 · x 158.5–234.5, y 721.7–797.7 · centre (196.5, 759.7) | `ref.button.shutter`: a 2 pt `ref.color.bright` ring with a 4 pt `ref.color.ground` gap inside it | — |
-| Shutter disk | Ø 64 · x 164.5–228.5, y 727.7–791.7, concentric | `ref.button.shutter.fill` `ref.color.bright`. No gradient, bevel, rim or glow. | Phosphor `MagnifyingGlass`, regular, `ref.icon.shutter` 28, `ref.color.inverseInk` #0A0A0A, centred. If the lens reads high-left on device, nudge it ≤ 1 down-right. This is the user's magnifier note. |
-| Last-plate thumbnail | x 300–372, y 723.7–795.7 · 72 × 72 · `ref.radius.panel` 6 · right edge 21 | The photo fills the frame (`contentFit="cover"`) in full colour, with a 1 pt `ref.color.hairline` border on top. From 3 plates the border becomes a 2 pt `ref.color.signal` #C8302B ring, drawn inside the 72 box so the photo doesn't move. Before plate I it is an empty `ref.panel` well. | The newest plate on the roll |
-| Bottom space | y 797.7–852: 20.3 clear, then the 34 home-indicator inset | `ref.color.ground` | System home indicator |
+393 × 852, default text size, plate I, camera ready, an ultra-wide lens reported.
 
-**Adds up, top to bottom:** 59 safe top + 8 + 44 header row + 28 + 486.7 viewfinder + 28 + 44 control row + 24 + 76 bottom row + 20.3 + 34 = 852.
+| Element | Position & size (pt) | Style | ESCAPD content |
+|---|---|---|---|
+| Screen | 393 × 852, full bleed | Root `color.canvas` #090807. Its first child is the live `<Grain />` (assets/grain.png repeated at 0.04 opacity), under every control; the mounts and panels are opaque, so the grain never lies over the feed. No `BackgroundStill` (silk), light pool, vignette or gradient. The shell (`app/capture/index.tsx`) lays the same canvas and grain under 02 and 03, so the 200 ms fade-in from 03 changes no ground | — |
+| Status bar | y 0–59 | System, light content | — |
+| Header row | Box y 61–117: root paddingTop = safe top + `buttons.top` 6 − `SLOP` 4, then paddingVertical `SLOP` (`space.xs` 4, the live IconButton's hitSlop) around the 48 content y 65–113. padX `buttons.edge` 19 | — | Back · prompt · library |
+| Back | x 19–67, y 65–113 (48, `hit.min`), centre (43, 89): 02's long-standing back centre, and the box 03's back sits on (`ref.layout.permission.back`, x 19–67, safe top + 6) | The live `IconButton` (src/components/IconButton.tsx), surface plain: transparent, round (`radius.round`). Phosphor `ArrowLeft` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text` #F2ECE1 (17.0:1 on canvas). The live button draws its own brass focus ring | — |
+| Title | x 75–318 (243 = 393 − 2 × 19 − 2 × 48 − 2 × `space.sm` 8), line box y 65–95, centred on x 196.5 | `Text variant="narrativeTitle"` (Playfair Display SemiBold 24/30), tone primary `color.text`. Hidden from accessibility on its own (the prompt element speaks) | The plate title from `src/capture/slots.ts`, widths at 24: "From the doorway" 201.9 · "Opposite corner" 179.1 · "The busiest wall" 177.3 · "A close view" 133.1 · "Another angle" 154.8 · "Last plate" 106.2. Roll full: "Six plates is a full roll" 234.5. All one line on 393 |
+| Detail | Line box y 95–113, centred. Title 30 + detail 18 = 48, the buttons' height, so the block sits on their centre line (y 89) with no padding (`(hit.min − 30 − 18) / 2` = 0). A second line grows the header downward and the viewfinder shrinks to match | `Text variant="caption"` (Plus Jakarta Sans Medium 13/18), tone secondary `color.textSecondary` #A89C8A (7.4:1 on canvas) | "Wide. Include the floor and two walls." 230.1 · "Overlap the first plate." 138.6 · "The wall with the most objects." 189.3 · "A desk, shelf, or table." 136.0 · "Optional. Anything still unseen." 191.5 · "Optional. One more overlap." 177.0. Roll full: "Continue to the light table." 164.7. The error line or the thinking line replaces it (States) |
+| Library | x 326–374, y 65–113, centre (350, 89) | The same live `IconButton`; Phosphor `Images` 22 regular, `color.text` | — |
+| Viewfinder area | x 14–379, y 129–638 (365 × 509): flex 1 between the rows, marginX `space.plate` 14 (as SceneView's gutter), marginY `space.lg` 16 − `SLOP` from each row's box | — | — |
+| Mount | x 14–379 (365), y 132.5–634.5 (502). `viewfinderLayout` fits the plate into the area less the mount's chrome (14 across, 34 down) with `containBox`, then centres the mount: on 852 that leaves 3.5 above and below, so the mount sits 19.5 from the header buttons and 19.5 from the control-row buttons | SceneView's Kodachrome mount: fill `color.surface` #14110E, 1 pt (`hairline`) `color.hairline` rgba(200, 157, 84, 0.32), `radius.mount` 30, `curve`, padding `mount.pad` 6. Opaque | — |
+| Inner plate | x 21–372 (351), y 139.5–607.5 (468): exactly 3:4 (`frameAspect` 0.75), 7 in from the mount's outer edge (1 + 6), as SceneView's | `color.canvas`, `radius.image` 24, `curve`, overflow hidden. The canvas shows until frames arrive | `CameraView`: `facing="back"`, `mode="picture"`, `ratio` "4:3" (`feedRatio`), `flash`, `selectedLens` |
+| Live feed | Fills the plate | Full colour. No filter, tint, scrim or overlay | The room |
+| Framing grid (when on) | Thirds, edge to edge on the plate: verticals x 138 and 255, horizontals y 295.5 and 451.5 | 1 pt (`hairline`) `color.textSecondary` lines, opaque, `pointerEvents="none"`, hidden from accessibility: quieter than the brass brackets. Above the feed, below the rim, the brackets and the note. Shows and hides over `ref.motion.control` | Rule of thirds. Off by default |
+| Plate rim | The plate's edge | 1 pt `color.rim` rgba(255, 255, 255, 0.10), `radius.image` 24, drawn over the feed and the grid (/play's plate, the light table's tiles) | — |
+| Corner brackets | Inset `space.lg` 16 from the plate: corners (37, 155.5), (356, 155.5), (37, 591.5), (356, 591.5); arms 22 (`bracketArm`, ending at x 59 / 334 and y 177.5 / 569.5), stroke 1.5 (`bracketStroke`) | `color.accent` (8.0:1 on canvas), butt ends, mitred corners, `pointerEvents="none"`, hidden from accessibility. Hidden until `onCameraReady`, then they settle (States) | ESCAPD's bracket language, as /play's registration marks |
+| Privacy note | Bottom-centred on the plate, bottom y 591.5 (16 up, level with the bottom bracket corners). Max width 259 (x 67–326 = 351 − 2 × (16 inset + 22 arm + `space.sm` 8)), clearing the bracket arms by 8. Two lines: y 539.5–591.5, 52 tall | A notice panel, as the case-closed panels: `color.surface`, 1 pt `color.hairline`, `radius.control` 8, `curve`, padding `space.md` 12 / `space.sm` 8 measured from its outer edge. Text `caption`, tone secondary (7.0:1 on walnut), centred; Android `textBreakStrategy="balanced"`, iOS `lineBreakStrategyIOS="standard"` | "Keep people, mail, and lit screens out of frame." (289.7 on one line, so two). Shown until plate I is taken, never in retake mode |
+| Plate label | Inside the mount, `mount.labelGap` 6 under the plate: line box y 613.5–627.5 (one `stamp` line, 14 × fontScale capped at 1.25), centred on x 196.5; then 6 of walnut and the 1 pt hairline to the mount's foot | `Text variant="stamp"` (JetBrains Mono Medium 11/14, +1.2, capitals), `tone="accent"` (7.5:1 on walnut), iOS centring pad +1.2 (`trackingPad`), `numberOfLines` 1, `maxFontSizeMultiplier` `labelMaxFontScale` 1.25. A new label fades in over `ref.motion.control`. Hidden from accessibility: the counter carries it | SceneView's pattern: "ESCAPD 400  ·  PLATE I" (171.6, x 110.7–282.3) … "ESCAPD 400  ·  PLATE III" (187.2). Roll full: "ESCAPD 400  ·  ROLL FULL" (187.2). In retake mode it names the plate being retaken |
+| Control row | Box y 650–706: 48 content y 654–702 (centre 678) plus `SLOP` 4 above and below; padX 19 | — | Flash · lens · grid |
+| Flash | x 19–67, y 654–702, centre (43, 678), under Back | The live `IconButton` as a switch (role `switch`, `checked`). Glyph 22 drawn as a `GlyphStack`: `color.textSecondary` (7.4:1) when off, easing to `color.text` when on over `ref.motion.control`, so colour is never the only cue (the glyph swaps too) | Phosphor `LightningSlash` (off, the default) / `Lightning` (on) |
+| Lens track | x 146.5–246.5, y 660–696 (100 × 36, 2 × `lensOptionWidth` 50 by `lensTrack` 36), centred in the 259 centre slot (x 67–326) | `color.surface`, 1 pt `color.hairline`, `radius.control` 8 (the live buttons' corner), `curve` | Shown only when the phone reports an ultra-wide lens, after `onCameraReady` |
+| Lens thumb | 46 × 28, inset `space.xs` 4 from the track's outer edge: left x 150.5–196.5 or right x 196.5–242.5, y 664–692 | `color.accent`, radius `radius.control` − 4 = 4 (concentric with the track), `curve`. Crossfades between halves over `ref.motion.control`; never slides | Under the selected lens |
+| Lens labels | Centred on their thumbs at x 173.5 / 219.5, y 678 | `stamp` (JetBrains Mono Medium 11/14, +1.2), iOS centring pad. On the thumb `color.onAccent` #171411 (7.3:1 on brass); off it `color.textSecondary` (7.0:1 on walnut). Widths 31.2 / 15.6 | "0.5×" · "1×". The "×" (U+00D7) always shows. Default 1× |
+| Grid | x 326–374, y 654–702, centre (350, 678), under Library | As Flash | Phosphor `GridNine` |
+| Bottom row | y 722–798 (76), every centre on y 760: marginTop `space.gutter` 20 − `SLOP` from the control row's box; padX 21 (`space.plate` 14 + `hairline` 1 + `mount.pad` 6: the plate's own edges) | — | Counter · shutter · last plate |
+| Plate counter | x 21–93, y 724–796 (72, `plateBox`), the thumbnail's twin | Mount: `color.surface`, 1 pt `color.hairline`, `radius.thumbRing` 18, `curve`. Plate 4 in (`radius.thumbRing` − `radius.thumb`, so the corners are concentric): x 25–89, y 728–792 (64), `color.canvas`, 1 pt `color.rim`, `radius.thumb` 14. The text stack is centred on the whole 72 window (not the plate): 14 + `space.xxs` 2 + 34 = 50, label line y 735–749, numeral line y 751–785, 7 inside the plate. Label `stamp`, tone accent (8.0:1 on canvas), iOS centring pad; numeral `code` (JetBrains Mono SemiBold 28/34, tabular), tone accent. Both cap at `counterMaxFontScale` 1.25. Display only, no pressed state | "PLATE" (39.0) over the numeral of the plate about to be taken: "I" (16.8) to "VI"; "III" 50.4. No neighbouring numerals, no roll |
+| Shutter | Box x 158.5–234.5, y 722–798 (76, `shutter.size`), centre (196.5, 760) | Ring: 3 pt (`shutter.ringWidth`) `color.accent`, `radius.round`, drawn as the box's first child so the box itself has no border; the play loupe's ring. A 5 pt gap of ground inside it (opening Ø 70). Core: Ø 60 (`shutter.core`) at x 166.5–226.5, y 730–790, `color.manila` #E8DFC8. No gradient, bevel, shadow or glow | Phosphor `MagnifyingGlass`, regular, 28 (`shutter.icon`), `color.ink` #171411 (13.8:1 on manila), centred. The user's magnifier note |
+| Last-plate thumbnail | x 300–372, y 724–796 (72), right edge on the plate's (372) | A small film plate: mount `color.surface`, 1 pt `color.hairline`, `radius.thumbRing` 18; plate 4 in (x 304–368, y 728–792, 64), `color.canvas`, `radius.thumb` 14, clipped, the photo `contentFit="cover"` in full colour; a 1 pt `color.rim` drawn over the photo. From 3 plates a 2 pt (`ringWidth`) `color.accent` ring closes over the mount's edge, inside the 72 box, so nothing moves. Before plate I: the empty canvas well | The newest plate on the roll |
+| Bottom space | y 798–818 (`space.gutter` 20), then the 34 home-indicator inset | Soot and grain | System home indicator |
+
+**Adds up, top to bottom:** 59 safe top + 6 + 48 header + 19.5 + 502 mount + 19.5 + 48 control row + 20 + 76 bottom row + 20 + 34 = 852. The mount: 1 + 6 + 468 plate + 6 + 14 label + 6 + 1 = 502. The area (509) holds the mount and its 7 spare (the inner fit is 475 for a 468 plate), split 3.5 / 3.5; the minimum gap at either end is `space.lg` 16.
 
 **Adds up, across:**
-- Header: 21 + 44 + 8 + 247 + 8 + 44 + 21 = 393.
-- Control row: 21 + 44 + 81.5 + 100 + 81.5 + 44 + 21 = 393.
-- Bottom row: 21 + 72 + 65.5 + 76 + 65.5 + 72 + 21 = 393. The gaps are equal; the measured gaps were 64.7 / 65.9.
-- Viewfinder: 14 + 365 + 14 = 393.
+- Header: 19 + 48 + 8 + 243 + 8 + 48 + 19 = 393.
+- Control row: 19 + 48 + 79.5 + 100 + 79.5 + 48 + 19 = 393.
+- Bottom row: 21 + 72 + 65.5 + 76 + 65.5 + 72 + 21 = 393 (equal gaps).
+- Viewfinder: 14 + 1 + 6 + 351 + 6 + 1 + 14 = 393.
 
 **Columns:**
-- Left, x 43: back and flash.
-- Centre, x 196.5: title, lens and shutter.
-- Right, x 350: library and grid.
-- The counter and the thumbnail align by their outer edges at 21 (centres 57 and 336), as measured.
-- The 21 edge is the measured value (20.8–21.2) and is kept as a literal (`ref.space.edge` 20 + 1), so 03's back box matches.
+- Left, x 43: Back and Flash (glyph centres).
+- Centre, x 196.5: the prompt, the plate label, the lens segment and the shutter.
+- Right, x 350: Library and Grid.
+- The counter and the thumbnail align with the plate's edges, x 21 and 372 (centres 57 and 336).
+
+**Hit boxes inside their parents.** Native hit-testing (iOS Fabric and Android) drops touches outside a parent that nothing overflows, so each row carries the IconButtons' slop inside its own box (paddingVertical 4, padX 19 ≥ 4) and the gaps around it shrink by as much: every visible position above is unaffected.
 
 ### Tappable elements
 
-- Hit areas are at least `ref.hit.min` 44, and 48 (`ref.hit.comfortable`) wherever the row has room.
-- Pressed is a colour change over `ref.motion.control` (120 ms ease-out). The only scale is the shutter's; there is no opacity-press.
-- Disabled is `ref.button.disabledOpacity` 0.4.
+- Hit areas are at least 44: the live IconButtons are 48 with `hitSlop` 4 (56 × 56); the lens halves are 50 × 48; the shutter 76; the thumbnail 72.
+- Pressed: the live IconButtons go to opacity 0.75 (their own); every custom control is a colour change over `ref.motion.control` 120 ms ease-out; the only scale is the shutter's.
+- Disabled is 0.4: the live IconButtons dim themselves at once (their own 0.4); the shutter, the lens segment and the thumbnail ease into and out of `ref.button.disabledOpacity` 0.4 over `ref.motion.control` (Dimmable).
 
 | Element | Hit area ≥ 44 | Action |
 |---|---|---|
-| Back | 44 + `hitSlop` 2 → 48 × 48 | "Close the camera": `router.back()`, or `router.replace("/")` (the 01 hub) when there is no history. The roll stays in memory (`roll.ts`), so there is no confirm. In retake mode it is "Cancel retake": `router.back()` to `/capture/review`, with the plate unchanged. While a retake capture is busy, back is ignored until it settles (a late result never triggers a second `router.back()`). |
-| Android hardware back | System | Same as Back in every state, including the busy rule in retake mode. |
-| Library | 44 + `hitSlop` 2 → 48 × 48 | "Choose photos from your library" (retake: "Choose a photo instead"). Opens `launchImageLibraryAsync` with multi-select up to `MAX_PLATES − taken` (1 in retake). Photos go one after another, each through `processPhoto` → `addPlate` in its own try/catch, so a failed photo never drops the picks after it; the failures are counted for the error line (see States, Error). Retake: `processPhoto` → `replacePlate` → `router.back()`. Disabled while busy and when the roll is full. |
-| Viewfinder | Not tappable | expo-camera has no tap-to-focus point and no pinch zoom outside its scanner, so the platform's continuous autofocus does the work and nothing more is promised. |
-| Privacy note | Not tappable | Plain text, read in focus order |
-| Flash | 44 + `hitSlop` 2 → 48 × 48, centre (43, 675.7) | Toggles `flash` between "off" and "on". The setting lasts for the camera session. Role `switch`, label "Flash", `checked`. |
-| Lens "0.5×" | 50 × 36 half + vertical `hitSlop` 6 → 50 × 48 | iOS: sets `selectedLens` to the ultra-wide entry from `getAvailableLensesAsync()`. Role `radio`, label "Ultra-wide lens", `selected`. |
-| Lens "1×" | Same | Default main lens (`selectedLens` unset). Role `radio`, label "Main lens". The two halves form a `radiogroup` "Lens". |
-| Grid | 44 + `hitSlop` 2 → 48 × 48, centre (350, 675.7) | Shows or hides the framing grid. Off by default; the setting lasts for the camera session. Role `switch`, label "Framing grid", `checked`. |
-| Shutter | Ø 76 ring | `takePictureAsync({ quality: 0.92, exif: false })` → `feedback.tap()` → `processPhoto` → `addPlate`. The counter, thumbnail, title and subtitle then advance to the next plate. In retake mode it calls `replacePlate(i)` → `router.back()`. a11y: "Take plate III, The busiest wall" (retake: "Retake plate II, Opposite corner"). It is the primary action. |
-| Last-plate thumbnail | 72 × 72 | Pushes `/capture/review` (the light table). a11y: "Open the light table, 2 plates", and from 3 plates "Continue to the light table, 3 plates". Disabled before plate I and while busy. In retake mode it is labelled "Cancel retake" and calls `router.back()`. |
-| Plate counter | Not tappable | Text. a11y by state: normal "Next: plate III. 2 of 6 plates taken." · roll full "Roll full. 6 of 6 plates taken." · retake "Retaking plate II." |
+| Back | 48 + `hitSlop` 4 → 56 × 56: x 15–71, y 61–117, inside the header row | "Close the camera": `onClose` (the shell's `router.back()`, or `router.replace("/")` to the 01 hub when there is no history). The roll stays in memory (`roll.ts`), so there is no confirm. In retake mode it is "Cancel retake": back to `/capture/review` with the plate unchanged. While a retake capture is busy, back is ignored until it settles (a late result never triggers a second `router.back()`). |
+| Android hardware back | System | Same as Back in every state, including the busy rule in retake mode (`useFocusEffect` + `BackHandler`, returns true). |
+| Library | 56 × 56: x 322–378, y 61–117 | "Choose photos from your library" (retake: "Choose a photo instead"). `useLibraryImport`: multi-select up to `MAX_PLATES` − taken (1 in retake); each photo through `processPhoto` → `addPlate` in its own try/catch, failures counted for the error line. Retake: `processPhoto` → `replacePlate` → `router.back()`. Disabled while busy and when the roll is full. |
+| Viewfinder | Not tappable | expo-camera has no tap-to-focus point and no pinch zoom here; the platform's continuous autofocus does the work. Hidden from screen readers (the prompt says what to frame). |
+| Privacy note | Not tappable | Plain text, read in focus order. |
+| Flash | 56 × 56: x 15–71, y 650–706 | Toggles `flash` "off" / "on" for the camera session. Role `switch`, label "Flash", `checked`. |
+| Lens "0.5×" | 50 × 48 half, x 146.5–196.5, y 654–702, no slop | iOS: `selectedLens` = the ultra-wide entry from `getAvailableLensesAsync()`. Role `radio`, label "Ultra-wide lens", `selected`; `accessibilityShowsLargeContentViewer`. |
+| Lens "1×" | x 196.5–246.5, y 654–702 | Default main lens (`selectedLens` unset). Role `radio`, label "Main lens". The two halves form a `radiogroup` "Lens". |
+| Grid | 56 × 56: x 322–378, y 650–706 | Shows or hides the framing grid for the camera session. Role `switch`, label "Framing grid", `checked`. |
+| Shutter | The 76 box | `takePictureAsync({ quality: 0.92, exif: false })` → `feedback.tap()` → `processPhoto` → `addPlate`; the counter, thumbnail, plate label and prompt then advance. Retake: `replacePlate(i)` → `router.back()`. a11y: "Take plate III, The busiest wall" (retake "Retake plate II, Opposite corner"; full roll "Take a plate"). The primary action. |
+| Last-plate thumbnail | 72 × 72 | Pushes `/capture/review` (the light table). a11y "Open the light table, 2 plates", from 3 plates "Continue to the light table, 3 plates". Disabled before plate I and while busy. Retake: "Cancel retake", calls `onClose`. |
+| Plate counter | Not tappable | a11y by state: "Next: plate III. 2 of 6 plates taken." · "Roll full. 6 of 6 plates taken." · "Retaking plate II." |
+| Plate label, brackets, grid, rim, grain | Not tappable | Hidden from accessibility. |
 
-**Focus order (VoiceOver / TalkBack):** Back → header (title and subtitle as one element, role `header`) → Library → privacy note (while shown) → Flash → Ultra-wide lens → Main lens → Framing grid → plate counter → Shutter → Last plate. When the screen opens, accessibility focus starts on the header.
+**Focus order (VoiceOver / TalkBack):** Back → header (title and detail as one element, role `header`, polite live region) → Library → privacy note (while shown) → Flash → Ultra-wide lens → Main lens → Framing grid → plate counter → Shutter → Last plate. Accessibility focus moves to the header once the rangefinder has faded in (`motion.sceneCrossfade` 200 ms). On iOS, which has no live regions, a new prompt, error or status is announced once with `announceForAccessibility`.
 
-**Keyboard and switch focus** reaches controls only: Back → Library → Flash → Lens → Grid → Shutter → Last plate. The lens radiogroup is one stop: the arrow keys or a switch action move the selection between "1×" and "0.5×". VoiceOver and TalkBack keep the two `radio` elements.
+**Keyboard and switch focus** reaches controls only: Back → Library → Flash → 0.5× → 1× → Grid → Shutter → Last plate. The header and the counter are `accessible` on iOS and `screenReaderFocusable` on Android, so they are one TalkBack element each but never a keyboard stop; their texts are hidden from Android's accessibility tree.
 
 ### States
 
-- **Before camera permission is granted** (permission loading, undetermined or denied): owned entirely by section 03. This layout mounts only after a grant.
+- **Before camera permission is granted** (loading, undetermined, denied): section 03. This layout mounts only after a grant.
 - **Camera starting** (before `onCameraReady`):
-  - The frame shows its `ref.color.panel` #0E0E0E fill and the brackets are hidden.
-  - The shutter, flash and grid are at 0.4. Back and Library stay live.
-  - The centre slot of the control row is empty. The lens list (`getAvailableLensesAsync` / `onAvailableLensesChanged`) is read after `onCameraReady`; if it reports an ultra-wide lens, the segment fades in with a 0 → 1 opacity change over `ref.motion.control` 120 ms. Otherwise the slot stays empty. A dimmed segment is never shown.
-  - The privacy note already shows.
-- **Ready:** as in the layout table.
-  - On `onCameraReady`, the four brackets settle together over `motion.bracketSettle` 380 ms, ease `bezier(0.2, 0, 0, 1)`. Each starts 6 further out along its diagonal (inset 10) and moves to inset 16, while fading 0 → 1 over 200 ms. This is the caliper motion of hotspots in play, with no hold or dim afterwards.
-  - The controls return to 1.0 over `ref.motion.control` 120 ms.
-- **Camera didn't start** (`onMountError`):
-  - The subtitle becomes an error line in the Error state's layout: Phosphor `Warning`, regular, 16 (`ref.icon.small`) in `ref.color.error` #B5564F, a 4 gap, then "The camera didn't start." in `ref.type.meta` / `ref.color.read` #A6A9AD. Centred and announced politely.
-  - The shutter, flash and grid stay at 0.4, and the lens segment never appears (no lens list without `onCameraReady`). Library and Back are the ways forward.
-- **Pressed:** every change runs over `ref.motion.control` 120 ms ease-out and reverses on release.
-  - Back and Library: fill `ref.color.panel` → `ref.color.panelPressed` #161616.
-  - Flash and grid: glyph → `ref.button.bare.pressedGlyph` `ref.color.read` #A6A9AD.
-  - Inactive lens half: label `ref.color.meta` #8A8D91 → `ref.color.read`.
-  - Shutter: the disk fill goes `ref.color.bright` #F2F2F2 → `ref.color.brightPressed` #D4D4D4 and scales to 0.96 (`ref.motion.shutterPress`, 120 ms). The ring stays fixed.
-  - Thumbnail: the 1 pt border goes `ref.color.hairline` #222222 → `ref.color.read`. The signal ring goes `ref.color.signal` #C8302B → `ref.color.signalPressed` #A82823. The photo itself never changes.
-- **Disabled:** the whole control drops to 0.4 (`ref.button.disabledOpacity`), glyph and border included.
-  - The empty thumbnail before plate I is the exception: it stays a full-opacity empty well.
-  - Disabled controls stay in screen-reader focus with the "dimmed" state.
-- **Focus:** `ref.focus` is a 2 pt `ref.color.bright` outline with a 2 pt offset, following each control's shape:
-  - Ø 52 circle around Back, Library, Flash and Grid.
-  - A pill (`ref.radius.pill`) around the whole 100 × 36 lens track, outer box x 142.5–250.5, y 653.7–697.7, because the radiogroup is one keyboard/switch stop. It stays inside the control row and clears the flash and grid hit boxes (x 67 / 326).
-  - Ø 84 circle around the shutter.
-  - A rounded rectangle with radius 6 around the 72 thumbnail, sitting 2 outside it.
+  - The plate shows its `color.canvas` fill; the brackets are hidden.
+  - The shutter is at 0.4 (eased). Flash and grid are at 0.4 (the live IconButton's own). Back and Library are live.
+  - The centre slot is empty. The lens list (`getAvailableLensesAsync` / `onAvailableLensesChanged`) is read after `onCameraReady`; with an ultra-wide the segment fades in 0 → 1 over `ref.motion.control` 120 ms. A dimmed segment is never shown.
+  - The privacy note and the plate label ("ESCAPD 400 · PLATE I") already show.
+- **Ready:**
+  - The four brass brackets settle together over `motion.bracketSettle` 380 ms on `bezier(0.2, 0, 0, 1)` (`bracketEasing`): each starts 6 (`bracketTravel`) further out along its diagonal (inset 10) and moves to inset 16, fading 0 → 1 over `bracketFade` 200 ms. No hold or dim afterwards.
+  - The shutter returns to 1.0 over 120 ms; flash and grid return at once.
+- **Camera didn't start** (`onMountError`): the detail slot becomes the error line: Phosphor `Warning`, regular, 16 (`noticeIcon`) in `color.warning` #D4883A (7.0:1 on canvas), centred on the first caption line, `space.sm` 8, then "The camera didn't start." in `caption` / `color.textSecondary`; the group centred (170.0 wide). Announced politely. The shutter, flash and grid stay at 0.4 and the lens never appears; Library and Back are the ways forward.
+- **Pressed:**
+  - Back, Library, Flash, Grid: the live IconButton's opacity 0.75 while held.
+  - Inactive lens half: label `color.textSecondary` → `color.text` over 120 ms.
+  - Shutter: the core eases `color.manila` → `color.accentPressed` #DFB66C (ink 9.7:1 on it) and scales to 0.96 (`ref.motion.shutterPress`, 120 ms ease-out). The ring stays still.
+  - Thumbnail: the mount's fill `color.surface` → `color.raised` #1E1915 and its hairline `color.hairline` → `color.accent`, as the hub's cards; the continue ring `color.accent` → `color.accentPressed`. The photo never changes. All over 120 ms, reversing on release.
+- **Disabled:** the whole control at 0.4, glyph and edges included; disabled controls keep screen-reader focus with the dimmed state. The empty thumbnail before plate I stays a full-opacity well.
+- **Focus** (keyboard, D-pad, switch): the kit ring, 2 pt `color.accent` at a 2 pt offset, following each shape:
+  - Back, Library, Flash, Grid: the live IconButton's own pill ring, a Ø 56 circle (e.g. Back x 15–71, y 61–117). No ring is composed around them.
+  - Lens: one ring around the whole track while either half has focus, the kit's "control" shape (radius 8 + 4 = 12, concentric): x 142.5–250.5, y 656–700, inside the control row and clear of the flash and grid hit boxes (x 71 / 322).
+  - Shutter: a Ø 84 circle (x 154.5–238.5, y 718–802), measured from the unbordered 76 box.
+  - Thumbnail: an 80 × 80 rounded square at radius 22 (`radius.thumbRing` + 4, concentric), x 296–376, y 720–800.
 - **Busy** (capturing and re-encoding, or processing library picks):
-  - Taps on the shutter are ignored. It keeps its static full-opacity white disk and magnifier, with `accessibilityState.busy`. No spinner.
-  - Library, flash, the lens segment and the thumbnail are at 0.4; the thumbnail keeps its image and ring. Back and Grid stay live, except that back is ignored during a retake capture.
-  - Waits under ~1 s show nothing more, so nothing flickers.
-  - Waits over ~1 s use the thinking state (`ref.motion.thinking`) in the subtitle slot:
-    - One line, `ref.type.meta`, centred, no rotation. Glyph shimmer `ref.motion.thinking.shimmer`: base `ref.color.meta` #8A8D91, highlight `ref.color.bright` #F2F2F2, band 0.8 × line width, left → right, 2000 ms linear, repeating.
-    - It shows only real progress. Capture, a single library pick, or any retake: "Preparing plate III". Library, 2+ picks: "Preparing photo 2 of 4", swapping with the `ref.motion.thinking` transition (swap 150 ms ease-in-out, gap 50, distance 8) each time the count changes. A hidden sizer holds the longest line ("Preparing photo 4 of 4"), so the box never resizes.
-    - Reduced motion: a static line in `ref.color.read` #A6A9AD; count changes cross-fade over `motion.reducedFade` 140 ms.
-    - The visible copies are hidden from screen readers. The container has a fixed `accessibilityLabel` ("Preparing plate III" / "Preparing 4 photos") and is not re-announced on each count.
-    - The line stops the moment processing ends; the subtitle then shows the next prompt (or the error line).
-- **Captured:**
-  - Haptic tap (`feedback.tap()`).
-  - The thumbnail swaps to the new plate with a 120 ms opacity change (`ref.motion.control`).
-  - The counter numeral swaps in place, with no roll.
-  - The title and subtitle swap to the next prompt with no animation and are announced (`accessibilityLiveRegion="polite"`).
-  - After plate I the privacy note fades out over 120 ms.
-- **Error** (capture or library): the subtitle becomes an error line until the next attempt.
-  - Layout: Phosphor `Warning`, regular, `ref.icon.small` 16, in `ref.color.error` #B5564F, then a 4 gap, then the text in `ref.type.meta` with `ref.color.read`. The group is centred and announced politely.
-  - Copy: "That plate didn't take. Try again." (≈ 221 including the icon) for a capture error.
-  - Copy for library picks follows the failure count: "One photo couldn't be used." or "2 photos couldn't be used." (up to 6; both ≤ 247 with the icon). It replaces today's 2-line string. The photos that worked still join the roll.
-  - The error colour is never used on the text itself and is never the signal.
-- **3 plates or more** (`MIN_PLATES`, outside retake mode):
-  - The thumbnail border changes from 1 pt `ref.color.hairline` to the 2 pt `ref.color.signal` ring over 120 ms.
-  - Its a11y label becomes "Continue to the light table, n plates".
-  - This is the screen's only signal mark.
-- **Roll full (6):**
-  - The shutter and Library are disabled at 0.4.
-  - The title is "Six plates is a full roll" and the subtitle "Continue to the light table."
-  - The counter reads "FULL" over "VI".
-  - The thumbnail keeps its ring. Flash, lens and grid stay live because the preview runs.
-- **Retake mode** (`?retake=<i>`):
-  - The counter label reads "RETAKE" (≈ 50 wide) over that plate's numeral.
-  - The title and subtitle show that plate's prompt. Noir: the "Retake." prefix is dropped because the counter carries it, so plate I's detail still fits on one line.
-  - The thumbnail shows the plate being replaced in full colour, without a ring.
-  - Library picks 1. The privacy note is hidden.
-- **No ultra-wide lens** (Android today, older iPhones): the lens segment is hidden. Flash and grid keep their columns, and the row height is unchanged.
-- **No flash unit:** the flash shows `LightningSlash` at 0.4 with the a11y label "Flash unavailable".
+  - Taps on the shutter are ignored; it stays a static full-opacity manila core with its magnifier and `accessibilityState.busy`. No spinner.
+  - Library and Flash at 0.4 (at once); the lens segment and the thumbnail at 0.4 (eased), the thumbnail keeping its image and ring. Back and Grid stay live; back is ignored during a retake capture.
+  - The prompt, counter, plate label and shutter label hold the plate the wait started on and change once, as it ends.
+  - Under ~1 s nothing more shows. Past `thinkingDelay` 1000 ms the detail slot holds `ThinkingStates tone="warm"` (decorative): one centred line in `caption` 13/18; the shimmer sweeps from `ref.motion.thinking.shimmerWarm.base` `color.textSecondary` to `.highlight` `color.text`, band 0.8 × the line, 2000 ms linear, repeating. Capture, a single pick or any retake: "Preparing plate III" (108.0). Two or more picks: "Preparing photo 2 of 4", swapping on each real count change (swap 150 ms ease-in-out, gap 50, distance 8) in a box sized to "Preparing photo 4 of 4" (138.5), so it never resizes. The prompt's label carries a fixed status ("Preparing plate III" / "Preparing 4 photos"), not re-announced on each count. The line stops the moment processing ends.
+- **Captured:** haptic tap (`feedback.tap()`); the thumbnail swaps with a 120 ms cross-dissolve; the counter's label and numeral and the plate label fade in over 120 ms (never roll); the title and detail swap with no animation and are announced; after plate I the privacy note fades out over 120 ms.
+- **Error** (capture or library): the detail slot becomes the error line until the next attempt, as under Camera didn't start: warning glyph 16, gap 8, `caption` in `color.textSecondary`, centred, announced politely. "That plate didn't take. Try again." (220.0 with the glyph). Library: "One photo couldn't be used." (201.8) or "2 photos couldn't be used." up to 6 (189.3), all within 243; the photos that worked join the roll. The error red is never used: on this ground it is 3.0:1.
+- **3 plates or more** (`MIN_PLATES`, outside retake mode): the 2 pt brass ring fades in over the thumbnail's mount edge over 120 ms; its label becomes "Continue to the light table, n plates".
+- **Roll full (6):** shutter and Library at 0.4. Title "Six plates is a full roll", detail "Continue to the light table.". Counter "FULL" (31.2) over "VI"; plate label "ESCAPD 400 · ROLL FULL". The thumbnail keeps its ring; Flash, lens and Grid stay live (the preview runs).
+- **Retake mode** (`?retake=<i>`): the counter reads "RETAKE" (46.8) over that plate's numeral; the prompt shows that plate's title and detail (no "Retake." prefix); the plate label names it ("ESCAPD 400 · PLATE II"); the thumbnail shows the plate being replaced, without a ring; Library picks 1; no privacy note.
+- **No ultra-wide lens** (Android today, older iPhones): the segment is hidden; Flash and Grid keep their columns and the row stays 48.
+- **No flash unit:** not detected today; see Needs you.
 - **Large text:**
-  - The title and subtitle grow without a cap and may wrap to 2 lines each. The header grows downward, the 28 band holds, and `containBox` shrinks the viewfinder. Text never shrinks.
-  - The counter label and numeral cap at `maxFontSizeMultiplier` 1.25. "III" (35 pt) is then 3 × (0.6 × 35) + 2 × 2 ≈ 67 wide and the stack 20 + 4 + 42.5 = 66.5 tall, both inside the 70 inner box; "RETAKE" (15 pt) is ≈ 60. The window stays 72 × 72, clear of the shutter ring at x 158.5, and the counter's `accessibilityLabel` carries the full information.
-  - The privacy note may take 3–4 lines, still bottom-anchored inside the frame.
-  - The lens labels cap at `maxFontSizeMultiplier` 1.25 (15/20). "0.5×" is then 4 × 9 + 3 × 1.2 = 39.6, leaving ≈ 3 on each side of the 46 thumb, and the 20 line fits the 28 thumb. The iOS large-content viewer shows them on long press. Glyph sizes are fixed.
-- **Narrow and short screens:** layout comes from the insets, and the viewfinder absorbs the difference.
-  - 375 × 667 (safe areas 20 / 0): the header row sits at y 28–72 and the bottom row bottom is held ≥ 20 above the screen edge. The viewfinder fits ≈ 281 × 375, centred at x 47–328.
-  - On that viewfinder the privacy note's max width becomes viewfinder width − 92 ≈ 189, so 3 lines.
-  - At a 375 width the title area is 229, so plate I's detail wraps to 2 lines.
-  - At a 360 width (Android) the bottom-row gaps are 49.
-- **Reduced motion:**
-  - The bracket settle becomes an opacity fade over `motion.reducedFade` 140 ms with no travel.
-  - The shutter press is the colour change only, with no scale.
-  - The 120 ms colour and opacity changes stay as they are.
-  - The thinking line is static in `ref.color.read`; count changes cross-fade over `motion.reducedFade` 140 ms.
+  - Title and detail grow uncapped and wrap; the header grows downward and `containBox` shrinks the plate. Text never shrinks. At 1.25, "From the doorway" (252.4) takes two lines.
+  - Counter: label and numeral cap at 1.25 and measure against the whole 72 window, so "III" (63.0 at 35 pt) never breaks; the stack is 17.5 + 2 + 42.5 = 62, inside the 64 plate. The `accessibilityLabel` carries the full sentence.
+  - Lens labels cap at 1.25: "0.5×" ≈ 37.8 in its 46 thumb. The iOS large-content viewer shows them on long press.
+  - Plate label caps at 1.25 (≤ 234 wide, one line); `viewfinderLayout` reserves 6 + 14 × min(fontScale, 1.25) under the plate, so large text shrinks the plate rather than wrapping the label.
+  - The privacy note may take 3–4 lines, still bottom-anchored on the plate. Glyph sizes are fixed.
+- **Narrow and short screens** (the plate absorbs the difference):
+  - 375 × 812 (safe 44 / 34): the prompt is 225 wide, so plate I's detail wraps (230.1) and the header is 66 tall: plate 324 × 432. From plate II: plate 333 × 444.
+  - 375 × 667 (safe 20 / 0): buttons y 26–74, bottom row y 571–647 (20 above the screen edge). Plate I: plate 258.75 × 345, centred (x ≈ 58–317); the privacy note's max width is 166.75, so three lines.
+  - 360 wide (Android): prompt 210; bottom-row gaps 49.
+- **Reduced motion** (`useTheme().reducedMotion`):
+  - The bracket settle becomes a `motion.reducedFade` 140 ms opacity fade with no travel.
+  - The shutter press is the colour change only, no scale.
+  - The 120 ms colour and opacity changes stay (nothing moves).
+  - The thinking line is still, in `shimmerWarm.still` `color.textSecondary`; count changes cross-fade over 140 ms.
   - Nothing else on this screen moves.
 
 ### User notes
 
+> "Restyle the camera (02) and camera-permission (03) screens to the same brass / play-screen look as the hub, guide and Pro."
+
+Applied. The rangefinder keeps every control, behaviour, state, copy line, accessibility label, focus order and Android back rule, and takes the play screen's materials: soot and live grain (no silk, so photos are judged on a plain ground), the feed on SceneView's walnut mount and plate with a brass plate label, brass brackets, a Playfair prompt between live IconButtons, a brass lens selector, small walnut mounts for the counter and the last plate, and the pre-Noir brass shutter. The pre-Noir manila prompt slip is not brought back: the prompt stays in the header, as asked.
+
 > "the photo button has a magnifier glass icon on it."
 
-**How it's honoured:**
-- The shutter disk carries Phosphor `MagnifyingGlass` (regular, 28, `ref.color.inverseInk` #0A0A0A) on the white `ref.button.shutter` disk (`ref.color.bright` #F2F2F2). It is the brightest object on the screen and the primary action.
-- It fits the detective vocabulary (to photograph a room is to examine it) and echoes the 2.2× press-and-hold loupe in play.
-- The painted magnifier PNG (`assets/brand/magnifier*.png`) is not used. It is colourful brand art, and Noir's chrome is monochrome.
+Kept: Phosphor `MagnifyingGlass` (regular, 28, `color.ink`) on the manila core, inside a 3 pt brass ring that is /play's loupe ring, so the shutter reads as the loupe the case is examined with. The painted magnifier PNG is the hub's hero object and is not used here.
 
-**Reference layout kept:** dark ground, a large framed viewfinder, the title and subtitle at the top, a three-slot control row, a round shutter, a counter at bottom-left, and the last shot at bottom-right.
-- The flip slot becomes the framing grid.
-- The counter becomes a static Roman plate window.
-- None of the reference's text, names or glyphs are used.
+**Reference layout kept:** dark ground, a large framed viewfinder, the title and detail at the top, a three-slot control row, a round shutter, a counter at bottom-left and the last shot at bottom-right. The flip slot is the framing grid; the counter is a static Roman plate window. None of the reference's text, names or glyphs are used.
 
-**Shimmer:** the user's supplied shimmer lives on in the thinking state. The thinking state (`ref.motion.thinking`) runs on real waits only: the darkroom on /capture/develop, and here only the Busy wait (see States).
-
-**Changes from today's `/capture`:**
-- The X close becomes a back arrow in a 44 round `ref.button.icon`.
-- The mono "PLATE I" stamp becomes the prompt title, and the numeral moves to the counter window.
-- The prompt slip becomes the title and subtitle.
-- The 40 × 53 plate strip becomes the counter and the last-plate thumbnail.
-- The library picker moves from bottom-left to the right header button.
-- The next arrow becomes the thumbnail. Its continue cue moves from ≥ 4 plates to ≥ 3 and becomes the signal ring.
-- The viewfinder corners tighten to `ref.radius.panel` 6.
-- The shutter changes from a 3 pt accent ring with a cream core to a 2 pt white ring with a white disk and the magnifier.
-- Flash, lens and grid are new.
-- The privacy caption becomes a note on the viewfinder, shown only until plate I.
-- The roll-full detail is shortened to "Continue to the light table."
-- The "RETAKE PLATE II" stamp becomes the counter's "RETAKE" label.
+**Changes from the Noir build:**
+- Ground: flat `ref.color.ground` #050505 → `color.canvas` with the live grain (still no silk or pool).
+- Viewfinder: a radius-6 graphite frame (365 × 486.7) → a walnut mount (30) around a soot plate (24, rim) of 351 × 468, with a brass plate label.
+- Brackets: bright → brass.
+- Header: Noir 44 icon buttons on graphite → live 48 plain IconButtons (same centres); Geist headline / meta → Playfair `narrativeTitle` / Jakarta `caption`.
+- Flash and grid: bare 44 glyphs, meta / bright → live IconButtons, `color.textSecondary` / `color.text`.
+- Lens: a graphite pill with a grey thumb → a walnut 8 pt track with a brass thumb and mono stamp labels.
+- Counter: a graphite panel in Geist Mono → a small walnut mount and plate in brass JetBrains Mono.
+- Shutter: a 2 pt white ring and white disk → a 3 pt brass ring and a manila core, magnifier in ink.
+- Thumbnail: a radius-6 window with an oxblood ring → a small walnut mount (18 / 14) with a brass ring.
+- Privacy note: a graphite panel → a walnut notice panel in `caption`.
+- Error line: error-red glyph and read text → `color.warning` glyph and `color.textSecondary` text.
+- Thinking line: Noir tone → `tone="warm"`.
+- Focus rings: bright → brass (central, `ref.focus.color`).
 
 ### Decisions
 
-1. **Flip camera:** removed. Its slot is a framing-grid toggle (`GridNine`, bare; bright when on, meta when off).
-2. **0.5× ultra-wide:** offered on every plate wherever an ultra-wide lens is reported (iOS `getAvailableLensesAsync`). The default is 1×, and the segment is hidden otherwise.
-3. **Flash:** off / on only, default off.
-4. **Counter:** Roman numerals in `ref.type.code` (Geist Mono) in a 72 × 72 `ref.panel` window labelled "PLATE". It shows the plate about to be taken, statically, with no roll.
-5. **Brackets:** kept, in `ref.color.bright`, 1.5 stroke, inset 16. They settle with `motion.bracketSettle`. The viewfinder frame radius is 6.
-6. **Right header slot:** the library picker. The guide replay lives in 01's How you play sheet.
-7. **Privacy line:** an opaque `ref.panel` note on the viewfinder until plate I. Section 04 carries it too.
-8. **Shutter position:** all three bottom-row centres are aligned at y 759.7. The shutter keeps its measured centre; the counter and thumbnail sit 3.3 lower than measured.
-9. **Plate V detail:** "Optional. Anything still unseen." (one line, ≈ 193). Changing `src/capture/slots.ts` is for the build.
-10. **Continue cue:** a 2 pt `ref.color.signal` ring on the thumbnail from 3 plates. It is the screen's one signal mark.
-- **Cross-screen:**
-  - Palette, type and button shape come from Noir.
-  - The header buttons are `ref.button.icon` and the lens control is `ref.button.segment`.
-  - Access is checked on 01 before `/capture` opens.
-  - The thinking state (`ref.motion.thinking`) runs on real waits only: the darkroom on /capture/develop, and here only the Busy wait (see States).
+1. **Ground:** `color.canvas` with the live grain as the root's first child; no silk (the camera stays flat so photos are judged on a plain ground), no pool.
+2. **Viewfinder as a film plate:** SceneView's mount exactly (walnut, 1 pt brass hairline, 6 of walnut, `radius.mount` 30 around `radius.image` 24, the plate's 1 pt rim), so the player frames what /play will show. `viewfinderLayout` fits the 3:4 plate into the space left less the mount's chrome and centres the mount.
+3. **Plate label:** SceneView's "ESCAPD 400 · PLATE n" under the plate; "ROLL FULL" on a full roll; in retake mode it names the plate being retaken (the counter says RETAKE). Decorative, capped at 1.25 on one line.
+4. **Header buttons:** live IconButtons centred on 02's columns (43, 89) and (350, 89), so 03's back (`ref.layout.permission.back`: x 19–67, safe top + 6) lands on this one. The live button draws its own brass ring; none is composed.
+5. **Prompt type:** `narrativeTitle` 24/30, not `narrative` 18/26: one title line plus one caption line is exactly the buttons' 48, and every title fits 243 on one line at 393 (widest 234.5).
+6. **Toggles:** the live IconButton with role `switch`; glyph `color.textSecondary` off, `color.text` on, eased over 120 ms; pressed and disabled are the live 0.75 / 0.4.
+7. **Lens:** the brass thumb with an onAccent label (the live primary Button's and /play's switch track's brass), on a walnut track at the live buttons' 8 pt corner.
+8. **Counter:** the thumbnail's twin (72 walnut mount, 64 soot plate) with a brass `stamp` label over a brass `code` numeral.
+9. **Shutter:** the pre-Noir brass shutter: a 3 pt brass ring (the loupe's), a 5 gap and a 60 manila core with an ink magnifier; pressed manila → `color.accentPressed` and 0.96; busy stays static.
+10. **Thumbnail:** a small film plate (18 / 14); the continue cue is a 2 pt brass ring over the mount's edge from 3 plates; pressed as the hub's cards.
+11. **Grid lines:** `color.textSecondary`, quieter than the brass brackets.
+12. **Privacy note:** a walnut notice panel, not a manila slip: manila is kept for the shutter core, and the plate stays the brightest thing in the frame.
+13. **Errors:** a `color.warning` glyph beside `color.textSecondary` text.
+14. **Rhythm:** on 852, 19.5 / 19.5 / 20 / 20 between header, mount, control row, bottom row and safe bottom (minimums `space.lg` and `space.gutter`). The counter and thumbnail align with the plate's edges (21 / 372).
+15. **Disabled easing:** the custom controls ease into 0.4 over 120 ms (Dimmable); the live IconButtons dim at once, as on every live screen.
+- **Cross-screen:** the thinking state runs on real waits only (the darkroom on /capture/develop, here the Busy wait); access is checked on 01 before `/capture` opens.
 
 ### Needs you
 
-- **Ultra-wide distortion:** confirm that the generation pipeline (`_shared/perception.ts`, `_shared/geometry.ts`) copes with 0.5× barrel distortion before the lens segment ships.
-  - If it doesn't, either limit 0.5× to plate I ("From the doorway") or hide the segment everywhere.
-  - Nothing else on the screen changes either way: the centre slot of the control row simply stays empty.
+1. **Ultra-wide distortion:** confirm that the generation pipeline (`_shared/perception.ts`, `_shared/geometry.ts`) copes with 0.5× barrel distortion before the lens segment ships. If it doesn't, limit 0.5× to plate I or hide the segment (`useLenses` returns `ultraWide: null`); the centre slot simply stays empty.
+2. **No flash unit:** the old spec's state (LightningSlash at 0.4, "Flash unavailable") was never built and isn't now: the screen has no flash-availability signal from expo-camera 58, so the toggle stays live on a phone without a flash. Drop the state, or detect it.
+3. **Rounded preview on Android:** the plate clips the `CameraView` at `radius.image` 24 with `overflow: hidden`. Some Android preview surfaces ignore rounded clipping; check on device that the feed's corners follow the plate (the rim is drawn over them either way).
+4. **Lens keyboard stops:** each lens half is its own keyboard stop (0.5× then 1×), with one ring around the track; the Noir text's "one stop, arrow keys move the selection" was never built. Keep as is, or make the radiogroup a single stop.
 
 ## 03 · Camera permission
 
-Reference: docs/refs/03-camera-permission.png (layout only)
+Reference: docs/refs/03-camera-permission.png (layout only: a bottom sheet with a phone line drawing, a title, a short explanation and one button). The look is the play screen's: the live `Sheet` (src/components/Sheet.tsx, as `/play`'s Case options) for the sheet, the light table's tiles and /play's Kodachrome mount for the film plate, the photo guide's warm line art for the drawing, the light table's back control, and the live `Button`. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus the kit's focus ring (`ref.focus`, brass, drawn by the live `Button` and `IconButton`), `ref.motion.thinking` with `shimmerWarm` (through `ThinkingStates tone="warm"`), and the screen's own `ref.layout.permission` (`back` { left 19, top 6 }, `hairline` 1, `plate` { height 128 }, `phone` { cornerDx −53.8, cornerDy 20, rotate 14, width 134, radius 6, screenInset 16, bracketInset 14, bracketArm 22, wallDrop 44, ceilingAngle 15, ceilingLength 30 }, `line` { stroke 1.6, fade 40, mid `color.textSecondary` @ 1, context `color.textSecondary` @ 0.3, bracket `color.accent` }, `noticeIcon` 18, `thinkingDelay` 1000, `titleFocusDelay` 300). No Geist, no NoirText, no `ref.type` / `ref.color` / `ref.button` / `ref.panel`, no light pool, no silk, no oxblood.
 
-Measured at 2.178 px/pt: 856 × 1854 px above the caption strip = 393 × 852 pt (safe areas 59 / 34). Values in [brackets] are the reference's own geometry; the main value is what ESCAPD uses. None of the reference's colours, copy, phone render, type or animation carries over.
+**Where it lives.** A route state of `/capture` (app/capture/index.tsx), including `/capture?retake=<i>`: not a new route and not a modal. The shell renders `CameraPermission` (src/capture/ui/CameraPermission.tsx) for every state before camera access is granted: Checking while `useCameraPermissions()` returns `null` and, outside retake mode, while 04's guide-seen backstop runs (`useGuideBackstop`: session flag, then AsyncStorage `escapd:onboarding:capture-guide`); the sheet whenever access is not granted. An unseen guide runs `router.replace('/capture/guide')` and no sheet ever renders. 02's rangefinder mounts only once access is granted. The shell lays one ground under both states: root `color.canvas` #090807, then the live `<Grain />` (assets/grain.png repeated at 0.04), then the state. No silk (`BackgroundStill`): the camera route stays flat, so 03 hands over to 02 with no change of ground. The grain sits under 02, never on its feed.
 
-**Where it lives.** This is a route state of `/capture` (app/capture/index.tsx), including `/capture?retake=<i>`. It is not a new route and not a modal. It replaces both full-screen `StateScreen`s there: "Opening the rangefinder" while `useCameraPermissions()` returns `null`, and the pre-prompt whenever it returns not granted. Outside retake mode, /capture also runs 04's guide-seen backstop (session flag, then AsyncStorage `escapd:onboarding:capture-guide`) during Checking. If the guide hasn't been seen, `router.replace('/capture/guide')` runs and no sheet ever renders. 02's rangefinder mounts only once access is granted.
+**Files.** `CameraPermission.tsx` (states, back control, buttons, notices, Android back), `permission/PermissionSheet.tsx` (sheet frame, text, the cap and large-text steps), `permission/IllustrationZone.tsx` (mount, plate, drawing), `permission/PermissionNotice.tsx`, `permission/PermissionThinking.tsx`, `permission/QuietAction.tsx` (the live quiet `Button` with Library busy), `permission/copy.ts` (every word), `permission/useGuideBackstop.ts`, `src/capture/useLibraryImport.ts`. Tests: `permission/__tests__/CameraPermission-test.tsx` (behaviour and look), `PermissionSheet-test.tsx` (frame, cap, bottom padding, large text), `captureRoute-test.tsx` (the shell and its ground).
 
-**Hosting.** A custom bottom-anchored view (`src/capture/PermissionSheet.tsx`), not the live `Sheet`. None of `Sheet`'s look is used: no handle, inner rule, Grain, scrim, mono eyebrow, X, or its larger corners. It reuses only `Sheet`'s enter motion (`motion.sheetSpring`: damping 28, stiffness 320, mass 1; a `motion.reducedFade` 140 ms fade under reduced motion) and its move-focus-to-title behaviour. Side padding is `ref.space.xl` 24, giving a 345 column. Bottom padding is the bottom inset + `ref.space.ctaBottom` 4. It can't be dismissed by swipe and has no scrim to tap.
+**Hosting.** A custom bottom-anchored view in the live `Sheet`'s look, not the `Sheet` component: it is the route's own state, so it has no scrim, no X, no eyebrow and no brass handle (a handle says "drag me away", and this sheet can't be dismissed). It reuses `Sheet`'s frame (walnut, `<Grain />`, `radius.sheet` top corners, 1 pt brass top edge, inner brass rule), its enter motion (`motion.sheetSpring`: damping 28, stiffness 320, mass 1; a `motion.reducedFade` 140 ms fade under reduced motion) and its move-focus-to-title behaviour (after `titleFocusDelay` 300 ms, or 140 ms under reduced motion). Side padding `space.gutter` 20, as the live Sheet, giving a 353 column. Bottom padding: bottom inset + `space.xs` 4.
 
-### Feel (Noir)
+### Feel
 
-A single decision, taken in the dark before the rangefinder opens. The top 36% of the screen is flat `ref.color.ground` #050505 with nothing on it but the back arrow. A graphite sheet (`ref.panel`: #0E0E0E, 1 pt `ref.color.hairline` #222222 top edge, top corners 6) holds everything else. Its top 150 pt is a cropped window. In it, one static pool of soft white light falls on a grayscale line drawing of a phone: a dark silhouette whose screen shows the rangefinder's two upper brackets in white over the faint lines of a room corner. Below the crop everything is flat and unlit:
-- a white, regular-weight statement title
-- a grey paragraph saying the photos stay private
-- one white pill
-- a quiet grey way out.
+A single decision, taken in the darkroom before the camera opens. The top of the screen is soot with grain and nothing on it but the back arrow. A walnut drawer rises from below, edged in brass like `/play`'s Case options. In it, a small film plate shows a warm line drawing of a phone held up to a room, its viewfinder brackets in brass, cropped by the plate's foot. Below the plate:
+- a Playfair heading in bone
+- a Jakarta paragraph in taupe saying the photos stay private
+- one brass button
+- a quiet way out in bone.
 
-Nothing moves except the sheet's rise, 120 ms colour presses and, during a real wait, the thinking line. The status bar stays `light` the whole time, because the screen never turns white. Thinking states (`ref.motion.thinking`) appear only during a real wait of more than ~1 s. On this screen that is Library busy, and Checking only when it runs past ~1 s (see States). A normal permission check and the OS dialog don't qualify.
+Nothing moves except the sheet's rise, the buttons' press feedback and, during a real wait, the warm thinking line. The status bar stays `light` throughout. Thinking states appear only during a real wait of more than ~1 s: Library busy, and Checking only when it runs past ~1 s (see States). A normal permission check and the OS dialog don't qualify.
 
-**Signal on this screen: none.** `ref.color.signal` #C8302B, `ref.color.signalText` #E5484D, `ref.button.signal` and `ref.stamp` are not used. Asking for the camera decides nothing about the case. "Allow the camera" / "Open Settings" is the white `ref.button.primary`. Signal "go" actions: 0 (the limit is 1).
+**Accent on this screen:** brass only. The sheet's top edge and inner rule, the mount's hairline, the drawn brackets and the primary button are brass; the notice glyph is `color.warning`. No oxblood: asking for the camera decides nothing about the case.
 
 ### Layout, top to bottom
 
+Default, default text size, empty roll.
+
 | Element | Position & size (pt) | Style | ESCAPD content |
 |---|---|---|---|
-| Status bar | y 0–59 (safe-area top), full width | System, `light` content throughout, as set in the root layout. There is no dark-content switch any more. | — |
-| Dynamic Island clearance | x 133.5–259.5, y 11–48.3 (hardware) | Keep clear. The reference's arc traced around the island is another app's animation frame and is not used. | — |
-| Ground | Full screen, behind everything | `ref.color.ground` #050505, opaque and flat. No haze, no Grain, no camera feed, no background still. It is the same flat ground as 02, the other state of /capture, so no flash appears between them. | — |
-| Back control | Box x 21–65, y 67–111 (44 × 44, centre 43, 89): 02's `ref.button.icon` box exactly (left 21, top = safe top + 8). `hitSlop` 2 → 48 × 48 (`ref.hit.comfortable`), y 65–113 | `ref.button.bare`: no fill, no border. Phosphor `ArrowLeft` regular at `ref.icon.control` 24, glyph `ref.color.bright` #F2F2F2 (18.2:1 on ground). Same centre as 02's back button, so the control doesn't jump when the camera opens. | a11y "Close the camera"; "Cancel retake" in retake mode (02's labels) |
-| Empty ground | y 111–304 (193) | `ref.color.ground`. Kept empty on purpose: this space is where the quiet comes from. | — |
-| Sheet | x 0–393, y 304–852 (548) [ref 387.5–852]. Content-sized and bottom-anchored: it grows upward and its bottom stays fixed. | `ref.panel`: fill `ref.color.panel` #0E0E0E, 1 pt (`ref.border.hairline`) `ref.color.hairline` #222222 along the top edge, following the top corners. Top corners `ref.radius.panel` 6; bottom corners square at the screen edge; the side hairlines fall off-screen. Opaque. No shadow, scrim or grabber. | — |
-| Illustration zone | x 0–393, y 304–454 (150, including the sheet's top hairline) [ref 387.5–537.2]. A 1 pt `ref.color.hairline` rule at y 453–454 is the crop edge. | Same `ref.color.panel` fill as the sheet. `overflow: hidden` clips the light pool and the drawing to y 305–453, so no light reaches the text. The rule is what makes the cropped phone read as deliberate. | — |
-| Light pool | Centre (194, 398), r 120 (`ref.light.object.radius`); spans y 278–518 before clipping, and only y 305–453 shows | `ref.light.object`: static radial pool (react-native-svg `RadialGradient`), stops 0 rgba(242,242,242,0.07) → 0.5 rgba(242,242,242,0.025) → 1 transparent. Peak ≈ #1E1E1E over the panel, ≈ #151515 at the crop rule, ≈ #101010 at the zone top. It never moves, in any mode. | `accessible={false}` |
-| Illustration | Visible ink ≈ 158 × 111: x 115–273, y 342–453 (top 38 below the sheet top), centre x 194, cropped by the rule [ref 158 × 112] | Grayscale line art in react-native-svg (`ref.illustration`), stroke `ref.illustration.stroke` 1.6, round caps and joins, all rotated 14° clockwise (the top edge falls to the right, slope 0.25). **Phone body:** 134 wide unrotated and running below the crop. Top-left corner (the highest point) at (142.7, 342), top-right at (272.7, 374.4). Corners `ref.radius.panel` 6, the same drawing language as 04's phones. Fill `ref.color.panel` so it reads as a dark silhouette in the pool; outline `ref.illustration.mid` #A6A9AD. **Inner screen:** inset 16 on the sides and top (the reference's frame band), corners 6, fill `ref.color.ground` #050505, 1 pt edge in `ref.illustration.context` #303030. **Brackets** (decision 4): the rangefinder's two upper corners, arms 22, inset 14 from the inner-screen edge, `ref.illustration.hero` #F2F2F2. The lower pair falls below the crop. **Room corner** (context): a vertical wall join on the screen's centre line from 44 below the inner top edge down to the crop. Two ceiling lines leave its top, rising outward at 15°, each 30 long and fading to transparent along its length. In unrotated phone coordinates (inner screen from x 16; left bracket corner (30, 30), vertical arm x 30, y 30–52; wall-join top (67, 60)) the left line ends at (38.0, 52.2), 8.0 from the arm's lower end (30, 52) and 8.0 right of the arm; the right line mirrors it (end x 96.0 vs arm x 104). All context lines are `.context` #303030 and fade out over the last `ref.illustration.contextFade` 40 before the crop. No island pill, no logo, no shading. | A room in the viewfinder. `accessible={false}` |
-| Title | x 24–369, line boxes y 478–512 and 512–546 (2 × 34). The first box top is `ref.space.xl` 24 below the crop rule (cap top ≈ 30 below it) [ref one line, ink 29 below the panel] | `ref.type.statement`: Geist Regular 30/34, tracking −0.9, `ref.color.bright` #F2F2F2 (17.2:1 on panel), left-aligned. `accessibilityRole="header"`. | "Let ESCAPD use the camera". The space in "the camera" is a non-breaking space (U+00A0), so it sets as "Let ESCAPD use / the camera" (≈ 212 + ≈ 145 wide; unbroken ≈ 364 > 345) and never leaves "camera" alone on line 2. |
-| Body | x 24–369, line boxes y 562–682 (5 × 24), `ref.space.lg` 16 below the title box [ref 5 × 22] | `ref.type.body`: Geist Regular 17/24, `ref.color.read` #A6A9AD (8.2:1 on panel), left-aligned, ragged right. At Geist 17 (≈ 8.3 pt per character, 39–43 per line) the copy sets in 5 lines. | "You'll photograph three to six views of one room. Each photo is re-encoded on your phone first, so its location never leaves it. Nothing is sent until you develop the case." |
-| Inline notice (only when set) | x 24–369, line box `ref.space.sm` 8 below the body box, 18 per line. The sheet grows upward 26 for the first line and 18 for each further line, and the pill keeps its 28 gap below the notice. | `ref.type.meta`: Geist Regular 13/18. **Progress:** text `ref.color.meta` #8A8D91 (5.8:1). **Error:** Phosphor `Warning` regular at `ref.icon.small` 16 in `ref.color.error` #B5564F (4.1:1, an icon, not text) at x 24–40, centred on the first line. Text in `ref.color.read` at x 48–369. **Thinking** (Library busy): one centred line, see States. | See States. `accessibilityLiveRegion="polite"` |
-| Primary pill | x 24–369 (345 × 52), y 710–762, `ref.space.band` 28 below the body box [ref 345 × 63.5, y 747.6–811.1] | `ref.button.primary`: fill `ref.color.bright` #F2F2F2, `ref.radius.pill` 999 (R 26). No border, no shadow. | Label below |
-| Pill label | Centred on the pill | `ref.type.button`: Geist Medium 17/22, tracking −0.2, `ref.color.inverseInk` #0A0A0A (17.7:1 on bright) | "Allow the camera" (Default); "Open Settings" (Denied) |
-| Quiet button (ESCAPD addition) | y 770–814 (44, `ref.button.quiet.height`), `ref.space.sm` 8 below the pill. Width = label + 2 × 16 (`ref.button.quiet.padX`), centred on x 196.5: ≈ 212 × 44 (x 90–303) for "Choose photos instead" | `ref.button.quiet`: no fill, no border. Label `ref.type.button` in `ref.color.read` (8.2:1), centred. | "Choose photos instead"; "Choose a photo instead" in retake mode; "Go to the light table" when the roll is full |
-| Light-table button (3–5 plates, not retake mode, only) | y 770–814 (44), `ref.space.sm` 8 below "Choose photos instead", which moves up to y 718–762. Label + 32 wide, centred on x 196.5: ≈ 212 × 44 (x 90–303). The sheet grows upward 52: everything above shifts up 52 (sheet top 252, zone 252–402, title 426–494, body 510–630, pill 658–710; Denied sheet top 334), still below the y 121 cap. | `ref.button.quiet`, the same as the row above. | "Go to the light table" |
-| Bottom inset | y 814–852 (38 = `ref.space.ctaBottom` 4 + 34 safe area) | Sheet fill runs to the screen edge | System home indicator |
+| Status bar | y 0–59 (safe-area top) | System, `light` content | — |
+| Ground | Full screen, behind everything | The route shell's: `color.canvas` #090807, then the live `Grain` (0.04). Opaque and flat: no silk, no light pool, no camera feed. The same ground 02 opens on | — |
+| Back control | Box x 19–67, y 65–113 (48 round, `hit.min`), centre (43, 89): `ref.layout.permission.back` (left 19, top = safe top + 6), the same centre as 02's back (`ref.layout.camera.buttons`). `hitSlop` `space.xs` 4 → 56 × 56, x 15–71, y 61–117, held inside a 56 wrapper so every touch lands in a parent | The live `IconButton`, surface plain: no fill, no border; pressed at opacity 0.75. Phosphor `ArrowLeft` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text` #F2ECE1 (17.0:1 on canvas) | a11y "Close the camera"; "Cancel retake" in retake mode (02's labels) |
+| Empty ground | y 117–371 (254) | Canvas and grain. Kept empty on purpose | — |
+| Sheet | x 0–393, y 371–852 (481). Content-sized and bottom-anchored: it grows upward and its bottom stays fixed | The live Sheet's frame: fill `color.surface` #14110E, the live `Grain` inside, top corners `radius.sheet` 20 with `...curve`, 1 pt (`hairline`) `color.hairline` rgba(200, 157, 84, 0.32) along the top edge and round the corners, square bottom corners at the screen edge, `overflow: hidden`. Opaque, no shadow, no scrim, no handle | — |
+| Inner rule | From y 375, x 4–389, down both sides to the screen foot | The live Sheet's: 1 pt `color.brassRule` rgba(200, 157, 84, 0.25), `space.xs` 4 inside the top and sides, top corners `radius.sheet − space.xs` 16, open at the bottom. Not touchable | — |
+| Zone gap | y 372–396 (`space.xl` 24 below the top hairline) | Walnut | — |
+| Mount | x 20–373 (353, the column), y 396–532 (136) | A small film-plate mount, as the light table's tiles: `color.surface`, 1 pt `color.hairline`, `radius.thumbRing` 18 with `...curve`, padding 3, so the plate sits 4 in (`radius.thumbRing − radius.thumb`) and the corners are concentric | — |
+| Plate | x 24–369 (345), y 400–528 (`ref.layout.permission.plate.height` 128) | `color.canvas`, `radius.thumb` 14 with `...curve`, clipped: its foot is the crop. A 1 pt `color.rim` rgba(255, 255, 255, 0.10) edge drawn over the art | — |
+| Illustration | Visible ink ≈ 158 × 108: x 116–274, y 420–528, centre x ≈ 194, cropped by the plate's foot | Warm line art in react-native-svg (`ref.layout.permission.line`), stroke 1.6, round caps and joins, all rotated 14° clockwise about the body's top-left corner, which sits 53.8 left of the plate's centre and 20 below its top: plate (118.7, 20), screen (142.7, 420); the top-right corner at (272.7, 452.4). **Body:** 134 wide unrotated, corners 6, running past the crop; fill `color.surface` (a walnut silhouette on the soot plate), outline `line.mid` = `color.textSecondary` #A89C8A (7.4:1 on canvas). **Inner screen:** inset 16 on the sides and top, corners 6, fill `color.canvas`, 1 pt edge in `line.context` = `color.textSecondary` at stroke opacity 0.3 (1.6:1). **Brackets:** the rangefinder's two upper corners, arms 22, inset 14 from the inner screen (unrotated corners (30, 30) and (104, 30); on screen (164.6, 456.4) and (236.3, 474.3)), `line.bracket` = `color.accent` #C89D54 (8.0:1). The lower pair falls below the crop. **Room corner** (context): a wall join on the screen's centre line from 44 below the inner top edge to the crop; two ceiling lines leave its top rising outward at 15°, each 30 long and fading to transparent along its length (`LinearGradient` stops `stopColor` `color.textSecondary`, `stopOpacity` 0.3 → 0). All context lines also fade out over the last `line.fade` 40 before the crop (an alpha `Mask` whose gradient runs `stopOpacity` 1 → 0; react-native-svg ignores a stop colour's alpha). No light pool, no shading, no island, no logo | A room in the viewfinder. Hidden from screen readers, no touches, never animated |
+| Title | x 20–373, line box y 556–586 (one line, ≈ 306 wide), `space.xl` 24 below the mount | `Text variant="narrativeTitle"` (Playfair Display SemiBold 24/30), `tone="primary"` `color.text` (16.0:1 on walnut), left-aligned. `accessibilityRole="header"` | "Let ESCAPD use the camera". The space in "the camera" is a non-breaking space (U+00A0), so a narrow column or large text never strands "camera" |
+| Body | x 20–373, line boxes y 594–686 (4 × 23), `space.sm` 8 below the title box | `Text variant="body"` (Plus Jakarta Sans Regular 16/23), `tone="secondary"` `color.textSecondary` (7.0:1 on walnut), left-aligned, ragged right; lines ≈ 305–318 wide | "You'll photograph three to six views of one room. Each photo is re-encoded on your phone first, so its location never leaves it. Nothing is sent until you develop the case." |
+| Inline notice (only when set) | x 20–373, line box `space.sm` 8 below the body, 18 per line. The sheet grows upward 26 for the first line and 18 for each further line; the primary keeps its 24 gap below it | `Text variant="caption"` (Plus Jakarta Sans Medium 13/18), `tone="secondary"` `color.textSecondary`. **Progress:** the text alone. **Error:** Phosphor `Warning` at `noticeIcon` 18, `ICON_WEIGHT` regular, in `color.warning` #D4883A (6.6:1 on walnut; an icon, never coloured text) at x 20–38, centred on the first caption line, then `space.sm` 8 and the text at x 46–373. **Thinking** (Library busy): one centred line, see States | See States. `accessibilityLiveRegion="polite"` |
+| Primary button | x 20–373 (353 × 48), y 710–758, `space.xl` 24 below the body | The live `Button variant="primary"`: fill `color.accent` #C89D54, `radius.control` 8 with no border or shadow, `minHeight` `hit.min` 48, padding `space.gutter` 20 / `space.md` 12. Label `type.control` (Plus Jakarta Sans SemiBold 15/20) in `color.onAccent` #171411 (7.3:1), centred | "Allow the camera" (Default); "Open Settings" (Denied) |
+| Quiet button | ≈ 208.5 × 48 (label ≈ 168.5 + 2 × `space.gutter`), centred on x 196.5: x 92–301, y 766–814, `space.sm` 8 below the primary | The live `Button variant="quiet"`: transparent, `radius.control` 8, `minHeight` 48, label `type.control` in `color.text` (16.0:1), `alignSelf: center` | "Choose photos instead"; "Choose a photo instead" in retake mode; "Go to the light table" when the roll is full |
+| Light-table button (3–5 plates, not retake mode, only) | ≈ 182 × 48 (label ≈ 142 + 40), centred, y 766–814, `space.sm` 8 below "Choose photos instead", which moves up to 710–758 (the primary to 654–702). The sheet grows upward 56: top 315, mount 340–476, title 500–530, body 538–630 (Denied: top 338). Still below the y 121 cap | The live `Button variant="quiet"`, as the row above | "Go to the light table" |
+| Bottom | y 814–852 (38 = `space.xs` 4 + 34 safe area) | Sheet fill runs to the screen edge | System home indicator |
 
-Check: 59 + 8 + 44 (back, 67–111) + 193 + 150 (zone, 304–454) + 24 + 68 (title) + 16 + 120 (body) + 28 + 52 (pill) + 8 + 44 (quiet) + 4 + 34 = 852.
+Check: 59 + 6 + 48 (back, 65–113) + 258 (to the sheet) + 1 + 24 + 136 (mount, 396–532) + 24 + 30 (title) + 8 + 92 (body) + 24 + 48 (primary) + 8 + 48 (quiet) + 4 + 34 = 852.
 
-Rhythm: 24 side gutter and 345 column; 150 zone; 24 from the crop to the title box; 34 title pitch; 16 between title and body boxes; 24 body pitch; 28 from the body box to the pill; 52 pill; 8 gap; 44 quiet; 38 to the bottom. Against the reference, the sheet stands 83.5 taller (top 304 vs 387.5): +34 for the second title line, +10 for the body pitch, +52 for the quiet button and its gap, −11.5 for the 52 pill, plus about −1 rounding at the bottom.
+Rhythm: 20 side gutter and 353 column, the live Sheet's; 1 top edge; 4 to the inner rule; 24 to the mount; 136 mount (4 + 128 + 4); 24 to the title; 30 title; 8 to the body; 23 body pitch; 24 to the primary; 48 buttons; 8 between buttons; 38 to the bottom. Against Noir's 548 the sheet is 67 shorter (481): the title sets on one line (−38), the body on 4 lines of 23 (−28), the top edge, gap and mount take 161 against Noir's 150 zone (+11), the title-to-body and body-to-button gaps are 8 / 24 against 16 / 28 (−12), and the buttons are 48 + 48 against 52 + 44 (0).
 
 ### Tappable elements
 
-Screen-reader order: back arrow → title → body → notice (when set) → primary pill → quiet button → light-table button (3–5 plates). When the sheet enters, and after any switch to or from Denied, accessibility focus moves to the title (header). Keyboard and switch focus: back arrow → primary pill → quiet button → light-table button (3–5 plates). The sheet, zone, pool, illustration and text are not focusable (`accessible={false}` on the pool and drawing).
+Screen-reader order: back → title → body → notice (when set) → primary → quiet button → light-table button (3–5 plates). When the sheet enters, and after any switch to or from Denied, accessibility focus moves to the title (header). Keyboard and switch focus: back → primary → quiet button → light-table button (3–5 plates); the notice and thinking lines are never focus stops. The sheet, rule, mount, plate, drawing and text are not focusable.
 
 | Element | Hit area ≥ 44 | Action in ESCAPD |
 |---|---|---|
-| Back arrow | 44 × 44 at (43, 89) + `hitSlop` 2 → 48 × 48 | `router.back()`, or `router.replace('/')` (the 01 hub) when there is no history. Retake mode: `router.back()` to `/capture/review`, plate unchanged. The roll stays in memory (`roll.ts`), so there is no confirm. Live in every state, including Checking and Requesting. Never disabled. |
-| Android hardware back | System | Same as the back arrow in every state. While the OS permission dialog is open, the dialog handles back itself. Android treats that as a deny that can still ask again, so the screen stays on Default. |
-| "Allow the camera" | 345 × 52 | `requestPermission()` shows the OS alert with the app.json string ("ESCAPD uses the camera to photograph your room so it can become a case. Photos are only used to build your case."). **Granted:** see Granted. **Denied, `canAskAgain` false:** switches in place to Denied. **Denied, can still ask (Android first deny):** stays on Default. **Throws:** stays on Default with the error notice. |
-| "Open Settings" (Denied) | 345 × 52 | `Linking.openSettings()`. **Build requirement:** an `AppState` listener re-checks on `active` (`getCameraPermissionsAsync()`). If access is now granted, it goes to Granted. If not, it stays on Denied with no notice. Today's code has no such re-check. |
-| "Choose photos instead" | ≈ 212 × 44 | `ImagePicker.launchImageLibraryAsync`, multi-select up to 6 minus plates taken (1 in retake mode, labelled "Choose a photo instead"). Each photo goes through `processPhoto` → `addPlate`. If the roll reaches ≥ 3, it pushes `/capture/review` (light table). Retake mode: `replacePlate` → `router.back()` to `/capture/review`. Below 3 plates it stays here and shows the progress notice. |
-| "Go to the light table" (3–5 plates, not retake: second quiet button) | ≈ 212 × 44 (label + 32 × 44) | Pushes `/capture/review`. Without it, a player without the camera who backs out of the light table could only get back by picking another photo (cancelling the picker navigates nowhere). |
-| "Go to the light table" (roll full: replaces "Choose photos instead" in the same slot) | label + 32 × 44 | Pushes `/capture/review`. |
-| Sheet, zone, pool, illustration, text | — | Not tappable. No swipe-to-dismiss: the sheet is this route's state, not a modal. |
+| Back | 48 round at (43, 89) + `hitSlop` 4 → 56 × 56 | `router.back()`, or `router.replace('/')` (the 01 hub) when there is no history. Retake mode: `router.back()` to `/capture/review`, plate unchanged. The roll stays in memory (`roll.ts`), so there is no confirm. Live in every state, including Checking, Requesting and Library busy. Never disabled. |
+| Android hardware back | System | Same as the back control in every state, only while /capture is the focused route. While the OS permission dialog is open, the dialog handles back itself; Android treats that as a deny that can still ask again, so the screen stays on Default. |
+| "Allow the camera" | 353 × 48 (+ the Button's `hitSlop` 4) | `requestPermission()` shows the OS alert with the app.json string. **Granted:** see Granted. **Denied, `canAskAgain` false:** switches in place to Denied. **Denied, can still ask (Android's first deny):** stays on Default. **Throws:** stays on Default with the error notice. |
+| "Open Settings" (Denied) | 353 × 48 | `Linking.openSettings()`. On return the shell's `AppState` listener re-reads the permission on `active` (`getPermission()`): a grant goes to Granted; otherwise the sheet stays on Denied with no notice. |
+| "Choose photos instead" | ≈ 208.5 × 48 | `useLibraryImport().pick()`: `ImagePicker.launchImageLibraryAsync`, multi-select up to 6 minus plates taken (1 in retake mode, labelled "Choose a photo instead"). Each photo goes through `processPhoto` → `addPlate`, one at a time. If the roll reaches ≥ 3, it pushes `/capture/review`. Retake mode: `replacePlate` → `router.back()` to `/capture/review`. Below 3 plates it stays here with the progress notice. |
+| "Go to the light table" (3–5 plates, not retake) | ≈ 182 × 48 | Pushes `/capture/review`. |
+| "Go to the light table" (roll full: in "Choose photos instead"'s slot) | ≈ 182 × 48 | Pushes `/capture/review`. |
+| Sheet, rule, mount, plate, drawing, text | — | Not tappable. No swipe-to-dismiss and no handle: the sheet is this route's state, not a modal. |
 
 ### States
 
-- **Checking:** lasts until both `permission !== null` and, outside retake mode, the guide-seen check (session flag, then AsyncStorage `escapd:onboarding:capture-guide`) have resolved. It shows flat `ref.color.ground` #050505 plus the live bare back arrow only. There is no sheet, no camera, no spinner and no white ground (the reference look's flash is gone). If Checking runs past ~1 s, one non-rotating thinking line, "Opening the rangefinder", appears in `ref.type.meta` (Geist Regular 13/18), centred at (196.5, 426), with `ref.motion.thinking.shimmer` (base `ref.color.meta` #8A8D91, highlight `ref.color.bright` #F2F2F2, band 0.8, 2000 ms linear). Its a11y label is the same text. Under reduced motion it is a static `ref.color.read` line. It stops the moment Checking ends.
+- **Checking:** lasts until `permission !== null` and, outside retake mode, the guide-seen check have both resolved. The route's `color.canvas` and grain plus the live back control only: no sheet, no camera, no spinner. Past ~1 s (`thinkingDelay` 1000) one non-rotating line, "Opening the rangefinder", appears centred on the screen (line box y 417–435, centre (196.5, 426)): `ThinkingStates tone="warm"` in `type.caption` (Plus Jakarta Sans Medium 13/18), the sweep `ref.motion.thinking.shimmerWarm` from `color.textSecondary` to `color.text` (band 0.8, 2000 ms linear). Its a11y label is the same text, announced once. Under reduced motion it is a still `color.textSecondary` line. It stops the moment Checking ends.
   - **Guide not seen:** `router.replace('/capture/guide')`. No sheet ever renders.
   - **Guide seen (or retake mode), not granted:** the sheet rises with `motion.sheetSpring`. This is the only path to the sheet.
-  - **Granted:** straight to the rangefinder with no sheet. It fades in over `motion.sceneCrossfade` 200 ms while the bare arrow crossfades into 02's `ref.button.icon` at (43, 89), as in Granted (reduced motion: one `motion.reducedFade` 140 ms crossfade). A returning player with access sees only ground and the back arrow until 02 appears.
+  - **Granted:** straight to the rangefinder with no sheet; it fades in over `motion.sceneCrossfade` 200 ms (reduced motion: `motion.reducedFade` 140 ms) while this back control fades out over the same time into 02's at the same centre (43, 89).
 - **Default** (undetermined, can ask): the Layout table as written.
-- **Pressed:** colour changes only, over `ref.motion.control` (120 ms ease-out). There is no opacity change and no scale.
-  - Pill fill: `ref.color.bright` #F2F2F2 → `ref.color.brightPressed` #D4D4D4.
-  - Quiet label: `ref.color.read` #A6A9AD → `ref.color.bright` (`ref.button.quiet.pressedLabel`).
-  - Back glyph: bright → read (`ref.button.bare.pressedGlyph`).
-- **Disabled:** `ref.button.disabledOpacity` 0.4 on the whole control. It applies only to the quiet button(s) during Requesting, and to the pill and the quiet button(s) during Library busy. The back arrow is never disabled.
-- **Focus:** `ref.focus` is a 2 pt `ref.color.bright` outline at a 2 pt offset that follows the control's shape:
-  - pill: a 349 × 56 stadium (`ref.radius.pill`)
-  - each quiet button, including the light-table one: a (label + 36) × 48 stadium
-  - back arrow: a 48 circle around the 44 box.
-
-  The outline stays visible for as long as the control has focus.
-- **Requesting** (after "Allow the camera"): the pill keeps its `ref.color.bright` fill and its "Allow the camera" label, ignores taps and sets `accessibilityState.busy`. No spinner: the OS alert covers the screen until `requestPermission()` resolves. The quiet button(s) are at 0.4 and the back arrow stays live.
-- **Granted:** the rangefinder opens at the next untaken plate: plate I "From the doorway", counter I on an empty roll; after library picks, e.g. plate III "The busiest wall", counter III; with 6 plates, 02's Roll full. Retake mode opens the retaken plate's prompt and numeral.
-  - The sheet slides out downward with `motion.sheetSpring`, while the rangefinder (mounted only now) fades in over `motion.sceneCrossfade` 200 ms on the same ground.
-  - The bare arrow crossfades into 02's `ref.button.icon` (44 round, `ref.color.panel` #0E0E0E fill, 1 pt `ref.color.hairline` #222222) at the same centre (43, 89).
-  - Reduced motion: a single `motion.reducedFade` 140 ms crossfade.
-- **Denied, can't ask again:** new copy.
-  - Title "The camera is off" (`ref.type.statement`, one line, ≈ 250 wide).
-  - Body "ESCAPD can't ask again from here. Turn on Camera for ESCAPD in Settings, or choose photos you've already taken." (111 characters, 3 lines).
-  - The pill reads "Open Settings"; the quiet button is unchanged.
-  - The illustration is unchanged: no red, no slash, no blame.
-  - Geometry: title 560–594, body 610–682, zone 386–536, sheet top 386 (82 lower than Default); pill and quiet unchanged. The text crossfades over `motion.reducedFade` 140 ms.
-- **Height changes** (Denied copy, notice in or out): the sheet top moves with `motion.sheetSpring` and its bottom stays fixed. Under reduced motion the top moves instantly, with the 140 ms text crossfade.
-- **Library busy:** after the picker closes, `fromLibrary` runs `processPhoto` one photo at a time on up to 6 picks (ImageManipulator, long edge 1600, JPEG 0.8). That takes several seconds after the OS UI has gone, so it is a Thinking state.
-  - Controls: the quiet button(s) keep their labels at `ref.button.disabledOpacity` 0.4, ignore taps and set `accessibilityState.busy`, with no spinner. The pill is also at 0.4. The back arrow stays live.
-  - Line: one thinking line in the notice slot (`ref.space.sm` 8 below the body box; the sheet grows upward 26 with `motion.sheetSpring`), in `ref.type.meta` Geist Regular 13/18, centred on x 196.5. It shows real progress: "Re-encoding photo 1 of 4", "Re-encoding photo 2 of 4", and so on, where the last number is the count picked. There is no timed rotation. Each time the count changes it swaps with `ref.motion.thinking`: over swap 150 ms ease-in-out, the old line rises 8 (distance) and fades out, and the new one waits gap 50 ms, then rises in from 8 below. The shimmer is `ref.motion.thinking.shimmer`: base `ref.color.meta` #8A8D91, highlight `ref.color.bright` #F2F2F2, band 0.8 × line width, left to right, 2000 ms linear, repeating. A hidden sizer holds the longest string, so the box never resizes mid-swap.
-  - Accessibility: the moving copies are hidden from screen readers. The container has `accessibilityLabel` "Re-encoding your photos" and `accessibilityLiveRegion="polite"`.
-  - Reduced motion: a static `ref.color.read` #A6A9AD line, whose text swaps with a `motion.reducedFade` 140 ms crossfade.
-  - End: the line stops the moment the loop ends. It gives way to the partial or error notice, the push to `/capture/review`, or `router.back()` in retake mode. For a single photo (retake mode, or one pick), the line shows only if the work is still running after 1 s.
-- **Library partial** (< 3 plates): progress notice in `ref.color.meta`: "1 plate on the roll. A case needs at least three." / "2 plates on the roll. A case needs at least three."
-- **Library error:** error notice, `Warning` 16 in `ref.color.error` #B5564F plus text in `ref.color.read`: "One of those photos couldn't be used. Try another."
+- **Pressed** (the live components; no colour animation): primary fill `color.accent` → `color.accentPressed` #DFB66C (label 9.7:1) and opacity 0.82; quiet buttons opacity 0.82; back opacity 0.75. No scale.
+- **Disabled:** the live Button's inactive state, opacity 0.45 on the whole control. It applies to the quiet button(s) during Requesting, to the primary while it loads, and to the primary and the quiet button(s) during Library busy. The back control is never disabled.
+- **Focus:** the brass ring the live components draw themselves (`ref.focus`: 2 pt `color.accent` at a 2 pt offset, 8.0:1 on canvas): around the primary a 361 × 56 rounded rect (radius 12, concentric with `radius.control`); around each quiet button a (width + 8) × 56 rounded rect; around the back control a 56 circle. No ring is composed around them. It shows for as long as the control has keyboard, D-pad or switch focus.
+- **Requesting** (after "Allow the camera"): the live `Button`'s `loading`: an `ActivityIndicator` in `color.onAccent` in place of the label, the button at 0.45, taps ignored, `accessibilityState` { disabled: true, busy: true }, its accessibility label still "Allow the camera"; a disabled Pressable stays focusable, so focus stays. The quiet button(s) are disabled at 0.45 and the back control stays live. The OS alert covers the screen until `requestPermission()` resolves.
+- **Granted:** the rangefinder opens at the next untaken plate (retake mode: the retaken plate). The sheet slides out downward with `motion.sheetSpring` while the rangefinder (mounted only now) fades in over 200 ms on the same ground and the back control crossfades into 02's. Reduced motion: one 140 ms crossfade, the sheet fading out.
+- **Denied, can't ask again:** new copy, crossfaded over `motion.reducedFade` 140 ms, and accessibility focus moves to the new title.
+  - Title "The camera is off" (`narrativeTitle`, one line, ≈ 189 wide).
+  - Body "ESCAPD can't ask again from here. Turn on Camera for ESCAPD in Settings, or choose photos you've already taken." (3 lines, y 617–686).
+  - The primary reads "Open Settings"; the quiet button is unchanged; the drawing is unchanged (no red, no slash).
+  - Geometry: sheet top 394 (23 lower than Default), mount 419–555, title 579–609; buttons unchanged.
+- **Height changes** (Denied copy, notice in or out, a light-table button joining): the sheet top moves with `motion.sheetSpring` and its bottom stays fixed; the controls hold still on screen. Under reduced motion the top moves at once, with the 140 ms text crossfade.
+- **Library busy:** after the picker closes, `useLibraryImport` runs `processPhoto` one photo at a time on up to 6 picks; that takes seconds after the OS UI has gone, so it is a Thinking state.
+  - Controls: the quiet button(s) keep their labels, disabled at 0.45 with `accessibilityState` { disabled: true, busy: true } and no spinner (the line carries the progress); they stay focusable, so the button that started the import keeps focus. The primary is disabled at 0.45 with its label. The back control stays live. The quiet buttons are drawn from the roll count as the import started until it ends (or, after the push to the light table, until /capture is focused again), so no light-table button joins mid-import.
+  - Line: in the notice slot (`space.sm` 8 below the body; the sheet grows 26), `ThinkingStates tone="warm"` in `type.caption`, centred on x 196.5, real progress: "Re-encoding photo 1 of 4", "Re-encoding photo 2 of 4", … (the last number is the count picked). Each count change swaps with `ref.motion.thinking` (swap 150 ms ease-in-out, gap 50, distance 8); the sweep is `shimmerWarm` (`color.textSecondary` → `color.text`, band 0.8, 2000 ms linear). A hidden sizer holds "Re-encoding photo N of N", so the box never resizes mid-swap.
+  - Accessibility: the drawn line is hidden; its wrapper is the status, label "Re-encoding your photos", `accessibilityLiveRegion="polite"`, announced once as it appears (count changes are not announced): one screen-reader element (`accessible` on iOS, `screenReaderFocusable` on Android) and never a keyboard or switch stop.
+  - Reduced motion: a still `color.textSecondary` line whose text swaps with a 140 ms crossfade.
+  - End: the line stops the moment the loop ends and gives way to the partial or error notice, the push to `/capture/review`, or `router.back()` in retake mode. For a single photo (retake mode, or one pick) it shows only if the work is still running after 1 s.
+- **Library partial** (< 3 plates): progress notice in `color.textSecondary`: "1 plate on the roll. A case needs at least three." / "2 plates on the roll. A case needs at least three."
+- **Library error:** error notice, `Warning` 18 in `color.warning` plus the text in `color.textSecondary`: "One of those photos couldn't be used. Try another." (one line ≈ 314 wide beside the icon).
 - **Request error** (`requestPermission()` throws): the same error notice, "The camera didn't answer. Try again." The screen stays on Default.
-- **Roll ready** (3–5 plates, not retake mode): a second `ref.button.quiet`, "Go to the light table", sits 8 below "Choose photos instead" and pushes `/capture/review`. The sheet is 52 taller (top y 252 in Default, 334 in Denied); see the Layout table. It is last in the screen-reader and focus order.
-- **Roll full** (6 plates): one quiet button, which reads "Go to the light table" in place of "Choose photos instead".
-- **Retake mode** (`?retake=<i>`): the back arrow's a11y label is "Cancel retake", and the quiet button reads "Choose a photo instead" (it picks 1). Copy and geometry are otherwise identical.
-- **Large text:** all text honours system scaling and never shrinks. The sheet grows upward to a cap at y 121 (the back arrow's 48 hit area ends at 113, plus `ref.space.sm` 8). Beyond that, the steps are:
-  1. The illustration zone, its pool and the crop rule are removed (decorative). This frees 150, and the title box then sits `ref.space.xl` 24 below the sheet's top hairline.
-  2. If the content still doesn't fit, the title, body and notice scroll inside the sheet while the pill and the quiet button(s) stay pinned. The pill grows with its label (min 52), and the label may wrap to 2 centred lines.
+- **Roll ready** (3–5 plates, not retake mode): a second quiet button, "Go to the light table", 8 below "Choose photos instead"; the sheet is 56 taller (top y 315 in Default, 338 in Denied). It is last in the screen-reader and focus order.
+- **Roll full** (6 plates): one quiet button, "Go to the light table", in place of "Choose photos instead".
+- **Retake mode** (`?retake=<i>`): the back control's a11y label is "Cancel retake" and the quiet button reads "Choose a photo instead" (it picks 1). The guide is never checked. Copy and geometry are otherwise identical.
+- **Large text:** all text honours system scaling and never shrinks. Button labels wrap and the buttons grow past 48. The sheet grows upward to a cap at y 121 (the back control's 48 box ends at 113, plus `space.sm` 8: safe top + `back.top` 6 + `hit.min` 48 + 8). Beyond that:
+  1. The illustration zone (the 24 gap and the 136 mount, 160 in all) is removed (decorative); the title then sits `space.xl` 24 below the sheet's top hairline.
+  2. If the content still doesn't fit, the title, body and notice scroll inside the sheet while the buttons stay pinned.
 - **Narrow and short screens:**
-  - 375 × 667 (safe 20 / 0): the column is 327. The title stays 2 lines and the body takes 5–6 lines. With a 0 bottom inset the bottom padding becomes `ref.space.lg` 16, because a 4 pt edge is too tight. The sheet is 526–550 tall (top y 117–141), below the 82 cap (back hit area to y 74, + 8), so the illustration stays.
-  - 430-wide phones: the title may fit on one line (column 382), which makes the sheet 34 shorter.
-- **Reduced motion:** opacity changes only. The sheet enter, the Denied swap and Granted each become a `motion.reducedFade` 140 ms fade. Control colour changes stay at `ref.motion.control` 120 ms, because they are colour, not movement. The thinking line (Checking past ~1 s, Library busy) is a static `ref.color.read` line whose text swaps with a 140 ms fade. The pool and illustration are static in every mode, and nothing on this screen loops.
+  - 375 × 667 (safe 20 / 0): column 335, plate 327. The title stays one line and the body 4 lines. With a 0 bottom inset the bottom padding is `space.lg` 16. The sheet is 459 tall (top y 208), well below the 82 cap (back box 26–74, + 8), so the plate stays. The back control is at x 19–67, y 26–74.
+  - 430-wide phones: column 390, plate 382; title and body keep their line counts.
+- **Reduced motion:** opacity changes only. The sheet's enter and exit, the Denied swap and Granted each become a `motion.reducedFade` 140 ms fade; height changes jump. The thinking lines are still `color.textSecondary` lines whose text swaps with a 140 ms fade. The drawing is static in every mode, and nothing on this screen loops.
 
 ### User notes
 
-- User note for this screen: none was given.
-- The brief's reference description, verbatim: "white bottom sheet with phone line illustration, bold "camera permission" title, short explanation, black pill "continue" button". How Noir honours it:
-  - The bottom sheet stays, but as an opaque graphite `ref.panel` instead of white.
-  - The phone line illustration stays and is now true grayscale line work under one `ref.light.object` pool, with ESCAPD's rangefinder brackets and a room corner on its screen.
-  - The bold title becomes a regular-weight `ref.type.statement` in bright, because Noir has no heavy display weights. Its weight comes from size and brightness.
-  - The short explanation stays at 5 lines.
-  - The black pill becomes Noir's white `ref.button.primary`, the high-contrast fill on a dark ground, reading "Allow the camera" in sentence case.
-  - The reference offers one action and no way out. ESCAPD keeps its quiet "Choose photos instead" path and a back arrow, so a player who refuses the camera can still go forward or leave.
+- User note for this screen: restyle it to the play screen's brass look (2026-10-25), with the live `Button` and `IconButton` and their brass focus ring.
+- The brief's reference description, verbatim: "white bottom sheet with phone line illustration, bold "camera permission" title, short explanation, black pill "continue" button". How the play look honours it:
+  - The bottom sheet stays, as the live Sheet's walnut drawer with its brass edge and inner rule instead of white.
+  - The phone line illustration stays, now warm line work on a small film plate, with brass rangefinder brackets and a room corner on its screen.
+  - The bold title becomes a Playfair SemiBold screen heading (`narrativeTitle`) in bone.
+  - The short explanation stays, in Jakarta, now 4 lines.
+  - The black pill becomes the live brass `Button` (8 pt corners), reading "Allow the camera" in sentence case.
+  - The reference offers one action and no way out. ESCAPD keeps its quiet "Choose photos instead" path and a back control, so a player who refuses the camera can still go forward or leave.
 
 ### Decisions
 
 1. **Case:** sentence case everywhere.
-2. **Title copy:** today's "Let ESCAPD use the camera" in `ref.type.statement`, set on two lines with a non-breaking "the camera". Denied copy, written new: "The camera is off" / "ESCAPD can't ask again from here. Turn on Camera for ESCAPD in Settings, or choose photos you've already taken."
-3. **Haze:** removed. A static `ref.light.object` pool on the illustration replaces it, clipped to the 150 pt zone so no light falls behind text.
-4. **Illustration brackets:** grayscale `ref.illustration.hero` #F2F2F2. The phone outline is `.mid`, the screen edge and room corner are `.context`, and nothing is coloured.
-5. **Body:** `ref.type.body` Geist Regular 17/24 in `ref.color.read`, 5 lines. Today's copy plus "Nothing is sent until you develop the case."
-6. **Additions:** the back arrow and the quiet button are accepted. The sheet is 548 tall, top y 304 [387.5].
-7. **White flash on return visits:** gone. Checking is plain `ref.color.ground` plus the back arrow, the same as 02's canvas.
-8. **Settings return:** an `AppState` `active` re-check (`getCameraPermissionsAsync`) is required in the build. This is a build note, not a question.
-9. **Surface, fonts, sheet corners, pill size** (first-pass questions): answered by Noir. Panel #0E0E0E on ground #050505; Geist / Geist Mono only; top corners 6; pill 52 with a `ref.type.button` 17/22 label.
-10. **Modal or route state:** route state of `/capture`, not dismissable, no scrim (unchanged).
+2. **Title copy:** "Let ESCAPD use the camera" (non-breaking "the camera"), now `narrativeTitle` on one line. Denied: "The camera is off" / "ESCAPD can't ask again from here. Turn on Camera for ESCAPD in Settings, or choose photos you've already taken." No copy changed in the restyle.
+3. **Light:** no light pool and no haze; the film plate is the drawing's only frame.
+4. **Illustration colours:** brackets `color.accent`; phone outline `color.textSecondary`; screen edge and room corner `color.textSecondary` at 0.3; body walnut, screen soot. Fades are `stopColor` + `stopOpacity`.
+5. **Body:** `type.body` (Jakarta 16/23) in `color.textSecondary`, 4 lines.
+6. **Additions:** the back control and the quiet button are kept. The sheet is 481 tall, top y 371.
+7. **No white flash:** Checking is the route's canvas and grain plus the back control, the ground 02 opens on.
+8. **Settings return:** the shell's `AppState` `active` re-check is built.
+9. **Surface, fonts, corners, buttons:** answered by the play look. Walnut sheet on soot, Playfair + Jakarta, `radius.sheet` 20, the live `Button` (48, `radius.control` 8) and `IconButton` (48 round).
+10. **Modal or route state:** route state of `/capture`, not dismissable, no scrim, and so no brass handle.
+11. **Requesting:** the live `Button`'s `loading` spinner (Noir showed none); Library busy keeps the quiet labels with no spinner, since the thinking line carries the progress.
+12. **Back control position:** centred on 02's back (43, 89), now with the live 48 IconButton; 02 uses the same `edge` 19 / `top` 6, so the crossfade doesn't jump.
 
 ### Needs you
 
-None.
+- **Focus ring on an inactive button.** The live `Button` draws its brass ring inside itself, so when a focused button goes inactive (Requesting's `loading`, or the quiet button that started a library import and keeps focus through Library busy) the ring dims with it to 0.45, about 2.4:1 on walnut, under the 3:1 a focus indicator needs. Fixing it means drawing the ring outside the dimmed layer in `src/components/Button.tsx` (shared, not this screen's file).
 
 ## 04 · First-time photo guide
 
-Reference: docs/refs/04-photo-tutorial.png (step structure only: four beats, a drawing over a title, an instruction and one button). The look is the play screen's: the light table's top bar and heading (app/capture/review.tsx), SceneView's Kodachrome mount and plate label (src/render/SceneView.tsx) and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), the kit's focus ring and control timing, and the screen's own `ref.layout.guide`. No Geist, no NoirText, no `ref.type` / `ref.color`, no light pool, no oxblood.
+Reference: docs/refs/04-photo-tutorial.png (step structure only: four beats, a drawing over a title, an instruction and one button). The look is the play screen's: the light table's top bar and heading (app/capture/review.tsx), SceneView's Kodachrome mount and plate label (src/render/SceneView.tsx) and /play's live buttons (src/components/Button.tsx, IconButton.tsx). 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), the live `Button` (`radius.control` 8, `minHeight` `hit.min` 48) and `IconButton`, `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), the kit's brass focus ring (`ref.focus`, drawn by the live Button and IconButton themselves), and the screen's own `ref.layout.guide`. No Geist, no NoirText, no `ref.type` / `ref.color`, no light pool, no oxblood.
 
 Route: `app/capture/guide.tsx` (`/capture/guide`; `?replay=1` when opened from 01's How you play sheet), rendering `src/screens/guide/PhotoGuide.tsx`. It is shown once, before the first camera session.
 
-Files: `PhotoGuide.tsx` (layout, routing, back, swipe, announcements), `CloseButton.tsx` (the live IconButton plus the kit's focus ring), `GuideArt.tsx` (mount, plate, plate label, the large-text sizing `artBox`), `art/` (the four scenes as data: `scenes.ts`, `geometry.ts`, `draw.ts`, `StepArt.tsx`), `GuideText.tsx` (title and body), `StepButton.tsx`, `ReplayErrorLine.tsx`, `stepper.tsx` (the crossfade), `swipe.ts`, `useReplayCheck.ts`, `copy.ts` (every word), `layout.ts`. Tests: `src/screens/guide/__tests__/guide-test.tsx` (behaviour and look) and `art-test.tsx` (drawings and plate sizing).
+Files: `PhotoGuide.tsx` (layout, routing, back, swipe, announcements), `CloseButton.tsx` (the live IconButton, which draws its own brass focus ring), `GuideArt.tsx` (mount, plate, plate label, the large-text sizing `artBox`), `art/` (the four scenes as data: `scenes.ts`, `geometry.ts`, `draw.ts`, `StepArt.tsx`), `GuideText.tsx` (title and body), `StepButton.tsx`, `ReplayErrorLine.tsx`, `stepper.tsx` (the crossfade), `swipe.ts`, `useReplayCheck.ts`, `copy.ts` (every word), `layout.ts`. Tests: `src/screens/guide/__tests__/guide-test.tsx` (behaviour and look) and `art-test.tsx` (drawings and plate sizing).
 
 ### Feel
 
-A four-plate briefing pulled from the darkroom file before the first shot. Each step is a warm line drawing set on a film plate, the same walnut Kodachrome mount the case is played on, with its brass plate number stamped underneath. Above it a brass mono stamp says where the player is; below it a Playfair heading and a short Jakarta instruction. One brass pill closes the page. The drawings are bone on soot, receding to taupe, with the viewfinder brackets in brass, as the camera's own brackets once were. Silk and grain lie under everything; nothing glows or moves except the 200 ms crossfade between steps.
+A four-plate briefing pulled from the darkroom file before the first shot. Each step is a warm line drawing set on a film plate, the same walnut Kodachrome mount the case is played on, with its brass plate number stamped underneath. Above it a brass mono stamp says where the player is; below it a Playfair heading and a short Jakarta instruction. One button, /play's own 8 pt-rounded kind, closes the page. The drawings are bone on soot, receding to taupe, with the viewfinder brackets in brass, as the camera's own brackets once were. Silk and grain lie under everything; nothing glows or moves except the 200 ms crossfade between steps.
 
-**Accent on this screen:** brass only. The stamp, the plate label, the mount's hairline and the drawn viewfinder brackets are `color.accent` #C89D54; steps 1–3's "Next" is the walnut brass secondary (brass hairline edge); step 4's "Open the camera" is the brass primary, the screen's one "go". Never `variant="signal"`.
+**Accent on this screen:** brass only. The stamp, the plate label, the mount's hairline and the drawn viewfinder brackets are `color.accent` #C89D54; steps 1–3's "Next" is the live walnut secondary Button (brass hairline edge); step 4's "Open the camera" is the live brass primary, the screen's one "go". Never `variant="signal"`.
 
 ### Layout, top to bottom
 
@@ -1016,11 +982,11 @@ Default, default text size. The title, body and button block is bottom-anchored,
 | Title | x 20–373 (353), line box 620–650 (one line) | `Text variant="narrativeTitle"` (Playfair Display SemiBold 24/30), `tone="primary"` `color.text`, left-aligned, `accessibilityRole="header"` | Step title (≤ 24 characters) |
 | Gap | 650–654 (`space.xs` 4) | — | — |
 | Body | x 20–373 (353), line boxes 654–677 and 677–700 | `Text variant="body"` (Plus Jakarta Sans Regular 16/23), `tone="secondary"` `color.textSecondary` (5.6:1 at the peak), left-aligned, at most 2 lines (≤ 70 characters) | Step instruction |
-| Status gap | 700–762 (62, `ref.layout.guide.ctaGap`): top 24, status line box 724–742 (18), bottom 20 | Empty except in replay's wait and error | — |
-| Step button | x 20–373 (353), y 762–814 (52). Label padX `space.xl` 24. With larger text the pill grows upward; its bottom stays at 814 | `PillButton scheme="brass"`: pill `ref.radius.pill` with `...curve`, no shadow. Steps 1–3 `variant="secondary"`: fill `color.raised` #1E1915, 1 pt `color.hairline` edge, label `color.text` (14.8:1). Step 4 `variant="primary"`: fill `color.accent` #C89D54, no edge, label `color.onAccent` #171411 (7.3:1). Label `type.control` (Plus Jakarta Sans SemiBold 15/20), centred | "Next" on steps 1–3, "Open the camera" on step 4 |
+| Status gap | 700–766 (66, `ref.layout.guide.ctaGap`): top 24 (`statusTop`), status line box 724–742 (18), bottom 24 (`statusBottom`) | Empty except in replay's wait and error | — |
+| Step button | x 20–373 (353), y 766–814 (48). Padding `space.md` 12 × `space.gutter` 20 around the label. With larger text the button grows upward; its bottom stays at 814 | The live `Button` (src/components/Button.tsx, /play's button): `radius.control` 8, `minHeight` `hit.min` 48, no shadow. Steps 1–3 `variant="secondary"`: fill `color.raised` #1E1915, 1 pt `color.hairline` edge, label `color.text` (14.8:1). Step 4 `variant="primary"`: fill `color.accent` #C89D54, no edge, label `color.onAccent` #171411 (7.3:1). Label `type.control` (Plus Jakarta Sans SemiBold 15/20), centred | "Next" on steps 1–3, "Open the camera" on step 4 |
 | Bottom | 814–852 (38) = safe bottom 34 + `space.xs` 4, as Pro | Silk | — |
 
-Check: 59 + 48 + 4 + 67 + 386 + 56 + 30 + 4 + 46 + 62 + 52 + 4 + 34 = 852.
+Check: 59 + 48 + 4 + 67 + 386 + 56 + 30 + 4 + 46 + 66 + 48 + 4 + 34 = 852. The live Button is 4 shorter than the pill it replaced, and the status gap takes those 4 (62 → 66, the status line now 24 clear above and below), so the mount, title and body keep their places.
 
 **Gutters.** `space.gutter` 20 on both sides for the top bar, title, body, status line and button (the light table's and Pro's gutter). The mount and the stamp are centred on x 196.5.
 
@@ -1032,9 +998,9 @@ The copy paraphrases `src/capture/slots.ts` (plates I–IV) and the light-table 
 
 | # | Stamp | Plate label | Title | Body | Scene (ESCAPD's own drawing) | Button |
 |---|---|---|---|---|---|---|
-| 1 | `BEFORE YOU SHOOT  ·  1 OF 4` | `ESCAPD 400  ·  STEP I` | Start at the doorway | One wide plate. Get the floor and two walls in. | A doorway frame (mid). Beyond it a room corner: the wall junction and the floor line along both walls (back). A hand (context, the wrist fading) holds the hero phone in front; its screen redraws the corner (back) between the brass brackets. | Brass secondary "Next" |
-| 2 | `BEFORE YOU SHOOT  ·  2 OF 4` | `ESCAPD 400  ·  STEP II` | Work around the room | The far corner, then the busiest wall. Let plates overlap. | A plan of the room outline (back) with three phone plan symbols, 20 × 40, corners 6, walnut-filled, no screen detail: at the doorway (plate I, mid), the far corner (plate II, current: phone and wedge hero) and the busiest wall (plate III, mid). The mid phones' wedges are context, fading over 40. The doorway and far-corner wedges overlap. No brackets. | Brass secondary "Next" |
-| 3 | `BEFORE YOU SHOOT  ·  3 OF 4` | `ESCAPD 400  ·  STEP III` | Get one close view | A desk, shelf, or table. Small things make good clues. | Top-down onto a desktop corner (mid; its two edges fade over the last 40). An open notebook and a key lie under the hero phone (back), the notebook's outer pages showing either side. The screen shows the key and the page (back) between the brass brackets, a stroke's width clear of them. No hand. | Brass secondary "Next" |
+| 1 | `BEFORE YOU SHOOT  ·  1 OF 4` | `ESCAPD 400  ·  STEP I` | Start at the doorway | One wide plate. Get the floor and two walls in. | A doorway frame (mid). Beyond it a room corner: the wall junction and the floor line along both walls (back). A hand (context, the wrist fading) holds the hero phone in front; its screen redraws the corner (back) between the brass brackets. | Walnut secondary "Next" |
+| 2 | `BEFORE YOU SHOOT  ·  2 OF 4` | `ESCAPD 400  ·  STEP II` | Work around the room | The far corner, then the busiest wall. Let plates overlap. | A plan of the room outline (back) with three phone plan symbols, 20 × 40, corners 6, walnut-filled, no screen detail: at the doorway (plate I, mid), the far corner (plate II, current: phone and wedge hero) and the busiest wall (plate III, mid). The mid phones' wedges are context, fading over 40. The doorway and far-corner wedges overlap. No brackets. | Walnut secondary "Next" |
+| 3 | `BEFORE YOU SHOOT  ·  3 OF 4` | `ESCAPD 400  ·  STEP III` | Get one close view | A desk, shelf, or table. Small things make good clues. | Top-down onto a desktop corner (mid; its two edges fade over the last 40). An open notebook and a key lie under the hero phone (back), the notebook's outer pages showing either side. The screen shows the key and the page (back) between the brass brackets, a stroke's width clear of them. No hand. | Walnut secondary "Next" |
 | 4 | `BEFORE YOU SHOOT  ·  4 OF 4` | `ESCAPD 400  ·  STEP IV` | Keep the case private | No people, mail, or lit screens. Lights on, hold steady. | The hero phone frames a bookshelf and a lit lamp (mid; three ray ticks above the shade, line only); its screen redraws them (mid) between the brass brackets. An envelope and an open laptop with three lit screen lines sit below, outside the frame (back, no fade). | Brass primary "Open the camera" |
 
 ### Tappable elements
@@ -1044,9 +1010,9 @@ Screen-reader order: Close → stamp → title → body → button (the mount, d
 | Element | Hit area ≥ 44 | Action |
 |---|---|---|
 | Close (X) | 48 × 48 visual + `hitSlop` 4 each side = 56 × 56, held inside the top bar by its 4 bottom padding | **First run:** skips the guide. Sets the session flag (`captureGuideSeen = true`), starts the AsyncStorage write `escapd:onboarding:capture-guide` = "1" without awaiting it, then `router.replace({ pathname: '/capture', params })`, carrying the route's params. accessibilityLabel "Skip the guide". **Replay:** sets the same flags, then `router.back()` to the hub (`router.replace('/')` with no history). accessibilityLabel "Close the guide". |
-| Next (steps 1–3) | 353 × 52 (taller with large text), the whole pill | Moves to step n + 1. The drawing, plate label, stamp, title and body crossfade; the mount, Close and the button stay put. Taps during the 200 ms transition are ignored. |
-| Open the camera (step 4) | 353 × 52 (taller with large text) | Sets the session and storage flags, then `router.replace('/capture')` with the carried params. The opener has already checked access; /capture shows 03 if the camera isn't allowed yet, otherwise 02 at plate I. **Replay:** in order, sets the session flag and starts the storage write, then calls `openCapture({ replace: true, skipGuide: true })` (01's YOUR ROOM check). With access it replaces to `/capture`; without, to `/account?next=back` (guest), `/pro?cap=<n>` (no `custom_rooms` entitlement) or `/capture/develop?from=hub` (monthly cap reached). Whichever route it takes, the guide leaves the stack and back returns to the hub. Pending and failure: Replay wait and Replay error. |
-| Horizontal swipe | Full width, y 111–762 (between the top bar and the button) | `usePanGesture` with `activeOffsetX` ±16, `failOffsetY` ±16 (`ref.layout.guide.swipe`). Commits on release when \|dx\| ≥ 56 or \|vx\| ≥ 500 pt/s. Left = next (steps 1–3), right = previous (steps 2–4). The content doesn't track the finger; a committed swipe runs the same crossfade. A left swipe on step 4 and a right swipe on step 1 do nothing. The buttons remain the accessible path. |
+| Next (steps 1–3) | 353 × 48 (taller with large text), the whole button, plus the live `hitSlop` 4 (361 × 56) | Moves to step n + 1. The drawing, plate label, stamp, title and body crossfade; the mount, Close and the button stay put. Taps during the 200 ms transition are ignored. |
+| Open the camera (step 4) | 353 × 48 (taller with large text), plus `hitSlop` 4 | Sets the session and storage flags, then `router.replace('/capture')` with the carried params. The opener has already checked access; /capture shows 03 if the camera isn't allowed yet, otherwise 02 at plate I. **Replay:** in order, sets the session flag and starts the storage write, then calls `openCapture({ replace: true, skipGuide: true })` (01's YOUR ROOM check). With access it replaces to `/capture`; without, to `/account?next=back` (guest), `/pro?cap=<n>` (no `custom_rooms` entitlement) or `/capture/develop?from=hub` (monthly cap reached). Whichever route it takes, the guide leaves the stack and back returns to the hub. Pending and failure: Replay wait and Replay error. |
+| Horizontal swipe | Full width, y 111–766 (between the top bar and the button) | `usePanGesture` with `activeOffsetX` ±16, `failOffsetY` ±16 (`ref.layout.guide.swipe`). Commits on release when \|dx\| ≥ 56 or \|vx\| ≥ 500 pt/s. Left = next (steps 1–3), right = previous (steps 2–4). The content doesn't track the finger; a committed swipe runs the same crossfade. A left swipe on step 4 and a right swipe on step 1 do nothing. The buttons remain the accessible path. |
 | iOS swipe-back | System left edge | Enabled on step 1 only (`navigation.setOptions({ gestureEnabled: step === 0 })`). Leaves to the opener without setting the flag. |
 | Android hardware back | — | Step 2 or later: the previous step, same crossfade. Step 1: `router.back()` to the opener (`router.replace('/')` with no history), without setting the flag. Ignored mid-transition and once the guide is leaving. |
 | Stamp, mount, drawing, plate label, title, body | — | Not tappable. The band holding the mount is `accessible={false}` and hidden from screen readers; the stamp's accessibilityLabel is "Before you shoot. Step n of 4". |
@@ -1063,19 +1029,19 @@ Screen-reader order: Close → stamp → title → body → button (the mount, d
 
 ### States
 
-- **Default:** steps 1–4 as in the tables, the step 1–3 button the brass secondary.
-- **Final step:** the button becomes the brass primary. The kit cross-fades fill (`color.raised` #1E1915 → `color.accent` #C89D54) and label (`color.text` → `color.onAccent`) over `ref.motion.control` (120 ms ease-out); the secondary's 1 pt brass edge drops at the switch, and the label text swaps from "Next" to "Open the camera" at its start. The slot already reserves the longer label's height, so nothing above moves. Going back from step 4 reverses it.
-- **Pressed:** the pill changes colour over 120 ms ease-out with no opacity or scale: secondary fill to `color.surface` #14110E, primary fill to `color.accentPressed` #DFB66C (onAccent 9.7:1). Close takes the live IconButton's pressed state: opacity 0.75.
-- **Focus:** the kit's ring (`ref.focus`: 2 pt #F2F2F2, 2 pt offset) on Close (a 56 circle; composed into the live IconButton in CloseButton.tsx, which draws none of its own) and on the pill (following the pill). Never removed while focused.
+- **Default:** steps 1–4 as in the tables, the step 1–3 button the live walnut secondary.
+- **Final step:** the button becomes the live brass primary, at once (the live Button has no cross-fade): fill `color.raised` #1E1915 → `color.accent` #C89D54, label `color.text` → `color.onAccent`, the secondary's 1 pt brass edge drops, and the label text swaps from "Next" to "Open the camera". The slot reserves the longer label's height (as either variant: the secondary's edge adds 2 once the label outgrows 48), so nothing above moves. Going back from step 4 reverses it.
+- **Pressed:** the live Button's press: the whole button at opacity 0.82, and the primary's fill to `color.accentPressed` #DFB66C (onAccent 9.7:1). No scale. Close takes the live IconButton's pressed state: opacity 0.75.
+- **Focus:** the kit's ring (`ref.focus`: 2 pt brass `color.accent` #C89D54, 2 pt offset, 8:1 on the canvas), drawn by the live controls themselves: Close's IconButton draws the pill ring (a 56 circle), the step button's live Button the control ring (radius `radius.control` + 4 = 12, concentric with its corners). The guide composes no ring. Never removed while focused.
 - **Transition:** the drawing, plate label, stamp, title and body crossfade over `motion.sceneCrossfade` 200 ms, with no drift and no counter roll. The mount, its walnut and canvas, Close and the button stay still. Brackets appear with their drawing and don't settle or scale.
-- **Reduced motion** (`useTheme().reducedMotion`): the crossfade becomes `motion.reducedFade` 140 ms opacity. The button's colour change stays at 120 ms (a colour change, not movement). Nothing else animates.
+- **Reduced motion** (`useTheme().reducedMotion`): the crossfade becomes `motion.reducedFade` 140 ms opacity. The buttons' press feedback is an opacity change and stays. Nothing else animates.
 - **Disabled:** none. Close and the button are always enabled; taps during a transition are ignored rather than shown as disabled.
 - **Loading:** none in first-run mode (the opener owns `openCapture()`'s wait, and all art is bundled SVG, drawn on the first frame). Replay has one real wait (below).
-- **Replay wait:** on tap, "Open the camera" keeps its brass fill and label, ignores further taps and sets `accessibilityState={{ busy: true, disabled: true }}` (focus stays). If the check runs past 1 s (`ref.layout.guide.thinkingDelay` 1000), one line appears in the status slot: `ThinkingStates tone="warm"`, "Checking the file", no rotation, live `type.caption` (Plus Jakarta Sans Medium 13/18), centred on x 196.5, line box y 724–742, shimmer `ref.motion.thinking.shimmerWarm` (base `color.textSecondary`, highlight `color.text`, band 0.8, 2000 ms linear), accessibilityLabel "Checking access", announced on mount. It unmounts the moment the check returns or navigates. Reduced motion: the still line in `color.textSecondary`.
-- **Replay error:** same slot, y 724–742. Phosphor `Warning` 16 (`ref.layout.guide.errorIcon`) in `color.warning` #D4883A (5.3:1; the error red is 2.3:1 on dark, so it is never used here) at x 20, centred on the first caption line and hidden from screen readers; then 8 (`space.sm`); then "Couldn't reach the darkroom. Try again." in `type.caption`, `tone="secondary"` (≈ 265 wide, one line in the 329 left). The row is a polite live region (announced on iOS) but not an accessibility element, so focus stays Close → button. The button returns to idle and stays live; a retry clears the line and re-enters Replay wait. Leaving step 4 (back or swipe) drops a running check.
+- **Replay wait:** on tap, "Open the camera" goes into the live Button's `loading`: a small native `ActivityIndicator` (20 × 20) in `color.onAccent` takes the label's place, centred at (196.5, 790); the button keeps its brass fill and its height (at larger text, the label's height), drops to the live 0.45 opacity, ignores further taps and sets `accessibilityState={{ busy: true, disabled: true }}`. Its accessibility label stays "Open the camera". If the check runs past 1 s (`ref.layout.guide.thinkingDelay` 1000), one line appears in the status slot: `ThinkingStates tone="warm"`, "Checking the file", no rotation, live `type.caption` (Plus Jakarta Sans Medium 13/18), centred on x 196.5, line box y 724–742, shimmer `ref.motion.thinking.shimmerWarm` (base `color.textSecondary`, highlight `color.text`, band 0.8, 2000 ms linear), accessibilityLabel "Checking access", announced on mount. It unmounts the moment the check returns or navigates. Reduced motion: the still line in `color.textSecondary`.
+- **Replay error:** same slot, y 724–742. Phosphor `Warning` 16 (`ref.layout.guide.errorIcon`) in `color.warning` #D4883A (5.3:1; the error red is 2.3:1 on dark, so it is never used here) at x 20, centred on the first caption line and hidden from screen readers; then 8 (`space.sm`); then "Couldn't reach the darkroom. Try again." in `type.caption`, `tone="secondary"` (≈ 265 wide, one line in the 329 left). The row is a polite live region (announced on iOS) but not an accessibility element, so focus stays Close → button. The button returns to idle (label back, full opacity) and stays live; a retry clears the line and re-enters Replay wait. Leaving step 4 (back or swipe) drops a running check.
 - **Error:** storage errors are silent. A failed read shows the guide once per session; a failed write shows it again on the next launch. Neither can loop: Close and "Open the camera" set the session flag before leaving, and /capture checks it first. No network calls in first-run mode.
 - **Permission denied:** not handled here; 03 handles the camera after the guide. The advice also applies to "Choose photos instead".
-- **Large text:** text honours system scaling and never shrinks. Close (48) stays pinned; the stamp's first line stays centred on it and a wrap grows downward (two lines still fit the 48 row). The title, body and pill grow upward from 814: the pill first (minimum 52; the label may wrap within padX 24), then the title and body rise. The band between the top bar and the title gives way in order: the 56 under the mount down to `space.xl` 24, then the 67 above it down to 24, then the plate shrinks evenly (the drawing scales with it, so strokes thin in proportion), keeping 24 clear above and below. The plate label stays at text size and wraps within the plate width; its measured height comes out of the plate. Below a 160 high plate (`ref.layout.guide.plate.minHeight`: scale 0.45, art box ≈ 109 × 121) the whole mount hides. If the block still doesn't fit, the title and body scroll while the button stays pinned (scrolling is enabled only on overflow, so at rest it is no focus stop).
+- **Large text:** text honours system scaling and never shrinks. Close (48) stays pinned; the stamp's first line stays centred on it and a wrap grows downward (two lines still fit the 48 row). The title, body and button grow upward from 814: the button first (its label's lines + 24, never under 48, + 2 for the secondary's edge; the label may wrap within padX 20), then the title and body rise. The band between the top bar and the title gives way in order: the 56 under the mount down to `space.xl` 24, then the 67 above it down to 24, then the plate shrinks evenly (the drawing scales with it, so strokes thin in proportion), keeping 24 clear above and below. The plate label stays at text size and wraps within the plate width; its measured height comes out of the plate. Below a 160 high plate (`ref.layout.guide.plate.minHeight`: scale 0.45, art box ≈ 109 × 121) the whole mount hides. If the block still doesn't fit, the title and body scroll while the button stays pinned (scrolling is enabled only on overflow, so at rest it is no focus stop).
 - **Narrow screen:** gutters stay 20; the column is width − 40 (335 at 375, 320 at 360). The mount (278) stays centred. The stamp's slot is width − 144; it fits on one line down to 354 wide and wraps to two lines below that. A short screen (375 × 667, safe 20 / 0) gives the band 397: the voids go to 24 each and the plate shrinks to 315 tall (scale 0.89).
 - **Replay:** identical layout. Only Close's behaviour and step 4's access check differ.
 
@@ -1096,23 +1062,24 @@ How the note is honoured:
 3. **Seen flag:** per device in AsyncStorage `escapd:onboarding:capture-guide`, plus the in-memory session flag.
 4. **Replay:** "How to photograph a room" in 01's How you play sheet opens `/capture/guide?replay=1`.
 5. **Swipe:** horizontal swipe also moves between steps; the buttons stay.
-6. **Buttons:** steps 1–3 "Next" are `PillButton scheme="brass" variant="secondary"` (walnut, brass edge); step 4 "Open the camera" is `variant="primary"` (brass), the screen's one "go". No oxblood anywhere.
+6. **Buttons:** /play's live `Button` (radius 8, 48 minimum). Steps 1–3 "Next" are `variant="secondary"` (walnut, brass edge); step 4 "Open the camera" is `variant="primary"` (brass), the screen's one "go", and replay's wait is its `loading`. No oxblood anywhere. (2026-10-25, round 2: replaces the kit's brass-scheme pill.)
 7. **Close control:** the live IconButton (48, transparent, X in `color.text`), as the light table and `/play`, on the right; a 48 spacer on the left keeps the stamp centred.
 8. **Illustrations:** four warm line scenes (`ref.layout.guide.line`), each on a film-plate mount: walnut `radius.mount` 30 with a brass hairline around a 3:4 canvas plate at `radius.image` 24 with a rim, and a brass plate label. The light pool is gone. Hero in `color.text`, mid in `color.textSecondary`, back and context in `color.textSecondary` at 0.7 and 0.3, brackets brass.
 9. **Plate label:** "ESCAPD 400  ·  STEP I" to "STEP IV", after SceneView's "ESCAPD 400  ·  PLATE I". "STEP", not "PLATE", because step 4 is a rule, not a plate, and plates I–IV already name the photos.
 10. **Paywall timing:** access is checked before the guide, in `openCapture()`, so a player without access never sees it on first run (see Entry rule).
 11. **Ground, type, gutter, bottom inset:** `color.canvas` + silk + grain; Playfair `narrativeTitle` for the title, Jakarta `body` for the instruction, JetBrains Mono `stamp` for labels; gutter `space.gutter` 20; bottom = safe 34 + `space.xs` 4, the same as Pro.
 12. **Errors on dark:** the warning icon in `color.warning` with the message in `color.textSecondary`, never error-red text.
+13. **Focus ring:** brass (`ref.focus.color` = `color.accent`), drawn by the live IconButton and Button themselves; CloseButton.tsx composes none (round 2).
 
 ### Needs you
 
 1. **Back and context line tones.** The live palette has no warm grey dimmer than `color.textSecondary`, so back and context lines are `textSecondary` at stroke opacity 0.7 and 0.3. Where two translucent strokes meet (the room corner in step 1, the notebook spine in step 3, the overlapping wedges in step 2) the overlap reads slightly brighter. Accept it, or add an opaque live tone (for example a `textTertiary` #786F63, which is `textSecondary` at 0.7 over the canvas) and the drawings switch to it?
-2. **Focus ring colour.** The guide uses the kit's ring, `ref.focus` #F2F2F2 (Noir white), on Close and on the pill. A brass or bone ring would suit this look better; it is a kit change, not a guide one.
-3. **Close's pressed state** is the live IconButton's 0.75 opacity (the play screen's pattern), while the pill presses with a colour change. Keep the two, or give the live IconButton a colour press?
+2. **Focus ring on the walnut "Next".** The live Button draws its ring as a child, and Yoga places a child inside its parent's border, so on the bordered secondary the ring sits 1 pt closer than on the primary (1 clear of the edge, not 2; radius 12 on an 8 + 3 offset). Drawing the secondary's edge as a child layer in `Button` would make it exact: a kit change, not a guide one.
+3. **Replay wait's spinner.** The kit pill kept "Open the camera" readable while it waited (no spinner; the thinking line says what is happening after 1 s). The live `loading` swaps the label for a spinner and dims the button to 0.45, so in a short check the spinner flashes. Accept the live pattern, or give the live Button a "busy, keep the label" mode?
 
 ## 05 · Pro (test paywall)
 
-Reference: none (no screenshot exists). The look is the play screen's: the light table's top bar and manila slip (app/capture/review.tsx), the case-closed dossier's Playfair title (app/tutorial/complete.tsx), and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), the kit's focus ring and control timing, and the screen's own `ref.layout.pro` (`spinnerDelay` 300, `noticeIcon` 18). No Geist, no NoirText, no `ref.type`, no light pool.
+Reference: none (no screenshot exists). The look is the play screen's: the light table's top bar and manila slip (app/capture/review.tsx), the case-closed dossier's Playfair title and its live buttons (app/tutorial/complete.tsx, src/components/Button.tsx). 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`), plus `ref.background` (the silk), the live `Button` (`radius.control` 8, `minHeight` `hit.min` 48), the kit's brass focus ring (`ref.focus`, drawn by the live Button itself) and control timing (the fades), and the screen's own `ref.layout.pro` (`spinnerDelay` 300, `noticeIcon` 18). No Geist, no NoirText, no `ref.type`, no light pool.
 
 Route: `app/pro.tsx` (`/pro`, optional `?cap=<n>`), re-exporting `src/screens/pro/ProScreen.tsx`. `openCapture()` (section 04, Entry rule) pushes it, or replaces with it, when the player has an email account but no `custom_rooms` entitlement. It sits in the root Stack with the same fade as every route; the iOS edge swipe stays on.
 
@@ -1120,9 +1087,9 @@ Files: `ProScreen.tsx` (layout, Loading indicator, fade), `BenefitSlip.tsx` (the
 
 ### Feel
 
-A case-file cover from the darkroom dossier. A brass mono stamp at the top names the file, then a long stretch of silk and grain. Low on the page sit one Playfair statement and a manila slip, typed in carbon ink, listing what Pro does. Below them come one brass pill (the screen's only "go") and a quiet way out. There is no art, mount, price, countdown, badge, oxblood or decorative motion: the cover says what the player gets and steps aside. In test builds a small mono stamp says plainly that the purchase is a test.
+A case-file cover from the darkroom dossier. A brass mono stamp at the top names the file, then a long stretch of silk and grain. Low on the page sit one Playfair statement and a manila slip, typed in carbon ink, listing what Pro does. Below them come one brass button (the screen's only "go") and a quiet way out. There is no art, mount, price, countdown, badge, oxblood or decorative motion: the cover says what the player gets and steps aside. In test builds a small mono stamp says plainly that the purchase is a test.
 
-**Accent on this screen:** brass only. "Unlock Pro" (test builds) and "Check again" (test purchases off) are both `PillButton scheme="brass" variant="primary"`: fill `color.accent` #C89D54, label `color.onAccent` #171411 (7.3:1). Never `variant="signal"`.
+**Accent on this screen:** brass only. "Unlock Pro" (test builds) and "Check again" (test purchases off) are both the live `Button variant="primary"`: fill `color.accent` #C89D54, label `color.onAccent` #171411 (7.3:1). Never `variant="signal"`.
 
 ### Layout, top to bottom
 
@@ -1143,16 +1110,16 @@ Default, test build (`EXPO_PUBLIC_TEST_PURCHASES=1`), default text size. The blo
 | Gap | 626–658 (32, `space.xxl`, the scroll frame's bottom margin) | — | — |
 | Notice slot | x 20–373, y 658–676 (`type.caption.lineHeight` 18 × fontScale). Always reserved; empty in Default | **Error:** glyph `ref.layout.pro.noticeIcon` 18 in `color.warning` #D4883A (5.3:1; an icon, never coloured text) at x 20–38, y 658–676, centred on the first caption line. Then `space.sm` 8, then text x 46–373 (327) in `Text variant="caption"` (Plus Jakarta Sans Medium 13/18), `tone="secondary"` `color.textSecondary` #A89C8A (5.6:1). Slot: `accessibilityLiveRegion="polite"`, `collapsable={false}` | See States |
 | Gap | 676–684 (8, `space.sm`) | — | — |
-| Test stamp | Centred on x 196.5, line box 684–698 (14). ≈ 100 wide, x ≈ 146–247 | `stamp`, `tone="secondary"` `color.textSecondary` (5.6:1). Not a control. `accessible={false}` and hidden: its words are the pill's hint | `TEST PURCHASE` |
+| Test stamp | Centred on x 196.5, line box 684–698 (14). ≈ 100 wide, x ≈ 146–247 | `stamp`, `tone="secondary"` `color.textSecondary` (5.6:1). Not a control. `accessible={false}` and hidden: its words are the button's hint | `TEST PURCHASE` |
 | Gap | 698–710 (12, `space.md`) | — | — |
-| Unlock Pro | x 20–373 (353 × 52), y 710–762. Label centred, ≈ 83 wide. With larger text it grows upward; its bottom stays at 762 | `PillButton scheme="brass" variant="primary" spinner`: pill `ref.radius.pill` with `...curve`, fill `color.accent` (`ref.button.brass.primary`), no border or shadow. Label `type.control` (Plus Jakarta Sans SemiBold 15/20) in `color.onAccent` (7.3:1). Padding 16 vertical, 44 each side (room for the in-button indicator) | "Unlock Pro" |
-| Gap | 762–770 (8, `space.sm`) | — | — |
-| Not now | y 770–814 (44, the kit's quiet height), label + 16 each side ≈ 90 wide, centred (x ≈ 152–242) | `PillButton scheme="brass" variant="quiet"`: no fill or border. Label `type.control` in `color.textSecondary` (`ref.button.brass.quiet`), pressed `color.text` | "Not now" |
+| Unlock Pro | x 20–373 (353 × 48), y 710–758. Label centred, ≈ 83 wide | The live `Button variant="primary"` (/play's button): `radius.control` 8, `minHeight` `hit.min` 48, padding `space.md` 12 × `space.gutter` 20, fill `color.accent`, no border or shadow. Label `type.control` (Plus Jakarta Sans SemiBold 15/20) in `color.onAccent` (7.3:1) | "Unlock Pro" |
+| Gap | 758–766 (8, `space.sm`) | — | — |
+| Not now | x 20–373 (353 × 48), y 766–814, the full column as the case-closed screen's quiet button; label centred, ≈ 58 wide | The live `Button variant="quiet"`: transparent, no border, `radius.control` 8, `minHeight` 48, the same padding. Label `type.control` in `color.text` (12.9:1 at the silk peak) | "Not now" |
 | Bottom | 814–852 (38) = safe bottom 34 + `space.xs` 4 | Silk | — |
 
-Check: 59 + 48 + 292 + 76 + 24 + 127 + 32 + 18 + 8 + 14 + 12 + 52 + 8 + 44 + 38 = 852.
+Check: 59 + 48 + 292 + 76 + 24 + 127 + 32 + 18 + 8 + 14 + 12 + 48 + 8 + 48 + 38 = 852. The two live buttons (48 + 48) take the same 96 as the pill and quiet pill they replaced (52 + 44), so everything above "Unlock Pro" keeps its place.
 
-**Gutters.** `space.gutter` 20 on both sides for the top bar, statement, slip, notice and pill (the light table's and the case-closed screen's gutter). The test stamp and Not now are centred on x 196.5.
+**Gutters.** `space.gutter` 20 on both sides for the top bar, statement, slip, notice and both buttons (the light table's and the case-closed screen's gutter). The test stamp and the buttons' labels are centred on x 196.5.
 
 **No header control.** The top bar holds only the stamp, centred between two 48 spacers, so it sits exactly where the light table's "LIGHT TABLE" does. "Not now", Android back and the iOS edge swipe are the exits; a back arrow would duplicate "Not now" and add a keyboard stop.
 
@@ -1174,13 +1141,13 @@ Check: 59 + 48 + 292 + 76 + 24 + 127 + 32 + 18 + 8 + 14 + 12 + 52 + 8 + 44 + 38 
 
 ### Tappable elements
 
-Screen-reader order: file stamp → statement (header) → slip heading → 01 → 02 → 03 → notice (when set) → "Unlock Pro" (or "Check again") → "Not now". Each slip line is one element labelled by its sentence (`accessible` on iOS, `screenReaderFocusable` on Android so it is never a keyboard stop); the numerals and the test stamp are hidden. Keyboard and switch focus: the pill → "Not now" (the statement-and-slip ScrollView is scrollable, and so a keyboard stop on Android, only while it overflows). When the screen opens, accessibility focus moves to the statement once the opening transition has ended (at once for a root route).
+Screen-reader order: file stamp → statement (header) → slip heading → 01 → 02 → 03 → notice (when set) → "Unlock Pro" (or "Check again") → "Not now". Each slip line is one element labelled by its sentence (`accessible` on iOS, `screenReaderFocusable` on Android so it is never a keyboard stop); the numerals and the test stamp are hidden. Keyboard and switch focus: the action button → "Not now" (the statement-and-slip ScrollView is scrollable, and so a keyboard stop on Android, only while it overflows). When the screen opens, accessibility focus moves to the statement once the opening transition has ended (at once for a root route).
 
 | Element | Hit area ≥ 44 | Action |
 |---|---|---|
-| "Unlock Pro" (test build) | 353 × 52 (taller with large text), the whole capsule | Purchasing (States). a11y label "Unlock Pro", hint "Test purchase. Nothing is charged." Ignored while busy. |
-| "Check again" (test purchases off) | 353 × 52, the same slot | Re-runs `ensureSession()` + `getMyAccess()` with the in-button indicator. Entitled → Already has access. Not entitled → stays, refreshes line 03's cap and announces "No access on this account yet." It is how a tester continues after access is granted by hand (scripts/grant-test-access.sql). |
-| "Not now" | ≈ 90 × 44 | `router.back()`, or `router.replace('/')` (the 01 hub) with no history. Changes nothing. Disabled (0.4) during Purchasing and Check again. |
+| "Unlock Pro" (test build) | 353 × 48 (taller with large text), the whole button, plus the live `hitSlop` 4 | Purchasing (States). a11y label "Unlock Pro", hint "Test purchase. Nothing is charged." Ignored while loading. |
+| "Check again" (test purchases off) | 353 × 48, the same slot | Re-runs `ensureSession()` + `getMyAccess()`, the button `loading` (the spinner in its label's place). Entitled → Already has access. Not entitled → stays, refreshes line 03's cap and announces "No access on this account yet." It is how a tester continues after access is granted by hand (scripts/grant-test-access.sql). |
+| "Not now" | 353 × 48, plus `hitSlop` 4 | `router.back()`, or `router.replace('/')` (the 01 hub) with no history. Changes nothing. Disabled (the live 0.45) during Purchasing and Check again. |
 | Android hardware back | System | Same as "Not now", in every state, Purchasing included. Leaving aborts the focus's AbortSignal, so a late result never navigates. |
 | iOS edge swipe | System left edge | Enabled. Same as Android back. |
 | Stamp, statement, slip, test stamp | — | Not tappable. |
@@ -1215,13 +1182,13 @@ Later, RevenueCat replaces this path (`Purchases.logIn(<supabase user id>)`, a s
 
 - **Default:** as in Layout. Opened from `openCapture()` with `?cap=`, it renders on the first frame with no second access check.
 - **Loading** (no usable `?cap`: a deep link, a restored route): the same ground as Default (canvas, silk, grain) and nothing else. If `getMyAccess()` is still running after `ref.layout.pro.spinnerDelay` 300 ms, a native `ActivityIndicator` (small, 20 × 20) in `color.accent` appears centred at (196.5, 426), box x 186.5–206.5, y 416–436. A faster check shows nothing. a11y: one element, role progressbar, label "Loading" (`accessible` on iOS, `screenReaderFocusable` and `focusable={false}` on Android, so never a keyboard stop). The result routes as Guest or Already has access (the indicator stays until openCapture navigates), or shows Default with the result's `generations_cap`. Default's content (stamp to Not now) fades in over the kit's `controlTiming` (ref.motion.control, 120 ms ease-out, opacity only); the ground does not change. A failed check shows Default with line 03's fallback ("A monthly allowance of new cases.") and no notice.
-- **Purchasing** (after "Unlock Pro"): the in-button pattern, not a Thinking state (one call plus one RPC, nothing true to rotate).
-  - The label stays centred. The kit's `ActivityIndicator` (small, 20 × 20) in the label colour `color.onAccent` sits at x 337–357, y 726–746 (right edge 16 in from the pill's end, vertically centred).
-  - The pill keeps its `color.accent` fill at full opacity, ignores taps and sets `accessibilityState={{ busy: true, disabled: true }}`.
+- **Purchasing** (after "Unlock Pro"): the live Button's `loading`, not a Thinking state (one call plus one RPC, nothing true to rotate).
+  - A native `ActivityIndicator` (20 × 20) in the label colour `color.onAccent` takes the label's place, centred at (196.5, 734): x 186.5–206.5, y 724–744.
+  - The button keeps its `color.accent` fill and drops to the live 0.45 opacity, ignores taps and sets `accessibilityState={{ busy: true, disabled: true }}`; its label and hint stay for screen readers.
   - "Not now" drops to 0.4 and is disabled; system back stays live. Any notice clears.
   - Calls: `currentSession()` (stored, no network; a guest routes as Guest without calling the function), then `grantTestEntitlement()`, then `getMyAccess()`.
 - **Success:** `getMyAccess()` reports `has_custom_rooms_entitlement`. `useFeedback().success()` (develop's haptic) and `announceForAccessibility("Pro unlocked.")`, then `openCapture({ replace: true })`: the guide first time, else the camera, or develop's cap state if the allowance is used. /pro leaves the stack, so back returns to the hub. No success screen, stamp or celebration. Loop guard: /pro calls `openCapture` only after it has seen the entitlement itself; a 200 without it is the generic error.
-- **Error:** in the notice slot (y 658–676), one line: glyph in `color.warning`, text `caption` in `tone="secondary"`. It fades in over `controlTiming` (opacity) and is announced: on iOS by `announceForAccessibility`, on Android by the always-mounted polite live region on the slot (the line itself is `accessibilityLiveRegion="none"`, because Android speaks only changes inside an existing live region). The pill returns to idle for a retry, "Not now" to full opacity; a retry clears the notice. `color.error` is not used on this screen (2.3:1 on the silk).
+- **Error:** in the notice slot (y 658–676), one line: glyph in `color.warning`, text `caption` in `tone="secondary"`. It fades in over `controlTiming` (opacity) and is announced: on iOS by `announceForAccessibility`, on Android by the always-mounted polite live region on the slot (the line itself is `accessibilityLiveRegion="none"`, because Android speaks only changes inside an existing live region). The button returns to idle (label back) for a retry, "Not now" to full opacity; a retry clears the notice. `color.error` is not used on this screen (2.3:1 on the silk).
 
   | Cause | Glyph (`color.warning`, 18) | Text (`caption`, secondary) |
   |---|---|---|
@@ -1234,30 +1201,30 @@ Later, RevenueCat replaces this path (`Purchases.logIn(<supabase user id>)`, a s
 - **Guest:** a check that finds `is_anonymous`, or the function's `account_required`, runs `router.replace({ pathname: "/account", params: { next: "back" } })`. /account then goes back to the hub. /pro never calls the function for a guest.
 - **Test purchases off** (`EXPO_PUBLIC_TEST_PURCHASES` is not "1"; every production build today):
   - No TEST PURCHASE stamp. The notice and test-stamp slots together (y 658–698, `minHeight` 18 + 8 + 14 = 40, × fontScale for the two lines) hold an info line, bottom-aligned at 698: 2 lines, y 662–698, x 20–373, `caption` in `tone="secondary"`, no glyph (information, not an error), never a live region or announcement: "Pro isn't on sale yet. If you're testing, ask for access, then check again." (≈ 75 characters).
-  - The pill slot holds "Check again", `PillButton scheme="brass" variant="primary" spinner`; its in-button indicator is `color.onAccent`.
+  - The action slot holds "Check again", the live `Button variant="primary"`; while it checks it is `loading`, its spinner in `color.onAccent` in the label's place.
   - A failed check puts its error line (glyph + text) in the info line's place, inside an always-mounted polite live region that holds only errors; the info line returns, outside the region (so it is not re-announced), on the next check. Nothing above moves.
-- **Pressed:** colour only, over `ref.motion.control` 120 ms ease-out (the kit). Brass primary fill `color.accent` → `color.accentPressed` #DFB66C (label 9.7:1); quiet label `color.textSecondary` → `color.text`. No opacity or scale.
-- **Focus:** the kit's ring (2 pt, offset 2, following the pill). ≈ 361 × 60 around the pill (x 16–377, y 706–766), ≈ 98 × 52 around "Not now".
-- **Disabled:** only "Not now", during Purchasing and Check again (`ref.button.disabledOpacity` 0.4, the kit).
+- **Pressed:** the live Button's press: the whole button at opacity 0.82, and the brass primary's fill `color.accent` → `color.accentPressed` #DFB66C (label 9.7:1). No scale.
+- **Focus:** the kit's brass ring (`ref.focus`: 2 pt `color.accent`, offset 2), drawn by the live Button itself with radius `radius.control` + 4 = 12, concentric with its corners: 361 × 56 around either button (x 16–377; y 706–762 around the action, y 762–818 around "Not now").
+- **Disabled:** only "Not now", during Purchasing and Check again (the live Button's 0.45). The action button shows the same 0.45 while it is loading.
 - **Reduced motion** (`useTheme().reducedMotion`): nothing on this screen moves in any mode. The fades (Default, error lines) are opacity-only and stay. The native indicators keep the platform's behaviour.
 - **Large text:** all text honours system scaling and never shrinks.
   - The top bar grows: the stamp wraps inside its 257 column.
   - The bottom-anchored block grows upward into the void, keeping ≥ 24 above the statement. Slip lines grow with their text (a sentence may wrap); numerals stay centred on the first line.
-  - The pill grows upward from 762; its label may wrap inside the 44 side padding. "Not now" stays 44 until its own label line passes 44.
+  - Both buttons are their label's lines + 24 (`space.md` above and below), never under 48: from text scale 1.2 they grow, "Not now" upward from 814 and the action button above it; a label may wrap inside the 20 side padding.
   - If the block still doesn't fit, the statement and slip scroll (and only then become a keyboard stop) while the notice, test stamp, pill and "Not now" stay pinned.
 - **Narrow screen:** gutters stay 20, so the column is width − 40 (335 at 375, 320 at 360), the slip's inner box column − 32 (303 / 288) and the sentences inner − 24 (279 / 264). The longest line (fallback, ≈ 254) fits at 360; a wrapped line grows its row by 23 and the block rises.
 
 ### Decisions
 
-1. **Look:** the play screen's dossier look (user decision): brass stamp, Playfair statement, manila slip, brass pills, over canvas + silk + Grain. Noir's Geist type, dither, ruled index and oxblood signal are gone.
+1. **Look:** the play screen's dossier look (user decision): brass stamp, Playfair statement, manila slip, /play's live buttons, over canvas + silk + Grain. Noir's Geist type, dither, ruled index and oxblood signal are gone.
 2. **Route and trigger:** `/pro`, pushed or replaced by `openCapture()` with `?cap=<generations_cap>`, only for a missing `custom_rooms` entitlement. Guests go to `/account` first; a reached cap is develop's message.
 3. **Top bar without a control:** the light table's bar geometry (48 row, stamp centred between 48 spacers) with no back or close button. "Not now", Android back and the edge swipe are the exits.
 4. **Benefits on manila:** three lines on the light table's slip, numerals as hidden ink stamps, sentences in `body` ink (16/23, larger than the light table's `caption` lines, since these are the screen's content). New heading "WHAT PRO OPENS".
-5. **Brass, never signal:** both actions are the brass primary; "Not now" is the brass quiet.
+5. **Brass, never signal:** both actions are the live brass primary `Button`; "Not now" is the live quiet `Button`. (2026-10-25, round 2: these replace the kit's brass-scheme pills; 8 pt corners, 48 tall, the brass focus ring drawn by the button.)
 6. **Notices on dark:** a `color.warning` glyph plus `caption` text in secondary for every error. No error-coloured text or glyph on the dark ground.
 7. **Loading:** the live short-wait pattern, a small `ActivityIndicator` in `color.accent` after 300 ms, on the same ground as Default, so only the content fades in.
 8. **Test purchase:** stub today (always "Test purchases are off on this server."); the planned `grant-test-entitlement` function as in Test purchase. Offered only when `EXPO_PUBLIC_TEST_PURCHASES=1`.
-9. **Purchasing feedback:** the in-button native indicator, not a Thinking state.
+9. **Purchasing feedback:** the live Button's `loading` (the native spinner in the label's place), not a Thinking state.
 10. **After success:** `openCapture({ replace: true })`; /pro leaves the stack.
 11. **Test purchases off:** an honest "isn't on sale yet" line plus "Check again". No fake purchase button.
 12. **Later:** RevenueCat replaces the test path; the screen gains a price, Restore purchases, terms and privacy links.
@@ -1276,11 +1243,11 @@ Every question left open by the first draft, and how Noir or your answers settle
 
 | Question | Decision |
 |---|---|
-| Palette, fonts, button shape | **Hub, guide, Pro (since 2026-10-25):** the play screen's look (brass, Playfair titles, film-plate mounts, mono plate labels) with the silk background and brass pill buttons. **Camera, permission:** Noir (near-black ground, Geist / Geist Mono, white primary pills, one oxblood signal) |
+| Palette, fonts, button shape | All five screens: the play screen's look (brass, Playfair titles, film-plate mounts, mono plate labels), the play screen's 8 pt `Button`, a brass focus ring. The silk background stays on the hub, guide and Pro |
 | Where game mode lives | It **is** the hub at `/` and replaces today's title screen (you confirmed) |
 | Getting to the camera | One helper, `openCapture()`, checks access first. Guest → `/account?next=back`. No Pro → `/pro`. Monthly limit reached → the darkroom's existing limit message. Access → the photo guide the first time, otherwise the camera. If the check can't run, the hub carries on to the camera (the darkroom checks again before anything is sent) |
-| Where red appears | Only on the Noir screens: 02, the ring on the last-photo thumbnail from 3 plates; 03, none. The hub, guide and Pro use brass instead (SOLVED stamp, "Open the camera", "Unlock Pro") |
-| Loading | A real wait with something true to say: Thinking states (warm tone on the hub, guide and Pro). A short wait: the dither on Noir screens, a small brass ActivityIndicator on the others. A button's own action: a small spinner with the label kept. Countable progress: a thin bar with a mono count |
+| Where red appears | Nowhere as a signal colour any more: "go" actions, stamps and the camera's continue cue are brass. Red is only the live error colour, as an icon on dark grounds or as text on manila |
+| Loading | A real wait with something true to say: Thinking states in the warm tone. A button's own action: the live `Button`'s `loading` (spinner in place of the label). A short wait with no status line: a small brass ActivityIndicator. Countable progress: a thin bar with a mono count |
 | The painted magnifying glass | Kept as it is for now (your answer): the one exception to grayscale brand art, used only as 01's hero object. A Noir version comes later |
 | Tilt | Allowed as the one pointer effect (your answer): the 01 glass only |
 | Backgrounds | Your choice: the black-and-white warp from your shader library, as one pre-rendered still (black silk, peak #262626), on 01, 04 and 05. 02 and 03 (the camera route) stay flat |
@@ -1295,27 +1262,25 @@ Every question left open by the first draft, and how Noir or your answers settle
   - The three cards are small film plates on walnut mounts with brass plate labels, warm line art and sentence-case notes; SOLVED is a brass stamp; DEVELOPING is the warm shimmer.
   - YOUR CASE with no room is dimmed and shows "None yet".
   - The brass glass sits above the title and tilts. No light pools.
-- **02 · Camera:**
-  - Flip camera is replaced by a framing-grid toggle.
-  - 0.5× wherever the phone has an ultra-wide lens (default 1×).
-  - Flash: off or on.
-  - Roman-numeral plate counter in Geist Mono, showing the plate about to be taken.
-  - White viewfinder brackets.
-  - Library picker at the top right.
-  - Privacy note until plate I.
-  - The white shutter carries the magnifier icon.
-  - The bottom row is centred on one line.
-  - Plate V detail: "Optional. Anything still unseen."
-- **03 · Camera permission:**
-  - A dark graphite sheet, with soft light on a grayscale illustration.
-  - Sentence case; title "Let ESCAPD use the camera".
-  - New copy for when the camera is off.
-  - Body text in Geist 17/24.
-  - No white flash for players who already allowed the camera.
+- **02 · Camera** (the play screen's look):
+  - Flat canvas with film grain (no silk), so photos are judged on a plain ground.
+  - The viewfinder is a film plate on a walnut mount with brass corner brackets and the label "ESCAPD 400 · PLATE I".
+  - Header buttons, flash and grid are the play screen's IconButtons; flash is off or on; the framing grid replaces flip camera.
+  - 0.5× wherever the phone has an ultra-wide lens (default 1×), as a walnut switch with a brass thumb.
+  - The Roman-numeral plate counter is brass mono in a small mount, showing the plate about to be taken.
+  - The brass shutter with a manila core carries the magnifier icon (your Figma note).
+  - The last-plate thumbnail gets a brass ring from 3 plates.
+  - Library picker at the top right. Privacy note until plate I. Plate V detail: "Optional. Anything still unseen."
+- **03 · Camera permission** (the play screen's look):
+  - Flat canvas with film grain; a walnut sheet in the play screen's sheet style (brass hairline, no handle).
+  - A warm line drawing of the phone with brass brackets on a small film-plate mount; no light pool.
+  - Sentence case; title "Let ESCAPD use the camera" in Playfair; body in Jakarta.
+  - Brass "Allow the camera" / "Open Settings", quiet "Choose photos instead", using the play screen's Button.
+  - No flash between screens: the camera uses the same canvas and grain.
 - **04 · Photo guide** (the play screen's look):
   - Four steps under the brass stamp "BEFORE YOU SHOOT · n OF 4".
   - Each drawing sits on a walnut film-plate mount labelled "ESCAPD 400 · STEP I" to "STEP IV"; warm line art with brass brackets. No light pool.
-  - "Next" is the walnut pill; "Open the camera" the brass pill.
+  - "Next" is the walnut secondary button; "Open the camera" the brass primary (the play screen's 8 pt Button).
   - Swiping also moves between steps.
   - X skips to the camera and marks the guide seen; on a replay, X returns to the hub.
   - The seen flag is stored on the device. Replay lives in How you play.
@@ -1326,8 +1291,10 @@ Every question left open by the first draft, and how Noir or your answers settle
 
 ## Needs you
 
-1. **The camera and permission screens** still use Noir (white pills, Geist, oxblood ring), between a brass photo guide and a brass light table. Restyle them to the play screen's look too?
-2. **Button shape on `/play` and the light table:** they still use the original 8 pt-radius buttons, while the hub, guide and Pro use pills (you asked to keep Noir's pills there). Bring `/play` and the light table onto pills, or keep the two shapes?
+Nothing blocking. Settled on 2026-10-25: the camera and permission screens follow the play screen's look, all buttons are its 8 pt style, and the focus ring is brass. Known small differences, kept unless you say otherwise:
+- **Loading:** the live `Button`'s `loading` dims the button (0.45) and swaps its label for a spinner. On the guide's replay check the spinner can flash briefly when the check is quick.
+- **Pressed state:** buttons press by opacity (0.82), not a colour fade, and "Next" → "Open the camera" swaps colour instantly.
+- **Pro:** the slip heading "WHAT PRO OPENS" and no close button in its top bar. **Guide:** "STEP I–IV" plate labels. **Hub:** sentence-case notes.
 
 Settled earlier:
 - **Background:** the black-and-white warp (black silk, peak #262626). Bolder versions are in `F:/escapd-tools/bg-shaders/compare-bw.html`.

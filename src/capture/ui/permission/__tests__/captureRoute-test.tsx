@@ -1,13 +1,15 @@
 // The /capture route shell (app/capture/index.tsx): Checking until the
 // permission read and the guide backstop resolve, the guide for a first-timer,
-// the rangefinder once access is granted, and the Settings re-check.
-import { AppState, type AppStateStatus } from "react-native";
+// the rangefinder once access is granted, the Settings re-check, and the one
+// flat ground under both states.
+import { AppState, StyleSheet, type AppStateStatus } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 import { useCameraPermissions, type PermissionResponse } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import { captureGuideSeenThisSession, hasSeenCaptureGuide } from "@/capture/guideSeen";
 import { addPlate, clearPlates } from "@/capture/roll";
 import type { CameraPermissionProps } from "@/capture/ui/types";
+import { color } from "@/theme/tokens";
 import CaptureScreen from "../../../../../app/capture/index";
 
 jest.mock("expo-camera", () => ({ useCameraPermissions: jest.fn() }));
@@ -68,6 +70,15 @@ describe("/capture", () => {
     await render(<CaptureScreen />);
     expect(screen.getByTestId("permission").props.children).toBe("checking");
     expect(screen.queryByTestId("rangefinder")).toBeNull();
+  });
+
+  it("lays both states on one flat color.canvas with the live grain beneath them, and no silk", async () => {
+    withPermission(response(false));
+    await render(<CaptureScreen />);
+    const root = screen.getByTestId("permission").parent as unknown as { props: { style?: unknown }; children: { type: unknown }[] };
+    expect(StyleSheet.flatten(root.props.style as never)).toMatchObject({ flex: 1, backgroundColor: color.canvas });
+    // The grain is the first layer (an Image), drawn before either state; nothing else sits under them.
+    expect(root.children.map((child) => child.type)).toEqual(["Image", "Text"]);
   });
 
   it("stays on Checking until the guide flag is read, then shows the sheet when access isn't granted", async () => {

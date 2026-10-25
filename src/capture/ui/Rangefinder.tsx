@@ -1,13 +1,25 @@
 // 02 · Camera (docs/DESIGN.md 02): the rangefinder, guided capture one plate
-// at a time, mounted by /capture once camera access is granted. A darkroom
-// with one window: flat ground edge to edge, the live feed in a 3:4 frame,
-// graphite and hairline chrome, a white shutter carrying the magnifier, and
-// one oxblood mark (the ring on the last-plate thumbnail from 3 plates).
+// at a time, mounted by /capture once camera access is granted. In the play
+// screen's look: soot ground (color.canvas) under the live grain, and no silk,
+// so photos are judged on a plain ground. The live feed sits on a film plate in
+// a walnut mount with brass brackets and a brass plate label, as /play mounts
+// the room it becomes. A Playfair prompt between live IconButtons, walnut and
+// brass controls, the brass shutter with its manila core and magnifier, and a
+// brass ring on the last-plate thumbnail from 3 plates.
 // Every plate is re-encoded on the phone (EXIF and location dropped) before it
 // joins the roll. In retake mode it replaces that plate and returns to the
 // light table.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, BackHandler, Platform, StyleSheet, View, type HostInstance, type LayoutChangeEvent } from "react-native";
+import {
+  AccessibilityInfo,
+  BackHandler,
+  Platform,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+  type HostInstance,
+  type LayoutChangeEvent,
+} from "react-native";
 import type { CameraView } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,19 +27,19 @@ import { processPhoto } from "@/capture/process-photo";
 import { addPlate, replacePlate, usePlates } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
+import { Grain } from "@/components/Grain";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
-import { containBox } from "@/render/geometry";
-import { motion, ref } from "@/theme/tokens";
+import { color, motion, ref, space } from "@/theme/tokens";
 import { ControlRow } from "./rangefinder/ControlRow";
-import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
+import { COPY, counterCopy, lastPlateLabel, libraryError, plateLabel, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
 import { SLOP } from "./rangefinder/Dimmable";
 import { Header, type PromptSubtitle } from "./rangefinder/Header";
 import { LastPlate } from "./rangefinder/LastPlate";
 import { PlateCounter } from "./rangefinder/PlateCounter";
 import { Shutter } from "./rangefinder/Shutter";
 import { useLenses } from "./rangefinder/useLenses";
-import { Viewfinder } from "./rangefinder/Viewfinder";
+import { Viewfinder, viewfinderLayout } from "./rangefinder/Viewfinder";
 import type { RangefinderProps } from "./types";
 
 const L = ref.layout.camera;
@@ -35,18 +47,21 @@ const L = ref.layout.camera;
 // JPEG quality of the camera's own file; processPhoto then re-encodes it.
 const CAPTURE_QUALITY = 0.92;
 
-// Header and control-row buttons are 44 boxes with 48 x 48 hit areas, and the
-// lens halves are 50 x 48. Native hit-testing (iOS Fabric and Android) drops
-// touches outside a parent that nothing overflows, so every hit area has to
-// lie inside each of its parents:
-// - the two rows carry the extra SLOP inside their own boxes (padding), and
-//   the gaps around them shrink by as much, so every visible position stays
-//   on the spec;
-// - a Dimmable around a 44 control is itself the 48 box (slopBox) with a 44
-//   footprint, and the lens slot spans the control row's whole 48 band.
+// Header and control-row buttons are the live IconButton: 48 circles with
+// 56 x 56 hit areas (hitSlop 4), and the lens halves are 50 x 48. Native
+// hit-testing (iOS Fabric and Android) drops touches outside a parent that
+// nothing overflows, so the two rows carry SLOP inside their own boxes
+// (padding) and the gaps around them shrink by as much, so every visible
+// position stays on the spec.
+//
+// On 393 x 852 (safe 59 / 34): buttons y 65-113 at x 19-67 / 326-374; the
+// mount x 14-379, y 132.5-634.5 around the 351 x 468 plate at x 21-372,
+// y 139.5-607.5; the control row's buttons y 654-702; the bottom row
+// y 722-798; 20 clear above the safe bottom.
 
 export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const plates = usePlates();
   const camera = useRef<CameraView>(null);
   const promptRef = useRef<HostInstance>(null);
@@ -193,11 +208,13 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     const { width, height } = e.nativeEvent.layout;
     setArea((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
   };
-  // Exactly 3:4, fitted into the space left and centred: the viewfinder shrinks before any text does.
-  const box = containBox(area, L.frameAspect);
+  // The plate exactly 3:4, its mount fitted into the space left and centred: the viewfinder shrinks before any text does.
+  const viewfinder = viewfinderLayout(area, fontScale);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + ref.space.sm - SLOP, paddingBottom: insets.bottom + L.bottomClear }]}>
+    <View style={[styles.root, { paddingTop: insets.top + L.buttons.top - SLOP, paddingBottom: insets.bottom + space.gutter }]}>
+      {/* The live grain on the soot ground, under the chrome; the mounts are opaque, so it never crosses the feed. */}
+      <Grain />
       <Header
         backLabel={retake ? COPY.cancelRetake : COPY.close}
         onBack={close}
@@ -211,9 +228,10 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
         style={styles.slopRoom}
       />
       <View style={styles.area} onLayout={onArea} testID="viewfinder">
-        {box.width > 0 ? (
+        {viewfinder.plate.width > 0 ? (
           <Viewfinder
-            box={box}
+            layout={viewfinder}
+            label={plateLabel(at)}
             cameraRef={camera}
             flash={flash ? "on" : "off"}
             selectedLens={lenses.selectedLens}
@@ -256,19 +274,25 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   );
 }
 
+// The counter and the thumbnail align with the plate's edges: the mount's gutter, its hairline and its walnut.
+const PLATE_EDGE = space.plate + L.hairline + L.mount.pad;
+
 const styles = StyleSheet.create({
-  // Flat ground edge to edge: no pool, Grain, vignette or still. The feed is the only light.
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  // Soot ground with the live grain (rendered first). No silk, pool or
+  // vignette: the camera stays flat so photos are judged on a plain ground.
+  root: { flex: 1, backgroundColor: color.canvas },
   slopRoom: { paddingVertical: SLOP },
-  // The viewfinder takes what's left: ref.space.band below the header and above
-  // the control row, ref.space.plate from the sides.
-  area: { flex: 1, marginHorizontal: ref.space.plate, marginVertical: ref.space.band - SLOP },
-  // Counter, shutter and thumbnail on one centre line, with equal gaps.
+  // The viewfinder takes what's left: at least space.lg below the header and
+  // above the control row (19.5 on 852, where the mount is centred), the
+  // mount space.plate from the sides as /play's.
+  area: { flex: 1, marginHorizontal: space.plate, marginVertical: space.lg - SLOP },
+  // Counter, shutter and thumbnail on one centre line, with equal gaps,
+  // space.gutter below the control row.
   bottomRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: L.edge,
-    marginTop: ref.space.xl - SLOP,
+    paddingHorizontal: PLATE_EDGE,
+    marginTop: space.gutter - SLOP,
   },
 });

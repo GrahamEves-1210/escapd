@@ -1,24 +1,26 @@
-// The shutter, the screen's primary action and its brightest object: a 2 pt
-// bright ring with a 4 pt ground gap inside it, then a bright disk carrying
-// Phosphor MagnifyingGlass in inverse ink (the user's note: "the photo button
-// has a magnifier glass icon on it"). Never signal.
-// - Pressed: the disk fill eases bright to brightPressed and the disk scales to
-//   0.96 over ref.motion.shutterPress; the ring stays still. Reduced motion:
-//   the colour change only.
+// The shutter, the screen's primary action and its brightest object: the
+// brass rangefinder shutter. A 3 pt brass ring (color.accent, the loupe's
+// ring on /play) with a 5 pt gap of ground inside it, then a 60 manila core
+// (color.manila) carrying Phosphor MagnifyingGlass in color.ink (the user's
+// note: "the photo button has a magnifier glass icon on it").
+// - Pressed: the core eases manila to color.accentPressed and scales to 0.96
+//   over ref.motion.shutterPress; the ring stays still. Reduced motion: the
+//   colour change only.
 // - Disabled (camera not ready or failed, roll full): the whole control at
 //   ref.button.disabledOpacity, eased over ref.motion.control.
-// - Busy: taps are ignored and it stays a static full-opacity white disk, with
-//   accessibilityState.busy. No spinner.
-// - Focus: an 84 circle, measured from the 76 box's outer edge.
+// - Busy: taps are ignored and it stays a static full-opacity manila core,
+//   with accessibilityState.busy. No spinner.
+// - Focus: the kit's brass ring, an 84 circle measured from the 76 box's outer
+//   edge.
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { FocusRing, timingFor, useFocusRing } from "@/components/noir";
-import { MagnifyingGlassIcon } from "@/components/icons";
+import { ICON_WEIGHT, MagnifyingGlassIcon } from "@/components/icons";
 import { useTheme } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { color, curve, radius, ref } from "@/theme/tokens";
 import { Dimmable } from "./Dimmable";
 
-const S = ref.button.shutter;
+const S = ref.layout.camera.shutter;
 const PRESS = ref.motion.shutterPress;
 const PRESS_TIMING = timingFor(PRESS);
 
@@ -36,10 +38,10 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
   const focus = useFocusRing();
   const inert = disabled || busy;
 
-  const diskStyle = useAnimatedStyle(() => {
+  const coreStyle = useAnimatedStyle(() => {
     const p = press.get();
     return {
-      backgroundColor: interpolateColor(p, [0, 1], [S.fill, S.pressedFill]),
+      backgroundColor: interpolateColor(p, [0, 1], [color.manila, color.accentPressed]),
       transform: [{ scale: reducedMotion ? 1 : interpolate(p, [0, 1], [1, PRESS.scale]) }],
     };
   });
@@ -62,8 +64,8 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
         style={styles.box}
       >
         <View pointerEvents="none" style={styles.ring} />
-        <Animated.View style={[styles.disk, diskStyle]}>
-          <MagnifyingGlassIcon size={S.iconSize} color={S.glyph} weight="regular" />
+        <Animated.View style={[styles.core, coreStyle]} testID={testID ? `${testID}-core` : undefined}>
+          <MagnifyingGlassIcon size={S.icon} color={color.ink} weight={ICON_WEIGHT} />
         </Animated.View>
         <FocusRing visible={focus.focused} shape="pill" />
       </Pressable>
@@ -74,23 +76,23 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
 const styles = StyleSheet.create({
   // The 76 box carries no border: Yoga places absolute children inside a
   // parent's border, so a bordered box would pull the focus ring's -4 inset in
-  // by the ring width (an 80 circle on the shutter's own ring, not 84 with a 2 gap).
-  box: { width: S.ring, height: S.ring, alignItems: "center", justifyContent: "center" },
-  // The 2 pt ring, drawn as the box's first child. It never scales.
+  // by the ring width (an 82 circle on the shutter's own ring, not 84 with a 2 gap).
+  box: { width: S.size, height: S.size, alignItems: "center", justifyContent: "center" },
+  // The 3 pt brass ring, drawn as the box's first child. It never scales.
   ring: {
     ...StyleSheet.absoluteFill,
-    borderRadius: ref.radius.pill,
+    borderRadius: radius.round,
     borderWidth: S.ringWidth,
-    borderColor: S.ringColor,
-    ...ref.curve,
+    borderColor: color.accent,
+    ...curve,
   },
-  // Inside the 72 ring opening, the 64 disk leaves the 4 pt ground gap.
-  disk: {
-    width: S.disk,
-    height: S.disk,
-    borderRadius: ref.radius.pill,
+  // Inside the 70 ring opening, the 60 core leaves the 5 pt gap.
+  core: {
+    width: S.core,
+    height: S.core,
+    borderRadius: radius.round,
     alignItems: "center",
     justifyContent: "center",
-    ...ref.curve,
+    ...curve,
   },
 });

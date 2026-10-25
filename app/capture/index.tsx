@@ -1,5 +1,7 @@
 // /capture, the camera route (docs/DESIGN.md 02 and 03). A shell over its two
-// states on one flat ref.color.ground, so nothing flashes between them:
+// states on one flat ground, so nothing flashes between them: color.canvas
+// with the live Grain, as /play and the light table lay it, and no silk (the
+// camera route stays flat, so 03 hands over to 02 with no change of ground):
 // - CameraPermission (03): Checking, the permission sheet and everything else
 //   before camera access is granted;
 // - Rangefinder (02): the camera, mounted only once access is granted.
@@ -16,11 +18,12 @@ import { usePlates } from "@/capture/roll";
 import { CameraPermission } from "@/capture/ui/CameraPermission";
 import { useGuideBackstop } from "@/capture/ui/permission/useGuideBackstop";
 import { Rangefinder } from "@/capture/ui/Rangefinder";
+import { Grain } from "@/components/Grain";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { color, motion } from "@/theme/tokens";
 
 // Granted: the rangefinder fades in on the same ground while 03's sheet slides
-// out and its arrow crossfades into 02's back button.
+// out and its back control crossfades into 02's.
 const SCENE_IN = FadeIn.duration(motion.sceneCrossfade).reduceMotion(ReduceMotion.Never);
 const SCENE_IN_REDUCED = FadeIn.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 
@@ -60,6 +63,8 @@ export default function CaptureScreen() {
 
   return (
     <View style={styles.root}>
+      {/* Under both states: 02 and its feed draw above it, so the grain never lies on a photo. */}
+      <Grain />
       {granted ? (
         <Animated.View entering={reducedMotion ? SCENE_IN_REDUCED : SCENE_IN} style={StyleSheet.absoluteFill}>
           <Rangefinder retakeIndex={retakeIndex} onClose={close} />
@@ -81,5 +86,5 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  root: { flex: 1, backgroundColor: color.canvas },
 });

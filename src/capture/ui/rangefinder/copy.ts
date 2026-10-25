@@ -27,6 +27,9 @@ export const COPY = {
   counterPlate: "PLATE",
   counterFull: "FULL",
   counterRetake: "RETAKE",
+  // The plate label's film stock, as /play stamps its mounts.
+  filmStock: "ESCAPD 400",
+  rollFull: "ROLL FULL",
 } as const;
 
 /**
@@ -53,6 +56,17 @@ export function counterCopy(at: RollPosition): { label: string; numeral: string;
   if (at.retake) return { label: COPY.counterRetake, numeral, accessibilityLabel: `Retaking plate ${numeral}.` };
   if (isFull(at)) return { label: COPY.counterFull, numeral, accessibilityLabel: `Roll full. ${at.index} of ${MAX_PLATES} plates taken.` };
   return { label: COPY.counterPlate, numeral, accessibilityLabel: `Next: plate ${numeral}. ${at.index} of ${MAX_PLATES} plates taken.` };
+}
+
+/**
+ * The brass plate label under the viewfinder, in the pattern of /play's
+ * "ESCAPD 400  ·  PLATE I": the plate being exposed (the retaken plate in
+ * retake mode; the counter says RETAKE), or ROLL FULL. Decorative: the
+ * counter carries it for screen readers.
+ */
+export function plateLabel(at: RollPosition): string {
+  if (isFull(at)) return `${COPY.filmStock}  ·  ${COPY.rollFull}`;
+  return `${COPY.filmStock}  ·  ${COPY.counterPlate} ${promptFor(at.index).numeral}`;
 }
 
 /** "Take plate III, The busiest wall"; "Retake plate II, Opposite corner" in retake mode. */

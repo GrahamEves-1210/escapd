@@ -1,13 +1,15 @@
 // 03 · Camera permission: a thinking line that carries a status (docs/DESIGN.md
 // 03, States "Checking" and "Library busy"). The kit's ThinkingStates draws the
-// line (the shimmer, the count swaps, the static read line under reduced
-// motion); this View carries the fixed status label and the polite live region.
+// line in its warm tone, the play screen's (`caption` type, the sweep from
+// color.textSecondary to color.text, the count swaps, a still
+// color.textSecondary line under reduced motion); this View carries the fixed
+// status label and the polite live region.
 //
 // Composed here instead of with ThinkingStates' own status container, which is
 // always `accessible`: on Android that makes it a keyboard, D-pad and Switch
 // Access focus stop (ReactViewManager.setAccessible sets isFocusable, and
 // focusable={false} can't undo it), and 03's keyboard and switch focus never
-// lands on text (back arrow, pill, quiet button(s) only). So the line is drawn
+// lands on text (back, primary, quiet button(s) only). So the line is drawn
 // `decorative` (hidden from screen readers) and this View is the status: one
 // accessibility element on iOS; on Android not `accessible`, so not a keyboard
 // stop, while TalkBack still reads it as one element by its label
@@ -48,7 +50,7 @@ export function PermissionThinking({ lines, sizeTo, label, testID }: PermissionT
       accessibilityLiveRegion="polite"
       testID={testID}
     >
-      <ThinkingStates decorative lines={lines} sizeTo={sizeTo} />
+      <ThinkingStates decorative tone="warm" lines={lines} sizeTo={sizeTo} />
     </View>
   );
 }

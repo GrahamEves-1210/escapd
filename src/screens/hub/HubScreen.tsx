@@ -24,7 +24,7 @@ import { openCapture } from "@/capture/openCapture";
 import { Grain } from "@/components/Grain";
 import { IconButton, type IconButtonProps } from "@/components/IconButton";
 import { ICON_SIZE, ICON_WEIGHT, QuestionIcon } from "@/components/icons";
-import { BackgroundStill, focusRingStyle, useFocusRing } from "@/components/noir";
+import { BackgroundStill } from "@/components/noir";
 import { Text } from "@/components/Text";
 import { Wordmark } from "@/components/Wordmark";
 import { ensureSession, isNetworkError } from "@/lib/escapd-api";
@@ -52,9 +52,6 @@ import { useHubData } from "./useHubData";
 
 const H = ref.layout.hub;
 const W = H.weights;
-// The kit ring's reach outside a control (2 offset + 2 width), which is also
-// the live IconButton's own hitSlop 4.
-const REACH = ref.focus.offset + ref.focus.width;
 
 // The live IconButton hands every Pressable prop on, ref included (React 19
 // passes ref as a prop); its props type just doesn't declare one. The ref is
@@ -79,7 +76,6 @@ export function HubScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [marks, setMarks] = useState<Marks>({});
   const helpRef = useRef<HostInstance>(null);
-  const helpFocus = useFocusRing();
   const action = useRef<AbortController | null>(null);
   const failures = useRef(0);
   const focusReturn = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -308,32 +304,19 @@ export function HubScreen() {
             <Wordmark height={H.wordmarkHeight} />
           </View>
           {/*
-            The live IconButton draws no focus ring, so the kit's pill ring is
-            laid around it here. The box reaches 4 past the 48 button (and gives
-            the 4 back in margin), so the button's hitSlop stays inside its
-            parent: a touch outside a parent's bounds never reaches its children.
+            The live IconButton draws its own brass focus ring (the kit's pill
+            ring, 2 outside the 48 circle). Its hitSlop 4 and that ring both
+            stay inside the header, which pads 4 below the row and 20 at the
+            side: a touch outside a parent's bounds never reaches its children.
           */}
-          <View style={styles.helpBox}>
-            <HelpButton
-              ref={helpRef}
-              accessibilityLabel="How you play"
-              icon={<QuestionIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
-              onPress={openSheet}
-              onFocus={helpFocus.onFocus}
-              onBlur={helpFocus.onBlur}
-              disabled={busy !== null}
-              testID="hub-how-you-play"
-            />
-            {helpFocus.focused ? (
-              <View
-                pointerEvents="none"
-                accessible={false}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={styles.helpRing}
-              />
-            ) : null}
-          </View>
+          <HelpButton
+            ref={helpRef}
+            accessibilityLabel="How you play"
+            icon={<QuestionIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
+            onPress={openSheet}
+            disabled={busy !== null}
+            testID="hub-how-you-play"
+          />
         </View>
         <View style={styles.rule} />
 
@@ -390,9 +373,6 @@ const styles = StyleSheet.create({
     paddingBottom: space.xs,
   },
   headerSlot: { width: hit.min, height: hit.min },
-  helpBox: { margin: -REACH, padding: REACH },
-  // The kit's pill ring, on the box's edge: 2 outside the button at a 2 offset.
-  helpRing: { ...focusRingStyle("pill"), top: 0, right: 0, bottom: 0, left: 0 },
   // A 1 pt brass hairline on the gutters, as the case-closed screen rules off a section.
   rule: { height: H.hairline, marginHorizontal: space.gutter, backgroundColor: color.hairline },
   column: { flex: 1 },

@@ -2,8 +2,9 @@
 // case-file cover. The light table's top bar with a centred brass stamp, a
 // long quiet void, then a bottom-anchored block of one Playfair statement and
 // a manila slip of three benefit lines. Below them, pinned: the notice slot,
-// the TEST PURCHASE stamp, one brass pill and a quiet "Not now". Canvas, the
-// silk still and the live Grain under everything; no light pool or header control.
+// the TEST PURCHASE stamp, one brass primary Button and a quiet "Not now" (the
+// play screen's 8 pt-rounded live Buttons). Canvas, the silk still and the
+// live Grain under everything; no light pool or header control.
 import { useEffect, useRef, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -18,9 +19,10 @@ import {
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button } from "@/components/Button";
 import { Grain } from "@/components/Grain";
 import { WarningIcon, WifiSlashIcon } from "@/components/icons";
-import { BackgroundStill, PillButton, controlTiming, useShowAfter } from "@/components/noir";
+import { BackgroundStill, controlTiming, useShowAfter } from "@/components/noir";
 import { Text, type TextRef } from "@/components/Text";
 import { testPurchasesEnabled } from "@/capture/testPurchase";
 import { color, hit, ref, space, type } from "@/theme/tokens";
@@ -80,8 +82,8 @@ export function ProScreen() {
 
           {/* Bottom-anchored: grows upward into the void, and scrolls only if it
               still doesn't fit. It is scrollable only then, so a block that fits
-              is never an Android keyboard stop (keyboard focus: the pill, then
-              "Not now"). */}
+              is never an Android keyboard stop (keyboard focus: the action
+              button, then "Not now"). */}
           <ScrollView
             testID="pro-scroll"
             style={styles.scroll}
@@ -131,39 +133,28 @@ export function ProScreen() {
               </View>
             )}
 
+            {/* The live Button: `loading` puts the spinner in the label's place. */}
             {testBuild ? (
-              <PillButton
+              <Button
                 label={copy.UNLOCK}
-                scheme="brass"
                 variant="primary"
-                spinner
-                busy={busy === "purchasing"}
+                loading={busy === "purchasing"}
                 accessibilityHint={copy.UNLOCK_HINT}
                 onPress={unlock}
                 testID="pro-unlock"
                 style={styles.action}
               />
             ) : (
-              <PillButton
+              <Button
                 label={copy.CHECK_AGAIN}
-                scheme="brass"
                 variant="primary"
-                spinner
-                busy={busy === "checking"}
+                loading={busy === "checking"}
                 onPress={checkAgain}
                 testID="pro-check-again"
                 style={styles.action}
               />
             )}
-            <PillButton
-              label={copy.NOT_NOW}
-              scheme="brass"
-              variant="quiet"
-              disabled={working}
-              onPress={leave}
-              testID="pro-not-now"
-              style={styles.notNow}
-            />
+            <Button label={copy.NOT_NOW} variant="quiet" disabled={working} onPress={leave} testID="pro-not-now" style={styles.notNow} />
           </View>
         </FadeIn>
       )}
@@ -232,6 +223,7 @@ const styles = StyleSheet.create({
   slip: { marginTop: space.xl },
   testNote: { marginTop: space.sm },
   infoSlot: { justifyContent: "flex-end" },
+  // The pinned stack: 12, the action button (48, y 710-758), 8, Not now (48, y 766-814).
   action: { marginTop: space.md },
   notNow: { marginTop: space.sm },
 });

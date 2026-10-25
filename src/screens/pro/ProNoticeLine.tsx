@@ -15,7 +15,7 @@
 // Composed here instead of with the kit's NoticeLine (Noir type and colours,
 // and a row that is always `accessible`: on Android that makes it a keyboard
 // and D-pad focus stop, and 05's keyboard and switch focus is only the action
-// pill, then "Not now"). Like a slip line it is still one screen-reader
+// button, then "Not now"). Like a slip line it is still one screen-reader
 // element labelled by its text: through `accessible` on iOS and
 // screenReaderFocusable on Android.
 import { useEffect } from "react";

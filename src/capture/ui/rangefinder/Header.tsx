@@ -1,9 +1,12 @@
-// The header row: back, the plate prompt, library. The prompt is a 40 pt block
-// (headline title over a meta subtitle) centred on the buttons' centre line;
-// a second line grows it downward and the viewfinder shrinks to match. The
-// subtitle slot holds the plate detail, an error line, or (during a wait over
-// ~1 s) the thinking line. Title and subtitle are one screen-reader element,
-// role header, announced politely when they change.
+// The header row: back, the plate prompt, library. Back and library are the
+// live IconButton (48 round, plain, glyph in color.text at ICON_SIZE), as on
+// /play and the light table. The prompt is a Playfair title (narrativeTitle
+// 24/30) over a Jakarta detail (caption 13/18, secondary): one line each is
+// exactly the buttons' 48, so the block is centred on their centre line; a
+// second line grows it downward and the viewfinder shrinks to match. The
+// detail slot holds the plate detail, an error line, or (during a wait over
+// ~1 s) the warm thinking line. Title and detail are one screen-reader
+// element, role header, announced politely when they change.
 //
 // Keyboard and switch focus reaches controls only. On Android `accessible`
 // makes a View keyboard-focusable (and focusable={false} can't undo it), so
@@ -21,15 +24,16 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { IconButton, NoirText, ThinkingStates } from "@/components/noir";
-import { ArrowLeftIcon, ImagesIcon, WarningIcon } from "@/components/icons";
-import { ref } from "@/theme/tokens";
-import { Dimmable, slopBox, undimmed } from "./Dimmable";
+import { IconButton } from "@/components/IconButton";
+import { ArrowLeftIcon, ICON_SIZE, ICON_WEIGHT, ImagesIcon, WarningIcon } from "@/components/icons";
+import { ThinkingStates } from "@/components/noir";
+import { Text } from "@/components/Text";
+import { color, hit, ref, space, type as typeScale } from "@/theme/tokens";
 
 const L = ref.layout.camera;
 
-// 44 - (22 + 18) = 2 above and below a one-line title and subtitle.
-const PROMPT_PAD = (ref.hit.min - ref.type.headline.lineHeight - ref.type.meta.lineHeight) / 2;
+// 48 - (30 + 18) = 0 above and below a one-line title and detail.
+const PROMPT_PAD = Math.max(0, (hit.min - typeScale.narrativeTitle.lineHeight - typeScale.caption.lineHeight) / 2);
 
 export type PromptSubtitle =
   | { kind: "detail"; text: string }
@@ -44,7 +48,7 @@ export interface HeaderProps {
   libraryDisabled: boolean;
   title: string;
   subtitle: PromptSubtitle;
-  /** The prompt's screen-reader text: the title, then what the subtitle slot says. */
+  /** The prompt's screen-reader text: the title, then what the detail slot says. */
   promptLabel: string;
   promptRef?: Ref<HostInstance>;
   style?: StyleProp<ViewStyle>;
@@ -64,7 +68,12 @@ export function Header({
 }: HeaderProps) {
   return (
     <View style={[styles.row, style]}>
-      <IconButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} testID="back" />
+      <IconButton
+        icon={<ArrowLeftIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
+        accessibilityLabel={backLabel}
+        onPress={onBack}
+        testID="back"
+      />
       <View
         ref={promptRef}
         accessible={Platform.OS === "ios"}
@@ -75,21 +84,18 @@ export function Header({
         style={styles.prompt}
         testID="prompt"
       >
-        <NoirText variant="headline" align="center" importantForAccessibility="no">
+        <Text variant="narrativeTitle" align="center" importantForAccessibility="no">
           {title}
-        </NoirText>
+        </Text>
         <Subtitle subtitle={subtitle} />
       </View>
-      <Dimmable dimmed={libraryDisabled} style={slopBox}>
-        <IconButton
-          icon={ImagesIcon}
-          accessibilityLabel={libraryLabel}
-          onPress={onLibrary}
-          disabled={libraryDisabled}
-          style={undimmed}
-          testID="library"
-        />
-      </Dimmable>
+      <IconButton
+        icon={<ImagesIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
+        accessibilityLabel={libraryLabel}
+        onPress={onLibrary}
+        disabled={libraryDisabled}
+        testID="library"
+      />
     </View>
   );
 }
@@ -98,7 +104,7 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
   switch (subtitle.kind) {
     case "thinking":
       // The prompt's own label carries the status, so the line itself is hidden.
-      return <ThinkingStates decorative lines={[subtitle.line]} sizeTo={subtitle.sizeTo} testID="thinking" />;
+      return <ThinkingStates decorative tone="warm" lines={[subtitle.line]} sizeTo={subtitle.sizeTo} testID="thinking" />;
     case "notice":
       // The prompt element speaks and announces it, so the line stays silent here.
       return (
@@ -108,40 +114,42 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
       );
     case "detail":
       return (
-        <NoirText variant="meta" align="center" importantForAccessibility="no">
+        <Text variant="caption" tone="secondary" align="center" importantForAccessibility="no">
           {subtitle.text}
-        </NoirText>
+        </Text>
       );
   }
 }
 
 /**
- * The error line: Phosphor Warning (16, regular) in the error colour, centred
- * on the first line, a 4 gap, then the words in meta / read. The group is
- * centred and its lines wrap centred. Drawn here rather than with the kit's
- * NoticeLine, which is always `accessible` and so a keyboard stop on Android.
+ * The error line: Phosphor Warning (16, regular) in color.warning, centred on
+ * the first caption line, a space.sm gap, then the words in caption /
+ * secondary (the error red is 2.3:1 on the dark ground, so it is never the
+ * text). The group is centred and its lines wrap centred. Drawn here rather
+ * than with the kit's NoticeLine, which is always `accessible` and so a
+ * keyboard stop on Android.
  */
 function ErrorLine({ text }: { text: string }) {
   const { fontScale } = useWindowDimensions();
   // The glyph stays 16 at every text size; its box follows the first line.
-  const firstLine = ref.type.meta.lineHeight * fontScale;
+  const firstLine = typeScale.caption.lineHeight * fontScale;
   return (
     <View style={styles.errorLine} testID="notice">
-      <View style={[styles.errorIcon, { height: firstLine }]}>
-        <WarningIcon size={ref.icon.small} color={ref.color.error} weight="regular" />
+      <View style={[styles.errorIcon, { height: firstLine }]} testID="notice-icon">
+        <WarningIcon size={L.noticeIcon} color={color.warning} weight={ICON_WEIGHT} />
       </View>
-      <NoirText variant="meta" tone="read" align="center" style={styles.errorText}>
+      <Text variant="caption" tone="secondary" align="center" style={styles.errorText}>
         {text}
-      </NoirText>
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: L.edge },
-  // Between the buttons, 8 clear of each: 247 wide on a 393 screen.
-  prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingVertical: PROMPT_PAD },
-  errorLine: { flexDirection: "row", alignItems: "flex-start", alignSelf: "center", justifyContent: "center", gap: ref.space.xs },
+  row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: L.buttons.edge },
+  // Between the buttons, space.sm clear of each: 243 wide on a 393 screen.
+  prompt: { flex: 1, marginHorizontal: space.sm, paddingVertical: PROMPT_PAD },
+  errorLine: { flexDirection: "row", alignItems: "flex-start", alignSelf: "center", justifyContent: "center", gap: space.sm },
   errorIcon: { justifyContent: "center" },
   errorText: { flexShrink: 1 },
 });

@@ -1,13 +1,13 @@
 import type { ReactElement } from "react";
 import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { createGestureController, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { router, useNavigation } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
 import { openCapture, type CaptureDestination } from "@/capture/openCapture";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { color, motion, radius, ref, space, type } from "@/theme/tokens";
+import { color, hit, motion, radius, ref, space, type } from "@/theme/tokens";
 import { PhotoGuide } from "../PhotoGuide";
 import { swipeStep } from "../swipe";
 
@@ -30,20 +30,26 @@ let backHandlers: BackListener[] = [];
 const TITLES = ["Start at the doorway", "Work around the room", "Get one close view", "Keep the case private"];
 
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
-/** How Reanimated's jest renderer reports an animated colour: "#C89D54" as "rgba(200, 157, 84, 1)". */
-const rgba = (hex: string) => {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 1)`;
-};
-type Drawn = { props: { style?: unknown; jestAnimatedStyle?: { value: Record<string, unknown> } } };
-/** A node's style as drawn now: its last render's style with Reanimated's live animated values on top. */
-const drawnStyle = (node: Drawn) => ({ ...styleOf(node), ...node.props.jestAnimatedStyle?.value });
-/** The step button's drawn fill, edge and label colours (the kit pill's surface layer and label). */
-function stepButtonColours() {
+/** The live Button draws its fill, edge, corners and dimming on an inner surface; layout stays on the pressable. */
+const surfaceOf = (button: Parameters<typeof within>[0]) => within(button).getByTestId("button-surface", { includeHiddenElements: true });
+const buttonLook = (button: Parameters<typeof within>[0]) => ({ ...styleOf(button), ...styleOf(surfaceOf(button)) });
+type Node = ReturnType<typeof screen.getByTestId>;
+/** The step button's fill, edge and label colour: the live Button draws them on itself and its label. */
+function stepButtonColours(label: string) {
   const button = screen.getByTestId("guide-step-button");
-  const [surface, label] = button.children as unknown as Drawn[];
-  return { fill: drawnStyle(surface).backgroundColor, edge: drawnStyle(surface).borderColor, label: drawnStyle(label).color };
+  const style = buttonLook(button);
+  return { fill: style.backgroundColor, edge: style.borderColor, label: styleOf(within(button).getByText(label)).color };
 }
+/** The live Button's spinner, in its label's place while it is `loading` (it has no testID of its own). */
+const spinnersIn = (node: Node) => node.queryAll((child) => child.type === "ActivityIndicator");
+/** The kit ring's reach outside its control: the 2 offset plus the 2 width. */
+const RING = ref.focus.offset + ref.focus.width;
+/** Every drawn focus ring: the kit's 2 pt ring in ref.focus.color (brass), wherever it is composed. */
+const focusRings = () =>
+  screen.container.queryAll((node) => {
+    const style = styleOf(node);
+    return node.type === "View" && style.borderColor === ref.focus.color && style.borderWidth === ref.focus.width;
+  });
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -152,21 +158,44 @@ describe("photo guide: first run", () => {
     expect(screen.queryByText("ESCAPD 400  ·  STEP I", hidden)).toBeNull();
   });
 
-  it("shows Next as the walnut brass pill on steps 1-3 and Open the camera as the brass primary on step 4", async () => {
+  it("shows Next as the live walnut secondary on steps 1-3 and Open the camera as the brass primary on step 4", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
-    expect(stepButtonColours()).toEqual({
-      fill: rgba(color.raised),
-      edge: ref.button.brass.secondary.border,
-      label: rgba(color.text),
+    expect(stepButtonColours("Next")).toEqual({ fill: color.raised, edge: color.hairline, label: color.text });
+    // The play screen's 8 pt-rounded button: never under 48, padded space.md x space.gutter.
+    expect(buttonLook(screen.getByTestId("guide-step-button"))).toMatchObject({
+      borderRadius: radius.control,
+      borderWidth: ref.layout.guide.hairline,
+      minHeight: hit.min,
+      paddingVertical: space.md,
+      paddingHorizontal: space.gutter,
     });
     await next();
     await next();
-    expect(stepButtonColours().fill).toBe(rgba(color.raised));
+    expect(stepButtonColours("Next").fill).toBe(color.raised);
     await next();
-    await act(() => jest.advanceTimersByTime(ref.motion.control.duration * 2));
-    expect(stepButtonColours()).toEqual({ fill: rgba(color.accent), edge: undefined, label: rgba(color.onAccent) });
-    // The brass label type.
+    expect(stepButtonColours("Open the camera")).toEqual({ fill: color.accent, edge: undefined, label: color.onAccent });
+    expect(buttonLook(screen.getByTestId("guide-step-button")).borderRadius).toBe(radius.control);
+    // The live label type.
     expect(styleOf(screen.getByText("Open the camera"))).toMatchObject({ ...type.control });
+  });
+
+  it("leaves the focus ring to the live controls: one brass ring on Close and one on the step button", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    expect(focusRings()).toHaveLength(0);
+    const close = screen.getByRole("button", { name: "Skip the guide" });
+    await fireEvent(close, "focus");
+    // The live IconButton's own pill ring, nothing composed around it.
+    expect(focusRings()).toHaveLength(1);
+    expect(styleOf(focusRings()[0])).toMatchObject({ borderRadius: ref.radius.pill, top: -RING, left: -RING, right: -RING, bottom: -RING });
+    await fireEvent(close, "blur");
+    expect(focusRings()).toHaveLength(0);
+    const button = screen.getByRole("button", { name: "Next" });
+    await fireEvent(button, "focus");
+    // The live Button's control ring, concentric with its 8 pt corners.
+    expect(focusRings()).toHaveLength(1);
+    expect(styleOf(focusRings()[0]).borderRadius).toBe(radius.control + RING);
+    await fireEvent(button, "blur");
+    expect(focusRings()).toHaveLength(0);
   });
 
   it("Next crossfades to the next step, ignores taps mid-transition, then focuses the title and announces the step", async () => {
@@ -344,6 +373,9 @@ describe("photo guide: replay", () => {
     expect(jest.mocked(markCaptureGuideSeen).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(openCapture).mock.invocationCallOrder[0]);
     const button = screen.getByRole("button", { name: "Open the camera" });
     expect(button.props.accessibilityState).toMatchObject({ busy: true });
+    // The live loading state: the spinner, in the brass button's label colour, in the label's place.
+    expect(spinnersIn(button).map((spinner) => spinner.props.color)).toEqual([color.onAccent]);
+    expect(within(button).queryByText("Open the camera", hidden)).toBeNull();
     // Further taps are ignored while it checks.
     await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(button);
     expect(openCapture).toHaveBeenCalledTimes(1);
@@ -353,6 +385,25 @@ describe("photo guide: replay", () => {
     // The warm thinking line: the live caption type.
     expect(styleOf(screen.getAllByText("Checking the file", hidden)[0])).toMatchObject({ ...type.caption });
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("reserves the longer label in either variant and keeps the button's height while it loads", async () => {
+    jest.mocked(openCapture).mockReturnValue(new Promise(() => {}));
+    await renderGuide(<PhotoGuide replay carry={{}} />);
+    const button = () => screen.getByTestId("guide-step-button");
+    const slot = () => styleOf(button().parent as Node);
+    // One label line at the default size: the live 48.
+    expect(slot().minHeight).toBe(hit.min);
+    // Larger text wraps the longer label (measured by the hidden sizer) to two 20 lines.
+    const lines = type.control.lineHeight * 2;
+    await fireEvent(screen.getByText("Open the camera", hidden), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 313, height: lines } } });
+    // Its lines + space.md above and below, + the secondary's 1 pt edge on each side.
+    expect(slot().minHeight).toBe(lines + (space.md + ref.layout.guide.hairline) * 2);
+    await toLastStep();
+    await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
+    // Loading swaps the label for the spinner; the brass button keeps the label's height.
+    expect(spinnersIn(button())).toHaveLength(1);
+    expect(styleOf(button()).minHeight).toBe(lines + space.md * 2);
   });
 
   it("a failed check shows the error line and a live button; a retry clears it and checks again", async () => {
@@ -383,7 +434,10 @@ describe("photo guide: replay", () => {
       color: color.warning,
       width: ref.layout.guide.errorIcon,
     });
-    expect(screen.getByRole("button", { name: "Open the camera" }).props.accessibilityState).toMatchObject({ busy: false });
+    const live = screen.getByRole("button", { name: "Open the camera" });
+    expect(live.props.accessibilityState).toMatchObject({ busy: false });
+    expect(spinnersIn(live)).toHaveLength(0);
+    expect(within(live).getByText("Open the camera")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
     expect(screen.queryByTestId("guide-check-error")).toBeNull();
     expect(openCapture).toHaveBeenCalledTimes(2);

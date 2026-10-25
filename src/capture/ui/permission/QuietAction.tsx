@@ -1,47 +1,42 @@
-// 03 · Camera permission: a quiet button (ref.button.quiet: label + 16 each
-// side, 44 tall, centred) with the screen's two waits (docs/DESIGN.md 03,
-// States). Requesting: disabled, the whole control at
-// ref.button.disabledOpacity. Library busy: the label stays at that opacity,
-// taps are ignored and accessibilityState.busy is set, with no spinner, and the
-// control keeps focus. The kit's busy pill keeps full opacity, so it is dimmed
-// here, and its focus outline is redrawn above the dimmed layer so focus stays
-// a full 2 pt ref.color.bright outline.
-import { StyleSheet, View } from "react-native";
-import { FocusRing, PillButton, useFocusRing } from "@/components/noir";
-import { ref } from "@/theme/tokens";
+// 03 · Camera permission: a quiet button, the live Button's "quiet" variant
+// (transparent, label in `control` color.text, radius.control, at least
+// hit.min tall, space.gutter each side of the label), centred under the
+// primary button, with the screen's two waits (docs/DESIGN.md 03, States).
+// Requesting: `disabled`, the live Button's dimmed, inert state. Library busy:
+// the same dimmed, inert state with the label kept (no spinner: the thinking
+// line above carries the progress) and accessibilityState { busy: true }; a
+// disabled Pressable stays focusable, so the control keeps focus. The live
+// Button draws its own brass focus ring.
+import { StyleSheet } from "react-native";
+import { Button } from "@/components/Button";
 
 export interface QuietActionProps {
   label: string;
   onPress: () => void;
-  /** Requesting: ref.button.disabledOpacity, no press response, `disabled` state. */
+  /** Requesting: dimmed, no press response, `disabled` state. */
   disabled?: boolean;
-  /** Library busy: ref.button.disabledOpacity, taps ignored, `{ busy: true }`, focus kept. */
+  /** Library busy: dimmed, taps ignored, `{ disabled: true, busy: true }`, label and focus kept. */
   busy?: boolean;
   testID?: string;
 }
 
 export function QuietAction({ label, onPress, disabled = false, busy = false, testID }: QuietActionProps) {
-  const focus = useFocusRing();
+  // Only while busy: an explicit accessibilityState replaces the Button's own.
+  const held = busy ? { accessibilityState: { disabled: true, busy: true } } : null;
   return (
-    <View style={styles.slot}>
-      <View style={busy ? styles.dimmed : undefined}>
-        <PillButton
-          variant="quiet"
-          label={label}
-          onPress={onPress}
-          disabled={disabled}
-          busy={busy}
-          onFocus={focus.onFocus}
-          onBlur={focus.onBlur}
-          testID={testID}
-        />
-      </View>
-      {busy ? <FocusRing visible={focus.focused} shape="pill" /> : null}
-    </View>
+    <Button
+      variant="quiet"
+      label={label}
+      onPress={onPress}
+      disabled={disabled || busy}
+      {...held}
+      style={styles.slot}
+      testID={testID}
+    />
   );
 }
 
 const styles = StyleSheet.create({
+  // Label width plus the Button's padding, centred in the column.
   slot: { alignSelf: "center" },
-  dimmed: { opacity: ref.button.disabledOpacity },
 });

@@ -1,15 +1,16 @@
 // The viewfinder's four corner brackets: ESCAPD's bracket language, the same as
-// hotspots in play. Bright, 22 arms, 1.5 stroke, butt ends and a mitred corner,
-// inset ref.space.lg from each frame edge. Hidden until the camera is ready,
-// then they settle together: each starts bracketTravel further out along its
-// diagonal and moves in over motion.bracketSettle, fading in over bracketFade.
-// No hold or dim afterwards. Reduced motion: a motion.reducedFade fade, no travel.
+// the registration marks on /play's plate. Brass (color.accent), 22 arms, 1.5
+// stroke, butt ends and a mitred corner, inset space.lg from each edge of the
+// inner plate. Hidden until the camera is ready, then they settle together:
+// each starts bracketTravel further out along its diagonal and moves in over
+// motion.bracketSettle, fading in over bracketFade. No hold or dim afterwards.
+// Reduced motion: a motion.reducedFade fade, no travel.
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { timingFor } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { color, motion, ref, space } from "@/theme/tokens";
 
 const L = ref.layout.camera;
 const SETTLE = timingFor({ duration: motion.bracketSettle, easing: L.bracketEasing });
@@ -71,12 +72,12 @@ function Corner({ corner, dx, dy, opacity, travel }: {
   return <Animated.View testID={`bracket-${corner}`} style={[styles.corner, styles[corner], animated]} />;
 }
 
-const INSET = ref.space.lg;
+const INSET = space.lg;
 const STROKE = L.bracketStroke;
 
 const styles = StyleSheet.create({
   // Two borders of one box meet in a square (mitred) corner; their ends are butt.
-  corner: { position: "absolute", width: L.bracketArm, height: L.bracketArm, borderColor: ref.color.bright },
+  corner: { position: "absolute", width: L.bracketArm, height: L.bracketArm, borderColor: color.accent },
   tl: { top: INSET, left: INSET, borderTopWidth: STROKE, borderLeftWidth: STROKE },
   tr: { top: INSET, right: INSET, borderTopWidth: STROKE, borderRightWidth: STROKE },
   bl: { bottom: INSET, left: INSET, borderBottomWidth: STROKE, borderLeftWidth: STROKE },

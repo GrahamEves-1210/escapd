@@ -1,7 +1,7 @@
 // The title and body (docs/DESIGN.md 04, Layout: Title, Body; States: Large
 // text, Narrow screen): the light table's heading pattern, a Playfair
 // narrativeTitle over a Jakarta body in the secondary tone. Bottom-anchored
-// above the 62 gap: when it grows, it grows upward; when it still doesn't
+// above the 66 gap: when it grows, it grows upward; when it still doesn't
 // fit, it scrolls while the button stays pinned. Hidden copies of every
 // step's text reserve the tallest block, so a step whose text wraps to more
 // lines never moves the mount above.

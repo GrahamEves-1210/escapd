@@ -3,12 +3,12 @@ import fs from "fs";
 import path from "path";
 import { AccessibilityInfo, BackHandler, Dimensions, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { openCapture } from "@/capture/openCapture";
 import * as api from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { color, radius, ref } from "@/theme/tokens";
+import { color, hit, radius, ref, space } from "@/theme/tokens";
 import { HubScreen } from "../HubScreen";
 
 jest.mock("expo-router", () => {
@@ -82,6 +82,16 @@ beforeEach(() => {
 });
 
 const card = (name: string) => screen.getByRole("button", { name });
+const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
+/** The live Button draws its fill, edge, corners and dimming on an inner surface; layout stays on the pressable. */
+const surfaceOf = (button: Parameters<typeof within>[0]) => within(button).getByTestId("button-surface", { includeHiddenElements: true });
+const buttonLook = (button: Parameters<typeof within>[0]) => ({ ...styleOf(button), ...styleOf(surfaceOf(button)) });
+/** Every drawn focus ring: the kit's 2 pt ring in ref.focus.color (brass), wherever it is composed. */
+const focusRings = () =>
+  screen.container.queryAll((node) => {
+    const style = styleOf(node);
+    return node.type === "View" && style.borderColor === ref.focus.color && style.borderWidth === ref.focus.width;
+  });
 
 describe("01 · Game mode", () => {
   it("renders the header, heading and three cards in reading order, with YOUR CASE loading until its fetch resolves", async () => {
@@ -267,9 +277,34 @@ describe("01 · Game mode", () => {
     expect(screen.queryByTestId("hub-sheet")).toBeNull();
 
     await fireEvent.press(screen.getByRole("button", { name: "How you play" }));
-    await fireEvent.press(screen.getByRole("button", { name: "How to photograph a room" }));
+    const guide = screen.getByRole("button", { name: "How to photograph a room" });
+    // The live secondary Button: walnut with a brass hairline, 8 pt rounded, never under 48.
+    expect(buttonLook(guide)).toMatchObject({
+      backgroundColor: color.raised,
+      borderWidth: H.hairline,
+      borderColor: color.hairline,
+      borderRadius: radius.control,
+      minHeight: hit.min,
+      paddingVertical: space.md,
+    });
+    expect(styleOf(screen.getByText("How to photograph a room"))).toMatchObject({ color: color.text });
+    await fireEvent.press(guide);
     expect(push).toHaveBeenCalledWith({ pathname: "/capture/guide", params: { replay: "1" } });
     expect(screen.queryByTestId("hub-sheet")).toBeNull();
+  });
+
+  it("leaves How you play's focus ring to the live IconButton: one brass ring, nothing composed around it", async () => {
+    await renderHub();
+    const help = screen.getByRole("button", { name: "How you play" });
+    expect(focusRings()).toHaveLength(0);
+    await fireEvent(help, "focus");
+    const rings = focusRings();
+    expect(rings).toHaveLength(1);
+    expect(styleOf(rings[0])).toMatchObject({ borderColor: color.accent, borderRadius: ref.radius.pill });
+    // Drawn inside the button itself, so it follows the 48 circle.
+    expect(help.queryAll((node) => node === rings[0])).toHaveLength(1);
+    await fireEvent(help, "blur");
+    expect(focusRings()).toHaveLength(0);
   });
 
   it("Android back closes the sheet first, swallows a busy card, and otherwise leaves the app", async () => {
