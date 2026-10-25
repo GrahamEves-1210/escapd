@@ -361,9 +361,12 @@ begin
   select jsonb_agg(jsonb_build_object('photo_id', id) order by position) into v_photos
   from public.room_photos where room_id = v_room;
 
+  -- The code must be written where the player can read it before solving
+  -- (clue coverage): the card from the box carries it, in a different spelling
+  -- than the secret answer so the leak check below stays meaningful.
   v_pub := jsonb_build_object(
     'schema_version', 1, 'title', 'Bedroom Mystery', 'photos', v_photos,
-    'items', '[{"id":"key","name":"Key"}]'::jsonb,
+    'items', '[{"id":"key","name":"Key"},{"id":"card","name":"Card","description":"Pencilled on the back: 12 34."}]'::jsonb,
     'hotspots', '[{"id":"lamp","photo_index":0,"object_label":"lamp","shape":{"type":"rect","x":0.1,"y":0.1,"w":0.2,"h":0.2}},
                   {"id":"box","photo_index":1,"object_label":"box","shape":{"type":"rect","x":0.5,"y":0.5,"w":0.2,"h":0.2}}]'::jsonb,
     'puzzles', '[{"id":"get_key","kind":"inspect","hotspot_id":"lamp"},
@@ -372,7 +375,7 @@ begin
     'exit', '{"requires":["code"],"message":"Out!"}'::jsonb);
   v_sec := '{"schema_version":1,"puzzles":{
               "get_key":{"rewards":{"items":["key"]}},
-              "open_box":{"item_id":"key","rewards":{"consume_items":["key"]}},
+              "open_box":{"item_id":"key","rewards":{"consume_items":["key"],"items":["card"]}},
               "code":{"answer":"12-34"}}}'::jsonb;
 
   v_res := public.worker_complete_generation_job(v_job.id, v_job.lease_token, v_pub, v_sec,

@@ -8,7 +8,7 @@
 // publishing; this function only moves data between storage, the AI
 // provider and the database.
 import { admin, handler, json, requireCronSecret } from "../_shared/supabase.ts";
-import { GenerationError, generatePuzzle, NotImplementedError } from "../_shared/ai.ts";
+import { DEADLINE_MS, GenerationError, generatePuzzle, NotImplementedError } from "../_shared/ai.ts";
 
 const LEASE_SECONDS = 300;
 const TIME_BUDGET_MS = 110_000;
@@ -29,7 +29,9 @@ Deno.serve(handler(async (req) => {
   const started = Date.now();
   const results: Array<Record<string, unknown>> = [];
 
-  while (Date.now() - started < TIME_BUDGET_MS) {
+  // Claim another job only if a full generation (which stops itself at
+  // DEADLINE_MS) still fits in this invocation's budget.
+  while (Date.now() - started + DEADLINE_MS < TIME_BUDGET_MS) {
     const { data: job, error } = await admin().rpc("worker_claim_generation_job", {
       p_worker_id: workerId,
       p_lease_seconds: LEASE_SECONDS,

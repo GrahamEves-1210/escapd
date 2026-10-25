@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "ESCAPD",
+    "slug": "escapd",
+    "scheme": "escapd",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#090807",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.escapd.app"
+    },
+    "android": {
+      "package": "com.escapd.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#090807",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
+          "backgroundColor": "#090807"
+        }
+      ],
+      "expo-image",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ESCAPD uses the camera to photograph your room so it can become a case. Photos are only used to build your case.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ESCAPD reads the photos you choose so your room can become a case.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

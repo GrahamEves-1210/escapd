@@ -14,6 +14,7 @@ import * as SecureStore from "expo-secure-store";
 import * as aesjs from "aes-js";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
+import { inspectingFetch } from "./response-inspect";
 
 class LargeSecureStore {
   private async encrypt(key: string, value: string): Promise<string> {
@@ -59,6 +60,8 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
+  // Development builds report any non-JSON response (see response-inspect.ts).
+  ...(__DEV__ ? { global: { fetch: inspectingFetch } } : {}),
   auth: {
     storage: new LargeSecureStore(),
     autoRefreshToken: true,

@@ -3,7 +3,8 @@
 // this file with the generated version:
 //   npx supabase gen types typescript --project-id <project-ref> --schema public > src/lib/database.types.ts
 // (JSON columns are typed as Json here; cast public_definition to
-// PuzzleDefinitionV1 and state to SessionState from ./puzzle-types.)
+// PuzzleDefinitionV1, state to SessionState, and hint_progress to HintProgress
+// from ./puzzle-types.)
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -66,6 +67,7 @@ export interface Database {
           status: "active" | "completed" | "abandoned"; state: Json; action_count: number;
           wrong_answer_count: number; hints_used: number; started_at: Timestamp; last_played_at: Timestamp;
           completed_at: Timestamp | null; created_at: Timestamp; updated_at: Timestamp;
+          hint_progress: Json; code_wrong_streak: number; code_locked_until: Timestamp | null;
         };
         Insert: never;
         Update: never;
@@ -113,6 +115,7 @@ export interface Database {
       start_or_resume_session: { Args: { p_room_id: string }; Returns: Database["public"]["Tables"]["game_sessions"]["Row"] };
       abandon_session: { Args: { p_session_id: string }; Returns: Database["public"]["Tables"]["game_sessions"]["Row"] };
       submit_action: { Args: { p_session_id: string; p_action: Json }; Returns: Json };
+      use_hint: { Args: { p_session_id: string; p_rung: number }; Returns: Json };
       get_my_access: { Args: Record<string, never>; Returns: Json };
     };
     Enums: Record<string, never>;

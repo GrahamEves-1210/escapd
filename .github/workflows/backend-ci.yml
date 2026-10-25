@@ -17,6 +17,11 @@ jobs:
   edge-functions:
     name: Edge Functions type-check
     runs-on: ubuntu-24.04
+    env:
+      # The repo root holds the Expo app's package.json. Without this, Deno
+      # expects a node_modules folder (this job never runs npm install) instead
+      # of resolving npm: imports from its own cache.
+      DENO_NO_PACKAGE_JSON: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -25,3 +30,8 @@ jobs:
       - name: deno check
         working-directory: supabase/functions
         run: deno check */index.ts
+      - name: deno test (generation pipeline; stubbed providers, no network calls to Gemini or Supabase)
+        working-directory: supabase/functions
+        run: deno test --allow-read
+      - name: deno test (local generation trial and its preview engine)
+        run: deno test -A --config scripts/deno.json scripts/trial/

@@ -1,0 +1,1066 @@
+<title>ESCAPD Magnifying Glass</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a darkroom bench. The prop sits on a square photographic plate; its spec card and controls sit beside it, stacked below on phones. */
+:root {
+  --soot: #090807;
+  --bench: #14110E;
+  --raised: #1E1915;
+  --brass: #C89D54;
+  --brass-hi: #DFB66C;
+  --manila: #E8DFC8;
+  --ink: #171411;
+  --text: #F2ECE1;
+  --muted: #A89C8A;
+  --hairline: rgba(200, 157, 84, 0.32);
+  --rim: rgba(255, 255, 255, 0.08);
+  --display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --body: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--soot);
+  color: var(--text);
+  font: 15px/1.55 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.bench { max-width: 1080px; margin: 0 auto; padding-block: 32px 56px; display: grid; gap: 28px; }
+.eyebrow { margin: 0; font: 600 11px/1.3 var(--mono); letter-spacing: 0.14em; color: var(--brass); }
+h1 { margin: 8px 0 10px; font: 600 clamp(30px, 5vw, 44px)/1.08 var(--display); text-wrap: balance; }
+h2 { margin: 0; font: italic 400 20px/1.2 var(--display); color: var(--text); }
+.lede { margin: 0; max-width: 62ch; color: var(--muted); }
+.studio { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; align-items: start; }
+@media (max-width: 860px) { .studio { grid-template-columns: minmax(0, 1fr); } }
+.plate {
+  position: relative; margin: 0; width: 100%; max-width: 100%; aspect-ratio: 1 / 1;
+  border-radius: 24px; overflow: hidden; border: 1px solid var(--rim);
+}
+.plate[data-bg="darkroom"] { background: radial-gradient(120% 95% at 38% 32%, #2a2119 0%, #15100c 52%, var(--soot) 100%); }
+.plate[data-bg="manila"] { background: var(--manila); }
+.plate[data-bg="transparent"] { background: repeating-conic-gradient(#2b2724 0 25%, #1b1815 0 50%) 0 0 / 24px 24px; }
+#stage { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#stage:active { cursor: grabbing; }
+.status {
+  position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px);
+  padding: 6px 10px; border-radius: 999px; background: rgba(9, 8, 7, 0.66);
+  font: 500 11px/1.4 var(--mono); letter-spacing: 0.06em; color: var(--muted);
+}
+.panel { display: grid; gap: 20px; padding: 20px; background: var(--bench); border: 1px solid var(--hairline); border-radius: 14px; min-width: 0; }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+legend { padding: 0; margin-bottom: 8px; font: 600 11px/1.3 var(--mono); letter-spacing: 0.12em; color: var(--muted); }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg label { position: relative; }
+.seg input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.seg span {
+  display: inline-block; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--hairline);
+  font: 500 13px/1.2 var(--body); color: var(--text); background: var(--raised);
+}
+.seg input:checked + span { background: var(--brass); border-color: var(--brass); color: var(--ink); }
+.seg input:focus-visible + span { outline: 2px solid var(--brass-hi); outline-offset: 2px; }
+.toggle { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--brass); margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button {
+  padding: 10px 14px; border-radius: 8px; border: 1px solid var(--hairline); cursor: pointer;
+  font: 600 13px/1.2 var(--body); color: var(--text); background: var(--raised);
+}
+button.primary { background: var(--brass); border-color: var(--brass); color: var(--ink); }
+button:hover { border-color: var(--brass-hi); }
+button:focus-visible { outline: 2px solid var(--brass-hi); outline-offset: 2px; }
+.pick {
+  margin: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rim); background: var(--soot);
+  font: 500 12px/1.55 var(--mono); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all;
+}
+.note { margin: 0; font-size: 12px; color: var(--muted); min-height: 1.4em; }
+.spec { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 14px; margin: 0; font-size: 13px; }
+.spec dt { padding-top: 2px; font: 500 11px/1.4 var(--mono); letter-spacing: 0.08em; color: var(--muted); }
+.spec dd { margin: 0; }
+.files { display: grid; gap: 5px; margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+.files code { font: 500 12px var(--mono); color: var(--text); }
+.divider { height: 1px; background: var(--hairline); }
+</style>
+
+<main class="bench">
+  <header>
+    <p class="eyebrow">ESCAPD · PROP 01 · REVISION C</p>
+    <h1>The magnifying glass</h1>
+    <p class="lede">A reading glass built entirely in code: brass rim, crown-glass lens, turned wooden handle. Drag to turn it, pinch or scroll to zoom. When a view looks right, copy your pick and send it to Claude, who renders the app's image files from it.</p>
+  </header>
+
+  <section class="studio">
+    <figure class="plate" id="plate" data-bg="transparent">
+      <canvas id="stage" aria-label="3D magnifying glass. Drag to rotate, pinch or scroll to zoom."></canvas>
+      <figcaption class="status" id="status">Building the glass…</figcaption>
+    </figure>
+
+    <aside class="panel" aria-label="Options">
+      <fieldset>
+        <legend>STYLE</legend>
+        <div class="seg">
+          <label><input type="radio" name="style" id="style-painted" value="painted" checked><span>Painted</span></label>
+          <label><input type="radio" name="style" id="style-realistic" value="realistic"><span>Realistic</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>VIEW</legend>
+        <div class="seg">
+          <label><input type="radio" name="view" id="view-icon" value="icon" checked><span>Icon</span></label>
+          <label><input type="radio" name="view" id="view-hero" value="hero"><span>Over a case file</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>BACKGROUND</legend>
+        <div class="seg">
+          <label><input type="radio" name="bg" id="bg-darkroom" value="darkroom"><span>Darkroom</span></label>
+          <label><input type="radio" name="bg" id="bg-manila" value="manila"><span>Manila</span></label>
+          <label><input type="radio" name="bg" id="bg-transparent" value="transparent" checked><span>Transparent</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>HANDLE</legend>
+        <div class="seg">
+          <label><input type="radio" name="handle" id="handle-walnut" value="walnut"><span>Walnut</span></label>
+          <label><input type="radio" name="handle" id="handle-ebony" value="ebony" checked><span>Ebony</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>BRASS</legend>
+        <div class="seg">
+          <label><input type="radio" name="brass" id="brass-polished" value="polished"><span>Polished</span></label>
+          <label><input type="radio" name="brass" id="brass-aged" value="aged" checked><span>Aged</span></label>
+        </div>
+      </fieldset>
+      <label class="toggle"><input type="checkbox" id="sway"> Sway gently</label>
+
+      <div class="divider"></div>
+
+      <div class="actions">
+        <button type="button" class="primary" id="copy">Copy my pick</button>
+        <button type="button" id="reset">Reset view</button>
+      </div>
+      <pre class="pick" id="pick">style=painted view=icon</pre>
+      <p class="note" id="note" aria-live="polite"></p>
+
+      <div class="divider"></div>
+
+      <h2>Spec card</h2>
+      <dl class="spec">
+        <dt>LENS</dt><dd>75 mm crown glass, n 1.52, 2× reading power</dd>
+        <dt>RIM</dt><dd>Brass, 120-tooth knurled grip, beaded edges</dd>
+        <dt>HANDLE</dt><dd>Turned hardwood, 120 mm, lacquered</dd>
+        <dt>CAP</dt><dd>Brass ferrule and domed end cap</dd>
+        <dt>OVERALL</dt><dd>238 mm, about 170 g</dd>
+      </dl>
+
+      <div class="divider"></div>
+
+      <h2>Files Claude renders</h2>
+      <ul class="files">
+        <li><code>magnifier.png</code> with <code>@2x</code> and <code>@3x</code>, transparent, for buttons</li>
+        <li><code>magnifier-1024.png</code> a large master</li>
+        <li><code>magnifier-hero.png</code> over the case file, on request</li>
+      </ul>
+    </aside>
+  </section>
+</main>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+const plate = $("plate");
+const canvas = $("stage");
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---- Dimensions, in lens radii (1 unit = 37.5 mm) --------------------------
+const R = 1;
+const LENS_T = 0.13;            // centre thickness
+const LENS_E = 0.035;           // edge thickness
+const RIM_IN = R - 0.025;
+const RIM_OUT = R + 0.13;
+const RIM_W = 0.085;            // half the rim's depth
+const MAG = 1.9;                // what the lens shows in the hero view
+const HANDLE_L = 1.62;
+const CARD_W = 4.8;
+const CARD_H = 3.34;
+
+const VIEWS = {
+  icon: { rot: [0.2, -0.42, 0.74], polar: 1.289, azimuth: 2.826, frame: 0.8, card: false },
+  hero: { rot: [0.1, -0.26, 0.6], polar: 1.4, azimuth: 0.1, frame: 0.78, card: true },
+};
+const state = { style: "painted", view: "icon", bg: "transparent", handle: "ebony", brass: "aged", sway: false };
+
+// ---- Small helpers ----------------------------------------------------------
+function rng(seed) {
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+function canvasTexture(w, h, draw, srgb = true) {
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+// Lathe profiles run counter-clockwise in (radius, height) so faces point out.
+const v2 = (x, y) => new THREE.Vector2(Math.max(x, 1e-4), y);
+function dedupe(points) {
+  return points.filter((p, i) => i === 0 || p.distanceTo(points[i - 1]) > 1e-6);
+}
+function lathe(points, segments) {
+  return new THREE.LatheGeometry(dedupe(points), segments);
+}
+
+// ---- Textures: realistic ------------------------------------------------------
+function woodTexture(base, dark, light, seed) {
+  const t = canvasTexture(512, 1024, (g, w, h) => {
+    const r = rng(seed);
+    g.fillStyle = base;
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 240; i++) {
+      const x = r() * w, amp = 2 + r() * 9, freq = 0.003 + r() * 0.01, phase = r() * 6.28;
+      g.globalAlpha = 0.05 + r() * 0.22;
+      g.strokeStyle = r() < 0.62 ? dark : light;
+      g.lineWidth = 0.6 + r() * 3.4;
+      g.beginPath();
+      for (let y = 0; y <= h; y += 16) {
+        const xx = x + Math.sin(y * freq + phase) * amp;
+        if (y === 0) g.moveTo(xx, y); else g.lineTo(xx, y);
+      }
+      g.stroke();
+    }
+    g.fillStyle = dark;
+    g.globalAlpha = 0.28;
+    for (let i = 0; i < 2000; i++) g.fillRect(r() * w, r() * h, 1, 2 + r() * 6);
+    g.globalAlpha = 1;
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+function tarnishTexture() {
+  const t = canvasTexture(256, 256, (g, w, h) => {
+    const r = rng(7);
+    g.fillStyle = "rgb(205,205,205)";
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 280; i++) {
+      const x = r() * w, y = r() * h, rad = 4 + r() * 28, v = (150 + r() * 105) | 0;
+      const grd = g.createRadialGradient(x, y, 0, x, y, rad);
+      grd.addColorStop(0, `rgba(${v},${v},${v},0.55)`);
+      grd.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      g.fillStyle = grd;
+      g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+  }, false);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(4, 1);
+  return t;
+}
+
+// Painted glass: a darker green edge, a crescent highlight, one sparkle.
+function shineTexture() {
+  return canvasTexture(512, 512, (g, w, h) => {
+    const cx = w / 2, cy = h / 2, rad = w / 2;
+    let grd = g.createRadialGradient(cx, cy, rad * 0.7, cx, cy, rad);
+    grd.addColorStop(0, "rgba(16,30,25,0)");
+    grd.addColorStop(0.82, "rgba(16,30,25,0.30)");
+    grd.addColorStop(1, "rgba(8,14,12,0.62)");
+    g.fillStyle = grd;
+    g.beginPath();
+    g.arc(cx, cy, rad, 0, Math.PI * 2);
+    g.fill();
+
+    const c2 = document.createElement("canvas");
+    c2.width = w;
+    c2.height = h;
+    const k = c2.getContext("2d");
+    const lg = k.createLinearGradient(cx - rad * 0.9, cy - rad * 0.9, cx + rad * 0.1, cy + rad * 0.1);
+    lg.addColorStop(0, "rgba(255,248,232,0.9)");
+    lg.addColorStop(1, "rgba(255,248,232,0)");
+    k.fillStyle = lg;
+    k.beginPath();
+    k.arc(cx, cy, rad * 0.86, 0, Math.PI * 2);
+    k.fill();
+    k.globalCompositeOperation = "destination-out";
+    k.beginPath();
+    k.arc(cx + rad * 0.12, cy + rad * 0.12, rad * 0.86, 0, Math.PI * 2);
+    k.fill();
+    g.drawImage(c2, 0, 0);
+
+    const sx = cx - rad * 0.5, sy = cy - rad * 0.47;
+    grd = g.createRadialGradient(sx, sy, 0, sx, sy, rad * 0.1);
+    grd.addColorStop(0, "rgba(255,255,255,0.95)");
+    grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd;
+    g.fillRect(sx - rad * 0.1, sy - rad * 0.1, rad * 0.2, rad * 0.2);
+
+    g.strokeStyle = "rgba(255,226,180,0.2)";
+    g.lineWidth = 7;
+    g.lineCap = "round";
+    g.beginPath();
+    g.arc(cx, cy, rad * 0.8, Math.PI * 0.12, Math.PI * 0.42);
+    g.stroke();
+  });
+}
+
+// ---- Textures: painted --------------------------------------------------------
+// Brush strokes in a handful of tones. On lathe parts u runs around the part
+// and v along its profile, so "around" strokes wrap the ring and "along"
+// strokes follow the handle.
+function strokeTexture(w, h, tones, accents, count, along, seed) {
+  const t = canvasTexture(w, h, (g) => {
+    const r = rng(seed);
+    g.fillStyle = tones[0];
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < count; i++) {
+      const x = r() * w, y = r() * h;
+      const length = 18 + r() * 90, width = 3 + r() * 8;
+      const accent = accents.length && r() < 0.07;
+      g.globalAlpha = accent ? 0.45 + r() * 0.25 : 0.16 + r() * 0.3;
+      g.fillStyle = accent ? accents[(r() * accents.length) | 0] : tones[(r() * tones.length) | 0];
+      g.beginPath();
+      if (along) g.ellipse(x, y, width, length * 1.6, (r() - 0.5) * 0.12, 0, Math.PI * 2);
+      else g.ellipse(x, y, length, width, (r() - 0.5) * 0.22, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const PAINT = {
+  brass: {
+    polished: strokeTexture(1024, 256, ["#c09650", "#dcb76a", "#9a7339", "#efd08a", "#86622f"], [], 760, false, 5),
+    aged: strokeTexture(1024, 256, ["#957240", "#ad8b52", "#6f5330", "#c2a165", "#5d4527"], ["#5f7350", "#4d6a5c"], 760, false, 9),
+  },
+  wood: {
+    walnut: strokeTexture(256, 1024, ["#5d3a22", "#734a2b", "#45291a", "#8a5b3a", "#a06d47"], [], 520, true, 13),
+    ebony: strokeTexture(256, 1024, ["#2c201d", "#3b2b25", "#1c1413", "#503a2f", "#5e4436"], ["#3a3442"], 520, true, 17),
+  },
+};
+
+// ---- Textures: the case file ---------------------------------------------------
+function drawCard(g, w, h) {
+  const r = rng(31);
+  g.fillStyle = "#E8DFC8";
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) {
+    g.strokeStyle = r() < 0.5 ? "rgba(120,96,60,0.06)" : "rgba(255,255,255,0.09)";
+    g.lineWidth = 1;
+    const x = r() * w, y = r() * h, a = r() * Math.PI;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a) * 9, y + Math.sin(a) * 9);
+    g.stroke();
+  }
+  const vg = g.createRadialGradient(w / 2, h / 2, h * 0.3, w / 2, h / 2, w * 0.7);
+  vg.addColorStop(0, "rgba(90,66,30,0)");
+  vg.addColorStop(1, "rgba(90,66,30,0.22)");
+  g.fillStyle = vg;
+  g.fillRect(0, 0, w, h);
+
+  // A coffee ring, lower left.
+  g.strokeStyle = "rgba(110,72,34,0.16)";
+  g.lineWidth = 10;
+  g.beginPath();
+  g.arc(250, 790, 120, 0.2, Math.PI * 1.85);
+  g.stroke();
+
+  g.fillStyle = "#7A5A2A";
+  g.font = '600 26px "JetBrains Mono", Consolas, monospace';
+  g.fillText("CASE FILE NO. 01", 96, 110);
+  g.textAlign = "right";
+  g.fillText("ESCAPD", w - 96, 110);
+  g.textAlign = "left";
+
+  g.fillStyle = "#171411";
+  g.font = '600 74px "Playfair Display", Georgia, serif';
+  g.fillText("The Study", 92, 210);
+  g.fillStyle = "rgba(23,20,17,0.5)";
+  g.fillRect(96, 244, w - 192, 2);
+
+  const rows = [["ROOM", "Second-floor study"], ["OPENED", "23:40, Friday"], ["WITNESS", "None"]];
+  g.font = '500 26px "JetBrains Mono", Consolas, monospace';
+  rows.forEach(([k, v], i) => {
+    const y = 310 + i * 52;
+    g.fillStyle = "#7A5A2A";
+    g.fillText(k, 96, y);
+    g.fillStyle = "#171411";
+    g.fillText(v, 330, y);
+  });
+
+  g.font = '500 28px "JetBrains Mono", Consolas, monospace';
+  g.fillStyle = "#171411";
+  g.fillText("The desk drawer sticks. Someone wanted it to.", 96, 520);
+  g.fillText("Half a note under the rug. The other half?", 96, 572);
+  g.fillText("Combination, pencilled on the blotter:", 96, 650);
+
+  g.font = 'italic 400 64px "Playfair Display", Georgia, serif';
+  g.fillStyle = "#2B2A3A";
+  g.fillText("1 8 9 3", 860, 664);
+  g.strokeStyle = "rgba(166,52,41,0.85)";
+  g.lineWidth = 5;
+  g.beginPath();
+  g.ellipse(965, 642, 150, 56, -0.08, 0.15, Math.PI * 2.05);
+  g.stroke();
+
+  // Wax seal, lower right.
+  g.fillStyle = "#A63429";
+  g.beginPath();
+  g.arc(w - 190, h - 170, 70, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "rgba(255,230,210,0.85)";
+  g.font = '600 64px "Playfair Display", Georgia, serif';
+  g.textAlign = "center";
+  g.fillText("E", w - 190, h - 148);
+  g.textAlign = "left";
+}
+// The point on the card the lens sits over, in canvas pixels.
+const CARD_PX = { w: 1440, h: 1002 };
+const LENS_TARGET = { x: 965, y: 640 };
+
+function shadowCanvas() {
+  // 512 × 900 px; the lens shadow is centred at (256, 256), the handle runs down.
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 900;
+  const g = c.getContext("2d");
+  const cx = 256, cy = 256;
+  const grd = g.createRadialGradient(cx, cy, 120, cx, cy, 236);
+  grd.addColorStop(0, "rgba(30,20,10,0.10)");
+  grd.addColorStop(0.62, "rgba(30,20,10,0.42)");
+  grd.addColorStop(0.8, "rgba(30,20,10,0.30)");
+  grd.addColorStop(1, "rgba(30,20,10,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 512, 512);
+  const lg = g.createLinearGradient(196, 0, 316, 0);
+  lg.addColorStop(0, "rgba(30,20,10,0)");
+  lg.addColorStop(0.5, "rgba(30,20,10,0.34)");
+  lg.addColorStop(1, "rgba(30,20,10,0)");
+  g.fillStyle = lg;
+  g.fillRect(196, 440, 120, 420);
+  const fade = g.createLinearGradient(0, 760, 0, 900);
+  fade.addColorStop(0, "rgba(0,0,0,0)");
+  fade.addColorStop(1, "rgba(0,0,0,1)");
+  g.globalCompositeOperation = "destination-out";
+  g.fillStyle = fade;
+  g.fillRect(0, 760, 512, 140);
+  return c;
+}
+const SHADOW_SCALE = 512 / 2.9;   // shadow canvas px per world unit
+const CARD_SCALE = CARD_PX.w / CARD_W; // card canvas px per world unit
+const DROP = new THREE.Vector2(0.42, -0.5); // the key light is upper left, so shadows fall down and right
+
+function causticTexture() {
+  return canvasTexture(128, 128, (g) => {
+    const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grd.addColorStop(0, "rgba(255,236,190,0.9)");
+    grd.addColorStop(0.35, "rgba(255,214,150,0.35)");
+    grd.addColorStop(1, "rgba(255,214,150,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 128, 128);
+  });
+}
+
+// ---- Geometry ---------------------------------------------------------------
+const lensY = (x) => LENS_E / 2 + (LENS_T / 2 - LENS_E / 2) * (1 - (x / R) ** 2);
+
+function lensGeometry() {
+  const pts = [];
+  const n = 40;
+  for (let i = 0; i <= n; i++) pts.push(v2((R * i) / n, -lensY((R * i) / n)));
+  for (let i = n; i >= 0; i--) pts.push(v2((R * i) / n, lensY((R * i) / n)));
+  const g = lathe(pts, 160);
+  g.rotateX(Math.PI / 2);
+  return g;
+}
+
+function shellGeometry() {
+  const pts = [];
+  const n = 40;
+  for (let i = n; i >= 0; i--) {
+    const x = (R * 0.985 * i) / n;
+    pts.push(v2(x, lensY(x) + 0.004));
+  }
+  const g = lathe(pts, 160);
+  g.rotateX(Math.PI / 2);
+  const pos = g.attributes.position;
+  const uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / (2 * R) + 0.5, pos.getY(i) / (2 * R) + 0.5);
+  uv.needsUpdate = true;
+  return g;
+}
+
+function rimGeometry() {
+  const a = RIM_IN, b = RIM_OUT, w = RIM_W;
+  const p = new THREE.Path();
+  // A domed bezel: both faces bulge, so light sweeps across the brass.
+  p.moveTo(a, -w * 0.8);
+  p.quadraticCurveTo(b - 0.01, -w * 1.3, b, 0);
+  p.quadraticCurveTo(b - 0.01, w * 1.3, a, w * 0.8);
+  p.lineTo(a, -w * 0.8);
+  const g = lathe(p.getPoints(12), 220);
+  g.rotateX(Math.PI / 2);
+  return g;
+}
+
+function ferruleGeometry(top) {
+  const y = (d) => top - d;
+  return lathe([
+    v2(0, y(0.37)), v2(0.13, y(0.37)), v2(0.13, y(0.335)), v2(0.118, y(0.32)),
+    v2(0.112, y(0.19)), v2(0.1, y(0.18)), v2(0.112, y(0.17)), v2(0.11, y(0.13)),
+    v2(0.09, y(0.115)), v2(0.08, y(0.09)), v2(0.08, y(0)), v2(0, y(0)),
+  ], 96);
+}
+
+function handleGeometry(top) {
+  const prof = [[0, 0.124], [0.04, 0.13], [0.07, 0.146], [0.095, 0.13], [0.3, 0.158], [0.56, 0.172],
+    [0.8, 0.152], [0.885, 0.14], [0.905, 0.155], [0.93, 0.142], [1, 0.146]];
+  const curve = new THREE.SplineCurve(prof.map(([t, r]) => new THREE.Vector2(r, top - t * HANDLE_L)));
+  const side = curve.getPoints(160).reverse();
+  return lathe([v2(0, top - HANDLE_L), ...side, v2(0, top)], 96);
+}
+
+function capGeometry(bottom) {
+  const p = new THREE.Path();
+  p.moveTo(1e-4, bottom - 0.13);
+  p.quadraticCurveTo(0.15, bottom - 0.125, 0.152, bottom - 0.03);
+  p.lineTo(0.152, bottom + 0.02);
+  p.lineTo(1e-4, bottom + 0.02);
+  return lathe(p.getPoints(16), 96);
+}
+
+// ---- Scene ------------------------------------------------------------------
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
+} catch {
+  statusEl.textContent = "This preview needs WebGL, which this browser has turned off.";
+  throw new Error("WebGL unavailable");
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 60);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = !reduceMotion;
+controls.enablePan = false;
+controls.minDistance = 3;
+controls.maxDistance = 22;
+
+// Realistic: lights fixed in the room. Painted: lights ride with the camera,
+// so every angle reads as lit from the upper left. A warm key, a cool fill and
+// a warm rim from behind give shadows that lean blue and highlights that lean
+// gold, the way a painter shifts hue instead of only darkening.
+const key = new THREE.DirectionalLight(0xffe0b4, 2.6);
+key.position.set(-3.5, 4.5, 5);
+const rimLight = new THREE.DirectionalLight(0x9fb9d8, 1.4);
+rimLight.position.set(4, 1.5, -3);
+const worldLights = new THREE.Group();
+worldLights.add(key, rimLight);
+
+const camTarget = new THREE.Object3D();
+camTarget.position.set(0, 0, -10);
+const pKey = new THREE.DirectionalLight(0xffd8a6, 3.4);
+pKey.position.set(-8, 7, 3);
+const pFill = new THREE.DirectionalLight(0x7f98cc, 1.1);
+pFill.position.set(7, -5, 4);
+const pRim = new THREE.DirectionalLight(0xfff0d8, 2.6);
+pRim.position.set(3, 3, -14);
+for (const light of [pKey, pFill, pRim]) light.target = camTarget;
+const paintLights = new THREE.Group();
+paintLights.add(pKey, pFill, pRim, camTarget);
+camera.add(paintLights);
+
+const hemi = new THREE.HemisphereLight(0x4a3c2e, 0x090807, 0.5);
+scene.add(camera, worldLights, hemi);
+
+// Realistic materials.
+const tarnish = tarnishTexture();
+const brass = new THREE.MeshPhysicalMaterial({
+  metalness: 1, roughnessMap: tarnish, clearcoat: 0.25, clearcoatRoughness: 0.3, envMapIntensity: 1.0,
+});
+const WOODS = {
+  walnut: woodTexture("#4a2e1b", "#22130a", "#7c5030", 11),
+  ebony: woodTexture("#1e1815", "#0a0807", "#3c3029", 23),
+};
+const wood = new THREE.MeshPhysicalMaterial({
+  map: WOODS.walnut, roughness: 0.5, clearcoat: 0.8, clearcoatRoughness: 0.22, envMapIntensity: 0.9,
+});
+const glassMat = new THREE.MeshPhysicalMaterial({
+  color: "#cfe3d8", roughness: 0.02, metalness: 0, transparent: true, opacity: 0.14,
+  clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.2, depthWrite: false,
+});
+
+// Painted materials: less mirror, more pigment, so the strokes carry the form.
+const brassPaint = new THREE.MeshStandardMaterial({ metalness: 0.45, roughness: 0.4, envMapIntensity: 0.75 });
+const woodPaint = new THREE.MeshPhysicalMaterial({
+  metalness: 0, roughness: 0.45, clearcoat: 0.5, clearcoatRoughness: 0.35, envMapIntensity: 0.6,
+});
+const glassPaint = new THREE.MeshPhysicalMaterial({
+  color: "#2f5751", roughness: 0.05, metalness: 0, transparent: true, opacity: 0.5,
+  clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 0.55, depthWrite: false,
+});
+
+const prop = new THREE.Group();
+const lens = new THREE.Mesh(lensGeometry(), glassMat);
+lens.renderOrder = 2;
+const shell = new THREE.Mesh(shellGeometry(), new THREE.MeshBasicMaterial({
+  map: shineTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+}));
+shell.renderOrder = 3;
+const rim = new THREE.Mesh(rimGeometry(), brass);
+const beadFront = new THREE.Mesh(new THREE.TorusGeometry(RIM_IN + 0.03, 0.013, 12, 220), brass);
+beadFront.position.z = RIM_W * 0.82;
+const beadBack = beadFront.clone();
+beadBack.position.z = -RIM_W * 0.82;
+
+const knurl = new THREE.InstancedMesh(new THREE.BoxGeometry(0.018, 0.022, RIM_W * 1.05), brass, 120);
+{
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), z = new THREE.Vector3(0, 0, 1);
+  let k = 0;
+  for (let i = 0; i < 120; i++) {
+    const th = (i / 120) * Math.PI * 2;
+    if (Math.sin(th) < -0.985) continue;          // leave room for the ferrule
+    q.setFromAxisAngle(z, th);
+    m.compose(new THREE.Vector3(Math.cos(th) * (RIM_OUT + 0.002), Math.sin(th) * (RIM_OUT + 0.002), 0), q, s);
+    knurl.setMatrixAt(k++, m);
+  }
+  knurl.count = k;
+}
+
+const ferruleTop = -(RIM_OUT - 0.03);
+const handleTop = ferruleTop - 0.36;
+const ferrule = new THREE.Mesh(ferruleGeometry(ferruleTop), brass);
+const handle = new THREE.Mesh(handleGeometry(handleTop), wood);
+const cap = new THREE.Mesh(capGeometry(handleTop - HANDLE_L), brass);
+
+// What the lens shows over the case file: the same page, magnified.
+const magMat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 });
+const magDisc = new THREE.Mesh(new THREE.CircleGeometry(RIM_IN - 0.004, 96), magMat);
+magDisc.position.z = -RIM_W * 0.85;
+magDisc.visible = false;
+
+prop.add(magDisc, lens, shell, rim, beadFront, beadBack, knurl, ferrule, handle, cap);
+scene.add(prop);
+
+const cardGroup = new THREE.Group();
+const cardMat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0 });
+const card = new THREE.Mesh(new THREE.PlaneGeometry(CARD_W, CARD_H), cardMat);
+card.position.set(0, -0.15, -0.95);
+card.rotation.z = -0.05;
+const caustic = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), new THREE.MeshBasicMaterial({
+  map: causticTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+}));
+card.add(caustic);
+cardGroup.add(card);
+cardGroup.visible = false;
+scene.add(cardGroup);
+
+// ---- Painterly pass: a Kuwahara filter --------------------------------------
+// Each pixel takes the average of whichever quarter of a small disc around it
+// varies least. Flat areas become brush-like dabs; edges stay sharp because
+// the quarter that straddles an edge always has the most variance. The scene
+// renders linear into an HDR target; this pass grades, tone maps and outputs.
+const paintTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+const paintMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tDiffuse: { value: null },
+    texel: { value: new THREE.Vector2(1, 1) },
+    radius: { value: 4 },
+    saturation: { value: 1.12 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = vec4(position.xy, 0.0, 1.0);
+    }`,
+  fragmentShader: `
+    #define MAX_R 8
+    uniform sampler2D tDiffuse;
+    uniform vec2 texel;
+    uniform float radius;
+    uniform float saturation;
+    varying vec2 vUv;
+    void main() {
+      vec4 s0 = vec4(0.0), s1 = vec4(0.0), s2 = vec4(0.0), s3 = vec4(0.0);
+      vec2 l0 = vec2(0.0), l1 = vec2(0.0), l2 = vec2(0.0), l3 = vec2(0.0);
+      float n0 = 0.0, n1 = 0.0, n2 = 0.0, n3 = 0.0;
+      float r2 = radius * radius;
+      for (int j = -MAX_R; j <= MAX_R; j++) {
+        for (int i = -MAX_R; i <= MAX_R; i++) {
+          vec2 o = vec2(float(i), float(j));
+          if (dot(o, o) > r2) continue;
+          vec4 c = texture2D(tDiffuse, vUv + o * texel);
+          // Alpha counts toward variance so silhouettes don't smear outward.
+          float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)) + c.a * 0.35;
+          vec2 ll = vec2(l, l * l);
+          if (i <= 0 && j <= 0) { s0 += c; l0 += ll; n0 += 1.0; }
+          if (i >= 0 && j <= 0) { s1 += c; l1 += ll; n1 += 1.0; }
+          if (i <= 0 && j >= 0) { s2 += c; l2 += ll; n2 += 1.0; }
+          if (i >= 0 && j >= 0) { s3 += c; l3 += ll; n3 += 1.0; }
+        }
+      }
+      float v0 = l0.y / n0 - (l0.x / n0) * (l0.x / n0);
+      float v1 = l1.y / n1 - (l1.x / n1) * (l1.x / n1);
+      float v2 = l2.y / n2 - (l2.x / n2) * (l2.x / n2);
+      float v3 = l3.y / n3 - (l3.x / n3) * (l3.x / n3);
+      vec4 best = s0 / n0;
+      float bv = v0;
+      if (v1 < bv) { bv = v1; best = s1 / n1; }
+      if (v2 < bv) { bv = v2; best = s2 / n2; }
+      if (v3 < bv) { bv = v3; best = s3 / n3; }
+      // The target holds colour already multiplied by alpha: undo it to grade.
+      vec3 rgb = best.a > 0.0001 ? best.rgb / best.a : vec3(0.0);
+      float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
+      rgb = mix(vec3(grey), rgb, saturation);
+      gl_FragColor = vec4(rgb, best.a);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+      gl_FragColor.rgb *= gl_FragColor.a;
+    }`,
+  depthTest: false,
+  depthWrite: false,
+  blending: THREE.NoBlending,
+});
+const paintScene = new THREE.Scene();
+paintScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), paintMat));
+const paintCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const bufferSize = new THREE.Vector2();
+
+// Brush size scales with the image: about half a percent of its height, and
+// finer over the case file so its handwriting stays readable.
+function brushRadius(heightPx, finalPx = heightPx) {
+  const scale = VIEWS[state.view].card ? 0.0022 : 0.0055;
+  return Math.min(8, Math.max(0, finalPx * scale) * (heightPx / finalPx));
+}
+
+// ---- Options ----------------------------------------------------------------
+let dirty = true;
+function applyFinish() {
+  const painted = state.style === "painted";
+  const polished = state.brass === "polished";
+  brass.color.set(polished ? "#BF9757" : "#9A7B46");
+  brass.roughness = polished ? 0.27 : 0.48;
+  wood.map = WOODS[state.handle];
+  brassPaint.map = PAINT.brass[state.brass];
+  woodPaint.map = PAINT.wood[state.handle];
+  const metal = painted ? brassPaint : brass;
+  for (const mesh of [rim, ferrule, cap, beadFront, beadBack, knurl]) mesh.material = metal;
+  handle.material = painted ? woodPaint : wood;
+  lens.material = painted ? glassPaint : glassMat;
+  // Painted strokes turn the knurl teeth into a ragged edge.
+  knurl.visible = !painted;
+  worldLights.visible = !painted;
+  paintLights.visible = painted;
+  hemi.color.set(painted ? "#6b5640" : "#4a3c2e");
+  hemi.groundColor.set(painted ? "#1c2236" : "#090807");
+  hemi.intensity = painted ? 0.9 : 0.5;
+  renderer.toneMappingExposure = painted ? 1.12 : 1.05;
+  for (const m of [brass, wood, brassPaint, woodPaint]) m.needsUpdate = true;
+  plate.dataset.bg = state.bg;
+  dirty = true;
+}
+
+// Highlights belong on the lens face turned toward the viewer.
+const lensNormal = new THREE.Vector3();
+const lensCentre = new THREE.Vector3();
+function faceShell() {
+  prop.updateMatrixWorld(true);
+  lensNormal.set(0, 0, 1).transformDirection(prop.matrixWorld);
+  prop.getWorldPosition(lensCentre);
+  shell.rotation.y = lensNormal.dot(camera.position.clone().sub(lensCentre)) < 0 ? Math.PI : 0;
+}
+
+let baseYaw = 0;
+let cardCanvas = null;
+const glassShadow = shadowCanvas();
+
+// Repaints the case file with the glass's shadow on it, so the card's edge clips it.
+function paintCard(turn) {
+  if (!cardCanvas) return;
+  const g = cardCanvas.getContext("2d");
+  drawCard(g, CARD_PX.w, CARD_PX.h);
+  const k = CARD_SCALE / SHADOW_SCALE;
+  g.save();
+  g.translate(LENS_TARGET.x + DROP.x * CARD_SCALE, LENS_TARGET.y - DROP.y * CARD_SCALE);
+  g.rotate(-turn);
+  g.scale(k, k);
+  g.drawImage(glassShadow, -256, -256);
+  g.restore();
+  cardMat.map.needsUpdate = true;
+  magMat.map.needsUpdate = true;
+}
+
+function applyView() {
+  const v = VIEWS[state.view];
+  prop.rotation.set(v.rot[0], v.rot[1], v.rot[2]);
+  baseYaw = v.rot[1];
+  cardGroup.visible = v.card;
+  magDisc.visible = v.card;
+  if (v.card) {
+    card.updateMatrixWorld(true);
+    const lx = (LENS_TARGET.x / CARD_PX.w - 0.5) * CARD_W;
+    const ly = (0.5 - LENS_TARGET.y / CARD_PX.h) * CARD_H;
+    const target = card.localToWorld(new THREE.Vector3(lx, ly, 0));
+    prop.position.set(target.x, target.y, 0);
+
+    // The disc shows the card around the target, scaled up and kept upright.
+    const tex = magMat.map;
+    const turn = prop.rotation.z - card.rotation.z;
+    const rd = RIM_IN - 0.004;
+    paintCard(turn);
+    tex.center.set(0.5, 0.5);
+    tex.rotation = -turn;
+    tex.repeat.set((2 * rd) / (MAG * CARD_W), (2 * rd) / (MAG * CARD_H));
+    tex.offset.set(LENS_TARGET.x / CARD_PX.w - 0.5, 0.5 - LENS_TARGET.y / CARD_PX.h);
+    caustic.position.set(lx + DROP.x, ly + DROP.y, 0.004);
+  } else {
+    prop.position.set(0, 0, 0);
+  }
+  prop.updateMatrixWorld(true);
+  frame(v);
+  dirty = true;
+}
+
+function frame(v, distanceScale = 1) {
+  const box = new THREE.Box3().setFromObject(prop);
+  if (v.card) box.union(new THREE.Box3().setFromObject(cardGroup));
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const dist = ((sphere.radius * v.frame) / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * distanceScale;
+  controls.target.copy(sphere.center);
+  camera.position.copy(sphere.center).add(new THREE.Vector3().setFromSphericalCoords(dist, v.polar, v.azimuth));
+  camera.lookAt(sphere.center);
+  controls.update();
+}
+
+function pickText() {
+  const d = camera.position.distanceTo(controls.target);
+  return [
+    `style=${state.style}`, `view=${state.view}`, `bg=${state.bg}`, `handle=${state.handle}`, `brass=${state.brass}`,
+    `azimuth=${controls.getAzimuthalAngle().toFixed(3)}`, `polar=${controls.getPolarAngle().toFixed(3)}`,
+    `distance=${d.toFixed(2)}`,
+  ].join(" ");
+}
+function updatePick() {
+  $("pick").textContent = pickText();
+}
+
+for (const name of ["style", "view", "bg", "handle", "brass"]) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
+    input.addEventListener("change", () => {
+      state[name] = input.value;
+      applyFinish();
+      if (name === "view") applyView();
+      updatePick();
+    });
+  });
+}
+const swayBox = $("sway");
+swayBox.checked = state.sway;
+swayBox.addEventListener("change", () => {
+  state.sway = swayBox.checked;
+  if (!state.sway) prop.rotation.y = baseYaw;
+  dirty = true;
+});
+$("reset").addEventListener("click", () => {
+  applyView();
+  updatePick();
+});
+controls.addEventListener("change", () => (dirty = true));
+controls.addEventListener("end", updatePick);
+
+let noteTimer;
+function note(text) {
+  $("note").textContent = text;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => ($("note").textContent = ""), 4000);
+}
+$("copy").addEventListener("click", async () => {
+  updatePick();
+  const text = $("pick").textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    note("Copied. Paste it into your chat with Claude.");
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents($("pick"));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    note("Selected. Copy it with your keyboard, or long-press on a phone.");
+  }
+});
+
+// ---- Rendering --------------------------------------------------------------
+// `finalPx` is the size the image ends up at; a supersampled export passes it
+// so the brush keeps the size it should have in the final file.
+function renderFrame(heightPx, finalPx = heightPx) {
+  faceShell();
+  if (state.style !== "painted") {
+    renderer.render(scene, camera);
+    return;
+  }
+  renderer.getDrawingBufferSize(bufferSize);
+  if (paintTarget.width !== bufferSize.x || paintTarget.height !== bufferSize.y) {
+    paintTarget.setSize(bufferSize.x, bufferSize.y);
+  }
+  renderer.setRenderTarget(paintTarget);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  paintMat.uniforms.tDiffuse.value = paintTarget.texture;
+  paintMat.uniforms.texel.value.set(1 / bufferSize.x, 1 / bufferSize.y);
+  paintMat.uniforms.radius.value = brushRadius(heightPx, finalPx);
+  renderer.render(paintScene, paintCam);
+}
+
+function resize() {
+  const w = plate.clientWidth, h = plate.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  dirty = true;
+}
+new ResizeObserver(resize).observe(plate);
+
+// Draws only when something changed: the painted pass is heavy on phones.
+function tick(time) {
+  controls.update();
+  if (state.sway) {
+    prop.rotation.y = baseYaw + Math.sin(time / 1700) * 0.17;
+    dirty = true;
+  }
+  if (!dirty) return;
+  dirty = false;
+  renderFrame(renderer.domElement.height);
+}
+document.addEventListener("visibilitychange", () => {
+  renderer.setAnimationLoop(document.hidden ? null : tick);
+  dirty = true;
+});
+
+const ready = (async () => {
+  try {
+    await Promise.all([
+      document.fonts.load('600 74px "Playfair Display"'),
+      document.fonts.load('italic 400 64px "Playfair Display"'),
+      document.fonts.load('500 26px "JetBrains Mono"'),
+    ]);
+  } catch {
+    // Fall back to system faces on the card.
+  }
+  const cardTex = canvasTexture(CARD_PX.w, CARD_PX.h, drawCard);
+  cardCanvas = cardTex.image;
+  cardMat.map = cardTex;
+  cardMat.needsUpdate = true;
+  const magTex = cardTex.clone();
+  magTex.needsUpdate = true;
+  magMat.map = magTex;
+  magMat.needsUpdate = true;
+  applyFinish();
+  resize();
+  applyView();
+  updatePick();
+  renderer.setAnimationLoop(tick);
+  statusEl.textContent = "DRAG TO TURN · PINCH OR SCROLL TO ZOOM";
+})();
+
+// Used by Claude's local renderer to export the app's image files.
+window.escapd = {
+  ready,
+  async render({ style = "painted", view = "icon", handle = "ebony", brass: finish = "aged", width = 1024, height = 1024,
+    azimuth, polar, distanceScale = 1, finalPx } = {}) {
+    await ready;
+    Object.assign(state, { style, view, handle, brass: finish, sway: false });
+    applyFinish();
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    applyView();
+    const v = VIEWS[view];
+    frame({ ...v, azimuth: azimuth ?? v.azimuth, polar: polar ?? v.polar }, distanceScale);
+    renderFrame(height, finalPx ?? height);
+    const url = renderer.domElement.toDataURL("image/png");
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    resize();
+    return url;
+  },
+  // A square icon: rendered `supersample` times larger, trimmed to the glass,
+  // padded by `pad` of its size on each side, then scaled down smoothly.
+  async icon({ size = 96, supersample = 4, pad = 0.04, ...opts } = {}) {
+    const big = size * supersample;
+    const url = await this.render({ ...opts, view: "icon", width: big, height: big, finalPx: size });
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const scan = document.createElement("canvas");
+    scan.width = scan.height = big;
+    const sg = scan.getContext("2d");
+    sg.drawImage(img, 0, 0);
+    const { data } = sg.getImageData(0, 0, big, big);
+    let x0 = big, y0 = big, x1 = 0, y1 = 0;
+    for (let y = 0; y < big; y++) {
+      for (let x = 0; x < big; x++) {
+        if (data[(y * big + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    const side = Math.max(x1 - x0, y1 - y0) * (1 + pad * 2);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const out = document.createElement("canvas");
+    out.width = out.height = size;
+    const og = out.getContext("2d");
+    og.imageSmoothingEnabled = true;
+    og.imageSmoothingQuality = "high";
+    og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, size, size);
+    return out.toDataURL("image/png");
+  },
+  async glb() {
+    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
+    const wasVisible = magDisc.visible;
+    magDisc.visible = false;
+    const buffer = await new GLTFExporter().parseAsync(prop, { binary: true });
+    magDisc.visible = wasVisible;
+    let s = "";
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  },
+};
+</script>

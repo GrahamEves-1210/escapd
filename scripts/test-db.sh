@@ -4,6 +4,8 @@
 #   Plain Postgres (no Docker):  scripts/test-db.sh
 #     Starts a throwaway PostgreSQL cluster, loads scripts/supabase-stubs.sql,
 #     then the migrations, seed, and supabase/tests/*.sql.
+#     Server binaries default to the newest /usr/lib/postgresql/*/bin; set
+#     PGBIN=/path/to/postgres/bin to use another install (psql comes from PATH).
 #
 #   Against local Supabase:      DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres scripts/test-db.sh
 #     (after `supabase db reset`; skips stubs/migrations, runs tests only)
@@ -26,7 +28,8 @@ if [[ -n "${DATABASE_URL:-}" ]]; then
   exit 0
 fi
 
-PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)"
+# PGBIN overrides where the server binaries live (e.g. a portable install).
+PGBIN="${PGBIN:-$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)}"
 [[ -x "$PGBIN/initdb" ]] || { echo "PostgreSQL server binaries not found"; exit 1; }
 WORK="$(mktemp -d)"
 trap '"$PGBIN/pg_ctl" -D "$WORK/data" stop -m fast >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
