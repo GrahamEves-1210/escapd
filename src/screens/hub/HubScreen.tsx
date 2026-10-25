@@ -1,9 +1,10 @@
-// 01 · Game mode, the hub at / (docs/DESIGN.md). Three case files dealt on a
-// dark desk under a lamp, with the brass reading glass laid above them. It
-// replaces the old title screen and keeps what it offered, now through the
-// cards: THE STUDY (the guided first case), YOUR ROOM (photograph a room,
-// behind openCapture's access check) and YOUR CASE (the newest own case).
-import { useCallback, useRef, useState, type ReactNode } from "react";
+// 01 · Game mode, the hub at / (docs/DESIGN.md). Three case files on the
+// silk, each a small film plate on a walnut mount with a brass plate label,
+// under the painted brass reading glass: the play screen's look. It replaces
+// the old title screen and keeps what it offered, through the cards: THE STUDY
+// (the guided first case), YOUR ROOM (photograph a room, behind openCapture's
+// access check) and YOUR CASE (the newest own case).
+import { useCallback, useEffect, useRef, useState, type ComponentType, type Ref } from "react";
 import {
   AccessibilityInfo,
   BackHandler,
@@ -20,16 +21,18 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { openCapture } from "@/capture/openCapture";
-import { QuestionIcon, WarningIcon, WifiSlashIcon } from "@/components/icons";
-import { BackgroundStill, IconButton, LightPools, NoirText, NoticeLine, Rule } from "@/components/noir";
+import { Grain } from "@/components/Grain";
+import { IconButton, type IconButtonProps } from "@/components/IconButton";
+import { ICON_SIZE, ICON_WEIGHT, QuestionIcon } from "@/components/icons";
+import { BackgroundStill, focusRingStyle, useFocusRing } from "@/components/noir";
+import { Text } from "@/components/Text";
 import { Wordmark } from "@/components/Wordmark";
 import { ensureSession, isNetworkError } from "@/lib/escapd-api";
-import { ref } from "@/theme/tokens";
+import { useTheme } from "@/theme/ThemeProvider";
+import { color, hit, motion, ref, space } from "@/theme/tokens";
 import {
   ROOM_LABEL,
   ROOM_NOTE,
-  STUDY_FAILED,
-  STUDY_OFFLINE,
   TAGS,
   caseDisabled,
   caseHint,
@@ -42,15 +45,21 @@ import {
 } from "./caseStatus";
 import { CardStack, Fan, type DeckCard } from "./Deck";
 import { HowYouPlaySheet } from "./HowYouPlaySheet";
-import { columnHeight, fanFits, fanPools, glassFits, stackPools, type Marks } from "./layout";
+import { HubNotice } from "./HubNotice";
+import { columnHeight, fanFits, glassFits, type Marks } from "./layout";
 import { Magnifier } from "./Magnifier";
 import { useHubData } from "./useHubData";
 
 const H = ref.layout.hub;
 const W = H.weights;
-// How you play's hitSlop (44 to 48). A touch outside a parent's bounds never
-// reaches its children, so the header carries the slop inside its own box.
-const SLOP = (ref.hit.comfortable - ref.button.icon.size) / 2;
+// The kit ring's reach outside a control (2 offset + 2 width), which is also
+// the live IconButton's own hitSlop 4.
+const REACH = ref.focus.offset + ref.focus.width;
+
+// The live IconButton hands every Pressable prop on, ref included (React 19
+// passes ref as a prop); its props type just doesn't declare one. The ref is
+// how focus returns here when the sheet closes.
+const HelpButton = IconButton as ComponentType<IconButtonProps & { ref?: Ref<HostInstance> }>;
 
 type Busy = Extract<CardId, "study" | "room">;
 
@@ -63,15 +72,17 @@ interface Notice {
 export function HubScreen() {
   const insets = useSafeAreaInsets();
   const { width, height, fontScale } = useWindowDimensions();
-  const { study, ownCase, flipped } = useHubData();
+  const { reducedMotion } = useTheme();
+  const { study, ownCase } = useHubData();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [marks, setMarks] = useState<Marks>({});
   const helpRef = useRef<HostInstance>(null);
+  const helpFocus = useFocusRing();
   const action = useRef<AbortController | null>(null);
   const failures = useRef(0);
-  const returnFocus = useRef(false);
+  const focusReturn = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Large text (from the first larger step) or a screen under 375 wide stacks
   // the cards; the glass goes first, and on short screens it goes alone.
@@ -85,13 +96,7 @@ export function HubScreen() {
       return keys.every((key) => current[key] === patch[key]) ? current : { ...current, ...patch };
     });
   }, []);
-  const onColumnLayout = (e: LayoutChangeEvent) => mark({ columnY: e.nativeEvent.layout.y, column: e.nativeEvent.layout.height });
-  const onTitleLayout = (e: LayoutChangeEvent) => mark({ titleY: e.nativeEvent.layout.y });
-  const onSubtitleLayout = (e: LayoutChangeEvent) => {
-    const { y, height: h } = e.nativeEvent.layout;
-    mark({ subtitleBottom: y + h });
-  };
-  const onGlassLayout = (e: LayoutChangeEvent) => mark({ glassX: e.nativeEvent.layout.x, glassY: e.nativeEvent.layout.y });
+  const onColumnLayout = (e: LayoutChangeEvent) => mark({ column: e.nativeEvent.layout.height });
   const onTopSpacerLayout = (e: LayoutChangeEvent) => {
     if (!notice) mark({ topSpacer: e.nativeEvent.layout.height });
   };
@@ -168,30 +173,39 @@ export function HubScreen() {
     }
   };
 
+  const cancelFocusReturn = useCallback(() => {
+    if (focusReturn.current) clearTimeout(focusReturn.current);
+    focusReturn.current = null;
+  }, []);
+  // A pending focus return never outlives the hub.
+  useEffect(() => cancelFocusReturn, [cancelFocusReturn]);
+
   const openSheet = () => {
     // Reopened before the last close finished leaving: that focus return is moot.
-    returnFocus.current = false;
+    cancelFocusReturn();
     setSheetOpen(true);
   };
+  // Closing the sheet (Close, scrim, Android back) returns screen-reader focus
+  // to the How you play button once the sheet has left: until then its modal
+  // layer is still mounted and VoiceOver ignores the move. The live Sheet has
+  // no exit callback, so this waits out its exit (the 200 ms slide, or
+  // motion.reducedFade) plus a margin for the layer's removal.
   const closeSheet = useCallback(() => {
-    returnFocus.current = true;
+    cancelFocusReturn();
     setSheetOpen(false);
-  }, []);
+    const exit = reducedMotion ? motion.reducedFade : H.sheetExit;
+    focusReturn.current = setTimeout(() => {
+      focusReturn.current = null;
+      const help = helpRef.current;
+      if (help) AccessibilityInfo.sendAccessibilityEvent(help, "focus");
+    }, exit + H.sheetFocusMargin);
+  }, [reducedMotion, cancelFocusReturn]);
   // Replay never clears the guide's seen flag; the guide sets it when closed or finished.
   const openGuide = () => {
+    cancelFocusReturn();
     setSheetOpen(false);
     router.push({ pathname: "/capture/guide", params: { replay: "1" } });
   };
-
-  // Closing the sheet (Close, scrim, Android back) returns screen-reader focus
-  // to the How you play button, once the sheet has finished leaving: until
-  // then its modal layer is still mounted and VoiceOver ignores the move.
-  const onSheetExited = useCallback(() => {
-    if (!returnFocus.current) return;
-    returnFocus.current = false;
-    const help = helpRef.current;
-    if (help) AccessibilityInfo.sendAccessibilityEvent(help, "focus");
-  }, []);
 
   // Android back: the sheet closes first; a busy card swallows it until it
   // navigates or shows the notice; otherwise the system leaves the app (root).
@@ -239,7 +253,6 @@ export function HubScreen() {
       tag: TAGS.case,
       note: caseNote(ownCase),
       developing: ownCase.kind === "developing",
-      noteFromShimmer: flipped,
       solved: caseSolved(ownCase),
       accessibilityLabel: caseLabel(ownCase),
       accessibilityHint: caseHint(ownCase),
@@ -252,42 +265,36 @@ export function HubScreen() {
     },
   ];
 
-  const noticeLine = (style: StyleProp<ViewStyle>): ReactNode =>
-    notice ? (
-      <NoticeLine
-        key={notice.id}
-        text={notice.offline ? STUDY_OFFLINE : STUDY_FAILED}
-        icon={notice.offline ? WifiSlashIcon : WarningIcon}
-        variant="body"
-        framed
-        fadeIn
-        testID="hub-notice"
-        style={style}
-      />
-    ) : null;
+  // Always mounted: Android speaks a polite live region when its content
+  // changes, never one that has just mounted.
+  const noticeSlot = (style: StyleProp<ViewStyle>) => (
+    <View accessibilityLiveRegion="polite" style={style} testID="hub-notice-slot">
+      {notice ? <HubNotice key={notice.id} offline={notice.offline} /> : null}
+    </View>
+  );
 
   const heading = (
     <>
-      <NoirText variant="title" align="center" accessibilityRole="header" onLayout={onTitleLayout} style={styles.title}>
+      <Text variant="narrativeTitle" align="center" accessibilityRole="header" style={styles.title}>
         Choose a case
-      </NoirText>
-      <NoirText variant="body" align="center" onLayout={onSubtitleLayout} style={styles.subtitle}>
+      </Text>
+      <Text variant="caption" tone="secondary" align="center" style={styles.subtitle}>
         Three files on the desk.
-      </NoirText>
+      </Text>
     </>
   );
 
   return (
     <View style={styles.root}>
       <BackgroundStill />
+      <Grain />
       {/* Everything behind the sheet: hidden from TalkBack while it is open (VoiceOver is trapped by the sheet). */}
       <View
         style={styles.screen}
         accessibilityElementsHidden={sheetOpen}
         importantForAccessibility={sheetOpen ? "no-hide-descendants" : "auto"}
       >
-        {stacked ? null : <LightPools pools={fanPools(marks, width, withGlass)} />}
-        <View style={[styles.header, { paddingTop: insets.top + ref.space.sm }]}>
+        <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
           {/* Left slot: an empty spacer, not focusable (the hub has no account entry). */}
           <View style={styles.headerSlot} />
           <View
@@ -298,18 +305,37 @@ export function HubScreen() {
             accessibilityRole={Platform.OS === "ios" ? "image" : undefined}
             accessibilityLabel={Platform.OS === "ios" ? "ESCAPD" : undefined}
           >
-            <Wordmark height={H.wordmarkHeight} tint={ref.color.bright} edgeColor={ref.color.bright} />
+            <Wordmark height={H.wordmarkHeight} />
           </View>
-          <IconButton
-            ref={helpRef}
-            icon={QuestionIcon}
-            accessibilityLabel="How you play"
-            onPress={openSheet}
-            disabled={busy !== null}
-            testID="hub-how-you-play"
-          />
+          {/*
+            The live IconButton draws no focus ring, so the kit's pill ring is
+            laid around it here. The box reaches 4 past the 48 button (and gives
+            the 4 back in margin), so the button's hitSlop stays inside its
+            parent: a touch outside a parent's bounds never reaches its children.
+          */}
+          <View style={styles.helpBox}>
+            <HelpButton
+              ref={helpRef}
+              accessibilityLabel="How you play"
+              icon={<QuestionIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
+              onPress={openSheet}
+              onFocus={helpFocus.onFocus}
+              onBlur={helpFocus.onBlur}
+              disabled={busy !== null}
+              testID="hub-how-you-play"
+            />
+            {helpFocus.focused ? (
+              <View
+                pointerEvents="none"
+                accessible={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={styles.helpRing}
+              />
+            ) : null}
+          </View>
         </View>
-        <Rule style={styles.divider} />
+        <View style={styles.rule} />
 
         {stacked ? (
           <ScrollView
@@ -317,14 +343,13 @@ export function HubScreen() {
             contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom }]}
             testID="hub-stacked"
           >
-            <LightPools pools={stackPools(marks, width)} />
             <View
               onLayout={onTopSpacerLayout}
               style={notice && marks.topSpacer !== undefined ? { height: marks.topSpacer } : { flex: W.aboveHero }}
             />
             {heading}
             <CardStack cards={cards} style={styles.deck} />
-            {noticeLine(styles.stackNotice)}
+            {noticeSlot(notice ? styles.stackNotice : null)}
             <View style={{ flex: W.belowHero }} />
           </ScrollView>
         ) : (
@@ -332,46 +357,51 @@ export function HubScreen() {
             <View style={{ flex: withGlass ? W.aboveGlass : W.aboveHero }} />
             {withGlass ? (
               <>
-                <Magnifier enabled={!sheetOpen} onLayout={onGlassLayout} />
+                <Magnifier enabled={!sheetOpen} />
                 <View style={{ flex: W.belowGlass }} />
               </>
             ) : null}
             {heading}
             <Fan cards={cards} style={styles.deck} />
             {/* The notice overlays this space, so the layout never shifts. */}
-            <View style={{ flex: withGlass ? W.belowFan : W.belowHero }}>{noticeLine(styles.fanNotice)}</View>
+            <View style={{ flex: withGlass ? W.belowFan : W.belowHero }}>{noticeSlot(styles.fanNotice)}</View>
           </View>
         )}
       </View>
 
-      {sheetOpen ? <HowYouPlaySheet onClose={closeSheet} onGuide={openGuide} onExited={onSheetExited} /> : null}
+      {sheetOpen ? <HowYouPlaySheet onClose={closeSheet} onGuide={openGuide} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  // Canvas, then the silk still, then the live grain, then content.
+  root: { flex: 1, backgroundColor: color.canvas },
   screen: { ...StyleSheet.absoluteFill },
-  // Buttons at safe top + 8, 16 from the edges; the wordmark centred between
-  // two 44 slots, level with the right button. The header ends SLOP below the
-  // buttons, so How you play's 48 x 48 (x 331-379, y 65-113) lies inside it.
+  // /play's top bar: safe top + xs, the 48 row, xs. The spacer and How you
+  // play sit on the 20 gutter, as on the light table; the wordmark is centred
+  // between them. The header ends xs below the button, so its hitSlop 4
+  // (56 x 56) lies inside it.
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: ref.space.lg,
-    paddingBottom: SLOP,
+    paddingHorizontal: space.gutter,
+    paddingBottom: space.xs,
   },
-  headerSlot: { width: ref.button.icon.size, height: ref.button.icon.size },
-  // y 123, x 16-377: 12 below the buttons (SLOP of it inside the header).
-  divider: { marginTop: ref.space.md - SLOP, marginHorizontal: ref.space.lg },
+  headerSlot: { width: hit.min, height: hit.min },
+  helpBox: { margin: -REACH, padding: REACH },
+  // The kit's pill ring, on the box's edge: 2 outside the button at a 2 offset.
+  helpRing: { ...focusRingStyle("pill"), top: 0, right: 0, bottom: 0, left: 0 },
+  // A 1 pt brass hairline on the gutters, as the case-closed screen rules off a section.
+  rule: { height: H.hairline, marginHorizontal: space.gutter, backgroundColor: color.hairline },
   column: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   // Title and subtitle wrap at large text; nothing shrinks.
-  title: { paddingHorizontal: ref.space.edge },
-  subtitle: { marginTop: ref.space.xs, paddingHorizontal: ref.space.edge },
-  deck: { marginTop: ref.space.band },
-  // 24 below the fan container, 20 from the sides.
-  fanNotice: { position: "absolute", top: ref.space.xl, left: ref.space.edge, right: ref.space.edge },
-  stackNotice: { marginTop: ref.space.xl, marginHorizontal: ref.space.edge },
+  title: { paddingHorizontal: space.gutter },
+  subtitle: { marginTop: space.xs, paddingHorizontal: space.gutter },
+  deck: { marginTop: space.xl },
+  // 24 below the fan container, on the 20 gutters.
+  fanNotice: { position: "absolute", top: space.xl, left: space.gutter, right: space.gutter },
+  stackNotice: { marginTop: space.xl, marginHorizontal: space.gutter },
 });

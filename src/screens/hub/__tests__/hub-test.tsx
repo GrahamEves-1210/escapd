@@ -8,7 +8,7 @@ import { router } from "expo-router";
 import { openCapture } from "@/capture/openCapture";
 import * as api from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { color, radius, ref } from "@/theme/tokens";
 import { HubScreen } from "../HubScreen";
 
 jest.mock("expo-router", () => {
@@ -37,26 +37,12 @@ const mockPreferences = { hotspotAssist: false, setHotspotAssist: jest.fn() };
 jest.mock("@/game/preferences", () => ({ usePreferences: () => mockPreferences }));
 const mockTap = jest.fn();
 jest.mock("@/game/feedback", () => ({ useFeedback: () => ({ tap: mockTap, success: jest.fn(), warning: jest.fn() }) }));
-// Layout animations never run under jest, so the sheet's exit never ends on
-// its own: the real sheet renders, and tests end its exit through the
-// onExited it was last given.
-let mockSheetExited: (() => void) | undefined;
-jest.mock("../HowYouPlaySheet", () => {
-  const actual = jest.requireActual("../HowYouPlaySheet");
-  const { createElement } = jest.requireActual("react");
-  return {
-    HowYouPlaySheet: (props: { onExited?: () => void }) => {
-      mockSheetExited = props.onExited;
-      return createElement(actual.HowYouPlaySheet, props);
-    },
-  };
-});
-
 const mocked = api as jest.Mocked<typeof api>;
 const push = jest.mocked(router.push);
 const capture = jest.mocked(openCapture);
 const hidden = { includeHiddenElements: true } as const;
 const ROOT = path.join(__dirname, "../../../..");
+const H = ref.layout.hub;
 
 type Room = NonNullable<Awaited<ReturnType<typeof api.getLatestCustomRoom>>>;
 type Session = NonNullable<Awaited<ReturnType<typeof api.getLatestSession>>>;
@@ -122,11 +108,11 @@ describe("01 · Game mode", () => {
     expect(loading.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
 
     await act(async () => resolveSession(null));
-    // No session: straight to NONE YET, never creating a guest to label a card.
+    // No session: straight to None yet, never creating a guest to label a card.
     const none = card("Your case. None yet.");
     expect(none.props.accessibilityState).toMatchObject({ disabled: true });
     expect(none.props.accessibilityHint).toBe("Photograph a room first.");
-    expect(screen.getByText("NONE YET", hidden)).toBeTruthy();
+    expect(screen.getByText("None yet", hidden)).toBeTruthy();
     expect(mocked.getLatestCustomRoom).not.toHaveBeenCalled();
     expect(mocked.ensureSession).not.toHaveBeenCalled();
   });
@@ -135,7 +121,10 @@ describe("01 · Game mode", () => {
     player({ tutorial: session("completed"), own: room("r1", "ready"), ownSession: session("completed") });
     await renderHub();
     expect(card("The Study. Replay the first case.")).toBeTruthy();
-    expect(screen.getByText("SOLVED", hidden)).toBeTruthy();
+    // A brass case stamp: brass mono text in a 1 pt brass border, never oxblood.
+    const stamp = screen.getByText("SOLVED", hidden);
+    expect(StyleSheet.flatten(stamp.props.style).color).toBe(color.accent);
+    expect(StyleSheet.flatten(stamp.parent?.props.style)).toMatchObject({ borderColor: color.accent, borderRadius: radius.control });
     // A real press: the selection haptic fires on press-in.
     await userEvent.setup().press(card("Your case. Solved. Replay the case."));
     expect(push).toHaveBeenCalledWith({ pathname: "/play/[roomId]", params: { roomId: "r1" } });
@@ -207,7 +196,13 @@ describe("01 · Game mode", () => {
     await act(async () => {});
     const notice = screen.getByTestId("hub-notice");
     expect(notice.props.accessibilityLabel).toBe("You're offline. Connect to begin.");
-    expect(notice.props.accessibilityLiveRegion).toBe("polite");
+    // Android speaks it through the always-mounted slot's polite live region.
+    expect(screen.getByTestId("hub-notice-slot").props.accessibilityLiveRegion).toBe("polite");
+    expect(StyleSheet.flatten(notice.props.style)).toMatchObject({
+      backgroundColor: color.surface,
+      borderColor: color.hairline,
+      borderRadius: radius.control,
+    });
     expect(push).not.toHaveBeenCalled();
 
     mocked.ensureSession.mockRejectedValue(new Error("boom"));
@@ -245,6 +240,8 @@ describe("01 · Game mode", () => {
     player({ own: room("r2", "generating") });
     await renderHub();
     expect(card("Your case. Developing.")).toBeTruthy();
+    // The warm one-line Thinking state (its hidden sizer holds the line).
+    expect(screen.getByText("DEVELOPING", hidden)).toBeTruthy();
     expect(mocked.watchRoom).toHaveBeenCalledWith("r2", expect.any(Function));
     // The first fetch is never announced.
     expect(announce).not.toHaveBeenCalled();
@@ -255,14 +252,15 @@ describe("01 · Game mode", () => {
     expect(push).toHaveBeenCalledWith({ pathname: "/play/[roomId]", params: { roomId: "r2" } });
   });
 
-  it("How you play: a sheet with the Show interactives switch and the guide replay", async () => {
+  it("How you play: the live sheet with the Show interactives switch and the guide replay", async () => {
     await renderHub();
     await fireEvent.press(screen.getByRole("button", { name: "How you play" }));
     expect(screen.getByRole("header", { name: "How you play" })).toBeTruthy();
 
     const toggle = screen.getByRole("switch", { name: "Show interactives" });
-    expect(toggle.props.accessibilityState).toMatchObject({ checked: false });
-    await fireEvent.press(toggle);
+    // React Native's Switch, as Case options draws it: the brass track and a warm thumb.
+    expect(toggle.props).toMatchObject({ value: false, onTintColor: color.accent, tintColor: color.hairline, thumbTintColor: color.text });
+    await fireEvent(toggle, "valueChange", true);
     expect(mockPreferences.setHotspotAssist).toHaveBeenCalledWith(true);
 
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
@@ -306,7 +304,7 @@ describe("01 · Game mode", () => {
     expect(screen.getByTestId("hub-glass", hidden)).toBeTruthy();
     await screen.unmount();
 
-    // 375 x 667: a 602 column (no insets here) is under the glass's 658.
+    // 375 x 667: a 610 column (no insets here) is under the glass's 649.4.
     setWindow(375, 667, 1);
     await renderHub();
     expect(screen.getByTestId("hub-fanned")).toBeTruthy();
@@ -333,26 +331,29 @@ describe("01 · Game mode", () => {
     const help = screen.getByRole("button", { name: "How you play" });
     // By the ref's testID (under jest it is RN's mocked View, not the query's
     // host element): a deep comparison of two elements walks the whole tree.
-    const calls = () =>
-      focus.mock.calls.map(([target, type]) => ({ target: (target as unknown as { props?: { testID?: string } }).props?.testID, type }));
+    // The live Sheet also focuses its own title 300 ms after it opens.
+    const helpFocus = () =>
+      focus.mock.calls.filter(
+        ([target, type]) => (target as unknown as { props?: { testID?: string } }).props?.testID === "hub-how-you-play" && type === "focus",
+      ).length;
+    // The live Sheet has no exit callback: focus returns after its 200 ms slide plus the margin.
+    const waitOutExit = () => act(() => new Promise((resolve) => setTimeout(resolve, H.sheetExit + H.sheetFocusMargin + 50)));
 
     await fireEvent.press(help);
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     // Still leaving: VoiceOver would ignore a move outside its modal layer.
-    expect(calls()).toEqual([]);
-    await act(async () => mockSheetExited?.());
-    expect(calls()).toEqual([{ target: "hub-how-you-play", type: "focus" }]);
+    expect(helpFocus()).toBe(0);
+    await waitOutExit();
+    expect(helpFocus()).toBe(1);
 
     // Reopened before that exit ended, or left for the guide: no return.
     focus.mockClear();
     await fireEvent.press(help);
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
-    const stale = mockSheetExited;
     await fireEvent.press(help);
-    await act(async () => stale?.());
     await fireEvent.press(screen.getByRole("button", { name: "How to photograph a room" }));
-    await act(async () => mockSheetExited?.());
-    expect(calls()).toEqual([]);
+    await waitOutExit();
+    expect(helpFocus()).toBe(0);
     focus.mockRestore();
   });
 
@@ -368,12 +369,24 @@ describe("01 · Game mode", () => {
     expect(lefts()).toEqual([54, 159, 264]);
   });
 
-  it("caps a stacked card's text column at 257 and keeps the art at the right inset on wider phones", async () => {
+  it("centres a side card's plate label and note on the face the centre card leaves exposed", async () => {
+    await renderHub();
+    const box = (text: string) => StyleSheet.flatten(screen.getByText(text, hidden).props.style);
+    expect(box("THE STUDY")).toMatchObject({ left: 4, right: H.fan.cover, color: color.accent });
+    expect(box("YOUR ROOM")).toMatchObject({ left: 4, right: 4 });
+    // Loading: the note line is kept, blank; the tag still sits on its column.
+    expect(box("YOUR CASE")).toMatchObject({ left: H.fan.cover, right: 4 });
+    expect(StyleSheet.flatten(screen.getByText("Photograph", hidden).props.style).color).toBe(color.textSecondary);
+  });
+
+  it("mounts a stacked card's plate at its right end, 88 wide and 4 in, on any width", async () => {
     setWindow(440, 956, 1.12);
     await renderHub();
-    expect(StyleSheet.flatten(screen.getByTestId("hub-card-study").props.style).justifyContent).toBe("space-between");
-    const column = screen.getByText("THE STUDY", hidden).parent;
-    expect(StyleSheet.flatten(column?.props.style).maxWidth).toBe(ref.layout.hub.stackedTextWidth);
+    const plate = StyleSheet.flatten(screen.getByTestId("hub-card-study-plate", hidden).props.style);
+    expect(plate).toMatchObject({ top: 4, right: 4, bottom: 4, width: 88, backgroundColor: color.canvas, borderColor: color.rim });
+    expect(plate.borderRadius).toBe(radius.thumb);
+    // The card reserves the plate, so the text column never runs under it.
+    expect(StyleSheet.flatten(screen.getByTestId("hub-card-study").props.style).paddingRight).toBe(92);
   });
 
   it("keeps the glass under reduced motion, as a still image in the same place", async () => {
@@ -389,6 +402,11 @@ describe("01 · Game mode", () => {
       expect({ file, hex: source.match(/#[0-9a-f]{3,8}\b/gi) }).toEqual({ file, hex: null });
       expect({ file, rgb: source.match(/rgba?\(/g) }).toEqual({ file, rgb: null });
       expect({ file, font: source.match(/fontFamily\s*[:=]\s*["']/g) }).toEqual({ file, font: null });
+      // The play screen's look: live type and colours, no Noir text, pools or panels.
+      expect({ file, noir: source.match(/NoirText|LightPools?\b|NoticeLine|ref\.(type|color|panel|gameCard|illustration|light|space|radius)\b/g) }).toEqual({
+        file,
+        noir: null,
+      });
     }
   });
 });

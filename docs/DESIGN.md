@@ -1,6 +1,8 @@
-# ESCAPD design spec: Noir
+# ESCAPD design spec: Noir, and the play screen's look
 
-This is ESCAPD's decided visual identity, **Noir**, applied to five screens: game mode (the new hub), camera, camera permission, the first-time photo guide, and the test paywall.
+> **Direction change (2026-10-25).** The play screen (`/play`) and the light table (`/capture/review`) are the visual identity: brass accent, Playfair case titles, film-plate framing, mono plate labels. The hub (01), the photo guide (04) and Pro (05) now follow that look, keeping two things from Noir: the silk background and the pill buttons. The camera (02) and camera permission (03) still use Noir as specified below. See **The play screen's look** after Global tokens.
+
+This document began as ESCAPD's **Noir** identity, applied to five screens: game mode (the new hub), camera, camera permission, the first-time photo guide, and the test paywall.
 
 Noir in one paragraph: a near-black ground, quiet grey reading text and bright white statements. Soft static pools of white light may fall on key objects; reading areas stay flat. Large areas are neutral and opaque. There is **one signal colour**, oxblood red, used rarely, like a case stamp: a selection that matters, "solved", case stamps, the escape moment, and at most one "go" button per screen. Murder-mystery noir, never gore or horror.
 
@@ -18,9 +20,9 @@ Noir in one paragraph: a near-black ground, quiet grey reading text and bright w
 - **Effects you supplied as web code** (Thinking states, the dither loader, the card tilt): rebuilt for React Native. Each is described where it's used, with what changed and why.
 
 **Status.**
-- Nothing is built yet.
-- The Noir tokens are in `src/theme/tokens.ts` as the `ref` export. Nothing in the app reads them yet, and the live theme above them is unchanged.
-- Geist and Geist Mono still need installing (`@expo-google-fonts/geist`, `@expo-google-fonts/geist-mono`) and loading in `app/_layout.tsx` when the build starts.
+- All five screens are built (branch `redesign-noir`).
+- Noir tokens are the `ref` export in `src/theme/tokens.ts`; the play screen's look uses the live tokens above it (`color`, `type`, `space`, `radius`, `curve`, `motion`), plus `ref.background`, `ref.button.brass` and `ref.motion.thinking.shimmerWarm`.
+- Geist and Geist Mono are installed and loaded in `app/_layout.tsx`; only the Noir screens (02, 03) use them.
 
 **Base:** iPhone 393 × 852 pt, safe areas 59 top and 34 bottom, tap targets of at least 44 pt.
 
@@ -103,12 +105,13 @@ Rules for any background still:
 
 A light pool is a static radial gradient of `bright` #F2F2F2 at low alpha, drawn on the ground under a key object or hero area. Each screen section gives the pool's centre.
 
-| Token | Radius | Stops (offset: colour) | Resulting grey on ground | Used on |
+| Token | Radius | Stops (offset: colour, opacity) | Resulting grey on ground | Used on |
 |---|---|---|---|---|
-| `ref.light.hero` | 220 | 0: rgba(242, 242, 242, 0.10) · 0.5: rgba(242, 242, 242, 0.04) · 1: rgba(242, 242, 242, 0) | #1D1D1D at the centre, #0E0E0E at half radius | 01, behind the card fan |
-| `ref.light.object` | 120 | 0: rgba(242, 242, 242, 0.07) · 0.5: rgba(242, 242, 242, 0.025) · 1: rgba(242, 242, 242, 0) | #161616 at the centre, #0B0B0B at half radius | 01, under the magnifying glass (centre set in 01); 03, on the illustration; 04, behind each step's illustration |
+| `ref.light.hero` | 220 | 0: #F2F2F2, 0.10 · 0.5: #F2F2F2, 0.04 · 1: #F2F2F2, 0 | #1D1D1D at the centre, #0E0E0E at half radius | none since the direction change (was 01, behind the card fan) |
+| `ref.light.object` | 120 | 0: #F2F2F2, 0.07 · 0.5: #F2F2F2, 0.025 · 1: #F2F2F2, 0 | #161616 at the centre, #0B0B0B at half radius | 03, on the illustration (01 and 04 no longer use pools) |
 
 - **Build.** Use one react-native-svg `<Svg>`, absolutely positioned under the content with `pointerEvents="none"`. Inside it, a `<Rect>` is filled with a `<RadialGradient>`: `gradientUnits="userSpaceOnUse"`, `cx`/`cy` at the screen's centre point and `r` = the token's radius, using the token's stops.
+- **Opacity is its own prop (bug fixed 2026-10-25).** Each stop is `stopColor` (a plain hex) plus `stopOpacity`. react-native-svg packs a stop's alpha from `stopOpacity` alone (default 1) and ignores the alpha inside an `rgba()` colour, so the first build's `rgba(242, 242, 242, 0.10)` stops painted as solid #F2F2F2 rectangles on device. The same applies to every gradient in the app (the glass glare, the shimmer, the fading line art). `src/components/noir/__tests__/gradient-stops-test.tsx` reads the packed stops the native view receives and fails on any opaque stop, and on any `rgba()`/`hsla()` stop colour in `src/` or `app/`.
 - **Static.** A pool is never animated. It never pulses, never follows a touch and never moves with a scroll gesture. It stays still while 01's magnifying glass tilts above it. In 04 the pool changes along with its step.
 - **One per lit object or hero area, and pools never overlap** (their alphas would add up). 01 is the only screen with two: `ref.light.hero` behind the fan and `ref.light.object` under the magnifying glass.
 - **Never behind reading text.** No title, body, meta, label or note text sits inside a pool's radius unless an opaque panel above the pool carries it, like the tags on 01's cards. The reason is not contrast: `read` is still 7.1:1 at the hero centre. The rule is that reading areas stay flat.
@@ -435,173 +438,181 @@ This is the one exception to "no pointer effects", granted by the user: 01's pai
 
 **Accessibility.** The glass is decorative. The wrapper is `accessible={false}`, `accessibilityElementsHidden`, `importantForAccessibility="no-hide-descendants"` and `focusable={false}`, with no role, label, action or haptic. Screen readers, keyboard and switch focus all skip it.
 
-## 01 · Game mode selection
+**Glare stops.** `ref.motion.tilt.glare` holds one `color` (#FFFFFF) and, per layer, `opacities` beside `offsets` (95: 0.48 · 0.06 · 0; 200: 0.22 · 0.04 · 0; 360: 0.10 · 0). Each `<Stop>` is `stopColor={glare.color}` plus `stopOpacity`, for the reason given under light pools.
 
-Reference: docs/refs/01-game-mode.png (layout only)
+## The play screen's look (hub, guide, Pro)
 
-*Geometry measured from the reference at 2.389 px/pt (939 px ÷ 393 pt) and kept wherever Noir allows. 393 × 852 pt, safe areas 59 top / 34 bottom, all values in pt. Every style is a Noir `ref.*` token from `src/theme/tokens.ts`. Live `motion.*` is cited only for the sheet rise and the reduced-motion fade. Geist and Geist Mono are not installed yet (`@expo-google-fonts/geist`, `@expo-google-fonts/geist-mono`). Playfair does not appear on this screen. This screen is the hub at `/`.*
+Since 2026-10-25 the hub (01), the photo guide (04) and Pro (05) follow the identity of the play screen and the light table, the live theme in `src/theme/tokens.ts` ("The Darkroom Dossier & Brass Mechanism"). Two things carry over from Noir: the **silk background** (`ref.background`) and the **pill buttons** (now in a brass scheme). The camera (02) and permission (03) keep Noir. Each screen's section below describes it as built.
 
-### Feel (Noir)
+| Element | How it's built | Tokens |
+|---|---|---|
+| Ground | `color.canvas`, then the silk still (`BackgroundStill`), then film grain (`Grain`), as on `/play` and the light table. No light pools | `color.canvas`, `ref.background` |
+| Case titles, cover statements | Playfair Display SemiBold 34/38 | `type.caseDisplay` |
+| Screen headings | Playfair Display SemiBold 24/30 | `type.narrativeTitle` |
+| Prose lines | Playfair Display Regular 18/26 | `type.narrative` |
+| UI and reading text | Plus Jakarta Sans | `type.sectionTitle`, `type.body`, `type.control`, `type.caption` |
+| Plate labels, file labels, top-bar stamps | JetBrains Mono 11/14, +1.2, in capitals, brass: "LIGHT TABLE", "PLATE III", "ESCAPD 400 · PLATE I" | `type.stamp` + `color.accent` |
+| Film-plate mount | Walnut mount with a 1 pt brass hairline around an inner plate on soot with a 1 pt rim. Large: 30 / 24 radii (SceneView). Small (cards, thumbnails): 18 / 14 (light table tiles). A brass mono plate label sits under it | `color.surface`, `color.hairline`, `color.canvas`, `color.rim`, `radius.mount`/`radius.image`, `radius.thumbRing`/`radius.thumb`, `curve` |
+| Manila slip | Dossier content and checklists, ink text, stamp heading in ink (the light table's "BEFORE YOU DEVELOP", the case-closed dossier) | `color.manila`, `color.ink`, `radius.slip`, `space.lg` |
+| Panels and notices | Walnut, 1 pt brass hairline, radius 8 | `color.surface`, `color.hairline`, `radius.control` |
+| Top bar | Live `IconButton` (48 round, glyph in `color.text`), a centred brass stamp, a 48 spacer: the light table's pattern | `hit.min` |
+| Sheets and switches | Live `Sheet` (as `/play`'s Case options) and React Native `Switch` with a brass track | `color.accent`, `color.hairline`, `color.text` |
+| Pill buttons | Noir's `PillButton` with `scheme="brass"`: primary is brass with the dark label (the screen's main "go"), secondary is walnut with a brass hairline, quiet is text. Same height, shape, pressed colour change (120 ms) and focus ring as Noir. Label in `type.control` (Jakarta SemiBold 15/20). No oxblood | `ref.button.brass` |
+| Waits | `ThinkingStates tone="warm"`: the same swap and sweep in live caption / body / stamp type, from `color.textSecondary` to `color.text`. Short waits with no status line: a small `ActivityIndicator` in brass | `ref.motion.thinking.shimmerWarm`, `color.accent` |
+| Case stamps ("SOLVED") | Brass stamp text in a 1 pt brass bordered box, never oxblood | `type.stamp`, `color.accent`, `radius.control` |
+| Errors on dark | An icon in `color.warning` or `color.error` beside text in `color.textSecondary`. Error-coloured text only on manila (5.0:1) | — |
 
-Three case files dealt on a dark desk under a lamp, with a brass reading glass laid above them. The ground is the black silk background still (`ref.background.asset`, peak #262626) over `ref.color.ground` #050505. A static pool of soft white light (`ref.light.hero`) sits behind the lower half of the fan and spills onto the desk below it, so the opaque graphite files read as dark shapes outlined by 1 pt hairlines against lit ground. A smaller pool (`ref.light.object`) lights the glass from behind and shows through its lens. There is one bright statement ("Choose a case") and one grey reading line, both on the silk, outside both pools. Each file carries a mono tab label, a mono status note and a fine grayscale line drawing. Until the player has solved their own case, the only colour is the painted brass of the glass, a temporary exception to grayscale brand art (a Noir render of it is a later experiment). After that, a single oxblood SOLVED stamp sits in the corner of that file. Nothing moves unless something is happening: a control changes colour when pressed, the How you play sheet rises, a small native indicator turns on a card while it opens, and a Thinking-state shimmer (`ref.motion.thinking.shimmer`) crosses DEVELOPING while the player's room is being built. The glass is the one exception. Press and drag it and it leans toward the finger, with a glint across its lens. Let go and it settles flat. It is the screen's only decorative motion, and it never moves on its own. The voice is terse, procedural and case-file.
+**Contrast on the silk's brightest pixel (#262626):** `color.text` 12.9:1, `color.textSecondary` 5.6:1, `color.accent` 6.1:1, `color.warning` 5.3:1; `color.error` only 2.3:1, so it is never used as text on a dark ground. `color.onAccent` on brass is 7.3:1 (9.7:1 pressed); ink on manila is 13.8:1.
+
+## 01 · Game mode (the hub at /)
+
+Reference: docs/refs/01-game-mode.png (layout only). The look is the play screen's: /play's Kodachrome mount and brass plate label (src/render/SceneView.tsx), the light table's heading and caption (app/capture/review.tsx), the case-closed panels and rule (app/tutorial/complete.tsx), Case options' sheet and switch (src/render/Player.tsx), and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), `ref.button.disabledOpacity` (the kit's 0.4, as the brass pill dims), `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), `ref.motion.tilt` (the glass), the kit's focus ring (`ref.focus`) and control timing (`ref.motion.control`), and the screen's own `ref.layout.hub` (`wordmarkHeight` 14, `hairline` 1, `glass` 128, `lens` (0.614, 0.331) r 0.252, `weights` 7 : 7 : 50 and 15 : 17, `fan` { height 226, sideOffset 105, sideDrop 10, tilt 6, cover 28, minWidth 375, maxFontScale 1 }, `card` { 122 × 209, art 48, artStroke 1.6 }, `stackedMinHeight` 96, `noticeIcon` 18, `sheetExit` 200, `sheetFocusMargin` 100). No Geist, no NoirText, no `ref.type` or `ref.color`, no light pool, no oxblood.
+
+Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files: `HubScreen.tsx` (layout, routing, sheet, notice slot, focus return), `Deck.tsx` (fan, stack, fan focus ring), `GameCard.tsx` (mount, plate, labels, SOLVED stamp, busy), `CardArt.tsx`, `CardNote.tsx`, `HubNotice.tsx`, `HowYouPlaySheet.tsx`, `Magnifier.tsx` (the glass), `layout.ts` (geometry rules), `caseStatus.ts` (every word and state), `useHubData.ts` (fetch and follow). Tests: `src/screens/hub/__tests__/hub-test.tsx`, `layout-test.tsx`.
+
+### Feel
+
+Three case files laid on the silk under a brass reading glass, each one a small photographic plate on a walnut mount, the way /play mounts the player's room. The ground is the black silk still under the live grain, and nothing is lit from behind: the mounts' brass hairlines and the brass labels carry the page. One Playfair statement ("Choose a case") with a small warm caption under it, as the light table heads its plates. Each plate holds a fine warm line drawing (cream hero lines, taupe secondary lines, brass details), and under each plate sits a brass mono plate label (THE STUDY, YOUR ROOM, YOUR CASE) with a short status note. After the player solves their own case, a brass SOLVED stamp is pressed on the corner of that plate. Nothing moves unless something is happening: a mount warms and its hairline brightens to brass when pressed, the How you play sheet rises, a small brass indicator turns on a plate while its card opens, and a warm shimmer crosses DEVELOPING while the player's room is being built. The glass is the one exception: press and drag it and it leans toward the finger with a glint on its lens; let go and it settles flat. It never moves on its own. The voice is terse, procedural and case-file.
+
+**Accent on this screen:** brass only (`color.accent` #C89D54): the plate labels, the mounts' hairlines (`color.hairline`, brass at 0.32), the line art's details, the rule under the header, the SOLVED stamp, the busy indicator, the Show interactives track and the guide pill's hairline. The painted brass glass is art, not accent. There is no "go" button on the screen (the cards are the actions) and no `variant="signal"`.
 
 ### Layout, top to bottom
 
+393 × 852, default text size, all three cards idle, glass shown.
+
 | Element | Position & size (pt) | Style | ESCAPD content |
 |---|---|---|---|
-| Status bar | y 0–59 (safe top 59) | System, light content | — |
-| Ground | Full screen | `ref.color.ground` #050505 under the background still `ref.background.asset` (black silk warp, peak `ref.background.peak` #262626), full screen, `contentFit="cover"` (Global tokens, Backgrounds). The only gradients drawn in the app are the two light pools, which sit on the still | — |
-| Light pool, glass | Centre (211.1, 188), radius 120 (`ref.light.object.radius`). Drawn only in the band between the divider and the title: a `Rect` x 0–393, y 124–308, which it lights across x 91.1–331.1 | `ref.light.object`: rgba(242,242,242,0.07) at 0 → rgba(242,242,242,0.025) at 0.5 → rgba(242,242,242,0) at 1. Static: it does not tilt with the glass. A second react-native-svg `RadialGradient` (userSpaceOnUse) in the same full-screen Svg as the fan pool, under all content, `pointerEvents="none"`. **Centre rule:** x = the lens centre (glass box left + 78.6); y = the lens centre (194.4 here), raised to title top − 120 whenever the lens centre sits below that line, so the pool ends exactly at the title's top edge: y 188 on this screen, 6.4 above the lens centre. Neither pool reaches the title or subtitle: this one stops at y 308, and the fan pool starts at y 364. The core (≈#161616) sits behind the lens, whose painted glass is partly transparent (alpha ≈ 0.6, range 0.50–0.96), so the light shows through it. The handle tip, 109.9 from the centre, runs out to the pool's edge. At the divider the band's top edge is ≈#0B0B0B against #050505 above it, and the 1 pt #222222 hairline hides the step, so the header stays flat. Dropped with the glass (States) | — |
-| Light pool, fan | Centre (196.5, 584), radius 220 (`ref.light.hero.radius`): reaches y 364–804; the screen clips its sides | `ref.light.hero`: rgba(242,242,242,0.10) at 0 → rgba(242,242,242,0.04) at 0.5 → rgba(242,242,242,0) at 1. Static. Built as a react-native-svg `RadialGradient` (userSpaceOnUse) on a full-screen `Rect` under all content, `pointerEvents="none"`. **Centre rule:** x on the fan's axis, y = subtitle bottom + 220, so the pool ends exactly at the subtitle's bottom edge and the title and subtitle stay on flat ground. The opaque cards hide its core. It shows as lit floor beside and below the fan: ≈#181818 at y 620, back to ground by y 804. If stepping shows on an OLED panel, add the existing `Grain` at 4 % over the ground only (never over panels) | — |
-| Header, left slot | x 16–60, y 67–111 (44 × 44) | Empty spacer, not focusable. Today's title screen has no account entry | — |
-| Header mark | Centred on x 196.5; 66.3 × 14 at x 163.4–229.6, y 82–96 (centre y 89, level with the right button) | `Wordmark` at height 14 (stroke 8/60 × 14 = 1.9), tint `ref.color.bright` #F2F2F2. The D's lit edge is hard-coded to the live theme today; set it to `ref.color.bright` too (Wordmark needs an edge-colour prop). `accessibilityRole="image"`, label "ESCAPD" | ESCAPD wordmark |
-| Header, right button | x 333–377, y 67–111, centre (355, 89): safe top + 8 (`ref.space.sm`), `ref.space.lg` 16 from the right edge | `ref.button.icon`: 44 round (`ref.radius.pill` 999), fill `ref.color.panel` #0E0E0E, 1 pt `ref.color.hairline` #222222, glyph `ref.color.bright` #F2F2F2 | Phosphor `Question` regular at `ref.icon.header` 20 in `ref.color.bright` (export `QuestionIcon` from icons.ts, `phosphor-react-native/src/icons/Question`): a help mark for How you play, not a settings glyph |
-| Divider | y 123, 1 pt (`ref.border.hairline`), x 16–377; `ref.space.md` 12 below the buttons | Flat `ref.color.hairline` #222222, no fade | — |
-| Glass spacer, top | y 124–152 (28); flex 7 | Ground and the glass pool | — |
-| Magnifying glass | Box 128 × 128 at x 132.5–260.5, y 152–280, centred on x 196.5 (centre y 216). The PNG has transparent margins, so the painted ink is 104.4 × 118.8 at x 144.4–248.8, y 156.6–275.4. That is 0.093–0.908 of the box width and 0.036–0.964 of its height, and leaves 32.6 clear below the divider and 32.6 clear above the title's line box. **Lens** (the glass inside the brass rim, measured on the 1024 master: centre (629, 339) px, radius 258 px, fit residual ≤ 3 px): centre (0.614, 0.331) of the box, radius 0.252 of the box side. In pt that is (78.6, 42.4) r 32.3 box-local, (211.1, 194.4) on screen, spanning x 178.8–243.4, y 162.1–226.7. The brass rim's outer radius is 0.292 (37.4). The handle runs to the lower left. At full tilt in any direction, the projected ink stays inside its 128 box: at most 60.6 from the box centre on either axis, against a half-box of 64 | `assets/brand/magnifier-1024.png`, unchanged, in an expo-image `Image` at 128 × 128, `contentFit="contain"`. The 96 pt set (96 / 192 / 288 px) is too small: 128 pt at @3x needs 384 px. expo-image downsamples the master to the display size (`allowDownscaling`, default true). Full colour, unfiltered: the painted brass is the one temporary exception to grayscale brand art (decisions.md, user answer 1). It is not a signal. No shadow, no halo, no outline; its light is the glass pool. Two layers: a non-transforming outer wrapper View (the drag surface, see Tappable) and, inside it, a 128 × 128 `Animated.View` that tilts (`ref.motion.tilt`), holding the image and, above it, a 128 × 128 react-native-svg glare layer clipped to the lens circle. Hidden from accessibility: `accessible={false}`, `accessibilityElementsHidden`, `importantForAccessibility="no-hide-descendants"` | The brass reading glass (decorative) |
-| Glass spacer, bottom | y 280–308 (28); flex 7 | Ground and the glass pool, which ends at y 308 | — |
-| Title | Line box y 308–336, centred, ≈140 wide | `ref.type.title` (Geist Regular 22/28, −0.45), `ref.color.bright` #F2F2F2, `accessibilityRole="header"` | **"Choose a case"** |
-| Subtitle | Line box y 340–364, `ref.space.xs` 4 below the title | `ref.type.body` (Geist Regular 17/24), `ref.color.read` #A6A9AD. Fixed line. It does not change with any setting | **"Three files on the desk."** |
-| Fan container | y 392–618 (226), `ref.space.band` 28 below the subtitle | — | 3 cards. Visual extent x 20.5–372.5, y 392–616.2 |
-| Card, centre | x 135.5–257.5, y 392–601, 122 × 209, 0°, top of the stack (`zIndex`) | `ref.gameCard` (122 × 209, radius 6) in `ref.panel` | **YOUR ROOM** |
-| Card, left | Centre (91.5, 506.5); unrotated box x 30.5–152.5, y 402–611 (10 lower than the centre card); `rotate: -6deg` (`ref.gameCard.fanTilt` 6) about its centre; under the centre card. Visual left edge x 20.5 (the radius 6 top-left corner) | Same | **THE STUDY** |
-| Card, right | Centre (301.5, 506.5); unrotated box x 240.5–362.5, y 402–611; `rotate: 6deg`; mirror of the left card; visual right edge x 372.5 | Same | **YOUR CASE** |
-| Card material | Each card | `ref.panel`: fill `ref.color.panel` #0E0E0E, 1 pt `ref.color.hairline` #222222 on all four sides, radius `ref.radius.panel` 6. Opaque: the centre card's hairline is what separates it from the side cards beneath. No shadow, no gradient, no translucency | — |
-| Tag (in card) | Card-local line box y 16–32 (`ref.gameCard.tagInset` 16), centred. All three tags are 9 glyphs × (7.2 + 1.2) = **75.6** wide, so 23.2 from each card edge | `ref.type.label` (Geist Mono Medium 12/16, +1.2, uppercase), `ref.color.meta` #8A8D91. Plain text, no outline | THE STUDY · YOUR ROOM · YOUR CASE |
-| State note (in card) | Card-local line box y 38–56 (6 below the tag), centred, max width 90 (122 − 2 × 16), one line. Width = glyphs × (7.8 + 0.6) = 8.4 per glyph | `ref.type.note` (Geist Mono Regular 13/18, +0.6, uppercase), `ref.color.read` #A6A9AD | Study: UNSEAL 50.4 / CONTINUE 67.2 / REPLAY 50.4. Room: PHOTOGRAPH 84.0 (the longest). Case: OPEN 33.6 / CONTINUE 67.2 / REPLAY 50.4 / DEVELOPING 84.0 / SEE WHY 58.8 / NONE YET 67.2 / OFFLINE 58.8 / TRY LATER 75.6. Busy keeps the note (States) |
-| Line art (in card) | 48 × 48, centred, centre at card-local y 113 (89–137, 54 % of the height, as in the reference) | react-native-svg line drawing in `ref.illustration`: stroke 1.6, round caps and joins, no fill. Primary lines `ref.illustration.hero` #F2F2F2, secondary lines `ref.illustration.mid` #A6A9AD. Static, no gradient, no halo. Rotates with its card | Study: arched door (primary) with a keyhole (secondary). Room: four viewfinder corner brackets (primary) around a room corner drawn as one vertical and two diverging floor lines (secondary). Case: case folder with a tab (primary) and a seal circle (secondary). All three still need drawing |
-| SOLVED stamp (YOUR CASE only) | Card-local x 40–106, y 169–193 (right and bottom insets 16); 66 × 24; screen centre ≈(305.4, 583.8) | `ref.stamp`: height 24, padX 8, radius 6, fill `ref.color.signal` #C8302B; label `ref.type.label` in `ref.color.bright` #F2F2F2 (4.8:1). Upright on its card, so it carries the card's +6°. Static, appears without animation | **SOLVED**. Shown only when the latest session on the player's newest own case is completed |
-| Lower spacer | y 618–818 (200); flex 50 | Ground and the fan pool | The error notice overlays this space (States) |
-| Error notice (when shown) | x 20–373 (353 wide, `ref.space.edge` 20 sides), top y 642 (`ref.space.xl` 24 below the fan container). 50 tall for one line, 74 for two (bottom ≤ 716) | `ref.panel` (#0E0E0E, 1 pt #222222, radius 6), padding 12 vertical × 16 horizontal. Icon `ref.icon.small` 16 in `ref.color.error` #B5564F, top-aligned to the first line, then 8 gap, then text `ref.type.body` in `ref.color.read`. Positioned absolutely, so the layout never shifts | See States |
+| Screen | 393 × 852, full bleed | Root `color.canvas` #090807. Then `<BackgroundStill />` (`ref.background.asset`, the black silk warp, peak `ref.background.peak` #262626, contentFit cover; the kit paints its own ground until it decodes). Then the live `<Grain />` (assets/grain.png repeated at 0.04 opacity), as /play and the light table. Then content. **No light pools** (removed with their layout code and tokens) | — |
+| Status bar | y 0–59 | System, light content | — |
+| Header row | y 63–111 (48): safe top + `space.xs` 4, the `hit.min` 48 row, `space.xs` 4 below (header box y 0–115). padX `space.gutter` 20 | /play's top-bar spacing with the light table's gutters: a spacer, a centred mark, a button | — |
+| Header, left slot | x 20–68, y 63–111 (48 × 48) | Empty `hit.min` spacer, not focusable (the hub has no account entry) | — |
+| Wordmark | Centred on x 196.5: 66.3 × 14 at x 163.4–229.6, y 80–94 (centre y 87, level with the button) | `<Wordmark height={14} />` (`ref.layout.hub.wordmarkHeight`) with its defaults: strokes `color.text` #F2ECE1, the D's doorway edge `color.accent` (the brass edge; the old bright edge is dropped). iOS: a wrapping View, `accessibilityRole="image"`, label "ESCAPD"; Android reads the Svg's own label | ESCAPD wordmark |
+| How you play | Button x 325–373, y 63–111, centre (349, 87). Its box (with the 4 hitSlop and the focus ring) x 321–377, y 59–115, inside the header | The live `IconButton` (48 round, `surface="plain"`: no fill, no border; pressed opacity 0.75, disabled 0.4). Glyph Phosphor `Question` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text`. The live button draws no focus ring, so the hub lays the kit's pill ring around it (State: Focus) | Help mark for How you play |
+| Rule | y 115–116, x 20–373, 1 pt (`ref.layout.hub.hairline`) | `color.hairline` rgba(200,157,84,0.32), flat, as the case-closed screen rules off a section | — |
+| Column | y 116–818 (702): a flex column from the rule to the safe bottom | Holds the glass (128), the hero block (302) and three spacers at 7 : 7 : 50 over the remaining 272 | — |
+| Glass spacer, top | y 116–145.75 (29.75); flex 7 | Silk and grain | — |
+| Magnifying glass | Box 128 × 128 at x 132.5–260.5, y 145.75–273.75, centred on x 196.5. Lens (glass inside the brass rim) at (0.614, 0.331) r 0.252 of the box: (78.6, 42.4) r 32.3 box-local, (211.1, 188.2) on screen. Painted ink 104.4 × 118.8; at full tilt it stays inside its 128 box | `assets/brand/magnifier-1024.png` unchanged, expo-image `contentFit="contain"`, full colour (the painted brass is art). No shadow, halo or outline, and no pool behind it any more. A non-transforming 128 drag wrapper holding a 128 `Animated.View` that tilts (`ref.motion.tilt`), with a lens-clipped glare layer whose stops carry `stopColor` + `stopOpacity` (`ref.motion.tilt.glare`). Hidden from accessibility | The brass reading glass (decorative) |
+| Glass spacer, bottom | y 273.75–303.5 (29.75); flex 7 | Silk and grain | — |
+| Title | Line box y 303.5–333.5 (30), centred, 152.1 wide (x 120.5–272.6) | `Text variant="narrativeTitle"` (Playfair Display SemiBold 24/30), tone primary `color.text` (12.9:1 at the silk peak), `accessibilityRole="header"`, padX 20 | **"Choose a case"** |
+| Subtitle | Line box y 337.5–355.5 (18), `space.xs` 4 below the title, 141.2 wide | `Text variant="caption"` (Plus Jakarta Sans Medium 13/18), tone secondary `color.textSecondary` #A89C8A (5.6:1 at the peak), as the light table's caption under its heading. Fixed line | **"Three files on the desk."** |
+| Fan container | y 379.5–605.5 (226, `ref.layout.hub.fan.height`), `space.xl` 24 below the subtitle; never clips | — | 3 cards. Visual extent x 21.7–371.3, y 379.5–602.5 (349.6 wide) |
+| Card, centre | x 135.5–257.5, y 379.5–588.5: 122 × 209 (`ref.layout.hub.card`), upright, on top (`zIndex`) | Card material below | **YOUR ROOM** |
+| Card, left | Centre (91.5, 494); unrotated box x 30.5–152.5, y 389.5–598.5 (`fan.sideOffset` 105 left of the axis, `fan.sideDrop` 10 lower); `rotate: -6deg` (`fan.tilt`) about its centre; under the centre card, which covers its inner edge 5.8 wide at the top, 16.8 at mid-height and 27.7 at its foot | Same | **THE STUDY** |
+| Card, right | Centre (301.5, 494); unrotated box x 240.5–362.5; `rotate: 6deg`; the mirror | Same | **YOUR CASE** |
+| Card material: mount | Each card, 122 × 209 | Walnut mount, as /play's Kodachrome mount at the small radii: fill `color.surface` #14110E, 1 pt `color.hairline` on all four sides, `radius.thumbRing` 18, `curve` (continuous). Opaque: the centre card's hairline is what separates it from the side cards beneath. No shadow, gradient or translucency | — |
+| Card material: plate | Card-local x 4–118, y 4–155 (114 × 151, ≈ 3:4), inset 4 = `radius.thumbRing` − `radius.thumb`, so the corners are concentric | Fill `color.canvas` #090807, 1 pt `color.rim` rgba(255,255,255,0.10), `radius.thumb` 14, `curve`: the light table's tile edge | — |
+| Content column | The axis everything on a card centres on. Centre card: x 4–118 (axis 61). Left card: x 4–94 (axis 49). Right card: x 28–118 (axis 73): `fan.cover` 28 in on the side under the centre card, the mount's 4 on the outer side | — | — |
+| Line art (on the plate) | 48 × 48 (`card.art`), on the axis, centred on the plate: card-local y 55.5–103.5 (centre 79.5) | react-native-svg line drawing, stroke 1.6 (`card.artStroke`), round caps and joins, no fill, gradient or halo. Hero lines `color.text`, secondary lines `color.textSecondary`, brass details `color.accent`. Static; rotates with its card | Study: arched door (hero), threshold (secondary), keyhole (brass). Room: a room corner, its vertical edge (hero) and two diverging floor lines (secondary), inside four viewfinder brackets (brass, like /play's registration marks). Case: folder (hero), its tab ruled off (secondary), a seal circle (brass) |
+| Plate label (the tag) | Card-local line box y 163–177, `space.sm` 8 under the plate, centred on the axis. 70.2 wide (9 glyphs × 7.8) | `Text variant="stamp"` (JetBrains Mono Medium 11/14, +1.2, written in capitals), `tone="accent"` (7.5:1 on the walnut), the pattern of SceneView's "ESCAPD 400 · PLATE I" | THE STUDY · YOUR ROOM · YOUR CASE |
+| Status note | Card-local y 179–197 (one caption line, 18), `space.xxs` 2 under the tag, centred on the axis; `space.sm` + 4 = 12 to the card's foot | `Text variant="caption"`, tone secondary (7.0:1 on the walnut). Widths: Unseal 41.9, Continue 57.5, Replay 42.8, Photograph 74.9, Open 35.6, See why 52.1, None yet 56.2, Offline 43.4, Try later 49.0. DEVELOPING is the warm Thinking state instead (States) | Study: Unseal / Continue / Replay. Room: Photograph. Case: see Case status |
+| SOLVED stamp (YOUR CASE only) | Card-local x 45.2–110, y 123–147 (64.8 × 24): pressed on the plate's lower right corner, `space.sm` 8 in from its right and bottom edges. Screen centre ≈ (314.8, 526.1) | A brass case stamp: 1 pt `color.accent` border, `radius.control` 8, `curve`, padding `space.xs` 4 × `space.sm` 8, no fill; label `stamp` in `tone="accent"` (8.0:1 on the plate). Upright on its card, so it carries the card's +6°. Static, appears without animation. Never oxblood | **SOLVED**, only when the latest session on the player's newest own case is completed |
+| Lower spacer | y 605.5–818 (212.5); flex 50 | Silk and grain | The notice overlays this space |
+| Notice (when shown) | x 20–373 (353, `space.gutter` sides), top y 629.5 (`space.xl` below the fan container), 44 tall for one line (bottom 673.5). Text column 293 wide: both messages fit one line at the default size (283.6 and 202.2) | Panel as the case-closed stat panels: `color.surface`, 1 pt `color.hairline`, `radius.control` 8, `curve`, padding `space.md` 12 × `space.lg` 16. Icon Phosphor at 18 (`ref.layout.hub.noticeIcon`, as /play's failure banner) in `color.warning` #D4883A (6.6:1), centred on the first caption line; `space.sm` 8; text `caption` in tone primary. Absolutely positioned in an always-mounted slot, so the layout never shifts | See States |
 | Safe bottom | y 818–852 | — | — |
-| **How you play sheet** (over everything) | Scrim full screen. Sheet x 0–393, y 591–852 (261 tall) | Scrim `ref.color.scrim` rgba(5,5,5,0.72). Sheet `ref.panel` fill #0E0E0E, 1 pt `ref.color.hairline` #222222 top edge, top corners radius 6, bottom running off the screen, no handle. Rises with `motion.sheetSpring` (damping 28, stiffness 320, mass 1) and leaves with the live Sheet's 200 ms slide. The scrim fades over `ref.motion.control` 120 ms | — |
-| Sheet: header row | y 603–647 (sheet top + 12) | Title at x 20, line box y 611–639: `ref.type.title`, `ref.color.bright`, `accessibilityRole="header"`. Close at x 329–373 (centre x 351, 20 from the right edge, on the sheet's content inset): `ref.button.icon` (44 round), X glyph at `ref.icon.header` 20 in `ref.color.bright` | **"How you play"** · Phosphor `X` |
-| Sheet: Show interactives row | y 663–725 (16 below the header) | Text column x 20–245 (225): label `ref.type.headline` (Geist Medium 17/22) in `ref.color.bright`, y 663–685; 4 gap; description `ref.type.meta` (Geist 13/18) in `ref.color.meta`, two lines, y 689–725. Control at x 261–373, y 676–712: `ref.button.segment` 112 × 36, radius 999, fill #0E0E0E, 1 pt #222222. Two 56-wide halves. Thumb `ref.button.segment.thumbFill` #303030, inset 3 (50 × 30, radius 999). Labels `ref.type.label`, active `ref.color.bright`, inactive `ref.color.meta` | **"Show interactives"** / "Keep the marks on objects you can use visible." (the same copy as Case options) · OFF \| ON |
-| Sheet: rule | y 737, 1 pt, x 20–373 (12 below the row) | `ref.color.hairline` #222222 | — |
-| Sheet: guide button | x 20–373, y 750–802 (12 below the rule), 353 × 52 | `ref.button.secondary`: radius 999, fill #0E0E0E, 1 pt `ref.color.hairline2` #303030 (the border carries it on the same-colour sheet), label `ref.type.button` (Geist Medium 17/22) in `ref.color.bright` | **"How to photograph a room"** |
-| Sheet: bottom | y 802–852: `ref.space.lg` 16 + safe bottom 34 | — | — |
+| **How you play sheet** (over everything) | Scrim full screen. Sheet x 0–393, y 605–852 (247), `maxHeight` 64 % (545) | The live `Sheet`, `titleStyle="utility"`, as /play's Case options. Scrim `color.sheetScrim` rgba(9,8,7,0.55), fades in 200 / out 160. Sheet `color.surface` walnut with the live grain, 1 pt `color.hairline` top edge, top corners `radius.sheet` 20, a 1 pt `color.brassRule` inner rule 4 in, a 42 × 4 brass handle (`color.accent`) at y 614–618. Rises with `motion.sheetSpring` (damping 28, stiffness 320), leaves with a 200 ms slide | — |
+| Sheet: header row | y 626–674 (48) | Title at x 20, line box y 638–661: `sectionTitle` (Plus Jakarta Sans SemiBold 18/23), tone primary, `accessibilityRole="header"`. Close: live `IconButton` 48 at x 337–385 (8 from the right edge), `X` at 22 in `color.textSecondary` | **"How you play"** · Phosphor `X` |
+| Sheet: Show interactives row | y 686–726 (40), 12 below the header | Text column x 20–310 (290): label `control` (Plus Jakarta Sans SemiBold 15/20) tone primary, y 686–706, hidden from screen readers (the switch carries it); `space.xxs` 2; description `caption` tone secondary, y 708–726, one line at the default size (285.5 of 290), two at larger text. `space.md` 12. React Native `Switch` at x 322–373 (iOS 51 × 31), centred on the row: `trackColor={{ true: color.accent, false: color.hairline }}`, `thumbColor={color.text}` | **"Show interactives"** / "Keep the marks on objects you can use visible." (Case options' copy) |
+| Sheet: guide button | x 20–373, y 742–794 (353 × 52), `space.lg` 16 below the row | `PillButton scheme="brass" variant="secondary"`: radius pill, fill `color.raised` #1E1915 (pressed `color.surface`), 1 pt `color.hairline`, label `control` in `color.text` (14.8:1) | **"How to photograph a room"** |
+| Sheet: bottom | y 794–852: content `space.sm` 8 + sheet `space.lg` 16 + safe bottom 34 | — | — |
 
-**Totals on 852:** status bar and safe top 0–59; header buttons 67–111; divider 123; glass spacer 124–152; glass 152–280; glass spacer 280–308; title 308–336; gap 4; subtitle 340–364; gap 28; fan 392–618; lower spacer 618–818; safe bottom 818–852. A flex column runs between the divider and the safe bottom (124–818, 694 tall). It holds the glass (128) and the hero block (28 + 4 + 24 + 28 + 226 = 310), and splits the remaining 256 among three spacers at weights 7 : 7 : 50: above the glass, between the glass and the title, and below the fan (28 : 28 : 200 on this screen). The glass is centred in the 184 band between the divider and the title, with 28 on each side. Without the glass (States: large text and short screens), the column falls back to two spacers at weights 23 : 25 around the hero block. On this screen that would be 184 : 200, which puts the title and fan exactly where they are with the glass. The sheet runs 591 + 12 + 44 + 16 + 62 + 12 + 1 + 12 + 52 + 16 + 34 = 852.
+**Totals on 852:** safe top 0–59; header 59–115 (buttons 63–111); rule 115–116; glass spacer 116–145.75; glass 145.75–273.75; glass spacer 273.75–303.5; title 303.5–333.5; gap 4; subtitle 337.5–355.5; gap 24; fan 379.5–605.5; lower spacer 605.5–818; safe bottom 818–852. Header 57 = 4 + 48 + 4 + 1. The column (116–818, 702) holds the glass (128) and the hero block (30 + 4 + 18 + 24 + 226 = 302), and splits the remaining 272 at 7 : 7 : 50 (29.75 : 29.75 : 212.5). Without the glass (States) the column falls back to two spacers at 15 : 17 around the hero block: 187.5 : 212.5 on this screen, which puts the title and fan exactly where they are with it. The sheet runs 605 + 1 + 8 + 4 + 8 + 48 + 12 + 40 + 16 + 52 + 8 + 16 + 34 = 852.
 
-**Content centres on screen:** Centre card: tag (196.5, 416), note (196.5, 439), line art (196.5, 505). Left card: tag (83.1, 426.4), note (85.5, 449.3), line art (92.4, 515.0). The right card mirrors it: (309.9, 426.4), (307.5, 449.3), (300.6, 515.0).
+**Fan card, card-local (default text size):** mount 0–122 × 0–209; plate x 4–118, y 4–155; art 48 on the axis, y 55.5–103.5; busy indicator and SOLVED stamp in the plate's lower band (indicator y 127–147, stamp y 123–147); plate label y 163–177; note y 179–197; 12 to the foot. The label block is laid out from the foot up (4 + 8, the caption line, 2, the stamp line, 8), so below the default text size the lines shrink and the plate takes what they give back.
 
-**Side-card clearance:** The centre card covers each side card's inner strip, 5.8 wide at the top and 27.7 at the bottom (17 unrotated). Measured from the centre card's edge, the clearances are:
-- every tag: ≥ 14.1
-- the longest side note (DEVELOPING, 84): 7.3
-- NONE YET / CONTINUE (67.2): 15.7
-- line art: 16.8
-- SOLVED stamp: 13.9
+**Content centres on screen:** centre card: label (196.5, 549.5), note (196.5, 567.5), art (196.5, 459.0). Left card: label (86.4, 560.4), note (88.3, 578.3), art (77.0, 470.4). The right card mirrors it: (306.6, 560.4), (304.7, 578.3), (316.0, 470.4).
 
-The stamp sits at the right inset because a centred stamp would clear by only 1.9.
+**Side-card clearance** (from the centre card's edge, along the side card's own width, at the deepest point of each element): every plate label 13.5; DEVELOPING 7.7; notes: Continue 17.8, None yet 18.4, See why 20.5, Try later 22.0, Replay 25.1, Unseal 25.6; line art 32.3; SOLVED stamp 24.0; busy indicator 41.8. Centred on the card instead, the labels would clear by 1.5 and DEVELOPING would run 4.3 under the centre card: that is why side cards centre on the exposed face (Decision 9).
 
 ### Tappable elements
 
 | Element | Hit area ≥ 44 | Action in ESCAPD |
 |---|---|---|
-| How you play button | 44 + `hitSlop` 2 = 48 × 48 (`ref.hit.comfortable`), x 331–379, y 65–113 | Opens the How you play sheet. a11y: role button, label "How you play" |
-| Magnifying glass (a drag surface, not an action) | The outer wrapper, 128 × 128 at x 132.5–260.5, y 152–280, no `hitSlop`. It overlaps nothing tappable: the How you play hit area ends at y 113, 39 above, and the cards start at y 392, 112 below with only the title and subtitle between | **No action:** no tap handler, no navigation, no haptic, no role, not focusable, hidden from screen readers (Layout). Press-and-drag tilts it with `ref.motion.tilt`:<br>• **Gesture:** react-native-gesture-handler `Gesture.Pan().minDistance(0).shouldCancelWhenOutside(false)` on the wrapper, which never transforms, so the tilting image can't slide out from under the finger. `onBegin` (touch-down) and `onUpdate` read the finger as px = x ÷ 128, py = y ÷ 128 in the wrapper, clamped to 0–1, so a drag that leaves the box holds the edge value. The gesture claims only touches that start inside the box, so it never takes a tap from a card or the header.<br>• **Tilt:** rotateY = (px − 0.5) × `ref.motion.tilt.max` 32 and rotateX = (0.5 − py) × 32, in degrees, so ±16°. Transform `[{ perspective: ref.motion.tilt.perspective 1000 }, { rotateX }, { rotateY }]` on the inner view (perspective first, as React Native requires), about the box centre. The side under the finger dips away from the viewer; check the sign on both platforms. Each update re-targets `withTiming(target, { duration: ref.motion.tilt.follow.duration 400, easing: Easing.bezier(0.22, 1, 0.36, 1) })`.<br>• **Glare:** `ref.motion.tilt.glare`, the token's three white radial layers (radius 95 / 200 / 360 with its stops and offsets), centred at the finger (px × 128, py × 128 in the box) inside a react-native-svg `ClipPath` circle at (78.6, 42.4) r 32.3: the glass only, never the brass. Plain white alpha, because React Native has no blend modes. The glare centre follows the finger directly. The group's opacity fades 0 → `glare.opacity` 0.32 over `glare.fade` 300 ms from touch-down. The glare layer is inside the tilting view, so the clip tilts with the lens.<br>• **Release** (`onFinalize`, which also covers a cancel): rotateX and rotateY go to 0 over `ref.motion.tilt.return.duration` 1000 ms with the same bezier, and the glare fades to 0 over 300 ms.<br>• **Off:** the gesture is disabled (`enabled(false)`) while the How you play sheet is open (its scrim covers the glass anyway) and under reduced motion. When the screen loses focus (a card navigates away), the glass is set flat and the glare cleared, with no animation |
-| THE STUDY card | Exposed face ≈105 × 209. The centre card takes 5.8–27.7 of its inner side, and touches in the overlap go to the centre card | `ensureSession()` (card busy, see States), then `router.push('/tutorial')`, which resumes through start_or_resume_session. The note comes from `getLatestSession(TUTORIAL_ROOM_ID)`: none or abandoned UNSEAL (as today's title screen), active CONTINUE, completed REPLAY. a11y uses today's labels: "The Study. Unseal the first case." / "…Continue the first case." / "…Replay the first case." A failure shows the error notice |
-| YOUR ROOM card | Full 122 × 209 (on top) | **Access check first** (card busy, see States): `openCapture()`, the shared helper in section 04's entry rule (push). It runs `ensureSession()`, then `getMyAccess()`, and routes:<br>• `is_anonymous` (guest) → `/account?next=back`, because the server requires an email account. The account screen returns here and the player taps again.<br>• No `has_custom_rooms_entitlement` → `/pro`, the test paywall (decisions.md, user answer 5; no section yet). After its test purchase, /pro continues with `openCapture({ replace: true })`.<br>• Entitled but `can_generate` false (monthly cap reached) → `/capture/develop?from=hub` with no roomId, which shows develop's existing cap state. Develop still needs this hub-entry param: with it, the cap state's button reads "Back" and calls `router.back()` to the hub directly beneath. Without it, the button is "Back to the title" calling `router.replace('/')`, which would stack a second hub.<br>• Access → `/capture/guide` the first time (`escapd:onboarding:capture-guide` ≠ "1" and no session flag), otherwise `/capture`.<br>• If the check can't run (offline or a server error), `openCapture()` rejects without navigating and the card continues to `/capture`. Its backstop flag check still sends a first-timer to the guide, and `/capture/develop` checks access again before anything is sent.<br>a11y "Your room. Photograph a room." |
-| YOUR CASE card | Exposed face ≈105 × 209 | State from `getLatestCustomRoom()` (drafts skipped, see Case status) and, for a ready room, `getLatestSession(room.id)`.<br>• Ready → `/play/<id>`, where start_or_resume_session resumes an active run or starts a fresh one. The note is OPEN (no session, or the latest session abandoned after "Restart this case"), CONTINUE (active) or REPLAY plus the SOLVED stamp (completed).<br>• Queued or generating: DEVELOPING → `/capture/develop?roomId=<id>`.<br>• Failed: SEE WHY → the same route.<br>• No room (or only a draft), or no session: disabled (States).<br>a11y: one element, label "Your case." plus the state from the Case status table, e.g. "Your case. Developing." or "Your case. Solved. Replay the case." The note's SVG text is hidden from accessibility. The label updates when the state changes |
-| Sheet scrim | Everything above the sheet (y 0–591) | Closes the sheet. Not focusable |
-| Sheet Close | 44 + `hitSlop` 2 = 48 × 48, x 327–375, y 601–649 | Closes the sheet; focus returns to the How you play button. a11y "Close" |
-| Show interactives segment | 112 × 36 + `hitSlop` 4 top and bottom = 112 × 44; each half 56 × 44 | Tapping a half sets `hotspotAssist` through `usePreferences().setHotspotAssist`: the same AsyncStorage key, `escapd:pref:hotspot-assist`, that Case options uses. It is one a11y element: role switch, label "Show interactives", `accessibilityState.checked` |
-| How to photograph a room | 353 × 52 | Closes the sheet, then pushes the guide in replay mode (`/capture/guide?replay=1`; section 04). Replay never clears the seen flag; closing or finishing it sets the flag (section 04). Its final camera action runs the same `openCapture()` check as YOUR ROOM |
-| Android back | — | Sheet open → closes it (returns true). A card busy → consumed (returns true) until navigation or the notice. Otherwise not handled: the system leaves the app, because this is the root |
-| Not tappable | — | Wordmark, divider, both light pools, title, subtitle, tags, notes, line art, stamp, notice. Each card is a single button; its children are not separately focusable. The glass takes drags only (its own row) |
-| Focus order | — | Screen reader: ESCAPD (image) → How you play → "Choose a case" (header) → subtitle → THE STUDY → YOUR ROOM → YOUR CASE → notice. The glass is skipped by screen readers, keyboard and switch control. Render the cards in that order and stack the centre card with `zIndex`, not render order. Keyboard: How you play → THE STUDY → YOUR ROOM → YOUR CASE. With the sheet open: title → Close → Show interactives → How to photograph a room, trapped (`accessibilityViewIsModal`; on Android, `importantForAccessibility="no-hide-descendants"` on the screen behind). Opening the sheet moves focus to its title |
+| How you play button | 48 + the live `hitSlop` 4 = 56 × 56, x 321–377, y 59–115 (all inside its own box and the header, so the slop is reachable) | Opens the How you play sheet. a11y: role button, label "How you play". Disabled (0.4) while a card is busy |
+| Magnifying glass (a drag surface, not an action) | The outer wrapper, 128 × 128 at x 132.5–260.5, y 145.75–273.75, no `hitSlop`. 30.75 below the How you play hit area, 105.75 above the fan | **No action:** no tap handler, navigation, haptic or role; not focusable; hidden from screen readers. Press-and-drag tilts it with `ref.motion.tilt`: Pan with `minDistance(0)`, `shouldCancelWhenOutside(false)`, `maxPointers(1)`; px, py = finger ÷ 128 clamped 0–1; rotateY = (px − 0.5) × 32, rotateX = (0.5 − py) × 32 (±16°) under `perspective` 1000, each update re-targeting `withTiming` 400 ms on bezier(0.22, 1, 0.36, 1). Glare: the token's three white radial layers (radius 95 / 200 / 360), centred on the finger, clipped to the lens circle, fading 0 → 0.32 over 300 ms from touch-down. Release or cancel: flat over 1000 ms on the same curve, glare out over 300 ms. Off while the sheet is open and under reduced motion; set flat with no animation when the screen loses focus |
+| THE STUDY card | Exposed face ≈ 94–116 × 209 (the centre card takes 5.8–27.7 of its inner side; touches there go to the centre card) | `ensureSession()` (card busy), then `router.push('/tutorial')` (start_or_resume_session resumes or starts). The note comes from `getLatestSession(TUTORIAL_ROOM_ID)`: none or abandoned Unseal, active Continue, completed Replay. a11y labels: "The Study. Unseal the first case." / "…Continue the first case." / "…Replay the first case." A failure shows the notice |
+| YOUR ROOM card | Full 122 × 209 (on top) | **Access check first** (card busy): `openCapture()` runs `ensureSession()` and `getMyAccess()`, then routes a guest to `/account?next=back`, a player without `custom_rooms` to `/pro`, a player at the monthly cap to `/capture/develop?from=hub`, and a player with access to `/capture/guide` the first time (seen flag unset), otherwise `/capture`. If the check can't run it rejects without navigating and the card carries on to `/capture` (its backstop still shows a first-timer the guide; `/capture/develop` checks access again before anything is sent). a11y "Your room. Photograph a room." |
+| YOUR CASE card | Exposed face ≈ 94–116 × 209 | From `getLatestCustomRoom()` (drafts count as no room) and, for a ready room, `getLatestSession(room.id)`. Ready → `/play/<id>` (Open, Continue, or Replay with SOLVED). Queued or generating (DEVELOPING) and failed (See why) → `/capture/develop?roomId=<id>`. No room, offline or try later: disabled. a11y: one element, "Your case." plus the state (Case status); the label updates with the state |
+| Sheet scrim | Everything above the sheet (y 0–605) | Closes the sheet. Not focusable |
+| Sheet Close | 48 + `hitSlop` 4 = 56 × 56, x 333–389, y 622–678 | Closes the sheet; screen-reader focus returns to How you play once the sheet has left (States: Focus). a11y "Close" |
+| Show interactives switch | The native switch (iOS 51 × 31; Android's Switch keeps its 48 minimum), exactly as Case options | Sets `hotspotAssist` through `usePreferences().setHotspotAssist` (AsyncStorage `escapd:pref:hotspot-assist`, shared with Case options). One a11y element: role switch, label "Show interactives", the native on/off value |
+| How to photograph a room | 353 × 52 | Closes the sheet (no focus return), then pushes `/capture/guide?replay=1` (section 04). Replay never clears the seen flag; the guide sets it when closed or finished |
+| Android back | — | Sheet open → closes it (true). A card busy → consumed (true) until navigation or the notice. Otherwise not handled: the system leaves the app (root) |
+| Not tappable | — | Wordmark, rule, title, subtitle, mounts, plates, plate labels, notes, line art, stamp, notice. Each card is one button; its children are not separately focusable. The glass takes drags only |
+| Focus order | — | Screen reader: ESCAPD (image) → How you play → "Choose a case" (header) → subtitle → THE STUDY → YOUR ROOM → YOUR CASE → notice. The glass is skipped. Cards render in that order; the centre card is stacked with `zIndex`, not render order. Keyboard: How you play → THE STUDY → YOUR ROOM → YOUR CASE. Sheet open: title → Close → Show interactives → How to photograph a room; VoiceOver is trapped by the sheet (`accessibilityViewIsModal`), and the screen behind is `importantForAccessibility="no-hide-descendants"` for TalkBack. The live Sheet moves focus to its title 300 ms after opening (50 under reduced motion) |
 
 ### States
 
-- **Appear:** The cards don't animate in; the old 380 ms fan-out is removed, because Noir keeps `motion.bracketSettle` for the viewfinder brackets. The glass arrives at rest, flat and without glare. The screen arrives with the root Stack's fade after the splash.
-- **Loading (focus fetch):** The screen renders at once with defaults: THE STUDY UNSEAL, YOUR ROOM PHOTOGRAPH. YOUR CASE keeps its 18 pt note line blank and ignores taps until the fetch resolves. It is not dimmed, so nothing flashes. No spinner. For screen readers and switch users it is not silent: `accessibilityState={{ busy: true, disabled: true }}` and label "Your case. Loading." until the fetch resolves, then the resolved label and state (Case status).
-  - The fetch runs in `useFocusEffect`, and only if `currentSession()` exists: never create a guest just to label a card. It calls `getLatestSession(TUTORIAL_ROOM_ID)` and `getLatestCustomRoom()` in parallel, then `getLatestSession(room.id)` for a ready room.
-  - With no session, YOUR CASE goes straight to NONE YET.
-- **Developing (YOUR CASE queued or generating):** The DEVELOPING note is a one-line Thinking state with no rotation, on `ref.motion.thinking.shimmer` (duration 2000, linear, band 0.8, base #8A8D91, highlight #F2F2F2). One word is truthful for both queued and generating (the job reports no sub-stage), and the 90-wide note can't hold the rotating lines, which stay on `/capture/develop`. So there is no swap and no hidden sizer: one fixed 84-wide line.
-  - Look: base `ref.color.meta` #8A8D91, highlight `ref.color.bright` #F2F2F2, band 0.8 × 84 = 67.2.
-  - Movement: the band's centre runs from x −84 to +168 (−W to 2W, as in the user's CSS: a 400 % background with stops at 40 / 50 / 60 %), left to right, over 2000 ms linear, and repeats while the room develops.
-  - Build: one react-native-svg `<Text>` (Geist Mono 13, +0.6, uppercase, 84 × 18) filled by a `<LinearGradient>` (userSpaceOnUse; stops meta / bright / meta at 0 / 0.5 / 1; x1 = c − 33.6, x2 = c + 33.6, pad). Reanimated `useAnimatedProps` drives c; no new dependency. The SVG text is `accessibilityElementsHidden` and `importantForAccessibility="no"`: the card is one a11y element, so the status lives in the card's label, "Your case. Developing." The shimmer is never announced.
-  - Refresh: while the line shows and the screen has focus, follow the room with `watchRoom(id)` plus a 5 s poll (as `/capture/develop` does), and stop when the screen loses focus. Ready → OPEN; failed → SEE WHY. The shimmer stops and the note changes colour over `ref.motion.control` 120 ms ease-out.
-  - Announce: when `watchRoom` or the poll flips the state to ready or failed, call `AccessibilityInfo.announceForAccessibility`: "Your case is ready." or "Your case didn't develop. Open it to see why." At the same moment the card label becomes the OPEN or SEE WHY label (Case status). Only flips seen while the hub is open announce; the first fetch on focus does not.
-- **Pressed:**
-  - Card: fill → `ref.color.panelPressed` #161616 and border → `ref.color.hairline2` #303030 over `ref.motion.control` 120 ms ease-out, back on release. Selection haptic on press-in (expo-haptics, only when `haptics_enabled`). No scale, no opacity change.
-  - Icon buttons: fill → `ref.button.icon.pressedFill` #161616.
-  - Guide button: fill → `ref.button.secondary.pressedFill` #161616.
-  - Segment: the thumb fill moves to the new half as a 120 ms colour change, with no slide.
-- **Busy (after tapping THE STUDY or YOUR ROOM):** THE STUDY's `ensureSession()` (an anonymous sign-up for a new player) and YOUR ROOM's `openCapture()` (`ensureSession()`, `getMyAccess()`, then the seen-flag read) are network round trips that often pass 1 s on cellular, so the card uses decisions.md's in-button pattern (Loading indicators).
-  - Tag and note stay unchanged (UNSEAL / CONTINUE / REPLAY, PHOTOGRAPH). A small native `ActivityIndicator` (20 × 20) in the tag colour `ref.color.meta` #8A8D91 is added, centred on card-local x 61, y 170–190: the stamp band, empty on THE STUDY and YOUR ROOM. It rotates with its card; on THE STUDY it clears the centre card by ≥ 25. Nothing else is replaced.
-  - The tapped card stays at full opacity, ignores taps and sets `accessibilityState={{ busy: true, disabled: true }}`. The other two cards and the How you play button go to `ref.button.disabledOpacity` 0.4 and are disabled until navigation or the notice.
-- **Disabled (no own case, only a draft, or no session):** The YOUR CASE card is at 0.4 as one layer (`needsOffscreenAlphaCompositing` on Android). Note NONE YET, `accessibilityState.disabled`, hint "Photograph a room first."
+- **Appear:** No entry animation. The glass arrives flat and without glare. The screen arrives with the root Stack's fade.
+- **Loading (focus fetch):** Renders at once with THE STUDY "Unseal" and YOUR ROOM "Photograph". YOUR CASE keeps its caption line blank (a non-breaking space, so the line holds at any text size), ignores taps and is not dimmed, so nothing flashes; no spinner. For screen readers: `accessibilityState={{ busy: true, disabled: true }}`, label "Your case. Loading." until the fetch resolves. The fetch runs on every focus and only with a stored session (`currentSession()`), never creating a guest to label a card: `getLatestSession(TUTORIAL_ROOM_ID)` and `getLatestCustomRoom()` in parallel, then `getLatestSession(room.id)` for a ready room. No session → None yet.
+- **Developing (YOUR CASE queued or generating):** the note is `ThinkingStates tone="warm" variant="note" decorative`: one line, no rotation, the live `stamp` type (JetBrains Mono 11/14, +1.2), **DEVELOPING** 78.0 wide, centred in the 18 caption slot (card-local y 181–195). The shimmer runs from `ref.motion.thinking.shimmerWarm.base` `color.textSecondary` to `.highlight` `color.text` and back, band 0.8 × 78 = 62.4, the band centre sweeping −78 → +156 over 2000 ms linear and repeating while the room develops. Hidden from accessibility: the card's label says "Your case. Developing." and the shimmer is never announced. While it shows and the hub has focus, the room is followed with `watchRoom(id)` plus a 5 s poll (`POLL_MS`), stopping on blur. A flip to ready shows Open, to failed See why: the shimmer stops and the caption note appears at once (both rest in `color.textSecondary`, so there is nothing to ease). The flip is announced, "Your case is ready." or "Your case didn't develop. Open it to see why.", only when seen while the hub is open.
+- **Pressed:** Card: mount fill `color.surface` → `color.raised` #1E1915 and hairline `color.hairline` → `color.accent` over 120 ms ease-out (the kit's control timing), back on release; selection haptic on press-in (only with haptics on). No scale, no opacity change. How you play and Close: the live IconButton's opacity 0.75. Guide pill: `color.raised` → `color.surface`. Switch: native.
+- **Busy (after tapping THE STUDY or YOUR ROOM):** the tapped card keeps its label and note and adds a small native `ActivityIndicator` in `color.accent` on its plate: centred on its content axis, card-local y 127–147 (`space.sm` above the plate's foot, the band where SOLVED would sit). THE STUDY's is centred at ≈ (83.0, 527.6), 41.8 clear of the centre card; YOUR ROOM's at (196.5, 516.5). It rotates with its card. The card stays at full opacity, ignores taps, and sets `accessibilityState={{ busy: true, disabled: true }}`, keeping focus. The other two cards and How you play go to 0.4 (`ref.button.disabledOpacity`; the live IconButton's own 0.4) and are disabled until navigation or the notice. A dimmed centre card keeps an opaque `color.canvas` underlay, so the side cards don't show through it.
+- **Disabled (YOUR CASE: no room, only a draft, no session, offline, try later):** mount, plate, line art and plate label at 0.4 as one layer (`needsOffscreenAlphaCompositing`); the note explains why, so it stays at full strength (6.2:1 over the dimmed mount at the silk peak). `accessibilityState.disabled`; with no room, hint "Photograph a room first."
 - **Case status:**
 
   | Case status | Note | Stamp | Card a11y label |
   |---|---|---|---|
-  | Ready, never played | OPEN | — | "Your case. Open the case." |
-  | Ready, latest session abandoned ("Restart this case") | OPEN | — | "Your case. Open the case." |
-  | Ready, in progress | CONTINUE | — | "Your case. Continue the case." |
-  | Ready, solved | REPLAY | SOLVED | "Your case. Solved. Replay the case." |
-  | Queued or generating | DEVELOPING (Thinking-state shimmer) | — | "Your case. Developing." |
-  | Failed | SEE WHY (never blames the player) | — | "Your case. It didn't develop. See why." |
-  | No room (or a draft, below) | NONE YET | — | "Your case. None yet." + hint "Photograph a room first." |
+  | Ready, never played | Open | — | "Your case. Open the case." |
+  | Ready, latest session abandoned ("Restart this case") | Open | — | "Your case. Open the case." |
+  | Ready, in progress | Continue | — | "Your case. Continue the case." |
+  | Ready, solved | Replay | SOLVED | "Your case. Solved. Replay the case." |
+  | Queued or generating | DEVELOPING (warm Thinking state) | — | "Your case. Developing." |
+  | Failed | See why (never blames the player) | — | "Your case. It didn't develop. See why." |
+  | No room (or a draft) | None yet | — | "Your case. None yet." + hint "Photograph a room first." |
+  | Fetch failed: network / other | Offline / Try later | — | "Your case. Offline." / "Your case. Try later." |
 
-  - **Drafts:** `rooms.status` also has `draft`: a room `developPlates` created whose upload or generation request never finished (app killed or network dropped mid-send). `getLatestCustomRoom()` returns the newest custom room of any status, so a newer draft would hide an older ready case. The YOUR CASE fetch skips drafts: add `.neq('status', 'draft')` to the custom-room query (build change; the hub is its only caller). A draft that still comes back maps to No room.
-  - **Abandoned sessions:** an abandoned latest session maps to OPEN on YOUR CASE and UNSEAL on THE STUDY, as today's title screen does.
-- **Error (THE STUDY only):** The notice panel shows "You're offline. Connect to begin." (Phosphor `WifiSlash`) or "Couldn't start the case. Try again in a moment." (Phosphor `Warning`). The icon is in `ref.color.error` #B5564F; the text is `ref.color.read` #A6A9AD. It appears as an opacity change over `ref.motion.control`, is announced (`accessibilityLiveRegion="polite"` plus `announceForAccessibility`), and stays until the next card tap or the next focus. This is today's inline-error pattern; the Toast is not used here. The card returns to idle and the layout does not move.
-- **Fetch failure:** YOUR CASE shows OFFLINE (network error) or TRY LATER (other errors) at 0.4, disabled, and refetches on the next focus. THE STUDY and YOUR ROOM stay enabled with their defaults.
-- **Focus:** `ref.focus`: a 2 pt `ref.color.bright` outline at a 2 pt offset that follows the control.
-  - Cards: drawn in one overlay above the fan, not by the card. The side cards sit under the centre card, so the inner side of their own outline (the 5.8–27.7 strip) would be hidden beneath it. Overlay: an absolutely positioned View with the focused card's box (122 × 209), centre and `rotate`, transparent, `borderRadius` `ref.radius.panel` 6, with RN outline props (RN 0.88, new architecture) `outlineWidth` 2, `outlineOffset` 2, `outlineColor` #F2F2F2 from `ref.focus`. The ring (outer 130 × 217) follows the card's corners with no new radius. `pointerEvents="none"`, `accessible={false}`, `zIndex` above the centre card, shown only while that card has keyboard or switch focus. The cards are not restacked on focus. The fan container must not set `overflow: hidden`.
-  - Icon buttons, segment and guide button: radius 999.
-  - It shows while the control has keyboard or switch focus (Pressable focus events). VoiceOver and TalkBack draw their own cursor.
-- **Permission:** None here. Camera permission is section 03, at `/capture`.
-- **Large text / narrow screens:** The fan needs fontScale ≤ 1.0 and width ≥ 375. Its visual width is 352, so the side margin is (width − 352) ÷ 2: 11.5 at 375, 25 at 402, 44 at 440.
-  - **Why:** The 84-wide notes (PHOTOGRAPH, DEVELOPING) pass the 90 max width at fontScale 1.07.
-  - **When it stacks:** from the first larger text step (iOS 1.12, Android 1.15), or when the screen is under 375 wide.
-  - **Stacked cards:** three upright `ref.panel` cards, width = screen − 2 × `ref.space.edge` 20 (353 at 393, 320 at 360), with a 16 gap (`ref.space.lg`). Order: THE STUDY, YOUR ROOM, YOUR CASE.
-  - **Inside a stacked card:** padding 16. The tag, then 6, then the note, then the SOLVED stamp 8 below the note, all left-aligned in a text column ≤ 257 wide. The 48 line art is right-aligned at a 16 inset and vertically centred. Height hugs the content, minimum 96. No tilt.
-  - **Pool:** The fan pool keeps its centre rule (subtitle bottom + 220) and scrolls with the column. The column scrolls when it overflows.
-  - **The glass goes first:** When the cards stack, the glass and its pool are not rendered and nothing takes their place. A drag surface inside a scrolling column would fight the scroll. The glass is an image, so text size never scales it.
-  - **Short screens (fanned layout):** The glass is dropped before anything else changes. It needs a column (divider bottom to safe bottom) of at least 658, so that the 7 : 7 : 50 spacers keep ≥ 24 (`ref.space.xl`) above and below it: 128 + 310 + a free share of ≥ 219.4. Below 658, the glass and its pool are not rendered and the column returns to 23 : 25 around the hero block. Examples: 852 has a 694 column (spacers 28); 375 × 812 has 663 (spacers 24.6), so it keeps the glass; 375 × 667 has 582, so it drops the glass. The check reads the window height and safe areas on layout and is never animated.
-  - **Title and subtitle:** They wrap; nothing shrinks. The wordmark stays at 14.
-  - **Sheet:** Rows wrap. The sheet stops at 64 % of the screen height and scrolls.
-- **Reduced motion:**
-  - DEVELOPING is a static line in `ref.color.read` #A6A9AD.
-  - The sheet fades in and out over `motion.reducedFade` 140 ms instead of rising.
-  - The glass is a still image: no tilt, no glare, and the gesture is disabled (`enabled(false)`). It keeps its place and its pool, so nothing shifts. If reduced motion turns on mid-drag, the glass is set flat with no animation.
-  - The 120 ms colour changes stay, since they don't move anything.
-  - Nothing else on this screen moves, apart from the native busy `ActivityIndicator`, which keeps the platform's behaviour.
+  Drafts: `getLatestCustomRoom()` returns a draft too; it maps to No room. Abandoned sessions map to Open on YOUR CASE and Unseal on THE STUDY.
+- **Error (THE STUDY only):** the notice panel: "You're offline. Connect to begin." (Phosphor `WifiSlash`) or "Couldn't start the case. Try again in a moment." (Phosphor `Warning`), icon in `color.warning`, text `caption` primary; never error-coloured text (`color.error` is 2.3:1 on the dark ground). It fades in over 120 ms (opacity, so it stays under reduced motion), is announced (iOS `announceForAccessibility`; Android through the always-mounted slot's `accessibilityLiveRegion="polite"`, since Android speaks a live region when its content changes, not when it mounts), and stays until the next card tap or the next focus. A repeat failure mounts a new panel, so it fades and is announced again. The card returns to idle; the layout does not move. One screen-reader element labelled by its text (`accessible` on iOS, `screenReaderFocusable` on Android, so it is never a keyboard stop).
+- **Fetch failure:** YOUR CASE shows Offline (network) or Try later (other errors), disabled at 0.4, and refetches on the next focus. THE STUDY and YOUR ROOM stay enabled with their defaults.
+- **Focus:** the kit ring (`ref.focus`: 2 pt `#F2F2F2` at a 2 pt offset), shown while a control has keyboard or switch focus. Fan cards: one overlay above the fan with the focused card's box, centre and rotation, `radius.thumbRing` 18, drawn with RN outline props (`outlineWidth` 2, `outlineOffset` 2), `zIndex` above the centre card, `pointerEvents="none"`, hidden from accessibility; the cards are never restacked, and the fan container never clips. Stacked cards: the same outline on the card. How you play: the kit's pill ring on its 56 box (48 + 2 offset + 2 width). The guide pill draws its own kit ring. The live Sheet's Close draws none (a live component). VoiceOver and TalkBack draw their own cursors. **Focus return:** closing the sheet (Close, scrim, Android back) returns screen-reader focus to How you play once the sheet has left: the live Sheet has no exit callback, so the hub waits its 200 ms slide (`ref.layout.hub.sheetExit`; `motion.reducedFade` 140 under reduced motion) plus a 100 ms margin (`sheetFocusMargin`) for the modal layer's removal: 300 ms, or 240. Reopening the sheet, leaving for the guide, or leaving the hub cancels it.
+- **Permission:** none here. Camera permission is section 03.
+- **Large text / narrow screens:** the fan needs fontScale ≤ 1.0 and width ≥ 375 (`fan.maxFontScale`, `fan.minWidth`). Its visual width is 349.6, so the side margin is 12.7 at 375, 21.7 at 393. From the first larger text step (iOS 1.12, Android 1.15), or under 375 wide, the cards stack:
+  - **Stacked cards:** three upright cards in reading order, width = screen − 2 × `space.gutter` 20 (353 at 393, 320 at 360), gap `space.lg` 16, in a scrolling column.
+  - **Inside a stacked card:** the walnut mount (radius 18, brass hairline) with its plate at the right end: 88 wide (= 96 − 2 × 4), inset 4 top, right and bottom, full height, radius 14, the 48 line art centred in it. The card reserves 92 on the right for it. The text column takes the rest with padding 16, vertically centred: plate label (`stamp`, accent), `space.xxs` 2, the note (caption secondary, or the warm DEVELOPING line, start-aligned), with the busy indicator `space.sm` 8 after it, then the SOLVED stamp `space.sm` 8 below. Minimum height 96 (`stackedMinHeight`); height hugs the content. No tilt.
+  - **The glass goes first:** when the cards stack, the glass is not rendered and nothing takes its place (a drag surface inside a scroll would fight it). The column runs 15 : 17 spacers around the hero block in the scroll content; the top spacer is frozen while the notice shows, so nothing above it moves.
+  - **Short screens (fanned):** the glass is dropped before anything else changes. It needs a column of at least 649.4 (rule bottom to safe bottom), so the 7 : 7 : 50 spacers keep ≥ `space.xl` 24 above and below it: 128 + 302 + a free share ≥ 219.4. 852 has 702 (spacers 29.75); 375 × 812 (safe 44 / 34) has 677 (27.0), so it keeps the glass; 375 × 667 (safe 20 / 0) has 590 and drops it, returning to 15 : 17. Decided from the window, the text size and the safe areas (then the column's measured height); never animated.
+  - **Title and subtitle** wrap; nothing shrinks. The wordmark stays at 14.
+  - **Sheet:** rows wrap; the live Sheet stops at 64 % of the screen and scrolls.
+- **Reduced motion** (`useTheme().reducedMotion`):
+  - DEVELOPING is a still line in `shimmerWarm.still` `color.textSecondary`.
+  - The live Sheet and its scrim cross-fade over `motion.reducedFade` 140 instead of rising; focus returns after 240.
+  - The glass is a still image in the same place: no tilt, no glare, gesture disabled; turned on mid-drag, it is set flat with no animation.
+  - The 120 ms colour changes and the notice's opacity fade stay (nothing moves). The native busy indicator keeps the platform's behaviour.
 
 ### User notes
 
+> "The play screen (/play) and light table are the visual identity — brass accent, Playfair case titles, film-plate framing, mono plate labels. Restyle the hub (/), the photo guide and the Pro screen to match THAT look (keep the silk background and pill buttons from Noir)."
+
+Applied. The hub keeps its structure, routing, data, states and accessibility, and takes the play screen's materials: the silk under the live grain, Playfair for the heading, the light table's caption, walnut mounts with brass hairlines around canvas plates, brass mono plate labels, a brass case stamp, the live Sheet and Switch from Case options, and a brass-scheme pill. The Noir light pools are gone.
+
 > "3 cards instead of 2."
 
-Applied. The reference deals two cards: 186.9 × 319.6, ±5°, centres 146.9 apart. ESCAPD deals three into the same horizontal band (visual x 20.5–372.5; the reference spans 19.25–373.75):
-- Size: 122 × 209, keeping the reference's 0.584 aspect.
-- Placement: the centre card is upright and on top. The side cards are tilted ±6° and sit 10 lower. They overlap by 17.
-- Order: left to right reads as a sequence: learn (THE STUDY) → photograph (YOUR ROOM) → play (YOUR CASE). These map one-to-one onto the three things today's title screen offers.
-
-This geometry is designed, not measured. None of the reference's content is used: its header text and emoji, card labels, icons, title, difficulty word, colours and card material are all replaced by ESCAPD's own Noir equivalents.
+Kept. Three cards (122 × 209, the reference's 0.584 aspect) in the reference's horizontal band: the centre one upright and on top, the side ones ±6° and 10 lower, overlapping it by 17. Left to right reads learn (THE STUDY) → photograph (YOUR ROOM) → play (YOUR CASE). None of the reference's content is used.
 
 ### Decisions
 
-1. **Route:** The screen is the hub at `/` and replaces today's title screen (confirmed, user answer 4). That screen's stamp, wordmark cartridge, tagline and stacked buttons go; "Photograph another room" is now the YOUR ROOM card.
-2. **Subtitle:** A fixed line, "Three files on the desk.", in `ref.type.body` / `ref.color.read`. The assist level lives only in the How you play sheet.
-3. **How you play sheet:** Built as a `ref.panel` that rises with `motion.sheetSpring`, top radius 6, over a `ref.color.scrim` scrim. It holds Show interactives (`hotspotAssist`) and How to photograph a room (guide replay).
-4. **YOUR CASE with no room:** Disabled at 0.4 with the mono note NONE YET.
-5. **Chevron and close disc:** Both removed, because this is the root. Android back leaves the app.
-6. **Icon halo:** None. The icons are grayscale `ref.illustration` line art with a static `ref.light.hero` pool behind the fan. The pool sits on the fan's axis at y 584 (subtitle bottom + 220), not at the fan's centre (y ≈505), so it never lies behind the title or subtitle. The glass pool (decision 14) ends at the title's top edge.
-7. **Header mark:** The ESCAPD wordmark in `ref.color.bright`. The brass magnifier is not in the header; it is the hero object below the divider (decision 14).
-8. **Tag fit:** Plain `ref.type.label` text in `ref.color.meta`, no outline. All three tags are 75.6 wide and clear the centre card by ≥ 14.1.
-9. **Palette, type, buttons:** Noir throughout: ground / panel / hairline, Geist and Geist Mono, pill icon buttons.
-10. **Card material and radius:** Opaque `ref.panel`, radius 6.
-11. **Signal:** The SOLVED stamp on YOUR CASE is the only signal element on this screen, and it appears only after the player solves their own case. There is no `ref.button.signal`, so the screen has zero signal "go" actions (the limit is one). The brass of the glass is not a signal.
-12. **Pro check:** YOUR ROOM runs `openCapture()` (section 04) before the guide or camera. Guests go to `/account?next=back`, because the server requires an email account. Players without the `custom_rooms` entitlement go to the test paywall `/pro`. Players at the monthly cap go to develop's existing cap state (`/capture/develop?from=hub`). Players with access go to the photo guide the first time, otherwise the camera.
-13. **Guide replay:** It lives in this screen's How you play sheet.
-14. **Hero object:** The painted brass magnifying glass (`assets/brand/magnifier-1024.png`, unchanged) sits centred in the band between the divider and the title. Its box is 128 × 128 at y 152–280 (ink ≈ 104 × 119, ≈120 tall), with 28 of box clearance (32.6 to the ink) on each side. The spacers are 7 : 7 : 50, so the title and fan keep their positions. Its brass is the one temporary exception to grayscale brand art (user answer 1). A static `ref.light.object` pool sits on its lens at (211.1, 188), r 120, drawn only within y 124–308, so neither pool lies behind the title or subtitle. The glass and its pool are the first thing dropped when the cards stack or the column is under 658.
-15. **Tilt:** The glass leans toward a press-and-drag (`ref.motion.tilt`: ±16°, perspective 1000, follow 400 ms and return 1000 ms on `Easing.bezier(0.22, 1, 0.36, 1)`), tracked on a non-transforming 128 × 128 wrapper. Glare is clipped to the lens: centre (0.614, 0.331), radius 0.252 of the box, which is (78.6, 42.4) r 32.3 in pt (user answer 2). It is decorative: no action, hidden from screen readers, not focusable, and it takes no taps from the cards or header. It is a still image under reduced motion. It is the screen's only decorative motion.
+1. **Route:** the hub at `/` replaces the old title screen (user answer 4); "Photograph another room" is the YOUR ROOM card.
+2. **Ground:** `color.canvas`, then the silk still, then the live grain. No light pools: they were Noir, and they rendered as solid rectangles on device. Their layout rules (`fanPools`, `stackPools`, the title, subtitle and glass marks) and tokens are removed.
+3. **Header:** the wordmark in its defaults (`color.text`, brass doorway edge) between a 48 spacer and the live IconButton, with /play's top-bar spacing on the light table's gutters, and a brass hairline rule under it.
+4. **Type:** Playfair `narrativeTitle` for "Choose a case" (a screen heading), `caption` / secondary for the subtitle, `stamp` / accent for plate labels and SOLVED, `caption` for the status notes, `control` and `sectionTitle` in the sheet. Nothing from `ref.type`.
+5. **Status note copy:** the notes moved from Noir's uppercase mono to `caption`, so they are written in sentence case (Unseal, Continue, Replay, Photograph, Open, See why, None yet, Offline, Try later). DEVELOPING stays in capitals because the warm Thinking state's note line is the live `stamp`. Accessibility labels are unchanged.
+6. **Card material:** film-plate framing at the small radii: a walnut mount (`radius.thumbRing` 18, brass hairline) around a canvas plate (`radius.thumb` 14, `color.rim`) 4 in, so the corners are concentric. The plate label and note sit under the plate, as on /play.
+7. **Line art:** warm, three tones: hero `color.text`, secondary `color.textSecondary`, brass details `color.accent` (keyhole, viewfinder brackets, seal).
+8. **SOLVED:** a brass bordered stamp on the plate's lower right corner. There is no oxblood on this screen and no signal button.
+9. **Side-card axis:** under the plate, the labels fall where the centre card covers 22.6–27.7 of a side card's inner edge. Each side card's content (art, labels, indicator) centres on the face left exposed: its content column is inset `fan.cover` 28 on the covered side and 4 on the other (axes 49 and 73, against 61 on the centre card). Labels then clear by ≥ 13.5 and DEVELOPING by 7.7; centred on the card they would clear by 1.5 and −4.3.
+10. **Busy:** the live short-wait pattern, a small `ActivityIndicator` in `color.accent`, on the plate's lower band.
+11. **Notice:** a case-closed panel with a `color.warning` icon and primary caption text, in an always-mounted polite live-region slot.
+12. **How you play:** the live `Sheet` (`titleStyle="utility"`), as Case options, with a React Native `Switch` (brass track, `color.text` thumb) and `PillButton scheme="brass" variant="secondary"`. The Noir panel sheet, segment and rule are gone, with their tokens (`segment`, `sheetMaxHeight`).
+13. **Help button:** the live IconButton (48, plain, `Question` 22 in `color.text`), with the kit's pill ring laid around it because the live button draws none.
+14. **Hero object and tilt:** unchanged: the painted brass glass at 128, centred between the rule and the title by the 7 : 7 : 50 spacers, tilting ±16° toward a press-and-drag with a lens-clipped glare; decorative; a still image under reduced motion. It has no pool behind it now.
+15. **Spacer weights without the glass:** 15 : 17 (were 23 : 25), which on 852 leaves the title and fan exactly where the glass layout puts them.
+16. **Pro check and guide replay:** unchanged: YOUR ROOM runs `openCapture()`; the replay lives in the sheet and never clears the seen flag.
 
 ### Needs you
 
-None.
+1. **Switch touch area (iOS):** the native `Switch` is 51 × 31 on iOS, under the 44 rule. It matches /play's Case options exactly, so changing it here alone would split the two sheets. If you want ≥ 44 on both, the row could become the touch target (a `minHeight` 48 row that toggles on tap, the switch staying the one a11y element): a change to Case options too.
+2. **DEVELOPING type:** as asked, it is `ThinkingStates tone="warm" variant="note"`, which is the live `stamp` (mono, capitals), while the other notes are `caption`. If you would rather the note slot keep one type, `variant="meta"` gives the same shimmer in `caption` ("Developing"): a one-line change.
+3. **Live components without hooks the hub needs:** the live `Sheet` has no exit callback (focus return uses the 300 ms timer above) and its Close, like every live `IconButton`, draws no keyboard focus ring. An `onExited` prop on `Sheet` and a focus ring in `IconButton` would make both exact; both are outside the hub.
 
 ## 02 · Camera
 
@@ -970,289 +981,292 @@ Screen-reader order: back arrow → title → body → notice (when set) → pri
 
 None.
 
-## 04 · First-time photo tutorial
+## 04 · First-time photo guide
 
-Reference: docs/refs/04-photo-tutorial.png (layout only)
+Reference: docs/refs/04-photo-tutorial.png (step structure only: four beats, a drawing over a title, an instruction and one button). The look is the play screen's: the light table's top bar and heading (app/capture/review.tsx), SceneView's Kodachrome mount and plate label (src/render/SceneView.tsx) and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`, `motion`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), `ref.motion.thinking.shimmerWarm` (through `ThinkingStates tone="warm"`), the kit's focus ring and control timing, and the screen's own `ref.layout.guide`. No Geist, no NoirText, no `ref.type` / `ref.color`, no light pool, no oxblood.
 
-Measured at 2.038 px/pt: the image is 801 × 2003 px, and the screen is its top 1735 px (393 × 851.3 pt, a 393 × 852 device with safe areas 59 / 34). The caption strip below y 1735 px is excluded. Bracketed values are the reference's own geometry; the main value is what ESCAPD uses. None of the reference's colours, copy, objects or icons carry over.
+Route: `app/capture/guide.tsx` (`/capture/guide`; `?replay=1` when opened from 01's How you play sheet), rendering `src/screens/guide/PhotoGuide.tsx`. It is shown once, before the first camera session.
 
-New route: `app/capture/guide.tsx` (`/capture/guide`; `?replay=1` when opened from 01's How you play sheet). It is shown once, before the first camera session.
+Files: `PhotoGuide.tsx` (layout, routing, back, swipe, announcements), `CloseButton.tsx` (the live IconButton plus the kit's focus ring), `GuideArt.tsx` (mount, plate, plate label, the large-text sizing `artBox`), `art/` (the four scenes as data: `scenes.ts`, `geometry.ts`, `draw.ts`, `StepArt.tsx`), `GuideText.tsx` (title and body), `StepButton.tsx`, `ReplayErrorLine.tsx`, `stepper.tsx` (the crossfade), `swipe.ts`, `useReplayCheck.ts`, `copy.ts` (every word), `layout.ts`. Tests: `src/screens/guide/__tests__/guide-test.tsx` (behaviour and look) and `art-test.tsx` (drawings and plate sizing).
 
-### Feel (Noir)
+### Feel
 
-This is a four-beat briefing, read in an unlit room before the first plate. A small grayscale line drawing sits in one static pool of soft white light in a large near-black field. The words and the single button sit in the bottom third on flat ground. There is no shadow, texture or decorative motion. Hierarchy comes from brightness alone: the hero lines and the title are bright, the context lines and the instruction are grey, and the step count is mono in meta. The screen stays monochrome for three steps. On step 4 the button turns oxblood, like a stamp on the file, as the camera is about to open.
+A four-plate briefing pulled from the darkroom file before the first shot. Each step is a warm line drawing set on a film plate, the same walnut Kodachrome mount the case is played on, with its brass plate number stamped underneath. Above it a brass mono stamp says where the player is; below it a Playfair heading and a short Jakarta instruction. One brass pill closes the page. The drawings are bone on soot, receding to taupe, with the viewfinder brackets in brass, as the camera's own brackets once were. Silk and grain lie under everything; nothing glows or moves except the 200 ms crossfade between steps.
 
-**Signal on this screen:** step 4's "Open the camera" (`ref.button.signal`, fill `ref.color.signal` #C8302B) and nothing else. Steps 1–3 carry no signal. The stamp is meta, and the illustration brackets are bright. So there is at most one signal "go" action, and only on step 4.
+**Accent on this screen:** brass only. The stamp, the plate label, the mount's hairline and the drawn viewfinder brackets are `color.accent` #C89D54; steps 1–3's "Next" is the walnut brass secondary (brass hairline edge); step 4's "Open the camera" is the brass primary, the screen's one "go". Never `variant="signal"`.
 
 ### Layout, top to bottom
 
+Default, default text size. The title, body and button block is bottom-anchored, so it grows upward.
+
 | Element | Position & size (pt) | Style | ESCAPD content |
 |---|---|---|---|
-| Screen | 393 × 852, full bleed | `ref.color.ground` #050505 under the background still `ref.background.asset` (black silk, peak #262626). The illustration pools sit on it, and the text block sits on it outside the pools. Opening the camera (flat ground) is a `motion.sceneCrossfade`. | — |
-| Status bar | y 0–59 (safe-area top) | System, light content (already set in the root layout) | — |
-| Gap | 59–71 (12) | Ground | — |
-| Close | x 315–359, y 71–115 (44 × 44, centre 337, 93). Top = safe top + 12, right inset 34. The measured centre is kept and the size goes from 50 to 44 [ref Ø 50.4 incl. rim, centre (336.0, 93.6)] | `ref.button.icon`: circle `ref.radius.pill` 999, fill `ref.color.panel` #0E0E0E, 1 pt (`ref.border.hairline`) `ref.color.hairline` #222222. No shadow. | Phosphor `X`, regular, `ref.icon.header` 20, `ref.color.bright` #F2F2F2 |
-| Step stamp | x 38, line box y 85–101 (16, centred on the Close centre y 93). Max w 262 (ends at 300, 15 clear of Close). Text width ≈ 226 (27 chars × 8.4 − 1.2) | `ref.type.label`: Geist Mono Medium 12/16, +1.2, uppercase, `ref.color.meta` #8A8D91. Plain text with no pill and no outline. | `BEFORE YOU SHOOT  ·  1 OF 4` |
-| Top void | 115–266 (151) [ref 147 from the disc rim] | Empty ground. Keep it empty: it gives the screen its quiet. | — |
-| Light pool | Centre (196.5, 399), radius 120, so it spans x 76.5–316.5, y 279–519. It ends 101 above the title. | `ref.light.object`: static radial pool, white at 0.07 → 0.025 → 0. It is drawn behind the art, never behind text, identical on all four steps, and it never moves or animates. | — |
-| Illustration art box | x 76.5–316.5 (240 w), y 266–532 (266 h), visual centre (196.5, 399). Ink no wider than 170 [ref ink 131 × 265.4, centre 4.4 left of screen centre] | Grayscale line art in react-native-svg (`ref.illustration`): stroke 1.6, round caps and joins. Depth comes only from stroke brightness. **Hero:** `ref.illustration.hero` #F2F2F2. **Mid:** `.mid` #A6A9AD. **Back:** `.back` #8A8D91. **Context** (hands, view wedges): `.context` #303030, fading linearly to transparent over its last `.contextFade` 40 pt. **Fills:** foreground device bodies are opaque `ref.color.panel` #0E0E0E with the inner screen in `ref.color.ground` #050505, so they hide the lines behind them and read as dark silhouettes against the pool. On steps 1, 3 and 4 the inner screen redraws the framed subject (see Steps). Context is only for hands and view wedges; scene objects are never context. There is no shading. **Hero phone** (steps 1, 3, 4): about 70 × 137 with corners `ref.radius.panel` 6. The inner screen is inset 13 at the sides, 24.5 at the top and 27 at the bottom (about 44 × 85.5), with corners radius 6 and a 1 pt `.context` edge. These echo 02's radius-6 viewfinder. **Brackets** (steps 1, 3, 4): four L-shapes in `.hero` #F2F2F2, arms 9, stroke 1.6, corners inset 4 from the inner-screen edge (the 6 corner's 45° point is 1.8 in, so they clear it). They are 02's viewfinder brackets at illustration scale, and they are static. | One scene per step (see Steps) |
-| Gap | 532–620 (88). The text block is bottom-anchored, so this gap absorbs any growth. [ref 57.9 to a 2-line title's ink] | Ground | — |
-| Title | x 38, max w 317, line box 620–648 (one line) | `ref.type.title`: Geist Regular 22/28, −0.45, `ref.color.bright`, left-aligned, accessibilityRole header | Step title (≤ 24 characters, one line at 317) |
-| Gap | 648–652 (`ref.space.xs` 4) | — | — |
-| Body | x 38, max w 317, line boxes 652–676 and 676–700 | `ref.type.body`: Geist Regular 17/24, `ref.color.read` #A6A9AD, left-aligned, at most 2 lines (≤ 70 characters at 317) | Step instruction |
-| Gap | 700–762 (62). The last baseline is ≈ 695, so baseline to button top ≈ 67 [ref 67.7–69.1] | — | — |
-| Step button | x 38–355 (317 w), y 762–814 (52), centred. Label padX `ref.space.xl` 24. With larger text the capsule grows upward and its bottom stays at 814 [ref outer 318.4 × 53.5, centre (196.3, 787.8)] | Steps 1–3: `ref.button.primary`: pill 999, fill `ref.color.bright` #F2F2F2, label `ref.color.inverseInk` #0A0A0A. Step 4: `ref.button.signal`: fill `ref.color.signal` #C8302B, label `ref.color.bright` #F2F2F2. No border, no shadow. Label `ref.type.button`: Geist Medium 17/22, −0.2, centred. | "Next" on steps 1–3, "Open the camera" on step 4 |
-| Bottom inset | 814–852 (38) = safe bottom 34 + `ref.space.ctaBottom` 4 [ref 36.7–37.7] | Ground | — |
+| Screen | 393 × 852, full bleed | Root `color.canvas` #090807. Then `<BackgroundStill />` (`ref.background.asset`, the black silk, peak `ref.background.peak` #262626, contentFit cover). Then the live `<Grain />` (assets/grain.png repeated at 0.04). Then content. No light pool. | — |
+| Status bar | y 0–59 (safe-area top) | System, light content | — |
+| Top bar | y 59–107: one row-reverse row, padX `space.gutter` 20, gap `space.xs` 4, plus `space.xs` 4 of padding below (y 107–111) that holds Close's slop | The light table's top bar, mirrored so Close is on the right | — |
+| Close | x 325–373, y 59–107 (48 round, `hit.min`), centre (349, 83). Hit 56 × 56 (`hitSlop` `space.xs` 4) | The live `IconButton` (src/components/IconButton.tsx), surface plain: no fill, no border. Phosphor `X` at `ICON_SIZE` 22, `ICON_WEIGHT` regular, `color.text` #F2ECE1 (12.9:1 at the silk peak) | — |
+| Step stamp | Slot x 72–321 (249) between Close and a 48 spacer at x 20–68; text centred on x 196.5, ≈ 209 wide (27 × 7.8 − 1.2), x ≈ 92–301. Line box y 76–90, its first line centred on Close (top margin (48 − 14 × fontScale) / 2 = 17) | `Text variant="stamp"` (JetBrains Mono Medium 11/14, +1.2, capitals), `tone="accent"` `color.accent` (6.1:1 at the peak), centred. Plain text, no box. a11y label "Before you shoot. Step 1 of 4" | `BEFORE YOU SHOOT  ·  1 OF 4` |
+| Void | y 111–178 (67, `ref.layout.guide.voids.above`) | Silk and grain | — |
+| Mount | x 57.5–335.5 (278), y 178–564 (386), centred | SceneView's Kodachrome mount: `color.surface` #14110E, 1 pt (`ref.layout.guide.hairline`) `color.hairline` rgba(200, 157, 84, 0.32), `radius.mount` 30 with `...curve`, padding `ref.layout.guide.mount.pad` 6. Identical on all four steps; it never moves or animates. | — |
+| Inner plate | x 64.5–328.5 (264), y 185–537 (352): 3:4, the shape of a room plate | `color.canvas` #090807, `radius.image` 24 with `...curve`, clipped. A 1 pt `color.rim` rgba(255, 255, 255, 0.10) edge drawn over the art, as the light table's tiles | — |
+| Art box | x 76.5–316.5 (240), y 228–494 (266), centred in the plate (12 clear at the sides, 43 above and below). Visual centre (196.5, 361). Ink no wider than 170 (`ref.layout.guide.art.inkMax`) | Warm line art in react-native-svg (`ref.layout.guide.line`): stroke 1.6, round caps and joins, no shading. Depth comes only from brightness. **Hero:** `color.text` #F2ECE1 (17.0:1 on canvas). **Mid:** `color.textSecondary` #A89C8A (7.4:1). **Back:** `color.textSecondary` at stroke opacity 0.7 (4.1:1). **Context** (hands, view wedges, the phone screen's edge): `color.textSecondary` at 0.3 (1.6:1), fading linearly to transparent over its last 40 (`line.fade`): a gradient with `stopColor` the colour and `stopOpacity` 0.3 → 0 (react-native-svg ignores a stop colour's alpha). **Fills:** device bodies are opaque `color.surface` (walnut) with the inner screen in `color.canvas`, so they hide the lines behind them. **Hero phone** (steps 1, 3, 4): 70 × 137, corners 6 (`ref.layout.guide.phone.radius`); inner screen inset 13 / 24.5 / 27 (44 × 85.5), corners 6, 1 pt context edge; it redraws the framed subject, clipped to its corners. **Brackets** (steps 1, 3, 4): four L-shapes in `color.accent` (`line.bracket`), arms 9, stroke 1.6, inset 4 from the inner screen; static. | One scene per step (see Steps) |
+| Plate label | Line box y 543–557 (14), 6 under the plate (`mount.labelGap`), centred on x 196.5. ≈ 163 wide ("STEP I", 21 × 7.8 − 1.2) to ≈ 178 ("STEP III"); the slot reserves the widest | SceneView's plate label: `stamp`, `tone="accent"`, centred (7.5:1 on walnut). Decorative: hidden with the art | `ESCAPD 400  ·  STEP I` … `STEP IV` |
+| Mount foot | y 557–564: 6 walnut + 1 edge | — | — |
+| Void | y 564–620 (56, `voids.below`). It absorbs text growth first | Silk and grain | — |
+| Title | x 20–373 (353), line box 620–650 (one line) | `Text variant="narrativeTitle"` (Playfair Display SemiBold 24/30), `tone="primary"` `color.text`, left-aligned, `accessibilityRole="header"` | Step title (≤ 24 characters) |
+| Gap | 650–654 (`space.xs` 4) | — | — |
+| Body | x 20–373 (353), line boxes 654–677 and 677–700 | `Text variant="body"` (Plus Jakarta Sans Regular 16/23), `tone="secondary"` `color.textSecondary` (5.6:1 at the peak), left-aligned, at most 2 lines (≤ 70 characters) | Step instruction |
+| Status gap | 700–762 (62, `ref.layout.guide.ctaGap`): top 24, status line box 724–742 (18), bottom 20 | Empty except in replay's wait and error | — |
+| Step button | x 20–373 (353), y 762–814 (52). Label padX `space.xl` 24. With larger text the pill grows upward; its bottom stays at 814 | `PillButton scheme="brass"`: pill `ref.radius.pill` with `...curve`, no shadow. Steps 1–3 `variant="secondary"`: fill `color.raised` #1E1915, 1 pt `color.hairline` edge, label `color.text` (14.8:1). Step 4 `variant="primary"`: fill `color.accent` #C89D54, no edge, label `color.onAccent` #171411 (7.3:1). Label `type.control` (Plus Jakarta Sans SemiBold 15/20), centred | "Next" on steps 1–3, "Open the camera" on step 4 |
+| Bottom | 814–852 (38) = safe bottom 34 + `space.xs` 4, as Pro | Silk | — |
 
-Check: 59 + 12 + 44 + 151 + 266 + 88 + 28 + 4 + 48 + 62 + 52 + 38 = 852.
+Check: 59 + 48 + 4 + 67 + 386 + 56 + 30 + 4 + 46 + 62 + 52 + 4 + 34 = 852.
 
-**Gutters.** `ref.space.reading` 38 on both sides for the stamp, the text and the button [ref 37.8–39.3]. Close sits off the gutter at right inset 34, as measured.
+**Gutters.** `space.gutter` 20 on both sides for the top bar, title, body, status line and button (the light table's and Pro's gutter). The mount and the stamp are centred on x 196.5.
+
+**Mount arithmetic.** Width = plate + 2 × (1 edge + 6 walnut) = 264 + 14. Height = plate + 34: 2 × 7, the 6 label gap and the 14 label line (`mountChrome` in GuideArt.tsx).
 
 ### Steps
 
-The copy paraphrases `src/capture/slots.ts` (plates I–IV) and the light-table checklist, and the camera's title and subtitle then echo it. Only step 1 borrows a composition from the reference: a hand holding a phone in front of its subject. Every object and scene is ESCAPD's own. All art is grayscale; the player's own photos never appear here.
+The copy paraphrases `src/capture/slots.ts` (plates I–IV) and the light-table checklist, and the camera's title and subtitle then echo it. Only step 1 borrows a composition from the reference: a hand holding a phone in front of its subject. Every object and scene is ESCAPD's own. The drawings are warm line art; the player's own photos never appear here.
 
-| # | Stamp | Title | Body | Scene (ESCAPD's own drawing) | Button |
-|---|---|---|---|---|---|
-| 1 | `BEFORE YOU SHOOT  ·  1 OF 4` | Start at the doorway | One wide plate. Get the floor and two walls in. | A doorway frame (mid). Beyond it, a room corner: a floor line and two wall planes (back). A hand (context, fading) holds the hero phone in front, and its brackets frame the corner. The screen redraws the framed subject inside the 44 × 85.5 inner screen, clipped to its radius-6 corners: the floor line and the wall junction in `back` #8A8D91. The hero brackets at inset 4 sit on top. | `ref.button.primary` "Next" |
-| 2 | `BEFORE YOU SHOOT  ·  2 OF 4` | Work around the room | The far corner, then the busiest wall. Let plates overlap. | A plan view of the room outline (back) with three phone plan symbols, each 20 × 40, radius 6, with no screen detail, at the doorway, the far corner and the busiest wall. The far-corner phone (plate II, current) and its wedge are `hero` #F2F2F2. The doorway phone (plate I, already taken) and the busiest-wall phone (plate III) are `mid` #A6A9AD, with their wedges in `context` #303030 fading over 40. The doorway and far-corner wedges overlap visibly. No brackets. | `ref.button.primary` "Next" |
-| 3 | `BEFORE YOU SHOOT  ·  3 OF 4` | Get one close view | A desk, shelf, or table. Small things make good clues. | Top-down onto a desktop. The hero phone is face-on, flat and close above a desktop corner (mid; its two edges fade over the last 40 so the ink stays within 170). A key and an open notebook lie beneath it (back), with the notebook's outer pages showing on either side of the phone. Its screen shows the key and the page between the brackets. There is no hand and nothing standing behind the phone. | `ref.button.primary` "Next" |
-| 4 | `BEFORE YOU SHOOT  ·  4 OF 4` | Keep the case private | No people, mail, or lit screens. Lights on, hold steady. | The hero phone frames a bookshelf and a lamp (`mid` #A6A9AD). The lamp is marked lit by three short ray ticks (line work only, no fill). The screen redraws the framed subject inside the 44 × 85.5 inner screen, clipped to its radius-6 corners: the bookshelf and the lamp with its three ray ticks in `mid` #A6A9AD. The hero brackets at inset 4 sit on top. An envelope and an open laptop, including the laptop's three short horizontal screen lines that show it is lit, sit outside the brackets and below the framed bookshelf and lamp, in `back` #8A8D91 with no fade. | `ref.button.signal` "Open the camera" |
+| # | Stamp | Plate label | Title | Body | Scene (ESCAPD's own drawing) | Button |
+|---|---|---|---|---|---|---|
+| 1 | `BEFORE YOU SHOOT  ·  1 OF 4` | `ESCAPD 400  ·  STEP I` | Start at the doorway | One wide plate. Get the floor and two walls in. | A doorway frame (mid). Beyond it a room corner: the wall junction and the floor line along both walls (back). A hand (context, the wrist fading) holds the hero phone in front; its screen redraws the corner (back) between the brass brackets. | Brass secondary "Next" |
+| 2 | `BEFORE YOU SHOOT  ·  2 OF 4` | `ESCAPD 400  ·  STEP II` | Work around the room | The far corner, then the busiest wall. Let plates overlap. | A plan of the room outline (back) with three phone plan symbols, 20 × 40, corners 6, walnut-filled, no screen detail: at the doorway (plate I, mid), the far corner (plate II, current: phone and wedge hero) and the busiest wall (plate III, mid). The mid phones' wedges are context, fading over 40. The doorway and far-corner wedges overlap. No brackets. | Brass secondary "Next" |
+| 3 | `BEFORE YOU SHOOT  ·  3 OF 4` | `ESCAPD 400  ·  STEP III` | Get one close view | A desk, shelf, or table. Small things make good clues. | Top-down onto a desktop corner (mid; its two edges fade over the last 40). An open notebook and a key lie under the hero phone (back), the notebook's outer pages showing either side. The screen shows the key and the page (back) between the brass brackets, a stroke's width clear of them. No hand. | Brass secondary "Next" |
+| 4 | `BEFORE YOU SHOOT  ·  4 OF 4` | `ESCAPD 400  ·  STEP IV` | Keep the case private | No people, mail, or lit screens. Lights on, hold steady. | The hero phone frames a bookshelf and a lit lamp (mid; three ray ticks above the shade, line only); its screen redraws them (mid) between the brass brackets. An envelope and an open laptop with three lit screen lines sit below, outside the frame (back, no fade). | Brass primary "Open the camera" |
 
 ### Tappable elements
 
-Screen-reader order: Close → stamp → title → body → button. Keyboard and switch focus: Close → button. When the screen opens and after every step change, accessibility focus goes to the title, and the screen announces "Step n of 4".
+Screen-reader order: Close → stamp → title → body → button (the mount, drawing and plate label are hidden). Keyboard and switch focus: Close → button. When the screen opens (its route transition ends) and after every step change, accessibility focus goes to the title and the screen announces "Step n of 4" (queued).
 
 | Element | Hit area ≥ 44 | Action |
 |---|---|---|
-| Close (X) | 44 × 44 visual + `hitSlop` 2 on each side = 48 × 48 (`ref.hit.comfortable`) | **First run:** skips the guide. It sets the session flag (module-level `captureGuideSeen = true`), starts the AsyncStorage write `escapd:onboarding:capture-guide` = "1" without awaiting it, then calls `router.replace('/capture')`, carrying any params. accessibilityLabel "Skip the guide". **Replay:** sets the same flags and calls `router.back()` to the hub. accessibilityLabel "Close the guide". |
-| Next (steps 1–3) | 317 × 52 (taller with large text), the whole capsule | Moves to step n + 1. The art, stamp and text crossfade; the button and the pool stay put. Taps during the 200 ms transition are ignored. |
-| Open the camera (step 4) | 317 × 52 (taller with large text) | Sets the session and storage flags, then `router.replace('/capture')`. The opener has already checked access. /capture then shows 03 if the camera isn't allowed yet; otherwise it shows 02 at plate I ("From the doorway", counter I). **Replay:** in order, sets the session flag and starts the storage write, then calls `openCapture({ replace: true, skipGuide: true })` (the same access check as 01's YOUR ROOM). With access it runs `router.replace('/capture')`. Without access it runs `router.replace('/account?next=back')` (guest), `router.replace('/pro')` (no `custom_rooms` entitlement) or `router.replace('/capture/develop?from=hub')` (monthly cap reached: develop's cap state). Whichever route it takes, the guide leaves the stack and back returns to the hub. Pending and failure: see Replay wait and Replay error. |
-| Horizontal swipe | Full width, y 115–762 (between the header and the button) | `usePanGesture` (react-native-gesture-handler 3.3; `Gesture.Pan` is deprecated, and `SceneView.tsx` already uses the hook) with `activeOffsetX` ±16, `failOffsetY` ±16. It commits on release when \|dx\| ≥ 56 or \|vx\| ≥ 500 pt/s. Left = next (steps 1–3), right = previous (steps 2–4). The content doesn't track the finger; a committed swipe runs the same crossfade as the buttons. A left swipe on step 4 does nothing, because only the button opens the camera. A right swipe on step 1 does nothing. The buttons remain the accessible path. |
-| iOS swipe-back | System left edge | Enabled on step 1 only (`navigation.setOptions({ gestureEnabled: step === 0 })`). It leaves to the opener and does not set the flag. On steps 2–4 the edge is disabled so a right swipe means previous step. |
-| Android hardware back | — | On step 2 or later: back to the previous step with the same crossfade. On step 1: `router.back()` to the opener (`router.replace('/')` when there is no history). It does not set the flag. |
-| Stamp, light pool, illustration, title, body | — | Not tappable. The pool and the illustration are `accessible={false}`; the text carries the instruction. The stamp's accessibilityLabel is "Before you shoot. Step 1 of 4". |
+| Close (X) | 48 × 48 visual + `hitSlop` 4 each side = 56 × 56, held inside the top bar by its 4 bottom padding | **First run:** skips the guide. Sets the session flag (`captureGuideSeen = true`), starts the AsyncStorage write `escapd:onboarding:capture-guide` = "1" without awaiting it, then `router.replace({ pathname: '/capture', params })`, carrying the route's params. accessibilityLabel "Skip the guide". **Replay:** sets the same flags, then `router.back()` to the hub (`router.replace('/')` with no history). accessibilityLabel "Close the guide". |
+| Next (steps 1–3) | 353 × 52 (taller with large text), the whole pill | Moves to step n + 1. The drawing, plate label, stamp, title and body crossfade; the mount, Close and the button stay put. Taps during the 200 ms transition are ignored. |
+| Open the camera (step 4) | 353 × 52 (taller with large text) | Sets the session and storage flags, then `router.replace('/capture')` with the carried params. The opener has already checked access; /capture shows 03 if the camera isn't allowed yet, otherwise 02 at plate I. **Replay:** in order, sets the session flag and starts the storage write, then calls `openCapture({ replace: true, skipGuide: true })` (01's YOUR ROOM check). With access it replaces to `/capture`; without, to `/account?next=back` (guest), `/pro?cap=<n>` (no `custom_rooms` entitlement) or `/capture/develop?from=hub` (monthly cap reached). Whichever route it takes, the guide leaves the stack and back returns to the hub. Pending and failure: Replay wait and Replay error. |
+| Horizontal swipe | Full width, y 111–762 (between the top bar and the button) | `usePanGesture` with `activeOffsetX` ±16, `failOffsetY` ±16 (`ref.layout.guide.swipe`). Commits on release when \|dx\| ≥ 56 or \|vx\| ≥ 500 pt/s. Left = next (steps 1–3), right = previous (steps 2–4). The content doesn't track the finger; a committed swipe runs the same crossfade. A left swipe on step 4 and a right swipe on step 1 do nothing. The buttons remain the accessible path. |
+| iOS swipe-back | System left edge | Enabled on step 1 only (`navigation.setOptions({ gestureEnabled: step === 0 })`). Leaves to the opener without setting the flag. |
+| Android hardware back | — | Step 2 or later: the previous step, same crossfade. Step 1: `router.back()` to the opener (`router.replace('/')` with no history), without setting the flag. Ignored mid-transition and once the guide is leaving. |
+| Stamp, mount, drawing, plate label, title, body | — | Not tappable. The band holding the mount is `accessible={false}` and hidden from screen readers; the stamp's accessibilityLabel is "Before you shoot. Step n of 4". |
 
-**Entry rule.** Four places call one helper, `openCapture({ replace?: boolean, skipGuide?: boolean })` in `src/capture`: 01's YOUR ROOM, /tutorial/complete's "Photograph your room", guide replay's step 4 and the test paywall `/pro`. `replace` makes every navigation below a `router.replace` instead of a `router.push`; `skipGuide` skips step 2 and goes straight to `/capture`. 01 calls `openCapture()` (push). /tutorial/complete calls `openCapture({ replace: true })`, keeping today's `router.replace('/capture')` back behaviour. Guide replay step 4 calls `openCapture({ replace: true, skipGuide: true })`. `/pro` (decisions.md, user answer 5; no section yet) calls `openCapture({ replace: true })` after its test purchase, so the player continues to the guide (first time) or the camera, and /pro leaves the stack. Every caller sits directly on the hub, so back from wherever `openCapture()` lands returns to the hub.
-1. **Access check:** `ensureSession()`, then `get_my_access`, checked in this order:
-   - **Guest** (`is_anonymous`): `/account?next=back`. The server requires an email account. The account screen returns to the hub, and the player taps again.
-   - **No `custom_rooms` entitlement** (`has_custom_rooms_entitlement` false): `/pro`, the test paywall.
-   - **Monthly cap reached** (entitled, `can_generate` false): `/capture/develop?from=hub` with no roomId. Develop repeats its own check and shows its existing cap state. `from=hub` makes that state's button "Back", calling `router.back()`, instead of "Back to the title" calling `router.replace('/')`, which would stack a second hub.
-   - **Check can't run** (offline or a server error): `openCapture()` navigates nowhere and rejects. 01 and /tutorial/complete then continue to `/capture`, where the backstop below still shows the guide to a first-timer and develop checks access again before anything is sent. Guide replay shows Replay error instead.
-2. **Seen flag**, with access (skipped when `skipGuide`). If the session flag is set, it goes to `/capture`. Otherwise it reads `escapd:onboarding:capture-guide`: "1" sets the session flag and goes to `/capture`; any other value, or a failed read, goes to `/capture/guide`.
+**Entry rule.** Four places call one helper, `openCapture({ replace?, skipGuide?, signal? })` in `src/capture/openCapture.ts`: 01's YOUR ROOM (push), guide replay's step 4 (`{ replace: true, skipGuide: true }`), `/pro` after its test purchase (`{ replace: true }`) and /tutorial/complete (`{ replace: true }`, not wired yet). `replace` makes the navigation a `router.replace`; `skipGuide` skips step 2. Every caller sits directly on the hub, so back from wherever it lands returns to the hub.
+1. **Access check:** `ensureSession()`, then `get_my_access`, in order:
+   - **Guest** (`is_anonymous`): `/account?next=back`. The server requires an email account.
+   - **No `custom_rooms` entitlement:** `/pro` (with `?cap=<generations_cap>` when known).
+   - **Monthly cap reached** (entitled, `can_generate` false): `/capture/develop?from=hub`, develop's cap state.
+   - **Check can't run** (offline or a server error): navigates nowhere and rejects. 01 then continues to `/capture`, where the backstop below still shows the guide to a first-timer; guide replay shows Replay error.
+2. **Seen flag**, with access (skipped when `skipGuide`): the session flag, else `escapd:onboarding:capture-guide` = "1" sets it and goes to `/capture`; any other value or a failed read goes to `/capture/guide`.
 
-/capture without `?retake` keeps the same flag check as a backstop for any other way in, and renders only bare `ref.color.ground` until the check resolves. Retake mode never shows the guide, and the guide never asks for camera permission.
+/capture without `?retake` keeps the same flag check as a backstop for any other way in. Retake mode never shows the guide, and the guide never asks for camera permission.
 
 ### States
 
-- **Default:** steps 1–4 as in the tables, with the step 1–3 button in `ref.button.primary`.
-- **Final step:** the button becomes `ref.button.signal`. Fill (#F2F2F2 → #C8302B) and label colour (#0A0A0A → #F2F2F2) change over `ref.motion.control` (120 ms ease-out), and the label text swaps from "Next" to "Open the camera" at the start of that change. Going back from step 4 reverses it.
-- **Pressed:** each control changes colour over `ref.motion.control` 120 ms ease-out. Primary fill goes to `ref.color.brightPressed` #D4D4D4. Signal fill goes to `ref.color.signalPressed` #A82823. Close fill goes to `ref.color.panelPressed` #161616. There is no opacity change and no scale.
-- **Focus:** `ref.focus` on Close and the step button: a 2 pt `ref.color.bright` outline, 2 pt offset, following the shape (a 52 circle on Close, a pill on the button). It is never removed while focused.
-- **Transition:** the art, stamp, title and body crossfade over `motion.sceneCrossfade` 200 ms, with no drift and no counter roll on the stamp. The pool, Close and the button stay still. The brackets appear with their art and don't settle or scale.
-- **Reduced motion:** the step crossfade becomes `motion.reducedFade` 140 ms opacity. The button's colour change stays at `ref.motion.control` 120 ms because it is a colour change, not movement. Nothing else animates.
-- **Disabled:** none. Close and the button are always enabled. Taps during a transition are ignored rather than shown as disabled (which would be `ref.button.disabledOpacity` 0.4).
-- **Loading:** none in first-run mode. `openCapture()` runs `ensureSession()`, the access check and the flag read before navigating, and the opener owns that wait (01's busy card). All art is bundled SVG, so the guide renders on its first frame. Replay mode has one real wait, the access check on step 4 (see Replay wait). The `ref.motion.thinking` status line is used only there.
-- **Replay wait:** on tap, "Open the camera" keeps the `ref.button.signal` fill `ref.color.signal` #C8302B and its label, ignores further taps and sets `accessibilityState={{ busy: true }}`. If the check takes more than 1 s, one `ref.motion.thinking` line appears: a single line "Checking the file", no rotation, shimmer `ref.motion.thinking.shimmer` (base `ref.color.meta` #8A8D91, highlight `ref.color.bright` #F2F2F2, band 0.8, 2000 ms linear), `ref.type.meta` Geist Regular 13/18, centred at x 196.5, line box y 724–742 in the 700–762 gap, accessibilityLabel "Checking access". It stops as soon as the call returns. Reduced motion: the static line in `ref.color.read` #A6A9AD.
-- **Replay error:** same slot (y 724–742). Phosphor `Warning` `ref.icon.small` 16 in `ref.color.error` #B5564F at x 38, then 8 pt, then "Couldn't reach the darkroom. Try again." in `ref.type.meta`, `ref.color.read` #A6A9AD (≈ 250 wide, one line). The button returns to its idle state and stays live for a retry; a retry clears the line and re-enters Replay wait.
-- **Error:** storage errors are silent (`.catch(() => {})`, as in preferences.tsx). A failed read shows the guide once per session. A failed write shows it again on the next launch. Neither can loop, because Close and "Open the camera" set the session flag before leaving, and /capture checks it first. The screen makes no network calls in first-run mode; in replay, a failed access check is the Replay error above.
-- **Permission denied:** not handled here. The guide is about framing, so it still shows when the camera is denied, and its advice also applies to "Choose photos instead". Section 03 handles the camera after the guide.
-- **Large text:** all text honours system scaling and never shrinks. The text block and the button grow upward from 814: the capsule grows (minimum 52, and the label may wrap to 2 centred lines within padX 24), then the title and body rise. Close (44) and the stamp stay pinned at the top, and the stamp wraps downward if needed. The art box shrinks evenly, keeping at least 24 clear above and below; the pool radius scales with it (120 × box height / 266). Both hide below a 120 high box. If the block still doesn't fit, the title and body region scrolls while the button stays pinned.
-- **Narrow screen:** the gutters stay 38 and the column is width − 76 (299 at 375, 284 at 360). The body may take 3 lines, and the block grows upward as above. The art box (240) and the pool stay centred. The stamp's max width is width − 131. It fits on one line down to 357 wide and wraps to 2 lines (to y 117) below that.
-- **Replay:** the layout is identical. Only the Close behaviour and the step 4 access check differ (see Tappable elements, Replay wait and Replay error).
+- **Default:** steps 1–4 as in the tables, the step 1–3 button the brass secondary.
+- **Final step:** the button becomes the brass primary. The kit cross-fades fill (`color.raised` #1E1915 → `color.accent` #C89D54) and label (`color.text` → `color.onAccent`) over `ref.motion.control` (120 ms ease-out); the secondary's 1 pt brass edge drops at the switch, and the label text swaps from "Next" to "Open the camera" at its start. The slot already reserves the longer label's height, so nothing above moves. Going back from step 4 reverses it.
+- **Pressed:** the pill changes colour over 120 ms ease-out with no opacity or scale: secondary fill to `color.surface` #14110E, primary fill to `color.accentPressed` #DFB66C (onAccent 9.7:1). Close takes the live IconButton's pressed state: opacity 0.75.
+- **Focus:** the kit's ring (`ref.focus`: 2 pt #F2F2F2, 2 pt offset) on Close (a 56 circle; composed into the live IconButton in CloseButton.tsx, which draws none of its own) and on the pill (following the pill). Never removed while focused.
+- **Transition:** the drawing, plate label, stamp, title and body crossfade over `motion.sceneCrossfade` 200 ms, with no drift and no counter roll. The mount, its walnut and canvas, Close and the button stay still. Brackets appear with their drawing and don't settle or scale.
+- **Reduced motion** (`useTheme().reducedMotion`): the crossfade becomes `motion.reducedFade` 140 ms opacity. The button's colour change stays at 120 ms (a colour change, not movement). Nothing else animates.
+- **Disabled:** none. Close and the button are always enabled; taps during a transition are ignored rather than shown as disabled.
+- **Loading:** none in first-run mode (the opener owns `openCapture()`'s wait, and all art is bundled SVG, drawn on the first frame). Replay has one real wait (below).
+- **Replay wait:** on tap, "Open the camera" keeps its brass fill and label, ignores further taps and sets `accessibilityState={{ busy: true, disabled: true }}` (focus stays). If the check runs past 1 s (`ref.layout.guide.thinkingDelay` 1000), one line appears in the status slot: `ThinkingStates tone="warm"`, "Checking the file", no rotation, live `type.caption` (Plus Jakarta Sans Medium 13/18), centred on x 196.5, line box y 724–742, shimmer `ref.motion.thinking.shimmerWarm` (base `color.textSecondary`, highlight `color.text`, band 0.8, 2000 ms linear), accessibilityLabel "Checking access", announced on mount. It unmounts the moment the check returns or navigates. Reduced motion: the still line in `color.textSecondary`.
+- **Replay error:** same slot, y 724–742. Phosphor `Warning` 16 (`ref.layout.guide.errorIcon`) in `color.warning` #D4883A (5.3:1; the error red is 2.3:1 on dark, so it is never used here) at x 20, centred on the first caption line and hidden from screen readers; then 8 (`space.sm`); then "Couldn't reach the darkroom. Try again." in `type.caption`, `tone="secondary"` (≈ 265 wide, one line in the 329 left). The row is a polite live region (announced on iOS) but not an accessibility element, so focus stays Close → button. The button returns to idle and stays live; a retry clears the line and re-enters Replay wait. Leaving step 4 (back or swipe) drops a running check.
+- **Error:** storage errors are silent. A failed read shows the guide once per session; a failed write shows it again on the next launch. Neither can loop: Close and "Open the camera" set the session flag before leaving, and /capture checks it first. No network calls in first-run mode.
+- **Permission denied:** not handled here; 03 handles the camera after the guide. The advice also applies to "Choose photos instead".
+- **Large text:** text honours system scaling and never shrinks. Close (48) stays pinned; the stamp's first line stays centred on it and a wrap grows downward (two lines still fit the 48 row). The title, body and pill grow upward from 814: the pill first (minimum 52; the label may wrap within padX 24), then the title and body rise. The band between the top bar and the title gives way in order: the 56 under the mount down to `space.xl` 24, then the 67 above it down to 24, then the plate shrinks evenly (the drawing scales with it, so strokes thin in proportion), keeping 24 clear above and below. The plate label stays at text size and wraps within the plate width; its measured height comes out of the plate. Below a 160 high plate (`ref.layout.guide.plate.minHeight`: scale 0.45, art box ≈ 109 × 121) the whole mount hides. If the block still doesn't fit, the title and body scroll while the button stays pinned (scrolling is enabled only on overflow, so at rest it is no focus stop).
+- **Narrow screen:** gutters stay 20; the column is width − 40 (335 at 375, 320 at 360). The mount (278) stays centred. The stamp's slot is width − 144; it fits on one line down to 354 wide and wraps to two lines below that. A short screen (375 × 667, safe 20 / 0) gives the band 397: the voids go to 24 each and the plate shrinks to 315 tall (scale 0.89).
+- **Replay:** identical layout. Only Close's behaviour and step 4's access check differ.
 
 ### User notes
 
 > "taking photos step by step short tutorial for first onboarding."
 
 How the note is honoured:
-- **Step by step:** four steps, one idea each, with a mono "n OF 4" stamp so the player always knows where they are. Next and swipe both move forward and back.
-- **Short:** each step has one title of three or four words and an instruction of two lines or fewer. Nothing scrolls on a 393 × 852 device at the default text size, and the X skips the whole guide at any step.
-- **First onboarding:** the guide appears only before the first camera session, after the access check, gated by a per-device flag. It never appears in retake mode or after the flag is set; replay is opt-in from 01's How you play sheet.
-- **Taking photos:** the content is the real plate plan (doorway, far corner, busiest wall, close view) plus the privacy rules, so what the guide teaches is what the camera then asks for.
+- **Step by step:** four steps, one idea each, with a brass "n OF 4" stamp above and a matching "STEP n" plate number under each drawing. Next and swipe move forward; swipe, Android back and step 1's iOS edge move back.
+- **Short:** a three- or four-word title and an instruction of at most two lines per step. Nothing scrolls on a 393 × 852 device at the default text size, and the X skips the whole guide at any step.
+- **First onboarding:** shown only before the first camera session, after the access check, gated by a per-device flag. Never in retake mode or after the flag is set; replay is opt-in from 01's How you play sheet.
+- **Taking photos:** the content is the real plate plan (doorway, far corner, busiest wall, close view) plus the privacy rules, and each drawing sits on the same 3:4 plate and mount the photos will be played on.
 
 ### Decisions
 
-1. **Close (X):** skips the guide, opens the camera and marks the guide seen. In replay it returns to the hub, which follows from decisions 1 and 4.
-2. **Step count:** four steps, with the stamp `BEFORE YOU SHOOT  ·  n OF 4` in `ref.type.label`, `ref.color.meta`.
-3. **Seen flag:** per device in AsyncStorage `escapd:onboarding:capture-guide`, plus the in-memory session flag. No migration.
-4. **Replay:** "How to photograph a room" in 01's How you play sheet opens `/capture/guide?replay=1`. The camera's right header slot stays the library picker.
-5. **Swipe:** horizontal swipe also moves between steps, and the buttons stay.
-6. **Buttons:** steps 1–3 "Next" are `ref.button.primary` (white). Step 4 "Open the camera" is `ref.button.signal`, the screen's one signal action.
-7. **Close control:** `ref.button.icon`: 44 round, `ref.panel` fill with a hairline, X in bright. It replaces the measured light-grey disc and has no rim highlights.
-8. **Illustrations:** four grayscale line scenes (`ref.illustration`), each with a static `ref.light.object` pool behind it and the text block kept flat. Drawing the SVGs is a build to-do, not a question.
-9. **Paywall timing:** access is checked before the guide, in `openCapture()`, so a player without access never sees it on first run. Guests go to `/account?next=back`, because the server requires an email account. Players without the `custom_rooms` entitlement go to the test paywall `/pro`, which continues through `openCapture()` after its test purchase. Players at the monthly cap go to develop's cap state (`/capture/develop?from=hub`).
-10. **Palette, fonts, background, gutter, bottom inset** (formerly open): Noir ground #050505, Geist and Geist Mono, gutter 38 (`ref.space.reading`), bottom = safe 34 + `ref.space.ctaBottom` 4.
+1. **Close (X):** skips the guide, opens the camera and marks the guide seen. In replay it returns to the hub.
+2. **Step count:** four steps, stamp `BEFORE YOU SHOOT  ·  n OF 4` in brass `type.stamp`, centred in the top bar where the light table's "LIGHT TABLE" sits.
+3. **Seen flag:** per device in AsyncStorage `escapd:onboarding:capture-guide`, plus the in-memory session flag.
+4. **Replay:** "How to photograph a room" in 01's How you play sheet opens `/capture/guide?replay=1`.
+5. **Swipe:** horizontal swipe also moves between steps; the buttons stay.
+6. **Buttons:** steps 1–3 "Next" are `PillButton scheme="brass" variant="secondary"` (walnut, brass edge); step 4 "Open the camera" is `variant="primary"` (brass), the screen's one "go". No oxblood anywhere.
+7. **Close control:** the live IconButton (48, transparent, X in `color.text`), as the light table and `/play`, on the right; a 48 spacer on the left keeps the stamp centred.
+8. **Illustrations:** four warm line scenes (`ref.layout.guide.line`), each on a film-plate mount: walnut `radius.mount` 30 with a brass hairline around a 3:4 canvas plate at `radius.image` 24 with a rim, and a brass plate label. The light pool is gone. Hero in `color.text`, mid in `color.textSecondary`, back and context in `color.textSecondary` at 0.7 and 0.3, brackets brass.
+9. **Plate label:** "ESCAPD 400  ·  STEP I" to "STEP IV", after SceneView's "ESCAPD 400  ·  PLATE I". "STEP", not "PLATE", because step 4 is a rule, not a plate, and plates I–IV already name the photos.
+10. **Paywall timing:** access is checked before the guide, in `openCapture()`, so a player without access never sees it on first run (see Entry rule).
+11. **Ground, type, gutter, bottom inset:** `color.canvas` + silk + grain; Playfair `narrativeTitle` for the title, Jakarta `body` for the instruction, JetBrains Mono `stamp` for labels; gutter `space.gutter` 20; bottom = safe 34 + `space.xs` 4, the same as Pro.
+12. **Errors on dark:** the warning icon in `color.warning` with the message in `color.textSecondary`, never error-red text.
 
 ### Needs you
 
-None.
+1. **Back and context line tones.** The live palette has no warm grey dimmer than `color.textSecondary`, so back and context lines are `textSecondary` at stroke opacity 0.7 and 0.3. Where two translucent strokes meet (the room corner in step 1, the notebook spine in step 3, the overlapping wedges in step 2) the overlap reads slightly brighter. Accept it, or add an opaque live tone (for example a `textTertiary` #786F63, which is `textSecondary` at 0.7 over the canvas) and the drawings switch to it?
+2. **Focus ring colour.** The guide uses the kit's ring, `ref.focus` #F2F2F2 (Noir white), on Close and on the pill. A brass or bone ring would suit this look better; it is a kit change, not a guide one.
+3. **Close's pressed state** is the live IconButton's 0.75 opacity (the play screen's pattern), while the pill presses with a colour change. Keep the two, or give the live IconButton a colour press?
 
 ## 05 · Pro (test paywall)
 
-Reference: none. There is no reference screenshot for this screen. The geometry borrows from two other sections: 04's reading column (gutter `ref.space.reading` 38, a 317 column, the mono label at 04's stamp position) and 03's stack of a pill over a quiet button (pill bottom at 762, quiet button at 770–814). 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a Noir `ref.*` token from `src/theme/tokens.ts`.
+Reference: none (no screenshot exists). The look is the play screen's: the light table's top bar and manila slip (app/capture/review.tsx), the case-closed dossier's Playfair title (app/tutorial/complete.tsx), and the kit's brass pills. 393 × 852 pt, safe areas 59 / 34, all values in pt. Every style is a live token from `src/theme/tokens.ts` (`color`, `type`, `space`, `radius`, `curve`, `hit`), plus `ref.background` (the silk), `ref.button.brass` (through `PillButton scheme="brass"`), the kit's focus ring and control timing, and the screen's own `ref.layout.pro` (`spinnerDelay` 300, `noticeIcon` 18). No Geist, no NoirText, no `ref.type`, no light pool.
 
-New route: `app/pro.tsx` (`/pro`, optional `?cap=<n>`). It is pushed by `openCapture()` (section 04, Entry rule) when the player has an email account but no `custom_rooms` entitlement. It sits in the root Stack with the same fade as every route.
+Route: `app/pro.tsx` (`/pro`, optional `?cap=<n>`), re-exporting `src/screens/pro/ProScreen.tsx`. `openCapture()` (section 04, Entry rule) pushes it, or replaces with it, when the player has an email account but no `custom_rooms` entitlement. It sits in the root Stack with the same fade as every route; the iOS edge swipe stays on.
 
-### Feel (Noir)
+Files: `ProScreen.tsx` (layout, Loading indicator, fade), `BenefitSlip.tsx` (the manila slip), `ProNoticeLine.tsx` (error and info lines), `useProFlow.ts` (states, routing, test purchase), `useFocusOnOpen.ts`, `useOverflowScroll.ts`, `copy.ts` (every word). Tests: `src/screens/pro/__tests__/pro-test.tsx`.
 
-A case-file cover sheet. A mono file label sits at the top, then a long, quiet stretch of flat near-black. Lower down come one bright statement and a short typed index of what Pro does, each line ruled off by a hairline like a form. Below that is one oxblood action, the stamp that opens the file, and a quiet way out. There is no art, light pool, price theatre, countdown, badge or decorative motion: the screen says what the player gets and steps aside. In test builds a small mono note says plainly that the purchase is a test.
+### Feel
 
-**Signal on this screen:** "Unlock Pro" (`ref.button.signal`, fill `ref.color.signal` #C8302B), in test builds only. When test purchases are off there is no signal: the action is a white "Check again".
+A case-file cover from the darkroom dossier. A brass mono stamp at the top names the file, then a long stretch of silk and grain. Low on the page sit one Playfair statement and a manila slip, typed in carbon ink, listing what Pro does. Below them come one brass pill (the screen's only "go") and a quiet way out. There is no art, mount, price, countdown, badge, oxblood or decorative motion: the cover says what the player gets and steps aside. In test builds a small mono stamp says plainly that the purchase is a test.
+
+**Accent on this screen:** brass only. "Unlock Pro" (test builds) and "Check again" (test purchases off) are both `PillButton scheme="brass" variant="primary"`: fill `color.accent` #C89D54, label `color.onAccent` #171411 (7.3:1). Never `variant="signal"`.
 
 ### Layout, top to bottom
 
-Default, test build (`EXPO_PUBLIC_TEST_PURCHASES=1`). The block from the statement down is bottom-anchored, so it grows upward into the void.
+Default, test build (`EXPO_PUBLIC_TEST_PURCHASES=1`), default text size. The block from the statement down to the slip is bottom-anchored, so it grows upward into the void.
 
 | Element | Position & size (pt) | Style | ESCAPD content |
 |---|---|---|---|
-| Screen | 393 × 852, full bleed | `ref.color.ground` #050505 under the background still `ref.background.asset` (black silk, peak #262626), as on 01 and 04. There is no light pool (nothing on this screen is an object) and no Grain. | — |
+| Screen | 393 × 852, full bleed | Root `color.canvas` #090807. Then `<BackgroundStill />` (`ref.background.asset`, the black silk, peak `ref.background.peak` #262626, contentFit cover). Then the live `<Grain />` (assets/grain.png repeated at 0.04 opacity). Then content. No light pool. | — |
 | Status bar | y 0–59 (safe-area top) | System, light content | — |
-| Gap | 59–85 (26) | Ground | — |
-| File label | x 38, line box 85–101 (16, 04's stamp position), max w 317. Text ≈ 200 wide (24 characters × 8.4 − 1.2), so x 38–238 | `ref.type.label`: Geist Mono Medium 12/16, +1.2, uppercase, `ref.color.meta` #8A8D91 (6.1:1). Plain text with no pill and no outline. a11y label "Case file. ESCAPD Pro." | `CASE FILE  ·  ESCAPD PRO` |
-| Top void | 101–354 (253) | Empty ground. It absorbs growth from large text. | — |
-| Statement | x 38, w 317, line boxes 354–388 and 388–422 (2 × 34) | `ref.type.statement`: Geist Regular 30/34, −0.9, `ref.color.bright` #F2F2F2 (18.2:1), left-aligned, `accessibilityRole="header"` | "Open a file on your own room." Both spaces in "your own room." are non-breaking (U+00A0), so it sets as "Open a file on / your own room." (≈ 203 + ≈ 203 wide at ≈ 14.5 per character) |
-| Gap | 422–450 (28, `ref.space.band`) | — | — |
-| Benefit index | x 38–355 (317), y 450–622 (172): 4 rules and 3 rows of 56 | Rules: 1 pt (`ref.border.hairline`) in `ref.color.hairline` #222222, full 317 width, at y 450, 507, 564 and 621. Rows are 56 tall (16 + 24 + 16): 451–507, 508–564 and 565–621. Rules are decorative (1.3:1). | — |
-| Row numeral | x 38–53.6 (15.6), line boxes 471–487, 528–544, 585–601 (each 4 below its text box top, so the 16 box centres on the 24 line) | `ref.type.label`, `ref.color.meta`. Hidden from screen readers. | `01` · `02` · `03` |
-| Row text | x 70–355 (285, which is 32 = `ref.space.xxl` in from the gutter), line boxes 467–491, 524–548, 581–605 | `ref.type.body`: Geist Regular 17/24, `ref.color.read` #A6A9AD (8.6:1), left-aligned. One line at default size: ≤ 33 characters at ≈ 8.3 per character fits in 285 | 01 "Your room becomes the case." (≈ 224)<br>02 "The clues hide in your things." (≈ 249)<br>03 "Up to {generations_cap} new cases a month.", which reads "Up to 20 new cases a month." today (≈ 224). When the cap is unknown: "A monthly allowance of new cases." (≈ 274) |
-| Gap | 622–654 (32, `ref.space.xxl`) | — | — |
-| Notice slot | x 38–355, line box 654–672 (18). Always reserved, so the layout never moves when a notice appears. Empty in Default | **Error:** Phosphor icon at `ref.icon.small` 16 in `ref.color.error` #B5564F (an icon, not text) at x 38–54, y 655–671. Then 8 (`ref.space.sm`), then text at x 62–355 (293) in `ref.type.meta` Geist Regular 13/18, `ref.color.read` (8.6:1). One line only: ≤ 45 characters at ≈ 6.4 per character. `accessibilityLiveRegion="polite"` | See States |
-| Gap | 672–680 (8) | — | — |
-| Test note | Centred on x 196.5, line box 680–698 (18). Text ≈ 108 wide (13 × 8.4 − 0.6), so x ≈ 142–251. Subtract the 0.6 trailing tracking when centring | `ref.type.note`: Geist Mono Regular 13/18, +0.6, uppercase, `ref.color.meta` (6.1:1). Not a control. `accessible={false}`, because its words are the button's hint | `TEST PURCHASE` |
-| Gap | 698–710 (12, `ref.space.md`) | — | — |
-| Unlock Pro | x 38–355 (317 × 52), y 710–762, centred. With larger text the capsule grows upward and its bottom stays at 762 | `ref.button.signal`: pill `ref.radius.pill` 999 with `...ref.curve`, fill `ref.color.signal` #C8302B, no border and no shadow. Label `ref.type.button` (Geist Medium 17/22, −0.2) in `ref.color.bright` (4.8:1), centred. The label's padX is 44 on both sides, reserving room for the in-button indicator (Global tokens, Loading indicators) | "Unlock Pro" |
-| Gap | 762–770 (8) | — | — |
-| Not now | y 770–814 (44, `ref.button.quiet.height`), width = label + 2 × 16, so ≈ 92 × 44, centred (x ≈ 150–243) | `ref.button.quiet`: no fill and no border. Label `ref.type.button` in `ref.color.read`, pressed `ref.color.bright` | "Not now" |
-| Bottom inset | 814–852 (38) = safe bottom 34 + `ref.space.ctaBottom` 4 | Ground | — |
+| Top bar | y 59–107: one row, `minHeight` `hit.min` 48, padX `space.gutter` 20. A `hit.min` 48 spacer at x 20–68 and another at x 325–373; the stamp column between them, x 68–325 (257) | The light table's top bar, with no control in it | — |
+| File stamp | Centred in the top bar, line box y 76–90 (14). Text ≈ 186 wide (24 × 7.8 − 1.2 tracking), x ≈ 103–290 | `Text variant="stamp"` (JetBrains Mono Medium 11/14, +1.2), `tone="accent"` `color.accent` (6.1:1 at the silk peak). a11y label "Case file. ESCAPD Pro." | `CASE FILE  ·  ESCAPD PRO` |
+| Void | y 107–399 (292): 24 fixed (`space.xl`, the scroll frame's top margin) + 268 flexible | Silk and grain. It absorbs growth from large text. | — |
+| Statement | x 20–373 (353), line boxes 399–437 and 437–475 (2 × 38) | `Text variant="caseDisplay"` (Playfair Display SemiBold 34/38), `tone="primary"` `color.text` #F2ECE1 (12.9:1 at the peak), left-aligned, `accessibilityRole="header"` | "Open a file on your own room." The two spaces in "your own room." are U+00A0, so it sets "Open a file on / your own room." (≈ 238 + ≈ 238) |
+| Gap | 475–499 (24, `space.xl`) | — | — |
+| Benefit slip | x 20–373 (353), y 499–626 (127) | The light table's slip: `color.manila` #E8DFC8, `radius.slip` 8 with `...curve`, padding `space.lg` 16, gap `space.xs` 4, no border. Inner box x 36–357 (321) | — |
+| Slip heading | x 36, line box 515–529 (14), ≈ 108 wide | `stamp` in `tone="ink"` `color.ink` #171411 (13.8:1 on manila). a11y label "What Pro opens." | `WHAT PRO OPENS` |
+| Slip lines | Three rows, 4 apart: line boxes 533–556, 560–583, 587–610 (23 each). Numeral column x 36–60 (`minWidth` `space.xl` 24, `paddingRight` `space.sm` 8); sentence x 60–357 (297) | Numeral: `stamp`, `tone="ink"`, dropped (23 − 14) / 2 = 4.5 × fontScale so its 14 box centres on the sentence's first line (537.5–551.5, 564.5–578.5, 591.5–605.5); hidden from screen readers. Sentence: `Text variant="body"` (Plus Jakarta Sans 16/23), `tone="ink"`. Each row is one screen-reader element labelled by its sentence | `01` "Your room becomes the case." (≈ 208)<br>`02` "The clues hide in your things." (≈ 231)<br>`03` "Up to {generations_cap} new cases a month." ("Up to 20 new cases a month." today, ≈ 208). Cap unknown: "A monthly allowance of new cases." (≈ 254) |
+| Gap | 626–658 (32, `space.xxl`, the scroll frame's bottom margin) | — | — |
+| Notice slot | x 20–373, y 658–676 (`type.caption.lineHeight` 18 × fontScale). Always reserved; empty in Default | **Error:** glyph `ref.layout.pro.noticeIcon` 18 in `color.warning` #D4883A (5.3:1; an icon, never coloured text) at x 20–38, y 658–676, centred on the first caption line. Then `space.sm` 8, then text x 46–373 (327) in `Text variant="caption"` (Plus Jakarta Sans Medium 13/18), `tone="secondary"` `color.textSecondary` #A89C8A (5.6:1). Slot: `accessibilityLiveRegion="polite"`, `collapsable={false}` | See States |
+| Gap | 676–684 (8, `space.sm`) | — | — |
+| Test stamp | Centred on x 196.5, line box 684–698 (14). ≈ 100 wide, x ≈ 146–247 | `stamp`, `tone="secondary"` `color.textSecondary` (5.6:1). Not a control. `accessible={false}` and hidden: its words are the pill's hint | `TEST PURCHASE` |
+| Gap | 698–710 (12, `space.md`) | — | — |
+| Unlock Pro | x 20–373 (353 × 52), y 710–762. Label centred, ≈ 83 wide. With larger text it grows upward; its bottom stays at 762 | `PillButton scheme="brass" variant="primary" spinner`: pill `ref.radius.pill` with `...curve`, fill `color.accent` (`ref.button.brass.primary`), no border or shadow. Label `type.control` (Plus Jakarta Sans SemiBold 15/20) in `color.onAccent` (7.3:1). Padding 16 vertical, 44 each side (room for the in-button indicator) | "Unlock Pro" |
+| Gap | 762–770 (8, `space.sm`) | — | — |
+| Not now | y 770–814 (44, the kit's quiet height), label + 16 each side ≈ 90 wide, centred (x ≈ 152–242) | `PillButton scheme="brass" variant="quiet"`: no fill or border. Label `type.control` in `color.textSecondary` (`ref.button.brass.quiet`), pressed `color.text` | "Not now" |
+| Bottom | 814–852 (38) = safe bottom 34 + `space.xs` 4 | Silk | — |
 
-Check: 59 + 26 + 16 + 253 + 68 + 28 + 172 + 32 + 18 + 8 + 18 + 12 + 52 + 8 + 44 + 38 = 852.
+Check: 59 + 48 + 292 + 76 + 24 + 127 + 32 + 18 + 8 + 14 + 12 + 52 + 8 + 44 + 38 = 852.
 
-**Gutters.** `ref.space.reading` 38 on both sides for the label, statement, index, notice and pill. The test note and Not now are centred on x 196.5.
+**Gutters.** `space.gutter` 20 on both sides for the top bar, statement, slip, notice and pill (the light table's and the case-closed screen's gutter). The test stamp and Not now are centred on x 196.5.
 
-**No header control.** "Not now", Android back and the iOS edge swipe are the exits. A top-left arrow would duplicate "Not now", and a close X would compete with the one signal action.
+**No header control.** The top bar holds only the stamp, centred between two 48 spacers, so it sits exactly where the light table's "LIGHT TABLE" does. "Not now", Android back and the iOS edge swipe are the exits; a back arrow would duplicate "Not now" and add a keyboard stop.
+
+**No mount.** Nothing on this screen is a photograph or art, so there is no film-plate mount or plate label.
 
 **Copy, and what it's grounded in**
 
 | Slot | Copy | Grounded in |
 |---|---|---|
-| File label | CASE FILE  ·  ESCAPD PRO | The product name in today's develop copy ("Your own rooms are part of ESCAPD Pro"). Same eyebrow pattern as 04's stamp |
-| Statement | Open a file on your own room. | The thing Pro unlocks: the `custom_rooms` entitlement, the only entitlement key |
-| 01 | Your room becomes the case. | 3–6 plates of one room (`min_photos_per_room` 3, `max_photos_per_room` 6) become a playable case. It echoes today's tagline, "Your room becomes the mystery." |
-| 02 | The clues hide in your things. | The darkroom "finds the objects, chooses what to hide, and writes the case" (today's develop copy). One of 7 hand-authored templates is fitted to the objects in the plates (`_shared/templates.ts`) |
-| 03 | Up to {generations_cap} new cases a month. | `get_my_access().generations_cap`: `generation_cap_per_window` 20 over `generation_window_days` 30, a rolling window. Only queued, running and succeeded jobs count (`private.generations_used`), so failed developments are free. "A month" matches today's cap copy ("every case this month allows"). It is read from the server, never hard-coded, so it stays true if the config changes |
-| Test note | TEST PURCHASE | Test builds only |
-| Signal | Unlock Pro | — |
+| File stamp | CASE FILE  ·  ESCAPD PRO | The product name in the develop copy ("Your own rooms are part of ESCAPD Pro"); the play screen's stamp pattern ("ESCAPD 400  ·  PLATE I") |
+| Statement | Open a file on your own room. | What Pro unlocks: the `custom_rooms` entitlement, the only entitlement key |
+| Slip heading | WHAT PRO OPENS | New with this look, after the light table's "BEFORE YOU DEVELOP". Echoes the statement |
+| 01 | Your room becomes the case. | 3–6 plates of one room (`min_photos_per_room` 3, `max_photos_per_room` 6) become a playable case. Echoes the tagline "Your room becomes the mystery." |
+| 02 | The clues hide in your things. | The darkroom "finds the objects, chooses what to hide, and writes the case". One of 7 hand-authored templates is fitted to the objects in the plates (`_shared/templates.ts`) |
+| 03 | Up to {generations_cap} new cases a month. | `get_my_access().generations_cap`: 20 over a rolling 30-day window; only queued, running and succeeded jobs count, so failed developments are free. Read from the server, never hard-coded |
+| Test stamp | TEST PURCHASE | Test builds only |
+| Action | Unlock Pro / Check again | — |
 | Quiet | Not now | — |
 
 ### Tappable elements
 
-Screen-reader order: file label → statement (header) → 01 → 02 → 03 → notice (when set) → "Unlock Pro" (or "Check again") → "Not now". Each benefit row is one element whose label is its sentence; the numeral is hidden. Keyboard and switch focus: "Unlock Pro" → "Not now". When the screen opens, accessibility focus moves to the statement.
+Screen-reader order: file stamp → statement (header) → slip heading → 01 → 02 → 03 → notice (when set) → "Unlock Pro" (or "Check again") → "Not now". Each slip line is one element labelled by its sentence (`accessible` on iOS, `screenReaderFocusable` on Android so it is never a keyboard stop); the numerals and the test stamp are hidden. Keyboard and switch focus: the pill → "Not now" (the statement-and-slip ScrollView is scrollable, and so a keyboard stop on Android, only while it overflows). When the screen opens, accessibility focus moves to the statement once the opening transition has ended (at once for a root route).
 
 | Element | Hit area ≥ 44 | Action |
 |---|---|---|
-| "Unlock Pro" (test build) | 317 × 52 (taller with large text), the whole capsule | Goes to Purchasing (States). a11y label "Unlock Pro", hint "Test purchase. Nothing is charged." Ignored while Purchasing. |
-| "Check again" (test purchases off) | 317 × 52, the same slot | Re-runs `getMyAccess()` with the in-button indicator. If the account now has the entitlement, it goes to Already has access. If not, it stays and announces "No access on this account yet." It is how a tester continues after access is granted by hand (scripts/grant-test-access.sql). |
-| "Not now" | ≈ 92 × 44 | `router.back()`, or `router.replace('/')` (the 01 hub) when there is no history. It changes nothing. Disabled (0.4) during Purchasing and Check again. |
-| Android hardware back | System | Same as "Not now", in every state, including Purchasing. If the player leaves mid-purchase, the server still completes the grant, but /pro drops its continuation (guard on a mounted/focused ref, so a late result never navigates). The next YOUR ROOM tap then goes straight through. |
+| "Unlock Pro" (test build) | 353 × 52 (taller with large text), the whole capsule | Purchasing (States). a11y label "Unlock Pro", hint "Test purchase. Nothing is charged." Ignored while busy. |
+| "Check again" (test purchases off) | 353 × 52, the same slot | Re-runs `ensureSession()` + `getMyAccess()` with the in-button indicator. Entitled → Already has access. Not entitled → stays, refreshes line 03's cap and announces "No access on this account yet." It is how a tester continues after access is granted by hand (scripts/grant-test-access.sql). |
+| "Not now" | ≈ 90 × 44 | `router.back()`, or `router.replace('/')` (the 01 hub) with no history. Changes nothing. Disabled (0.4) during Purchasing and Check again. |
+| Android hardware back | System | Same as "Not now", in every state, Purchasing included. Leaving aborts the focus's AbortSignal, so a late result never navigates. |
 | iOS edge swipe | System left edge | Enabled. Same as Android back. |
-| File label, statement, rows, rules, test note | — | Not tappable. |
+| Stamp, statement, slip, test stamp | — | Not tappable. |
 
-**Entry rule (changes `openCapture()` in section 04).** Step 1, the access check (`ensureSession()` then `getMyAccess()`), now routes:
-1. `is_anonymous` → `/account?next=back`, unchanged. The server requires an email account: `request_room_generation` refuses guests, and so does this screen's Edge Function.
-2. No `has_custom_rooms_entitlement` → `/pro?cap=<generations_cap>` (push, or replace when `replace` is set). This is new; until now it went to `/capture/develop`.
-3. `can_generate` false with the entitlement (the cap is reached) → `/capture/develop` with no roomId, unchanged. `useDevelopment` runs `get_my_access` before it looks at the plates, so it lands on its existing cap state: "You've developed every case this month allows" / "Your allowance comes back over the next few days…" with "Back to the title". **The cap is that screen's message, not this one.** /pro is only for the missing entitlement.
-4. Otherwise → step 2 (the seen flag: guide or camera), unchanged. If the check can't run (offline or a server error), the existing rule applies: continue to `/capture`, and `/capture/develop` checks again before anything is sent.
+**Entry rule (section 04's `openCapture()`).** `ensureSession()` then `getMyAccess()`, in this order:
+1. `is_anonymous` → `/account?next=back`. The server requires an email account.
+2. No `has_custom_rooms_entitlement` → `/pro?cap=<generations_cap>` (push, or replace with `replace`); plain `/pro` when the cap isn't a number.
+3. Entitled but `can_generate` false (cap reached) → `/capture/develop?from=hub`, develop's own cap state. **The cap is develop's message, never this screen's.**
+4. Otherwise the seen flag: `/capture/guide` the first time, else `/capture`. If the check can't run, the caller continues to `/capture`, and develop checks again before anything is sent.
 
-The same routing applies to 01's YOUR ROOM card, `/tutorial/complete`'s "Photograph your room" and the guide replay's step 4, because all three call `openCapture()`. The develop screen keeps its own entitlement state ("Your own rooms are part of ESCAPD Pro") for a player whose access lapses between the camera and the darkroom. It does not link to /pro, because /pro continues to the guide or camera, which is wrong for a player whose plates are waiting on the light table.
+The develop screen keeps its own "Your own rooms are part of ESCAPD Pro" state for access that lapses between camera and darkroom, and does not link here (/pro continues to the guide or camera, which is wrong with plates waiting on the light table).
 
-### Test purchase: `grant-test-entitlement`
+### Test purchase
 
-A new test-only Edge Function, `supabase/functions/grant-test-entitlement/index.ts`. It does by API exactly what `scripts/grant-test-access.sql` does by hand, for the caller only.
+**Today (built):** `src/capture/testPurchase.ts` is a stub. `testPurchasesEnabled()` is `process.env.EXPO_PUBLIC_TEST_PURCHASES === "1"` (inlined at build time). `grantTestEntitlement()` rejects at once with `TestPurchaseUnavailableError` and makes no network or Supabase call, so "Unlock Pro" always ends in the Error state "Test purchases are off on this server." The stub's own message is for logs only. `TestPurchaseError(code)` carries the function's error codes for later: `test_purchases_off`, `account_required`, `unauthorized`, `internal_error`.
+
+**Planned (not built; Supabase work is out of scope):** a test-only Edge Function `grant-test-entitlement` that does by API what scripts/grant-test-access.sql does by hand, for the caller only.
 
 | Step | Behaviour |
 |---|---|
-| 1. Gate | If `env("ESCAPD_TEST_PURCHASES", false) !== "1"`, it returns 403 `{ error: "test_purchases_off" }`. This is checked first, before auth, so a project without the secret does nothing at all. |
-| 2. Caller | `requireUser(req)` from `_shared/supabase.ts` verifies the bearer session JWT with the Auth server (`admin().auth.getUser(token)`), exactly as `delete-account` and `merge-guest` do. A missing or invalid token gets 401 `unauthorized`. `supabase/config.toml` gets `[functions.grant-test-entitlement] verify_jwt = false`, like the other five, because verification happens inside the function. |
-| 3. Guests | If `user.is_anonymous`, it returns 403 `account_required`. This matches `get_my_access` (`can_generate` needs a full account) and the SQL script ("guests can't develop rooms"). |
-| 4. Write | A service-role upsert into `public.entitlements` of `{ user_id: user.id, entitlement_key: "custom_rooms", provider: "manual", status: "active", expires_at: null }`, with `onConflict: "user_id,entitlement_key,provider"`. This is the script's `insert … on conflict (user_id, entitlement_key, provider) do update set status = 'active', expires_at = null, updated_at = now()`; the `entitlements_updated_at` trigger sets `updated_at`. The user id comes only from the verified token, and the request body is ignored. The function is idempotent. Clients can't write this table themselves (RLS allows `select` of their own rows only), which is why a function is needed. |
-| 5. Reply | 200 `{ granted: true }`. A database error is logged and returns 500 `internal_error`. Like the other functions it goes through `handler()`: POST only, with CORS and uniform error JSON. |
+| 1. Gate | `env("ESCAPD_TEST_PURCHASES") !== "1"` → 403 `test_purchases_off`, before auth. |
+| 2. Caller | `requireUser(req)` (as `delete-account`, `merge-guest`); bad or missing token → 401 `unauthorized`. `verify_jwt = false` in `supabase/config.toml`. |
+| 3. Guests | `user.is_anonymous` → 403 `account_required`. |
+| 4. Write | Service-role upsert into `public.entitlements`: `{ user_id, entitlement_key: "custom_rooms", provider: "manual", status: "active", expires_at: null }`, `onConflict: "user_id,entitlement_key,provider"`. User id from the verified token only; body ignored; idempotent. |
+| 5. Reply | 200 `{ granted: true }`; a database error → 500 `internal_error`. Through `handler()`: POST only, CORS, uniform error JSON. |
 
-**Client.**
-- `grantTestEntitlement()` goes in `src/lib/escapd-api.ts`, as `supabase.functions.invoke("grant-test-entitlement", { body: {} })`, next to `deleteAccount()`. On a `FunctionsHttpError`, it reads `await error.context.json()` to get the `error` code for the message.
-- The screen offers the test path only when `process.env.EXPO_PUBLIC_TEST_PURCHASES === "1"`. The value is inlined at build time. Set it in the EAS `development` and `preview` environments and in local `.env`, never in `production`. Add a commented line for it to `.env.example`, and add `ESCAPD_TEST_PURCHASES` to that file's server-secrets block.
+Client, once it exists: `grantTestEntitlement()` becomes `supabase.functions.invoke("grant-test-entitlement", { body: {} })` in `src/lib/escapd-api.ts`, rethrowing a `FunctionsHttpError` as `TestPurchaseError` with the `error` code from `await error.context.json()`. Both flags are needed and only the server secret protects anything: `EXPO_PUBLIC_*` ships in the binary and the URL is public, so while the secret is set any signed-in email account on that project can grant itself Pro. Undo: the "Undo" statement in scripts/grant-test-access.sql revokes a `manual` row.
 
-**Both flags are needed, and only the secret protects anything.** The client flag decides what the screen offers. `EXPO_PUBLIC_*` values ship in the binary, and the function's URL is public, so while the secret is set any signed-in email account on that project can grant itself Pro. Set it with `npx supabase secrets set ESCAPD_TEST_PURCHASES=1` only on a project whose users are testers. Unset it, or never deploy the function, on any project that serves store builds.
-
-**Undo.** The "Undo" statement at the bottom of scripts/grant-test-access.sql revokes a `manual` row. It works the same for rows this function wrote.
-
-**Later: real purchases.** RevenueCat replaces this path:
-- `react-native-purchases` is not installed yet. The app calls `Purchases.logIn(<supabase user id>)` (the convention in docs/BACKEND.md) and runs a store purchase on "Unlock Pro".
-- `revenuecat-webhook` writes a `provider 'revenuecat'` row. Rows are unique per provider, so it sits alongside any manual row.
-- The client then re-checks `get_my_access` until the entitlement shows.
-- The screen gains a price in place of the TEST PURCHASE note, a Restore purchases action and the store-required terms and privacy links.
-- The function and both flags are then deleted.
+Later, RevenueCat replaces this path (`Purchases.logIn(<supabase user id>)`, a store purchase on "Unlock Pro", `revenuecat-webhook` writing a `revenuecat` row, re-check `get_my_access`). The screen then gains a price in place of the TEST PURCHASE stamp, Restore purchases and the store-required terms and privacy links; the function and both flags are deleted.
 
 ### States
 
-- **Default:** as in Layout. In a test build the action is the signal "Unlock Pro" with the TEST PURCHASE note. When opened from `openCapture()` with `?cap=`, it renders on the first frame with no second access check, because openCapture has just made one.
-- **Loading** (opened without `?cap`, e.g. a deep link or a restored route): flat `ref.color.ground` only. After 300 ms the dither (`ref.motion.dither`: 24 × 24, 4 × 4 `ref.color.bright` cells, opacity 0.1 ↔ 1 over 1000 ms in Bayer order) appears, centred at (196.5, 426) in the box x 184.5–208.5, y 414–438, until `getMyAccess()` returns. A faster check shows nothing. a11y: role progressbar, label "Loading". When the result arrives, it routes as Guest or Already has access, or shows Default (with `generations_cap` from the result). Default fades in over `ref.motion.control` 120 ms (opacity), and the dither unmounts. If the check fails, it shows Default with row 03's fallback line ("A monthly allowance of new cases."). The server re-checks everything when the player taps, so nothing is lost.
-- **Purchasing** (after "Unlock Pro"): the in-button pattern from Loading indicators. This is the button's own action, usually one function call plus one RPC, and there is nothing true to rotate through, so it is not a Thinking state.
-  - The label "Unlock Pro" stays centred. A native `ActivityIndicator` (small, 20 × 20) in `ref.color.bright` #F2F2F2 sits at x 319–339, y 726–746 (right edge 16 in from the pill's end, vertically centred).
-  - The pill keeps its `ref.color.signal` fill at full opacity, ignores taps and sets `accessibilityState={{ busy: true, disabled: true }}`.
-  - "Not now" goes to `ref.button.disabledOpacity` 0.4 and is disabled. System back stays live (see Tappable elements). Any notice clears.
-  - The calls, in order: `grantTestEntitlement()`, then `getMyAccess()`.
-- **Success:** `getMyAccess()` reports `has_custom_rooms_entitlement`. Then:
-  - `useFeedback().success()` (the haptic develop already uses) and `AccessibilityInfo.announceForAccessibility("Pro unlocked.")`;
-  - then `openCapture({ replace: true })`. Its check now passes and it continues exactly as openCapture would. On the first time it goes to `/capture/guide`, otherwise to `/capture`. If this account has already used its allowance, it goes to `/capture/develop` (the cap state). `replace` takes /pro off the stack, so back from the guide or camera returns to the hub.
-  - There is no success screen, stamp or celebration; the camera, or the guide, is the reward.
-  - Loop guard: /pro calls `openCapture` only after it has seen the entitlement itself. If the function returned 200 but the entitlement is still missing, /pro shows the generic error instead, so it can never replace itself with /pro.
-- **Error:** in the notice slot (y 654–672). The icon is `ref.color.error` #B5564F and the text `ref.color.read`. The notice fades in over `ref.motion.control` and is announced (`accessibilityLiveRegion="polite"` on Android, `announceForAccessibility` on iOS). The pill returns to idle and stays live for a retry, "Not now" returns to full opacity, and a retry clears the notice.
+- **Default:** as in Layout. Opened from `openCapture()` with `?cap=`, it renders on the first frame with no second access check.
+- **Loading** (no usable `?cap`: a deep link, a restored route): the same ground as Default (canvas, silk, grain) and nothing else. If `getMyAccess()` is still running after `ref.layout.pro.spinnerDelay` 300 ms, a native `ActivityIndicator` (small, 20 × 20) in `color.accent` appears centred at (196.5, 426), box x 186.5–206.5, y 416–436. A faster check shows nothing. a11y: one element, role progressbar, label "Loading" (`accessible` on iOS, `screenReaderFocusable` and `focusable={false}` on Android, so never a keyboard stop). The result routes as Guest or Already has access (the indicator stays until openCapture navigates), or shows Default with the result's `generations_cap`. Default's content (stamp to Not now) fades in over the kit's `controlTiming` (ref.motion.control, 120 ms ease-out, opacity only); the ground does not change. A failed check shows Default with line 03's fallback ("A monthly allowance of new cases.") and no notice.
+- **Purchasing** (after "Unlock Pro"): the in-button pattern, not a Thinking state (one call plus one RPC, nothing true to rotate).
+  - The label stays centred. The kit's `ActivityIndicator` (small, 20 × 20) in the label colour `color.onAccent` sits at x 337–357, y 726–746 (right edge 16 in from the pill's end, vertically centred).
+  - The pill keeps its `color.accent` fill at full opacity, ignores taps and sets `accessibilityState={{ busy: true, disabled: true }}`.
+  - "Not now" drops to 0.4 and is disabled; system back stays live. Any notice clears.
+  - Calls: `currentSession()` (stored, no network; a guest routes as Guest without calling the function), then `grantTestEntitlement()`, then `getMyAccess()`.
+- **Success:** `getMyAccess()` reports `has_custom_rooms_entitlement`. `useFeedback().success()` (develop's haptic) and `announceForAccessibility("Pro unlocked.")`, then `openCapture({ replace: true })`: the guide first time, else the camera, or develop's cap state if the allowance is used. /pro leaves the stack, so back returns to the hub. No success screen, stamp or celebration. Loop guard: /pro calls `openCapture` only after it has seen the entitlement itself; a 200 without it is the generic error.
+- **Error:** in the notice slot (y 658–676), one line: glyph in `color.warning`, text `caption` in `tone="secondary"`. It fades in over `controlTiming` (opacity) and is announced: on iOS by `announceForAccessibility`, on Android by the always-mounted polite live region on the slot (the line itself is `accessibilityLiveRegion="none"`, because Android speaks only changes inside an existing live region). The pill returns to idle for a retry, "Not now" to full opacity; a retry clears the notice. `color.error` is not used on this screen (2.3:1 on the silk).
 
-  | Cause | Icon | Text |
+  | Cause | Glyph (`color.warning`, 18) | Text (`caption`, secondary) |
   |---|---|---|
-  | Offline (`isNetworkError`) | Phosphor `WifiSlash` | "You're offline. Connect and try again." (≈ 243 wide) |
-  | 403 `test_purchases_off` (client flag on, server secret off) | Phosphor `Warning` | "Test purchases are off on this server." (≈ 243) |
+  | Offline (`isNetworkError`) | Phosphor `WifiSlash` | "You're offline. Connect and try again." (≈ 251) |
+  | Today's stub (`TestPurchaseUnavailableError`), or 403 `test_purchases_off` | Phosphor `Warning` | "Test purchases are off on this server." (≈ 251) |
   | 403 `account_required` | — | No notice: routes as Guest |
-  | 401, 5xx, entitlement still missing, anything else | Phosphor `Warning` | "Couldn't unlock Pro. Try again." (≈ 198) |
+  | 401, 5xx, entitlement still missing, anything else | Phosphor `Warning` | "Couldn't unlock Pro. Try again." (≈ 205) |
 
-- **Already has access:** whenever a check on this screen finds `has_custom_rooms_entitlement`, the player skips straight through with `openCapture({ replace: true })`, with no haptic or announcement. The checks are Loading, the re-check on `AppState` → `active` (for example, after a tester's access was granted by hand while the app was in the background) and "Check again". With `?cap=`, the first frame is Default, and the skip happens only if a later check finds access.
-- **Guest:** `openCapture()` sends guests to `/account?next=back` before they ever reach /pro. If a check on this screen still finds `is_anonymous` (a deep link, a signed-out session) or the function answers `account_required`, the screen runs `router.replace({ pathname: "/account", params: { next: "back" } })`. After confirming, /account goes back to the hub and the player taps YOUR ROOM again (01's existing behaviour). /pro never calls the function for a guest.
-- **Test purchases off** (`EXPO_PUBLIC_TEST_PURCHASES` is not "1"; for now this includes every production build). The screen states honestly that purchases aren't available yet.
-  - No signal pill and no TEST PURCHASE note.
-  - The notice slot and the test-note slot together (y 654–698) hold an info line, bottom-aligned at 698 (2 lines, y 662–698), at x 38, w 317, in `ref.type.meta`, `ref.color.read`, with no icon (it's information, not an error): "Pro isn't on sale yet. If you're testing, ask for access, then check again." (≈ 75 characters, 2 lines).
-  - The pill slot holds `ref.button.primary` "Check again" (white, label `ref.color.inverseInk`; it is not a purchase, so it is not signal). Its in-button indicator is in `ref.color.inverseInk` #0A0A0A.
-  - Nothing above moves.
-  - If "Check again" fails, the error line takes the info's place (one line, y 680–698), and the info returns on the next check.
-  - This replaces develop's "Pro isn't on sale in this test build" placeholder on the hub path.
-- **Pressed:** each control changes colour over `ref.motion.control`, 120 ms ease-out. The signal fill goes to `ref.color.signalPressed` #A82823 (label 6.3:1), the primary fill ("Check again") to `ref.color.brightPressed` #D4D4D4, and the quiet label to `ref.color.bright`. No opacity change and no scale.
-- **Focus:** `ref.focus` (2 pt `ref.color.bright`, offset 2, radius 999 with `...ref.curve`). The ring is 325 × 60 around the pill (x 34–359, y 706–766) and ≈ 100 × 52 around "Not now".
-- **Disabled:** only "Not now", during Purchasing and Check again (0.4).
-- **Reduced motion:** the Loading dither is the static checkerboard. The 120 ms fade-ins (Default, notices) stay, because they are opacity changes, not movement. The native indicator keeps the platform's behaviour. Nothing on this screen moves in any mode.
+- **Already has access:** whenever a check on this screen finds the entitlement (Loading, the silent re-check on `AppState` → `active`, "Check again"), `openCapture({ replace: true })` with no haptic or announcement. With `?cap=` the first frame is Default; the skip happens only if a later check finds access.
+- **Guest:** a check that finds `is_anonymous`, or the function's `account_required`, runs `router.replace({ pathname: "/account", params: { next: "back" } })`. /account then goes back to the hub. /pro never calls the function for a guest.
+- **Test purchases off** (`EXPO_PUBLIC_TEST_PURCHASES` is not "1"; every production build today):
+  - No TEST PURCHASE stamp. The notice and test-stamp slots together (y 658–698, `minHeight` 18 + 8 + 14 = 40, × fontScale for the two lines) hold an info line, bottom-aligned at 698: 2 lines, y 662–698, x 20–373, `caption` in `tone="secondary"`, no glyph (information, not an error), never a live region or announcement: "Pro isn't on sale yet. If you're testing, ask for access, then check again." (≈ 75 characters).
+  - The pill slot holds "Check again", `PillButton scheme="brass" variant="primary" spinner`; its in-button indicator is `color.onAccent`.
+  - A failed check puts its error line (glyph + text) in the info line's place, inside an always-mounted polite live region that holds only errors; the info line returns, outside the region (so it is not re-announced), on the next check. Nothing above moves.
+- **Pressed:** colour only, over `ref.motion.control` 120 ms ease-out (the kit). Brass primary fill `color.accent` → `color.accentPressed` #DFB66C (label 9.7:1); quiet label `color.textSecondary` → `color.text`. No opacity or scale.
+- **Focus:** the kit's ring (2 pt, offset 2, following the pill). ≈ 361 × 60 around the pill (x 16–377, y 706–766), ≈ 98 × 52 around "Not now".
+- **Disabled:** only "Not now", during Purchasing and Check again (`ref.button.disabledOpacity` 0.4, the kit).
+- **Reduced motion** (`useTheme().reducedMotion`): nothing on this screen moves in any mode. The fades (Default, error lines) are opacity-only and stay. The native indicators keep the platform's behaviour.
 - **Large text:** all text honours system scaling and never shrinks.
-  - The bottom-anchored block grows upward into the void, which keeps at least 24 above the statement.
-  - Rows grow with their text (32 + the text height; a sentence may wrap to 2 lines).
-  - The pill grows upward from 762, and its label may wrap to 2 centred lines within padX 44.
-  - The file label stays pinned at the top.
-  - If the block still doesn't fit, the statement and index scroll while the notice, test note, pill and "Not now" stay pinned (as in 04).
-- **Narrow screen:** the gutters stay 38, so the column is width − 76 (299 at 375, 284 at 360) and row text is column − 32 (267 / 252). Row 02 (≈ 249) is tight at 360 and may wrap; its row then grows 24 and the block rises.
+  - The top bar grows: the stamp wraps inside its 257 column.
+  - The bottom-anchored block grows upward into the void, keeping ≥ 24 above the statement. Slip lines grow with their text (a sentence may wrap); numerals stay centred on the first line.
+  - The pill grows upward from 762; its label may wrap inside the 44 side padding. "Not now" stays 44 until its own label line passes 44.
+  - If the block still doesn't fit, the statement and slip scroll (and only then become a keyboard stop) while the notice, test stamp, pill and "Not now" stay pinned.
+- **Narrow screen:** gutters stay 20, so the column is width − 40 (335 at 375, 320 at 360), the slip's inner box column − 32 (303 / 288) and the sentences inner − 24 (279 / 264). The longest line (fallback, ≈ 254) fits at 360; a wrapped line grows its row by 23 and the block rises.
 
 ### Decisions
 
-1. **Route:** `/pro` (`app/pro.tsx`), pushed or replaced by `openCapture()` with `?cap=<generations_cap>`. No reference screenshot exists. The geometry comes from 04's reading column and 03's pill-over-quiet stack.
-2. **When it shows:** only when the access check finds no `custom_rooms` entitlement. Guests go to `/account` first. A reached cap is develop's message ("You've developed every case this month allows"), never this screen's.
-3. **Layout:** a case-file cover sheet: mono file label, statement, a three-row ruled index, the test note, one pill and a quiet "Not now". Flat ground, with no art, light pool or header control. The notice slot is always reserved, so nothing jumps.
-4. **Copy:** as in the Copy table. Every benefit line states something the app really does. The cap is read from `get_my_access`, never hard-coded.
-5. **Signal:** "Unlock Pro" is the screen's one signal action, in test builds only. With test purchases off the action is a white "Check again", and there is no signal.
-6. **Test purchase:** the new `grant-test-entitlement` Edge Function upserts the caller's `manual` / `custom_rooms` / `active` / no-expiry row, exactly as scripts/grant-test-access.sql does. It authenticates like `delete-account` and `merge-guest` (`requireUser`, `verify_jwt = false`), and refuses unless the secret `ESCAPD_TEST_PURCHASES=1` is set. It also refuses guests. The client offers it only when `EXPO_PUBLIC_TEST_PURCHASES=1`.
-7. **Purchasing feedback:** the in-button native indicator (the button's own action, under 1–2 s, nothing true to rotate), not a Thinking state.
-8. **After success:** `openCapture({ replace: true })`, so the guide (first time) or the camera, or develop's cap state if the allowance is used. /pro leaves the stack.
-9. **Test purchases off:** an honest "isn't on sale yet" line plus "Check again". No fake purchase button.
-10. **Later:** a RevenueCat purchase replaces the test path. The function and both flags are deleted, and the screen gains a price, Restore purchases and terms and privacy links.
+1. **Look:** the play screen's dossier look (user decision): brass stamp, Playfair statement, manila slip, brass pills, over canvas + silk + Grain. Noir's Geist type, dither, ruled index and oxblood signal are gone.
+2. **Route and trigger:** `/pro`, pushed or replaced by `openCapture()` with `?cap=<generations_cap>`, only for a missing `custom_rooms` entitlement. Guests go to `/account` first; a reached cap is develop's message.
+3. **Top bar without a control:** the light table's bar geometry (48 row, stamp centred between 48 spacers) with no back or close button. "Not now", Android back and the edge swipe are the exits.
+4. **Benefits on manila:** three lines on the light table's slip, numerals as hidden ink stamps, sentences in `body` ink (16/23, larger than the light table's `caption` lines, since these are the screen's content). New heading "WHAT PRO OPENS".
+5. **Brass, never signal:** both actions are the brass primary; "Not now" is the brass quiet.
+6. **Notices on dark:** a `color.warning` glyph plus `caption` text in secondary for every error. No error-coloured text or glyph on the dark ground.
+7. **Loading:** the live short-wait pattern, a small `ActivityIndicator` in `color.accent` after 300 ms, on the same ground as Default, so only the content fades in.
+8. **Test purchase:** stub today (always "Test purchases are off on this server."); the planned `grant-test-entitlement` function as in Test purchase. Offered only when `EXPO_PUBLIC_TEST_PURCHASES=1`.
+9. **Purchasing feedback:** the in-button native indicator, not a Thinking state.
+10. **After success:** `openCapture({ replace: true })`; /pro leaves the stack.
+11. **Test purchases off:** an honest "isn't on sale yet" line plus "Check again". No fake purchase button.
+12. **Later:** RevenueCat replaces the test path; the screen gains a price, Restore purchases, terms and privacy links.
 
 ### Needs you
 
-1. **Where test purchases may run.** The secret is the only real gate. While `ESCAPD_TEST_PURCHASES=1` is set on a Supabase project, any signed-in email account on it can give itself Pro. Proposed: set it only on a project whose users are testers, and set `EXPO_PUBLIC_TEST_PURCHASES=1` only in the EAS `development` and `preview` environments. If your one Supabase project will also serve store builds, the secret has to be removed (or the function left undeployed) before release. Please confirm which project and which build profiles.
+1. **Where test purchases may run.** The server secret is the only real gate: while `ESCAPD_TEST_PURCHASES=1` is set on a Supabase project, any signed-in email account on it can give itself Pro. Proposed: set it only on a testers' project, and `EXPO_PUBLIC_TEST_PURCHASES=1` only in the EAS `development` and `preview` environments. If one project will also serve store builds, remove the secret (or never deploy the function) before release. Please confirm the project and build profiles.
+2. **Slip heading.** "WHAT PRO OPENS" is new copy for the manila slip. Keep it, or name another (for example "IN THIS FILE").
+3. **Top-bar control.** The cover keeps 05's "no header control" rule, so its top bar is a stamp only. If you want the light table's full pattern, a close `IconButton` (X, 48) at the right would duplicate "Not now" and add a keyboard stop.
 
 ## Decisions
 
@@ -1262,11 +1276,11 @@ Every question left open by the first draft, and how Noir or your answers settle
 
 | Question | Decision |
 |---|---|
-| Palette, fonts, button shape | Noir: near-black ground, Geist / Geist Mono / Playfair (case titles and the escape only), white primary pills, one oxblood signal |
+| Palette, fonts, button shape | **Hub, guide, Pro (since 2026-10-25):** the play screen's look (brass, Playfair titles, film-plate mounts, mono plate labels) with the silk background and brass pill buttons. **Camera, permission:** Noir (near-black ground, Geist / Geist Mono, white primary pills, one oxblood signal) |
 | Where game mode lives | It **is** the hub at `/` and replaces today's title screen (you confirmed) |
 | Getting to the camera | One helper, `openCapture()`, checks access first. Guest → `/account?next=back`. No Pro → `/pro`. Monthly limit reached → the darkroom's existing limit message. Access → the photo guide the first time, otherwise the camera. If the check can't run, the hub carries on to the camera (the darkroom checks again before anything is sent) |
-| Where red appears | 01: the SOLVED stamp. 02: the ring on the last-photo thumbnail from 3 plates. 03: none. 04: "Open the camera". 05: "Unlock Pro". Never more than one "go" button per screen |
-| Loading | A real wait with something true to say: Thinking states. A short wait: the dither. A button's own action: a small spinner with the label kept. Countable progress: a thin bar with a mono count |
+| Where red appears | Only on the Noir screens: 02, the ring on the last-photo thumbnail from 3 plates; 03, none. The hub, guide and Pro use brass instead (SOLVED stamp, "Open the camera", "Unlock Pro") |
+| Loading | A real wait with something true to say: Thinking states (warm tone on the hub, guide and Pro). A short wait: the dither on Noir screens, a small brass ActivityIndicator on the others. A button's own action: a small spinner with the label kept. Countable progress: a thin bar with a mono count |
 | The painted magnifying glass | Kept as it is for now (your answer): the one exception to grayscale brand art, used only as 01's hero object. A Noir version comes later |
 | Tilt | Allowed as the one pointer effect (your answer): the 01 glass only |
 | Backgrounds | Your choice: the black-and-white warp from your shader library, as one pre-rendered still (black silk, peak #262626), on 01, 04 and 05. 02 and 03 (the camera route) stay flat |
@@ -1274,14 +1288,13 @@ Every question left open by the first draft, and how Noir or your answers settle
 
 ### Per screen
 
-- **01 · Game mode:**
-  - Subtitle "Three files on the desk."
-  - The right button opens "How you play": Show interactives (an off/on control) and "How to photograph a room".
+- **01 · Game mode** (the play screen's look):
+  - Wordmark with its brass doorway edge, a help button that opens "How you play" (the live Sheet with a brass Switch for Show interactives, and "How to photograph a room").
   - No back or close button.
-  - Cards are graphite panels with mono tags, line icons with no glow, and a soft light behind the fan.
-  - YOUR CASE with no room is dimmed and shows "NONE YET".
-  - ESCAPD wordmark in the header.
-  - The brass glass sits above the title and tilts.
+  - "Choose a case" in Playfair, subtitle "Three files on the desk."
+  - The three cards are small film plates on walnut mounts with brass plate labels, warm line art and sentence-case notes; SOLVED is a brass stamp; DEVELOPING is the warm shimmer.
+  - YOUR CASE with no room is dimmed and shows "None yet".
+  - The brass glass sits above the title and tilts. No light pools.
 - **02 · Camera:**
   - Flip camera is replaced by a framing-grid toggle.
   - 0.5× wherever the phone has an ultra-wide lens (default 1×).
@@ -1299,29 +1312,32 @@ Every question left open by the first draft, and how Noir or your answers settle
   - New copy for when the camera is off.
   - Body text in Geist 17/24.
   - No white flash for players who already allowed the camera.
-- **04 · Photo guide:**
-  - Four steps under the label "BEFORE YOU SHOOT · n OF 4".
-  - "Next" is white; "Open the camera" is red.
+- **04 · Photo guide** (the play screen's look):
+  - Four steps under the brass stamp "BEFORE YOU SHOOT · n OF 4".
+  - Each drawing sits on a walnut film-plate mount labelled "ESCAPD 400 · STEP I" to "STEP IV"; warm line art with brass brackets. No light pool.
+  - "Next" is the walnut pill; "Open the camera" the brass pill.
   - Swiping also moves between steps.
   - X skips to the camera and marks the guide seen; on a replay, X returns to the hub.
-  - The seen flag is stored on the device.
-  - Replay lives in How you play.
-  - Grayscale line art.
-- **05 · Pro:**
-  - A case-file cover sheet with three benefit lines.
-  - Red "Unlock Pro" calls a test-only server function that grants access, then carries on to the guide or camera.
-  - When test purchases are off, it says plainly that Pro isn't on sale yet.
+  - The seen flag is stored on the device. Replay lives in How you play.
+- **05 · Pro** (the play screen's look):
+  - A case-file cover: brass stamp "CASE FILE · ESCAPD PRO", the statement in Playfair, the three benefits on a manila slip headed "WHAT PRO OPENS".
+  - Brass "Unlock Pro" calls the test grant, which is still a stub (Supabase work was out of scope), then carries on to the guide or camera.
+  - When test purchases are off, it says plainly that Pro isn't on sale yet and offers "Check again".
 
 ## Needs you
 
-Nothing right now. Your last answers settled these:
+1. **The camera and permission screens** still use Noir (white pills, Geist, oxblood ring), between a brass photo guide and a brass light table. Restyle them to the play screen's look too?
+2. **Button shape on `/play` and the light table:** they still use the original 8 pt-radius buttons, while the hub, guide and Pro use pills (you asked to keep Noir's pills there). Bring `/play` and the light table onto pills, or keep the two shapes?
 
-1. **Background:** the black-and-white warp. It's spec'd as the black silk version at the brightest level that keeps all text readable (Global tokens, Backgrounds). If you want it bolder, the brighter and true black-and-white versions are in `F:/escapd-tools/bg-shaders/compare-bw.html`.
-2. **Test purchases:** no release is planned, so one Supabase project with `ESCAPD_TEST_PURCHASES=1` is fine for now. Turning it off is on the pre-release list (Build notes).
-3. **Guests and test purchases:** skipped for now. Guests still add an email before the paywall, as the server requires.
-4. **The 0.5× lens:** check that room generation copes with ultra-wide distortion before the lens control ships (Build notes).
+Settled earlier:
+- **Background:** the black-and-white warp (black silk, peak #262626). Bolder versions are in `F:/escapd-tools/bg-shaders/compare-bw.html`.
+- **Test purchases:** one Supabase project with `ESCAPD_TEST_PURCHASES=1` is fine for now; turning it off is on the pre-release list (Build notes).
+- **Guests and test purchases:** skipped for now. Guests add an email before the paywall, as the server requires.
+- **The 0.5× lens:** check that room generation copes with ultra-wide distortion before the lens control ships (Build notes).
 
 ## Build notes
+
+- **Fixed 2026-10-25: light pools painted as solid rectangles.** Gradient stops now carry `stopOpacity`; see Global tokens, Backgrounds and light pools. The hub and guide no longer draw pools at all.
 
 These aren't questions; they're work the spec depends on.
 

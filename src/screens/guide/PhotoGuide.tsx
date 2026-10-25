@@ -1,13 +1,16 @@
-// 04 · First-time photo guide (docs/DESIGN.md). Four steps, each a line
-// drawing in one static pool of light, with the words and the one button in
-// the bottom third on flat ground. Monochrome for three steps; on step 4 the
-// button turns signal as the camera is about to open.
+// 04 · First-time photo guide (docs/DESIGN.md), in the play screen's look.
+// Four steps, each a warm line drawing on a film plate (SceneView's walnut
+// mount with a brass plate label), a Playfair title and a Jakarta instruction,
+// and one brass pill: the walnut "Next" for three steps, the brass "Open the
+// camera" on step 4. Silk still and grain under everything; no light pool.
 //
-// Layout on 393 x 852 (safe 59 / 34), top to bottom: Close at y 71-115 (right
-// inset 34) with the step stamp centred on it at x 38; the art box at y
-// 266-532; the title (620-648) and body (652-700), bottom-anchored; a 62 gap
-// that holds the replay status line (724-742); the button at 762-814; then
-// safe bottom + ctaBottom. Large text grows the block upward from 814.
+// Layout on 393 x 852 (safe 59 / 34), top to bottom: the light table's top bar
+// at y 59-107 (gutter 20): Close (48, x 325-373) on the right, the brass step
+// stamp centred on it (line box 76-90), a 48 spacer on the left; the mount at
+// y 178-564; the title (620-650) and body (654-700), bottom-anchored; a 62
+// gap that holds the replay status line (724-742); the button at 762-814;
+// then safe bottom + space.xs, as Pro. Large text grows the block upward
+// from 814.
 import { useCallback, useEffect, useRef } from "react";
 import { AccessibilityInfo, BackHandler, StyleSheet, View, useWindowDimensions } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
@@ -15,10 +18,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import { router, useFocusEffect, useNavigation, type NativeStackNavigationProp } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
-import { XIcon } from "@/components/icons";
-import { BackgroundStill, IconButton, NoirText, ThinkingStates, type NoirTextRef } from "@/components/noir";
+import { Grain } from "@/components/Grain";
+import { BackgroundStill, ThinkingStates } from "@/components/noir";
+import { Text, type TextRef } from "@/components/Text";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { color, hit, motion, ref, space, type as typeScale } from "@/theme/tokens";
+import { CloseButton } from "./CloseButton";
 import { COPY, LAST_STEP, STEPS, stampLabel, stampText, stepAnnouncement } from "./copy";
 import { GuideArt } from "./GuideArt";
 import { GuideText } from "./GuideText";
@@ -58,7 +63,7 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   }, []);
   const check = useReplayCheck(markGone);
   const { cancel: cancelCheck, start: startCheck } = check;
-  const titleRef = useRef<NoirTextRef>(null);
+  const titleRef = useRef<TextRef>(null);
 
   const step = state.current.step;
   const last = step === LAST_STEP;
@@ -170,25 +175,28 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
     },
   });
 
-  // The stamp's first line is centred on Close (y 93); a wrapped stamp grows downward.
-  const stampTop = Math.max(0, (ref.button.icon.size - ref.type.label.lineHeight * fontScale) / 2);
+  // The stamp's first line is centred on Close (y 83); a wrapped stamp grows downward.
+  const stampTop = Math.max(0, (hit.min - typeScale.stamp.lineHeight * fontScale) / 2);
 
   return (
     <View style={styles.root}>
       <BackgroundStill />
-      <View style={[styles.frame, { paddingBottom: insets.bottom + ref.space.ctaBottom }]}>
+      <Grain />
+      <View style={[styles.frame, { paddingBottom: insets.bottom + space.xs }]}>
         {/* Row-reverse: Close comes first for screen readers and focus, and sits on the right. */}
-        <View style={[styles.header, { paddingTop: insets.top + ref.space.md }]}>
-          <IconButton icon={XIcon} accessibilityLabel={replay ? COPY.close : COPY.skip} onPress={onClose} testID="guide-close" />
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <CloseButton accessibilityLabel={replay ? COPY.close : COPY.skip} onPress={onClose} />
           <View style={[styles.stampSlot, { marginTop: stampTop }]}>
             {layers.map((layer) => (
               <FadeLayer key={layer.step} clock={clock} layer={layer} style={layer.leftAt !== null && styles.stampLeaving}>
-                <NoirText variant="label" accessibilityLabel={stampLabel(layer.step)}>
+                <Text variant="stamp" tone="accent" align="center" accessibilityLabel={stampLabel(layer.step)}>
                   {stampText(layer.step)}
-                </NoirText>
+                </Text>
               </FadeLayer>
             ))}
           </View>
+          {/* Balances Close, so the stamp is centred on the screen (the light table's top bar). */}
+          <View style={styles.headerSpacer} />
         </View>
 
         <GestureDetector gesture={pan}>
@@ -199,6 +207,7 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
               {check.status === "checking" ? (
                 <ThinkingStates
                   lines={COPY.checkingLines}
+                  tone="warm"
                   accessibilityLabel={COPY.checkingLabel}
                   showDelay={G.thinkingDelay}
                   announceOnMount
@@ -218,27 +227,27 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  root: { flex: 1, backgroundColor: color.canvas },
   frame: { flex: 1 },
   header: {
     flexDirection: "row-reverse",
     alignItems: "flex-start",
-    gap: G.stampGap,
-    paddingLeft: ref.space.reading,
-    paddingRight: G.closeRight,
-    // Keeps Close's 48 x 48 hit area inside the header (see CLOSE_SLOP).
+    gap: space.xs,
+    paddingHorizontal: space.gutter,
+    // Keeps Close's 56 x 56 hit area inside the header (see CLOSE_SLOP).
     paddingBottom: CLOSE_SLOP,
   },
-  // Up to width - 131: 38 gutter, the 15 clearance, Close 44, inset 34.
+  // x 72-321 on the base device: between the spacer and Close, 4 clear of each.
   stampSlot: { flex: 1 },
   stampLeaving: { position: "absolute", top: 0, left: 0, right: 0 },
-  // y 115-762 on the base device: the swipe area, between the header and the button.
+  headerSpacer: { width: hit.min },
+  // y 111-762 on the base device: the swipe area, between the header and the button.
   swipeArea: { flex: 1 },
   // The 62 gap above the button (y 700-762), holding replay's status line at y 724-742.
   status: {
     minHeight: G.ctaGap,
     paddingTop: G.statusTop,
     paddingBottom: G.statusBottom,
-    paddingHorizontal: ref.space.reading,
+    paddingHorizontal: space.gutter,
   },
 });

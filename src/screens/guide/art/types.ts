@@ -1,10 +1,10 @@
-// The guide's line art as data (docs/DESIGN.md 04, Illustration art box and
-// Steps). One renderer (StepArt) draws every scene, so the stroke, tones,
-// fills, fades, phone, screen clip and brackets come from tokens in one place.
+// The guide's line art as data (docs/DESIGN.md 04, Inner plate and Steps).
+// One renderer (StepArt) draws every scene, so the stroke, tones, fills,
+// fades, phone, screen clip and brackets come from tokens in one place.
 // Coordinates are the art box's own units (ref.layout.guide.art, 240 x 266):
-// the whole drawing scales with the box when large text shrinks it.
+// the whole drawing scales with the plate when large text shrinks it.
 
-/** Depth comes only from stroke brightness (ref.illustration). */
+/** Depth comes only from stroke brightness (ref.layout.guide.line). */
 export type Tone = "hero" | "mid" | "back" | "context";
 
 export type Point = readonly [number, number];
@@ -18,13 +18,13 @@ export interface Mark {
   d: string;
   tone: Tone;
   /**
-   * Fades linearly to transparent over its last ref.illustration.contextFade,
+   * Fades linearly to transparent over its last ref.layout.guide.line.fade,
    * along the path's final direction, reaching nothing at its last point
    * (context lines: the hand and the view wedges; also step 3's desk edges).
    */
   fade?: boolean;
-  /** Opaque surface fill that hides the marks drawn before it (device bodies). */
-  fill?: "panel" | "ground";
+  /** Opaque fill in a live colour that hides the marks drawn before it (device bodies). */
+  fill?: "surface" | "canvas";
 }
 
 /** The hero phone (steps 1, 3 and 4): ref.layout.guide.phone, drawn face-on. */

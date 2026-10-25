@@ -5,7 +5,7 @@
 // settles flat. Decorative: no action, hidden from screen readers, not
 // focusable. A still image under reduced motion.
 import { useCallback, useEffect, useId } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import { useFocusEffect } from "expo-router";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
@@ -42,11 +42,9 @@ const AnimatedRadialGradient = Animated.createAnimatedComponent(RadialGradient);
 export interface MagnifierProps {
   /** False while the How you play sheet is open (its scrim covers the glass anyway). */
   enabled: boolean;
-  /** The 128 box's layout in its parent: the glass pool is centred on the lens from it. */
-  onLayout?: (e: LayoutChangeEvent) => void;
 }
 
-export function Magnifier({ enabled, onLayout }: MagnifierProps) {
+export function Magnifier({ enabled }: MagnifierProps) {
   const { reducedMotion } = useTheme();
   const rx = useSharedValue(0);
   const ry = useSharedValue(0);
@@ -119,7 +117,6 @@ export function Magnifier({ enabled, onLayout }: MagnifierProps) {
     <GestureDetector gesture={pan}>
       {/* The drag surface: the art box, never transformed, so the glass can't slide out from under the finger. */}
       <View
-        onLayout={onLayout}
         accessible={false}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
@@ -171,8 +168,9 @@ function GlareGradient({ id, layer, gx, gy }: { id: string; layer: GlareLayer; g
       fy={LENS.cy}
       animatedProps={centre}
     >
-      {layer.stops.map((color, i) => (
-        <Stop key={layer.offsets[i]} offset={layer.offsets[i]} stopColor={color} />
+      {layer.opacities.map((opacity, i) => (
+        // Opacity must be its own prop: react-native-svg drops the alpha of an rgba colour.
+        <Stop key={layer.offsets[i]} offset={layer.offsets[i]} stopColor={T.glare.color} stopOpacity={opacity} />
       ))}
     </AnimatedRadialGradient>
   );

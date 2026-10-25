@@ -1,5 +1,7 @@
-// Replay error (docs/DESIGN.md 04, States): Warning in the error colour, 8 pt,
-// then the message in meta type and the read colour, in the y 724-742 slot.
+// Replay error (docs/DESIGN.md 04, States): Warning in color.warning (the
+// error red is 2.3:1 on dark, so on this ground the icon is warning and the
+// words carry the message), 8 pt, then the message in caption type and the
+// secondary tone, in the y 724-742 slot.
 //
 // Built here rather than with the kit's NoticeLine because NoticeLine makes its
 // row `accessible`, and on Android that also makes the row focusable
@@ -11,9 +13,9 @@
 // announcement on iOS).
 import { useEffect } from "react";
 import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from "react-native";
-import { WarningIcon } from "@/components/icons";
-import { NoirText } from "@/components/noir";
-import { ref } from "@/theme/tokens";
+import { ICON_WEIGHT, WarningIcon } from "@/components/icons";
+import { Text } from "@/components/Text";
+import { color, ref, space, type as typeScale } from "@/theme/tokens";
 import { COPY } from "./copy";
 
 export interface ReplayErrorLineProps {
@@ -34,19 +36,20 @@ export function ReplayErrorLine({ testID }: ReplayErrorLineProps) {
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.iconBox, { height: ref.type.meta.lineHeight * fontScale }]}
+        style={[styles.iconBox, { height: typeScale.caption.lineHeight * fontScale }]}
+        testID={testID ? `${testID}-icon` : undefined}
       >
-        <WarningIcon size={ref.icon.small} color={ref.color.error} weight="regular" />
+        <WarningIcon size={ref.layout.guide.errorIcon} color={color.warning} weight={ICON_WEIGHT} />
       </View>
-      <NoirText variant="meta" tone="read" style={styles.text}>
+      <Text variant="caption" tone="secondary" style={styles.text}>
         {COPY.checkError}
-      </NoirText>
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
+  row: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   iconBox: { justifyContent: "center" },
   text: { flexShrink: 1 },
 });

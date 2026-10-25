@@ -33,11 +33,21 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { motion, ref, type as liveType } from "@/theme/tokens";
 import { timingFor, toEasing } from "./motion";
 
 const T = ref.motion.thinking;
 const SHIMMER = T.shimmer;
+
+// "noir" (Geist, meta to bright) or "warm": the play screen's own type and warm
+// text colours, for the screens that follow its look (hub, guide, Pro).
+export type ThinkingTone = "noir" | "warm";
+const TONES = {
+  noir: { base: SHIMMER.base, highlight: SHIMMER.highlight, still: ref.color.read },
+  warm: { base: T.shimmerWarm.base, highlight: T.shimmerWarm.highlight, still: T.shimmerWarm.still },
+} as const;
+type ToneColors = (typeof TONES)[ThinkingTone];
+const WARM_TYPE = { meta: liveType.caption, body: liveType.body, note: liveType.stamp } as const;
 // Swap to swap: the incoming line starts 50 ms in, settles at 200, holds 2000.
 const PERIOD = T.gap + T.swap + T.hold;
 const SWEEP = timingFor({ duration: SHIMMER.duration, easing: SHIMMER.easing });
@@ -80,6 +90,8 @@ interface BaseProps {
   lines: readonly string[];
   /** "meta" (default, Geist 13/18), "body" (Geist 17/24) or "note" (Geist Mono 13/18, uppercase: 01's DEVELOPING). */
   variant?: ThinkingVariant;
+  /** Default "noir". "warm" sets meta / body / note in the live caption / body / stamp styles and warm text colours. */
+  tone?: ThinkingTone;
   /**
    * Extra strings measured for the box width, e.g. the longest count line
    * "Preparing photo 4 of 4", so the box never resizes when the count changes.
@@ -134,12 +146,13 @@ export function ThinkingStates(props: ThinkingStatesProps) {
 }
 
 function ThinkingLine(props: ThinkingStatesProps) {
-  const { lines, variant = "meta", sizeTo, announceOnMount = false, testID, style } = props;
+  const { lines, variant = "meta", tone = "noir", sizeTo, announceOnMount = false, testID, style } = props;
   const decorative = props.decorative === true;
   const label = props.accessibilityLabel;
   const { reducedMotion } = useTheme();
   const { fontScale } = useWindowDimensions();
-  const typeStyle: TextStyle = ref.type[variant];
+  const typeStyle: TextStyle = tone === "warm" ? WARM_TYPE[variant] : ref.type[variant];
+  const colors = TONES[tone];
   const [measures, setMeasures] = useState<Record<string, Measure>>({});
   const [tick, setTick] = useState(0);
 
@@ -232,6 +245,7 @@ function ThinkingLine(props: ThinkingStatesProps) {
               key={copyKey}
               text={text}
               typeStyle={typeStyle}
+              colors={colors}
               fontScale={fontScale}
               lineWidth={current.width}
               boxWidth={boxWidth}
@@ -239,7 +253,7 @@ function ThinkingLine(props: ThinkingStatesProps) {
               baseline={current.baseline}
             />
           ) : mode === "static" ? (
-            <StaticCopy key={copyKey} text={text} typeStyle={typeStyle} />
+            <StaticCopy key={copyKey} text={text} typeStyle={typeStyle} color={colors.still} />
           ) : null}
         </LayoutAnimationConfig>
       </View>
@@ -251,6 +265,7 @@ function ShimmerCopy({
   ref: viewRef,
   text,
   typeStyle,
+  colors,
   fontScale,
   lineWidth,
   boxWidth,
@@ -260,6 +275,7 @@ function ShimmerCopy({
   ref?: Ref<HostInstance>;
   text: string;
   typeStyle: TextStyle;
+  colors: ToneColors;
   fontScale: number;
   lineWidth: number;
   boxWidth: number;
@@ -298,9 +314,9 @@ function ShimmerCopy({
             y2={0}
             animatedProps={gradientProps}
           >
-            <Stop offset={0} stopColor={SHIMMER.base} />
-            <Stop offset={PEAK} stopColor={SHIMMER.highlight} />
-            <Stop offset={1} stopColor={SHIMMER.base} />
+            <Stop offset={0} stopColor={colors.base} />
+            <Stop offset={PEAK} stopColor={colors.highlight} />
+            <Stop offset={1} stopColor={colors.base} />
           </AnimatedLinearGradient>
         </Defs>
         <SvgText
@@ -319,9 +335,9 @@ function ShimmerCopy({
   );
 }
 
-function StaticCopy({ ref: textRef, text, typeStyle }: { ref?: Ref<HostInstance>; text: string; typeStyle: TextStyle }) {
+function StaticCopy({ ref: textRef, text, typeStyle, color }: { ref?: Ref<HostInstance>; text: string; typeStyle: TextStyle; color: string }) {
   return (
-    <Animated.Text ref={textRef} entering={FADE_IN} exiting={FADE_OUT} style={[typeStyle, styles.staticLine]}>
+    <Animated.Text ref={textRef} entering={FADE_IN} exiting={FADE_OUT} style={[typeStyle, styles.staticLine, { color }]}>
       {text}
     </Animated.Text>
   );
@@ -331,5 +347,5 @@ const styles = StyleSheet.create({
   outer: { alignSelf: "stretch", alignItems: "center" },
   sizers: { position: "absolute", top: 0, left: 0, right: 0, opacity: 0 },
   copy: { position: "absolute", top: 0, left: 0 },
-  staticLine: { color: ref.color.read, textAlign: "center" },
+  staticLine: { textAlign: "center" },
 });

@@ -6,7 +6,7 @@ import { grantTestEntitlement, testPurchasesEnabled, TestPurchaseError, TestPurc
 import { WifiSlashIcon } from "@/components/icons";
 import * as api from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
-import { ref } from "@/theme/tokens";
+import { color, radius, ref, space, type } from "@/theme/tokens";
 import * as copy from "../copy";
 import { ProNoticeLine } from "../ProNoticeLine";
 import { ProScreen } from "../ProScreen";
@@ -121,6 +121,7 @@ describe("Default (test build, opened with ?cap)", () => {
     await render(<ProScreen />);
     expect(screen.getByLabelText(copy.FILE_LABEL_A11Y)).toBeTruthy();
     expect(screen.getByRole("header", { name: copy.STATEMENT })).toBeTruthy();
+    expect(screen.getByLabelText(copy.SLIP_HEADING_A11Y)).toBeTruthy();
     for (const row of ["Your room becomes the case.", "The clues hide in your things.", "Up to 20 new cases a month."]) {
       expect(screen.getByLabelText(row)).toBeTruthy();
     }
@@ -140,14 +141,38 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(copy.STATEMENT).toBe("Open a file on your own room.");
   });
 
-  it("reserves one meta line for the notice, so nothing moves when one appears", async () => {
+  it("is a case-file cover in the play screen's look", async () => {
+    await render(<ProScreen />);
+    // Canvas under the silk and the live Grain.
+    expect(styleOf(screen.getByTestId("pro-screen")).backgroundColor).toBe(color.canvas);
+    // The top bar's brass stamp, the Playfair statement.
+    expect(styleOf(screen.getByLabelText(copy.FILE_LABEL_A11Y))).toMatchObject({ ...type.stamp, color: color.accent });
+    expect(styleOf(screen.getByRole("header", { name: copy.STATEMENT }))).toMatchObject({ ...type.caseDisplay, color: color.text });
+    // The manila slip: a carbon-ink stamp heading and body lines in ink.
+    expect(styleOf(screen.getByTestId("pro-slip"))).toMatchObject({
+      backgroundColor: color.manila,
+      borderRadius: radius.slip,
+      padding: space.lg,
+      gap: space.xs,
+    });
+    expect(styleOf(screen.getByText(copy.SLIP_HEADING))).toMatchObject({ ...type.stamp, color: color.ink });
+    expect(styleOf(screen.getByText("Your room becomes the case."))).toMatchObject({ ...type.body, color: color.ink });
+    expect(styleOf(screen.getByText("01", hidden))).toMatchObject({ fontFamily: type.stamp.fontFamily, color: color.ink });
+    // The TEST PURCHASE note is a stamp in tone secondary.
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden))).toMatchObject({ ...type.stamp, color: color.textSecondary });
+    // Brass pills: the play screen's control type, never Noir's button type.
+    expect(styleOf(screen.getByText(copy.UNLOCK))).toMatchObject({ fontFamily: type.control.fontFamily, fontSize: type.control.fontSize });
+    expect(styleOf(screen.getByText(copy.NOT_NOW))).toMatchObject({ fontFamily: type.control.fontFamily });
+  });
+
+  it("reserves one caption line for the notice, so nothing moves when one appears", async () => {
     const { fontScale } = Dimensions.get("window");
     await render(<ProScreen />);
-    expect(styleOf(screen.getByTestId("pro-notice-slot")).minHeight).toBe(ref.type.meta.lineHeight * fontScale);
+    expect(styleOf(screen.getByTestId("pro-notice-slot")).minHeight).toBe(type.caption.lineHeight * fontScale);
     // The pinned stack under it: 8, the note, 12, the pill, 8, the quiet button.
-    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).marginTop).toBe(ref.space.sm);
-    expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).marginTop).toBe(ref.space.md);
-    expect(styleOf(screen.getByRole("button", { name: copy.NOT_NOW })).marginTop).toBe(ref.space.sm);
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).marginTop).toBe(space.sm);
+    expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).marginTop).toBe(space.md);
+    expect(styleOf(screen.getByRole("button", { name: copy.NOT_NOW })).marginTop).toBe(space.sm);
   });
 
   it("keeps Not now 44 tall with no fixed padding, so with larger text the pill's bottom stays put", async () => {
@@ -186,7 +211,8 @@ describe("Purchasing", () => {
 
     const unlock = screen.getByRole("button", { name: copy.UNLOCK });
     expect(unlock.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
-    expect(screen.getByTestId("pro-unlock-spinner", hidden)).toBeTruthy();
+    // The in-button indicator in the brass pill's label colour.
+    expect(screen.getByTestId("pro-unlock-spinner", hidden).props.color).toBe(color.onAccent);
     expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: true });
 
     await act(async () => pending.reject(new TestPurchaseUnavailableError()));
@@ -312,8 +338,11 @@ describe("Test purchases off", () => {
     expect(announce).not.toHaveBeenCalled();
     // The notice and test-note slots together, so nothing above moves.
     expect(styleOf(screen.getByTestId("pro-info-slot")).minHeight).toBe(
-      ref.type.meta.lineHeight * fontScale + ref.space.sm + ref.type.note.lineHeight * fontScale,
+      type.caption.lineHeight * fontScale + space.sm + type.stamp.lineHeight * fontScale,
     );
+    // Text on the dark ground in tone secondary, with no icon.
+    expect(styleOf(screen.getByText(copy.NOT_ON_SALE))).toMatchObject({ ...type.caption, color: color.textSecondary });
+    expect(screen.queryByTestId("pro-info-icon", hidden)).toBeNull();
     expect(screen.getByRole("button", { name: copy.CHECK_AGAIN })).toBeTruthy();
     expect(screen.queryByRole("button", { name: copy.UNLOCK })).toBeNull();
     expect(screen.queryByText(copy.TEST_NOTE, hidden)).toBeNull();
@@ -325,7 +354,7 @@ describe("Test purchases off", () => {
     await render(<ProScreen />);
     await userEvent.setup().press(screen.getByRole("button", { name: copy.CHECK_AGAIN }));
     expect(screen.getByRole("button", { name: copy.CHECK_AGAIN }).props.accessibilityState).toMatchObject({ busy: true });
-    expect(screen.getByTestId("pro-check-again-spinner", hidden)).toBeTruthy();
+    expect(screen.getByTestId("pro-check-again-spinner", hidden).props.color).toBe(color.onAccent);
     expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: true });
     await act(async () => pending.resolve(access({ generations_cap: 12 })));
     expect(announce).toHaveBeenCalledWith(copy.SAY_NO_ACCESS);
@@ -403,14 +432,30 @@ describe.each([
   });
 });
 
-describe("Large text", () => {
-  // The block's frame on 393 x 852 (y 125-622). With flexGrow 1 its content is
-  // exactly the frame's height while it fits, and taller once text outgrows it.
-  const FRAME = { x: 0, y: 0, width: 393, height: 497 };
-  const fits = FRAME.height;
-  const overflows = FRAME.height + ref.type.body.lineHeight;
+describe("Notice look", () => {
+  it("draws the error glyph in color.warning, never error-coloured text on the dark ground", async () => {
+    const { fontScale } = Dimensions.get("window");
+    await render(<ProNoticeLine kind="error" text={copy.OFFLINE} icon={WifiSlashIcon} testID="line" />);
+    expect(styleOf(screen.getByText(copy.OFFLINE))).toMatchObject({ ...type.caption, color: color.textSecondary });
+    // The glyph box is one caption line tall, so the glyph centres on the first line.
+    expect(styleOf(screen.getByTestId("line-icon", hidden)).height).toBe(type.caption.lineHeight * fontScale);
+    const glyph = screen.getByTestId("phosphor-react-native-wifi-slash-regular", hidden);
+    expect(glyph.props).toMatchObject({
+      width: ref.layout.pro.noticeIcon,
+      height: ref.layout.pro.noticeIcon,
+      color: color.warning,
+    });
+  });
+});
 
-  it("scrolls the statement and index only while they overflow, so a block that fits is never a keyboard stop", async () => {
+describe("Large text", () => {
+  // The block's frame on 393 x 852 (y 131-626). With flexGrow 1 its content is
+  // exactly the frame's height while it fits, and taller once text outgrows it.
+  const FRAME = { x: 0, y: 0, width: 393, height: 495 };
+  const fits = FRAME.height;
+  const overflows = FRAME.height + type.body.lineHeight;
+
+  it("scrolls the statement and slip only while they overflow, so a block that fits is never a keyboard stop", async () => {
     await render(<ProScreen />);
     const scroll = () => screen.getByTestId("pro-scroll");
     expect(scroll().props.scrollEnabled).toBe(false);
@@ -428,15 +473,22 @@ describe("Loading (opened without ?cap)", () => {
   beforeEach(() => params.mockReturnValue({}));
   afterEach(() => jest.useRealTimers());
 
-  it("shows flat ground, the dither only past its delay, then fades in Default with the cap", async () => {
+  it("shows the ground, the brass indicator only past its delay, then fades in Default with the cap", async () => {
     jest.useFakeTimers();
     const pending = deferred<MyAccess>();
     mocked.getMyAccess.mockImplementationOnce(() => pending.promise);
     await render(<ProScreen />);
-    expect(screen.getByTestId("pro-loading")).toBeTruthy();
+    expect(styleOf(screen.getByTestId("pro-loading")).backgroundColor).toBe(color.canvas);
     expect(screen.queryByRole("progressbar")).toBeNull();
-    await act(async () => jest.advanceTimersByTime(ref.layout.pro.ditherDelay));
-    expect(screen.getByRole("progressbar", { name: "Loading" })).toBeTruthy();
+    expect(screen.queryByTestId("pro-spinner", hidden)).toBeNull();
+    // Nothing of Default yet: no stamp, statement or pills.
+    expect(screen.queryByLabelText(copy.FILE_LABEL_A11Y)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    await act(async () => jest.advanceTimersByTime(ref.layout.pro.spinnerDelay));
+    // One screen-reader element, never a keyboard stop; a small native indicator in brass.
+    const indicator = screen.getByRole("progressbar", { name: copy.LOADING });
+    expect(indicator.props).toMatchObject({ accessible: Platform.OS === "ios", screenReaderFocusable: true, focusable: false });
+    expect(within(indicator).getByTestId("pro-spinner-indicator", hidden).props).toMatchObject({ size: "small", color: color.accent });
     await act(async () => pending.resolve(access({ generations_cap: 15 })));
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.getByLabelText("Up to 15 new cases a month.")).toBeTruthy();

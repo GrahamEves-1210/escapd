@@ -1,9 +1,9 @@
-// The four guide scenes (docs/DESIGN.md 04, Steps), drawn as grayscale line
-// art in the art box's own units (ref.layout.guide.art, 240 x 266, centre
-// 120, 133). The numbers in the path data are the drawings themselves; the
-// measured parts of the spec (stroke, tones, fade length, phone, inner screen,
-// brackets, plan-phone size, radius, ink limit) come from tokens through
-// geometry.ts and StepArt. Every scene's ink stays within ref.layout.guide.art.inkMax.
+// The four guide scenes (docs/DESIGN.md 04, Steps), drawn as warm line art in
+// the art box's own units (ref.layout.guide.art, 240 x 266, centre 120, 133).
+// The numbers in the path data are the drawings themselves; the measured parts
+// of the spec (stroke, tones, fade length, phone, inner screen, brackets,
+// plan-phone size, radius, ink limit) come from tokens through geometry.ts,
+// draw.ts and StepArt. Every scene's ink stays within ref.layout.guide.art.inkMax.
 import { ref } from "@/theme/tokens";
 import { circle, planPhoneTip, polar, roundedRect, segment } from "./geometry";
 import type { Mark, Point, Scene } from "./types";
@@ -60,7 +60,7 @@ function toWall(from: Point, deg: number): number {
 }
 
 function planPhone(centre: Point, deg: number, tone: Mark["tone"]): Mark {
-  return { d: roundedRect(centre, PLAN.width, PLAN.height, deg), tone, fill: "panel" };
+  return { d: roundedRect(centre, PLAN.width, PLAN.height, deg), tone, fill: "surface" };
 }
 
 /** The two rays of a view wedge, from the phone's far edge to the walls. */

@@ -18,14 +18,14 @@ import {
 } from "./caseStatus";
 
 export interface HubFetch {
-  /** Absent when the fetch failed: THE STUDY keeps what it showed (UNSEAL at first). */
+  /** Absent when the fetch failed: THE STUDY keeps what it showed (Unseal at first). */
   study?: StudyEntry;
   ownCase: CaseState;
 }
 
 /**
- * One focus fetch. Never rejects: a failure becomes OFFLINE (network) or
- * TRY LATER (anything else) on YOUR CASE. The tutorial session and the newest
+ * One focus fetch. Never rejects: a failure becomes Offline (network) or
+ * Try later (anything else) on YOUR CASE. The tutorial session and the newest
  * own room are read in parallel, then the latest session of a ready room.
  * getLatestCustomRoom() still returns drafts, so a draft maps to no room.
  */
@@ -43,8 +43,6 @@ export async function fetchHub(): Promise<HubFetch> {
 export interface HubData {
   study: StudyEntry;
   ownCase: CaseState;
-  /** True once a developing case flipped while the hub was open: its note eases from the shimmer's meta to read. */
-  flipped: boolean;
 }
 
 /**
@@ -57,7 +55,6 @@ export interface HubData {
 export function useHubData(): HubData {
   const [study, setStudy] = useState<StudyEntry>("unseal");
   const [ownCase, setOwnCase] = useState<CaseState>({ kind: "loading" });
-  const [flipped, setFlipped] = useState(false);
   // Bumped on every flip, so a focus fetch that started earlier can't undo it.
   const flips = useRef(0);
 
@@ -69,7 +66,6 @@ export function useHubData(): HubData {
         if (!active || flips.current !== startedAt) return;
         if (next.study) setStudy(next.study);
         setOwnCase(next.ownCase);
-        setFlipped(false);
       });
       return () => {
         active = false;
@@ -87,7 +83,6 @@ export function useHubData(): HubData {
         following = false;
         flips.current += 1;
         setOwnCase(status === "ready" ? { kind: "ready", roomId: developingId, progress: "open" } : { kind: "failed", roomId: developingId });
-        setFlipped(true);
         AccessibilityInfo.announceForAccessibility(status === "ready" ? READY_ANNOUNCEMENT : FAILED_ANNOUNCEMENT);
       };
       // Realtime is fastest; the poll covers a dropped socket or a missed event.
@@ -103,5 +98,5 @@ export function useHubData(): HubData {
     }, [developingId]),
   );
 
-  return { study, ownCase, flipped };
+  return { study, ownCase };
 }

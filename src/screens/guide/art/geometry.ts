@@ -1,13 +1,13 @@
 // Geometry for the guide's line art, in the art box's own units. The hero
-// phone, its inner screen and the brackets are built from
-// ref.layout.guide.phone / .bracket and ref.radius.panel; everything else in
-// the scenes is drawing data (scenes.ts).
+// phone, its inner screen, its corner radius and the brackets are built from
+// ref.layout.guide.phone / .bracket; everything else in the scenes is drawing
+// data (scenes.ts).
 import { ref } from "@/theme/tokens";
 import type { Point } from "./types";
 
 const PHONE = ref.layout.guide.phone;
 const BRACKET = ref.layout.guide.bracket;
-const R = ref.radius.panel;
+const R = PHONE.radius;
 
 // A quarter circle as one cubic Bezier: control points at kappa x radius.
 const KAPPA = (4 / 3) * (Math.SQRT2 - 1);
@@ -72,7 +72,7 @@ function rotate(p: Point, c: Point, deg: number): Point {
 }
 
 /**
- * A rounded rectangle (corner radius ref.radius.panel) centred on `centre` and
+ * A rounded rectangle (corner radius ref.layout.guide.phone.radius) centred on `centre` and
  * turned `deg` clockwise, as path data with cubic corners. Step 2's phone plan
  * symbols use it, so their outlines can turn toward what they photograph.
  */

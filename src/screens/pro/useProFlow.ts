@@ -137,7 +137,7 @@ export function useProFlow(initialCap: number | null) {
     const access = await checkAccess().catch(() => null);
     if (signal.aborted) return;
     if (access?.is_anonymous) return toAccount();
-    // The dither stays up until openCapture navigates.
+    // The Loading indicator stays up until openCapture navigates.
     if (access?.has_custom_rooms_entitlement) return toCapture(signal);
     showView({ kind: "ready", cap: access ? capOf(access) : null, fadeIn: true });
   }, [showView, toAccount, toCapture]);

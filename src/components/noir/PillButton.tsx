@@ -13,22 +13,41 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, { interpolateColor, useAnimatedStyle } from "react-native-reanimated";
-import { ref } from "@/theme/tokens";
+import { color, ref } from "@/theme/tokens";
 import { FocusRing, useFocusRing } from "./focus";
 import { paletteColor, usePaletteTransition, usePressProgress } from "./motion";
 
 /** primary (white), secondary (graphite), signal (oxblood, at most one per screen), quiet (text only). */
 export type PillVariant = "primary" | "secondary" | "signal" | "quiet";
 
+/** "noir" (default) or "brass": the same pill in the play screen's colours and button type (ref.button.brass). */
+export type PillScheme = "noir" | "brass";
+
 const B = ref.button;
+const BR = B.brass;
 
 // Rest and pressed colours per variant (DESIGN.md, Buttons and controls).
 const PALETTES = {
-  primary: { fill: B.primary.fill, pressedFill: B.primary.pressedFill, label: B.primary.label, pressedLabel: B.primary.label },
-  secondary: { fill: B.secondary.fill, pressedFill: B.secondary.pressedFill, label: B.secondary.label, pressedLabel: B.secondary.label },
-  signal: { fill: B.signal.fill, pressedFill: B.signal.pressedFill, label: B.signal.label, pressedLabel: B.signal.label },
-  // Quiet draws no fill. Its fill entries only matter if a quiet button turns into a filled one.
-  quiet: { fill: ref.color.ground, pressedFill: ref.color.ground, label: B.quiet.label, pressedLabel: B.quiet.pressedLabel },
+  noir: {
+    primary: { fill: B.primary.fill, pressedFill: B.primary.pressedFill, label: B.primary.label, pressedLabel: B.primary.label },
+    secondary: { fill: B.secondary.fill, pressedFill: B.secondary.pressedFill, label: B.secondary.label, pressedLabel: B.secondary.label },
+    signal: { fill: B.signal.fill, pressedFill: B.signal.pressedFill, label: B.signal.label, pressedLabel: B.signal.label },
+    // Quiet draws no fill. Its fill entries only matter if a quiet button turns into a filled one.
+    quiet: { fill: ref.color.ground, pressedFill: ref.color.ground, label: B.quiet.label, pressedLabel: B.quiet.pressedLabel },
+  },
+  brass: {
+    primary: { fill: BR.primary.fill, pressedFill: BR.primary.pressedFill, label: BR.primary.label, pressedLabel: BR.primary.label },
+    secondary: { fill: BR.secondary.fill, pressedFill: BR.secondary.pressedFill, label: BR.secondary.label, pressedLabel: BR.secondary.label },
+    // Brass has no separate signal colour: its "go" action is the brass primary.
+    signal: { fill: BR.primary.fill, pressedFill: BR.primary.pressedFill, label: BR.primary.label, pressedLabel: BR.primary.label },
+    quiet: { fill: color.canvas, pressedFill: color.canvas, label: BR.quiet.label, pressedLabel: BR.quiet.pressedLabel },
+  },
+} as const;
+
+const LABEL_TYPE = { noir: ref.type.button, brass: BR.labelType } as const;
+const EDGE = {
+  noir: { borderWidth: B.secondary.borderWidth, borderColor: B.secondary.border },
+  brass: { borderWidth: BR.secondary.borderWidth, borderColor: BR.secondary.border },
 } as const;
 
 const HEIGHT: Record<PillVariant, number> = {
@@ -38,7 +57,6 @@ const HEIGHT: Record<PillVariant, number> = {
   quiet: B.quiet.height,
 };
 
-const LABEL_LINE = ref.type.button.lineHeight;
 // The small native ActivityIndicator is 20 x 20 on iOS, the same as ref.icon.header.
 const SPINNER_SIZE = ref.icon.header;
 // A button that can go busy reserves 16 + 20 + 8 = 44 on both sides, so the
@@ -54,6 +72,8 @@ export interface PillButtonProps {
   onPress?: PressHandler;
   /** Default "primary". Changing it cross-fades fill and label colour over ref.motion.control. */
   variant?: PillVariant;
+  /** Default "noir". "brass" for the screens that follow the play screen's look (hub, guide, Pro). */
+  scheme?: PillScheme;
   /** Whole control at ref.button.disabledOpacity, no press response, `disabled` state. */
   disabled?: boolean;
   /**
@@ -98,6 +118,7 @@ export function PillButton({
   label,
   onPress,
   variant = "primary",
+  scheme = "noir",
   disabled = false,
   busy = false,
   spinner = false,
@@ -117,7 +138,8 @@ export function PillButton({
   onBlur,
 }: PillButtonProps) {
   const filled = variant !== "quiet";
-  const palette = PALETTES[variant];
+  const palette = PALETTES[scheme][variant];
+  const labelType = LABEL_TYPE[scheme];
   const colors = usePaletteTransition(palette);
   const press = usePressProgress();
   const focus = useFocusRing({ onFocus, onBlur });
@@ -164,16 +186,16 @@ export function PillButton({
         // Filled pills pad the label to their height and grow with it. A quiet
         // button is "44 tall, label + 16 each side": no vertical padding, so it
         // stays 44 (label centred by styles.base) until its label outgrows it.
-        { minHeight: height, paddingHorizontal: sidePad, paddingVertical: filled ? (height - LABEL_LINE) / 2 : 0 },
+        { minHeight: height, paddingHorizontal: sidePad, paddingVertical: filled ? (height - (labelType.lineHeight ?? 0)) / 2 : 0 },
         stretch ? styles.stretch : styles.hug,
         disabled && styles.disabled,
         style,
       ]}
     >
       {filled ? (
-        <Animated.View pointerEvents="none" style={[styles.surface, variant === "secondary" && styles.secondaryEdge, surfaceStyle]} />
+        <Animated.View pointerEvents="none" style={[styles.surface, variant === "secondary" && EDGE[scheme], surfaceStyle]} />
       ) : null}
-      <Animated.Text style={[ref.type.button, styles.label, labelStyle]} maxFontSizeMultiplier={maxFontSizeMultiplier}>
+      <Animated.Text style={[labelType, styles.label, labelStyle]} maxFontSizeMultiplier={maxFontSizeMultiplier}>
         {label}
       </Animated.Text>
       {busy && spinner ? (
@@ -191,7 +213,6 @@ const styles = StyleSheet.create({
   stretch: { alignSelf: "stretch" },
   hug: { alignSelf: "center" },
   surface: { ...StyleSheet.absoluteFill, borderRadius: ref.radius.pill, ...ref.curve },
-  secondaryEdge: { borderWidth: B.secondary.borderWidth, borderColor: B.secondary.border },
   label: { textAlign: "center" },
   spinnerSlot: { position: "absolute", top: 0, bottom: 0, right: ref.space.lg, justifyContent: "center" },
   disabled: { opacity: B.disabledOpacity },

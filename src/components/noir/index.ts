@@ -21,9 +21,9 @@ export {
 export { NoirText, trackingPad, type NoirTextProps, type NoirTextRef, type NoirTextTone, type NoirTextVariant } from "./NoirText";
 export { NoticeLine, type NoticeLineProps } from "./NoticeLine";
 export { Panel, Rule, type PanelProps, type RuleProps } from "./Panel";
-export { PillButton, type PillButtonProps, type PillVariant } from "./PillButton";
+export { PillButton, type PillButtonProps, type PillScheme, type PillVariant } from "./PillButton";
 export { Segment, type SegmentOption, type SegmentProps } from "./Segment";
 export { Stamp, type StampProps } from "./Stamp";
-export { ThinkingStates, type ThinkingStatesProps, type ThinkingVariant } from "./ThinkingStates";
+export { ThinkingStates, type ThinkingStatesProps, type ThinkingTone, type ThinkingVariant } from "./ThinkingStates";
 export type { NoirIcon } from "./types";
 export { useShowAfter } from "./useShowAfter";

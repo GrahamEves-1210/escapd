@@ -7,7 +7,7 @@ import { router, useNavigation } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
 import { openCapture, type CaptureDestination } from "@/capture/openCapture";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { color, motion, radius, ref, space, type } from "@/theme/tokens";
 import { PhotoGuide } from "../PhotoGuide";
 import { swipeStep } from "../swipe";
 
@@ -28,6 +28,22 @@ type BackListener = Parameters<typeof BackHandler.addEventListener>[1];
 let backHandlers: BackListener[] = [];
 
 const TITLES = ["Start at the doorway", "Work around the room", "Get one close view", "Keep the case private"];
+
+const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
+/** How Reanimated's jest renderer reports an animated colour: "#C89D54" as "rgba(200, 157, 84, 1)". */
+const rgba = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 1)`;
+};
+type Drawn = { props: { style?: unknown; jestAnimatedStyle?: { value: Record<string, unknown> } } };
+/** A node's style as drawn now: its last render's style with Reanimated's live animated values on top. */
+const drawnStyle = (node: Drawn) => ({ ...styleOf(node), ...node.props.jestAnimatedStyle?.value });
+/** The step button's drawn fill, edge and label colours (the kit pill's surface layer and label). */
+function stepButtonColours() {
+  const button = screen.getByTestId("guide-step-button");
+  const [surface, label] = button.children as unknown as Drawn[];
+  return { fill: drawnStyle(surface).backgroundColor, edge: drawnStyle(surface).borderColor, label: drawnStyle(label).color };
+}
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -84,8 +100,73 @@ describe("photo guide: first run", () => {
     expect(screen.getByRole("button", { name: "Skip the guide" })).toBeTruthy();
     // iOS swipe-back stays on for step 1 only.
     expect(navigation.setOptions).toHaveBeenLastCalledWith({ gestureEnabled: true });
-    // The art and its pool are decorative.
+    // The art, its mount and its plate label are decorative.
     expect(screen.getByTestId("guide-art", hidden).props.importantForAccessibility).toBe("no-hide-descendants");
+  });
+
+  it("is in the play screen's look: a centred brass stamp, a Playfair title, a Jakarta body, and the X in the text colour", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    expect(styleOf(screen.getByLabelText("Before you shoot. Step 1 of 4"))).toMatchObject({
+      ...type.stamp,
+      color: color.accent,
+      textAlign: "center",
+    });
+    expect(styleOf(screen.getByRole("header", { name: TITLES[0] }))).toMatchObject({ ...type.narrativeTitle, color: color.text });
+    expect(styleOf(screen.getByText("One wide plate. Get the floor and two walls in."))).toMatchObject({
+      ...type.body,
+      color: color.textSecondary,
+    });
+    // The light table's top bar: a 48 round live IconButton.
+    expect(styleOf(screen.getByTestId("guide-close"))).toMatchObject({ width: 48, height: 48, borderRadius: radius.round });
+    // The silk still and the grain lie under a canvas root, with no light pool anywhere.
+    expect(JSON.stringify(screen.toJSON())).not.toContain("RadialGradient");
+  });
+
+  it("sets each step's drawing on a walnut film-plate mount with a brass plate label", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    const G = ref.layout.guide;
+    expect(styleOf(screen.getByTestId("guide-mount", hidden))).toMatchObject({
+      backgroundColor: color.surface,
+      borderWidth: G.hairline,
+      borderColor: color.hairline,
+      borderRadius: radius.mount,
+      padding: G.mount.pad,
+      width: G.plate.width + (G.hairline + G.mount.pad) * 2,
+    });
+    expect(styleOf(screen.getByTestId("guide-plate", hidden))).toMatchObject({
+      backgroundColor: color.canvas,
+      borderRadius: radius.image,
+      overflow: "hidden",
+      width: G.plate.width,
+      height: G.plate.height,
+    });
+    // The plate's rim: the light table's 1 pt edge.
+    const plate = screen.getByTestId("guide-plate", hidden);
+    const rims = (plate.children as unknown as { props: { style?: unknown } }[]).filter((c) => styleOf(c).borderColor === color.rim);
+    expect(rims).toHaveLength(1);
+    expect(styleOf(rims[0])).toMatchObject({ borderWidth: G.hairline, borderRadius: radius.image });
+    // SceneView's plate label, in brass mono.
+    expect(styleOf(screen.getByText("ESCAPD 400  ·  STEP I", hidden))).toMatchObject({ ...type.stamp, color: color.accent });
+    await next();
+    expect(screen.getByText("ESCAPD 400  ·  STEP II", hidden)).toBeTruthy();
+    expect(screen.queryByText("ESCAPD 400  ·  STEP I", hidden)).toBeNull();
+  });
+
+  it("shows Next as the walnut brass pill on steps 1-3 and Open the camera as the brass primary on step 4", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    expect(stepButtonColours()).toEqual({
+      fill: rgba(color.raised),
+      edge: ref.button.brass.secondary.border,
+      label: rgba(color.text),
+    });
+    await next();
+    await next();
+    expect(stepButtonColours().fill).toBe(rgba(color.raised));
+    await next();
+    await act(() => jest.advanceTimersByTime(ref.motion.control.duration * 2));
+    expect(stepButtonColours()).toEqual({ fill: rgba(color.accent), edge: undefined, label: rgba(color.onAccent) });
+    // The brass label type.
+    expect(styleOf(screen.getByText("Open the camera"))).toMatchObject({ ...type.control });
   });
 
   it("Next crossfades to the next step, ignores taps mid-transition, then focuses the title and announces the step", async () => {
@@ -144,7 +225,8 @@ describe("photo guide: first run", () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     await fireEvent.press(screen.getByRole("button", { name: "Next" }));
     const close = screen.getByRole("button", { name: "Skip the guide" });
-    expect(close.props.accessibilityState).toMatchObject({ disabled: false });
+    expect(close.props.accessibilityState?.disabled).toBeFalsy();
+    expect(styleOf(close).opacity).toBeUndefined();
     await fireEvent.press(close);
     expect(router.replace).not.toHaveBeenCalled();
     await settle();
@@ -202,7 +284,7 @@ describe("photo guide: first run", () => {
   it("scrolls the title and body only when large text overflows, so at rest it is no focus stop", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     // The base device's block: a one-line title, 4, a two-line body.
-    const block = ref.type.title.lineHeight + ref.space.xs + ref.type.body.lineHeight * 2;
+    const block = type.narrativeTitle.lineHeight + space.xs + type.body.lineHeight * 2;
     const text = () => screen.getByTestId("guide-text");
     expect(text().props.scrollEnabled).toBe(false);
     await fireEvent(text(), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: ref.layout.guide.art.width, height: block } } });
@@ -268,6 +350,8 @@ describe("photo guide: replay", () => {
     expect(screen.queryByTestId("guide-checking", hidden)).toBeNull();
     await act(() => jest.advanceTimersByTime(ref.layout.guide.thinkingDelay));
     expect(screen.getByTestId("guide-checking").props.accessibilityLabel).toBe("Checking access");
+    // The warm thinking line: the live caption type.
+    expect(styleOf(screen.getAllByText("Checking the file", hidden)[0])).toMatchObject({ ...type.caption });
     expect(router.replace).not.toHaveBeenCalled();
   });
 
@@ -289,8 +373,16 @@ describe("photo guide: replay", () => {
     expect(error.props.accessible).toBeUndefined();
     expect(error.props.accessibilityLiveRegion).toBe("polite");
     expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith("Couldn't reach the darkroom. Try again.");
-    expect(screen.getByText("Couldn't reach the darkroom. Try again.").props.style).toBeDefined();
-    expect(StyleSheet.flatten(screen.getByText("Couldn't reach the darkroom. Try again.").props.style).color).toBe(ref.color.read);
+    // On dark ground the words are the secondary tone and the icon carries the warning colour.
+    expect(styleOf(screen.getByText("Couldn't reach the darkroom. Try again."))).toMatchObject({
+      ...type.caption,
+      color: color.textSecondary,
+    });
+    expect(screen.getByTestId("guide-check-error-icon", hidden).props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(screen.getByTestId("phosphor-react-native-warning-regular", hidden).props).toMatchObject({
+      color: color.warning,
+      width: ref.layout.guide.errorIcon,
+    });
     expect(screen.getByRole("button", { name: "Open the camera" }).props.accessibilityState).toMatchObject({ busy: false });
     await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
     expect(screen.queryByTestId("guide-check-error")).toBeNull();

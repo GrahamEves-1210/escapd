@@ -48,7 +48,8 @@ export function LightPools({ pools, style }: LightPoolsProps) {
           return (
             <RadialGradient key={i} id={`${base}g${i}`} gradientUnits="userSpaceOnUse" cx={pool.cx} cy={pool.cy} fx={pool.cx} fy={pool.cy} r={r}>
               {ref.light[pool.kind].stops.map((stop) => (
-                <Stop key={stop.offset} offset={stop.offset} stopColor={stop.color} />
+                // Opacity must be its own prop: react-native-svg drops an rgba() colour's alpha.
+                <Stop key={stop.offset} offset={stop.offset} stopColor={stop.color} stopOpacity={stop.opacity} />
               ))}
             </RadialGradient>
           );

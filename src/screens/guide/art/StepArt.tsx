@@ -5,6 +5,7 @@ import { drawList, type DrawOp } from "./draw";
 import { SCENES } from "./scenes";
 
 const ART = ref.layout.guide.art;
+const R = ref.layout.guide.phone.radius;
 
 function Op({ op }: { op: DrawOp }) {
   if (op.kind === "rect") {
@@ -14,19 +15,30 @@ function Op({ op }: { op: DrawOp }) {
         y={op.box.y}
         width={op.box.width}
         height={op.box.height}
-        rx={ref.radius.panel}
+        rx={R}
         stroke={op.stroke}
+        strokeOpacity={op.strokeOpacity}
         strokeWidth={op.strokeWidth}
         fill={op.fill}
       />
     );
   }
-  return <Path d={op.d} stroke={op.stroke} strokeWidth={op.strokeWidth} fill={op.fill} strokeLinecap="round" strokeLinejoin="round" />;
+  return (
+    <Path
+      d={op.d}
+      stroke={op.stroke}
+      strokeOpacity={op.strokeOpacity}
+      strokeWidth={op.strokeWidth}
+      fill={op.fill}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
 }
 
 /**
- * One step's line art (ref.illustration), drawn at `width` x `height`: the
- * 240 x 266 art box scaled evenly. Decorative: the text carries the
+ * One step's line art (ref.layout.guide.line), drawn at `width` x `height`:
+ * the 240 x 266 art box scaled evenly. Decorative: the text carries the
  * instruction, so the parent hides it from accessibility.
  */
 export function StepArt({ step, width, height }: { step: number; width: number; height: number }) {
@@ -38,14 +50,15 @@ export function StepArt({ step, width, height }: { step: number; width: number; 
     <Svg width={width} height={height} viewBox={`0 0 ${ART.width} ${ART.height}`}>
       <Defs>
         {list.gradients.map((g) => (
+          // Colour and opacity apart: react-native-svg ignores a stop colour's alpha.
           <LinearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}>
-            <Stop offset={0} stopColor={g.color} stopOpacity={1} />
+            <Stop offset={0} stopColor={g.color} stopOpacity={g.opacity} />
             <Stop offset={1} stopColor={g.color} stopOpacity={0} />
           </LinearGradient>
         ))}
         {list.clip ? (
           <ClipPath id={clipId}>
-            <Rect x={list.clip.x} y={list.clip.y} width={list.clip.width} height={list.clip.height} rx={ref.radius.panel} />
+            <Rect x={list.clip.x} y={list.clip.y} width={list.clip.width} height={list.clip.height} rx={R} />
           </ClipPath>
         ) : null}
       </Defs>

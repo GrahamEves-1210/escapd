@@ -17,14 +17,16 @@ export type CaseState =
   | { kind: "developing"; roomId: string }
   | { kind: "failed"; roomId: string };
 
-/** Mono tab labels (ref.type.label sets them uppercase; written so here too). */
+/** The brass plate labels (live `stamp`, written in capitals). */
 export const TAGS: Record<CardId, string> = {
   study: "THE STUDY",
   room: "YOUR ROOM",
   case: "YOUR CASE",
 };
 
-const STUDY_NOTE: Record<StudyEntry, string> = { unseal: "UNSEAL", continue: "CONTINUE", replay: "REPLAY" };
+// Status notes are live `caption` (UI text), so sentence case. DEVELOPING alone
+// is a `stamp` line (the warm Thinking state's note type), so it stays in capitals.
+const STUDY_NOTE: Record<StudyEntry, string> = { unseal: "Unseal", continue: "Continue", replay: "Replay" };
 // Today's title-screen labels, prefixed with the card's name.
 const STUDY_LABEL: Record<StudyEntry, string> = {
   unseal: "The Study. Unseal the first case.",
@@ -32,7 +34,7 @@ const STUDY_LABEL: Record<StudyEntry, string> = {
   replay: "The Study. Replay the first case.",
 };
 
-export const ROOM_NOTE = "PHOTOGRAPH";
+export const ROOM_NOTE = "Photograph";
 export const ROOM_LABEL = "Your room. Photograph a room.";
 
 export function studyEntry(session: Pick<GameSession, "status"> | null): StudyEntry {
@@ -72,23 +74,23 @@ export function caseForRoom(
   }
 }
 
-/** The 18 pt mono note under the tag. Null while loading: the line stays blank. */
+/** The status note under the plate label. Null while loading: the line stays blank. */
 export function caseNote(state: CaseState): string | null {
   switch (state.kind) {
     case "loading":
       return null;
     case "none":
-      return "NONE YET";
+      return "None yet";
     case "offline":
-      return "OFFLINE";
+      return "Offline";
     case "tryLater":
-      return "TRY LATER";
+      return "Try later";
     case "ready":
-      return state.progress === "continue" ? "CONTINUE" : state.progress === "replay" ? "REPLAY" : "OPEN";
+      return state.progress === "continue" ? "Continue" : state.progress === "replay" ? "Replay" : "Open";
     case "developing":
       return "DEVELOPING";
     case "failed":
-      return "SEE WHY";
+      return "See why";
   }
 }
 
@@ -123,7 +125,7 @@ export function caseSolved(state: CaseState): boolean {
 }
 
 /**
- * NONE YET, OFFLINE and TRY LATER: disabled at 0.4. The note explains why, so
+ * None yet, Offline and Try later: disabled at 0.4. The note explains why, so
  * it is information, not part of the control, and stays at full strength.
  */
 export function caseDisabled(state: CaseState): boolean {

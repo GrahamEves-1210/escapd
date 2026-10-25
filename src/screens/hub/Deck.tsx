@@ -1,37 +1,38 @@
-// The three case files (docs/DESIGN.md, 01 Layout: Fan container and cards;
+// The three case files (docs/DESIGN.md, 01 · Layout: Fan container and cards;
 // States: Focus, Large text / narrow screens). Rendered in reading order:
 // THE STUDY, YOUR ROOM, YOUR CASE. In the fan the centre card is stacked on
 // top with zIndex, not render order, so screen readers and keyboards still
 // go left to right.
 import { useState } from "react";
 import { StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from "react-native";
-import { ref } from "@/theme/tokens";
-import { GameCard, type GameCardProps } from "./GameCard";
+import { ref, space } from "@/theme/tokens";
+import { GameCard, cardRing, type CoveredSide, type GameCardProps } from "./GameCard";
 import type { CardId } from "./caseStatus";
 
-const G = ref.gameCard;
+const C = ref.layout.hub.card;
 const F = ref.layout.hub.fan;
 
-export type DeckCard = Omit<GameCardProps, "layout" | "style" | "onFocusChange" | "covers">;
+export type DeckCard = Omit<GameCardProps, "layout" | "style" | "onFocusChange" | "covers" | "covered">;
 
 // Centre upright on top; the side cards 105 out from the axis, 10 lower,
-// tilted -/+6 degrees about their own centres, overlapping it by 17.
-const SLOTS: Record<CardId, { dx: number; dy: number; tilt: number }> = {
-  study: { dx: -F.sideOffset, dy: F.sideDrop, tilt: -G.fanTilt },
+// tilted -/+6 degrees about their own centres, overlapping it by 17 (the
+// centre card covers 5.8 of a side card's inner edge at its top, 27.7 at its foot).
+const SLOTS: Record<CardId, { dx: number; dy: number; tilt: number; covered?: CoveredSide }> = {
+  study: { dx: -F.sideOffset, dy: F.sideDrop, tilt: -F.tilt, covered: "right" },
   room: { dx: 0, dy: 0, tilt: 0 },
-  case: { dx: F.sideOffset, dy: F.sideDrop, tilt: G.fanTilt },
+  case: { dx: F.sideOffset, dy: F.sideDrop, tilt: F.tilt, covered: "left" },
 };
 
 /** A card's box in the fan, from the fan's width (its axis is width / 2). */
 function slotStyle(id: CardId, width: number): ViewStyle {
   const slot = SLOTS[id];
-  return { left: width / 2 + slot.dx - G.width / 2, top: slot.dy, transform: [{ rotate: `${slot.tilt}deg` }] };
+  return { left: width / 2 + slot.dx - C.width / 2, top: slot.dy, transform: [{ rotate: `${slot.tilt}deg` }] };
 }
 
 /**
  * The three-card fan, 226 tall, centred on the screen's axis (visual width
- * 352). The container never clips, so the focus ring and the tilted corners
- * can overhang it.
+ * 349.6 with the mounts' 18 corners). The container never clips, so the
+ * focus ring and the tilted corners can overhang it.
  */
 export function Fan({ cards, style }: { cards: readonly DeckCard[]; style?: StyleProp<ViewStyle> }) {
   const [focused, setFocused] = useState<CardId | null>(null);
@@ -45,6 +46,7 @@ export function Fan({ cards, style }: { cards: readonly DeckCard[]; style?: Styl
           {...card}
           layout="fan"
           covers={card.id === "room"}
+          covered={SLOTS[card.id].covered}
           onFocusChange={(on) => setFocused((current) => (on ? card.id : current === card.id ? null : current))}
           style={[styles.slot, slotStyle(card.id, width), card.id === "room" && styles.onTop]}
         />
@@ -52,8 +54,8 @@ export function Fan({ cards, style }: { cards: readonly DeckCard[]; style?: Styl
       {/*
         One focus ring above the fan, not drawn by the card: a side card's own
         ring would be half hidden under the centre card. Same box, centre and
-        rotation as the focused card; RN outline props draw the 2 pt ring at
-        the 2 pt offset around its radius-6 corners.
+        rotation as the focused card; RN outline props draw the kit's 2 pt ring
+        at the 2 pt offset around its radius.thumbRing corners.
       */}
       {focused ? (
         <View
@@ -81,16 +83,8 @@ export function CardStack({ cards, style }: { cards: readonly DeckCard[]; style?
 
 const styles = StyleSheet.create({
   fan: { alignSelf: "stretch", height: F.height },
-  slot: { position: "absolute", width: G.width, height: G.height },
+  slot: { position: "absolute", width: C.width, height: C.height },
   onTop: { zIndex: 1 },
-  ring: {
-    zIndex: 2,
-    borderRadius: ref.radius.panel,
-    ...ref.curve,
-    outlineStyle: "solid",
-    outlineWidth: ref.focus.width,
-    outlineOffset: ref.focus.offset,
-    outlineColor: ref.focus.color,
-  },
-  stack: { alignSelf: "stretch", paddingHorizontal: ref.space.edge, gap: ref.space.lg },
+  ring: { zIndex: 2, ...cardRing },
+  stack: { alignSelf: "stretch", paddingHorizontal: space.gutter, gap: space.lg },
 });

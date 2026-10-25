@@ -1,5 +1,6 @@
 // Every word on /pro (docs/DESIGN.md, 05 · Copy, Tappable elements and States).
 
+// The top bar's brass stamp. Spoken as words, not letters.
 export const FILE_LABEL = "CASE FILE  ·  ESCAPD PRO";
 export const FILE_LABEL_A11Y = "Case file. ESCAPD Pro.";
 
@@ -7,7 +8,11 @@ export const FILE_LABEL_A11Y = "Case file. ESCAPD Pro.";
 // "Open a file on / your own room."
 export const STATEMENT = "Open a file on your own room.";
 
-/** The benefit index. Row 03 reads the monthly cap from get_my_access, never a hard-coded number. */
+// The manila slip's stamp heading.
+export const SLIP_HEADING = "WHAT PRO OPENS";
+export const SLIP_HEADING_A11Y = "What Pro opens.";
+
+/** The slip's three lines. Line 03 reads the monthly cap from get_my_access, never a hard-coded number. */
 export function benefitRows(cap: number | null): readonly string[] {
   return ["Your room becomes the case.", "The clues hide in your things.", capRow(cap)];
 }
@@ -24,6 +29,9 @@ export const UNLOCK = "Unlock Pro";
 export const UNLOCK_HINT = "Test purchase. Nothing is charged.";
 export const CHECK_AGAIN = "Check again";
 export const NOT_NOW = "Not now";
+
+/** Loading's indicator, for screen readers. */
+export const LOADING = "Loading";
 
 /** Test purchases off: information, not an error, so it has no icon. */
 export const NOT_ON_SALE = "Pro isn't on sale yet. If you're testing, ask for access, then check again.";

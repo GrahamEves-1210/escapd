@@ -170,22 +170,24 @@ const noirColor = {
 export const ref = {
   color: noirColor,
   // Static pools of soft white light on key objects and hero areas. Reading
-  // areas stay flat. Each screen sets the centre; radius is in pt.
+  // areas stay flat. Each screen sets the centre; radius is in pt. Colour and
+  // opacity are separate because react-native-svg ignores the alpha of an
+  // rgba() stop colour and paints it solid (stopOpacity defaults to 1).
   light: {
     hero: {
       radius: 220,
       stops: [
-        { offset: 0, color: "rgba(242, 242, 242, 0.10)" },
-        { offset: 0.5, color: "rgba(242, 242, 242, 0.04)" },
-        { offset: 1, color: "rgba(242, 242, 242, 0)" },
+        { offset: 0, color: noirColor.bright, opacity: 0.1 },
+        { offset: 0.5, color: noirColor.bright, opacity: 0.04 },
+        { offset: 1, color: noirColor.bright, opacity: 0 },
       ],
     },
     object: {
       radius: 120,
       stops: [
-        { offset: 0, color: "rgba(242, 242, 242, 0.07)" },
-        { offset: 0.5, color: "rgba(242, 242, 242, 0.025)" },
-        { offset: 1, color: "rgba(242, 242, 242, 0)" },
+        { offset: 0, color: noirColor.bright, opacity: 0.07 },
+        { offset: 0.5, color: noirColor.bright, opacity: 0.025 },
+        { offset: 1, color: noirColor.bright, opacity: 0 },
       ],
     },
   },
@@ -253,6 +255,15 @@ export const ref = {
     bare: { hit: 44, glyph: noirColor.bright, pressedGlyph: noirColor.read, iconSize: 24 },
     shutter: { ring: 76, ringWidth: 2, ringColor: noirColor.bright, disk: 64, fill: noirColor.bright, pressedFill: noirColor.brightPressed, glyph: noirColor.inverseInk, iconSize: 28 },
     segment: { height: 36, radius: 999, fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, thumbFill: noirColor.hairline2, active: noirColor.bright, inactive: noirColor.meta },
+    // The brass scheme: Noir's pill shape and motion in the play screen's own
+    // colours and button type (live color / type). The hub, the photo guide and
+    // Pro use it; the camera and permission screens keep the Noir pills.
+    brass: {
+      primary: { fill: color.accent, pressedFill: color.accentPressed, label: color.onAccent },
+      secondary: { fill: color.raised, pressedFill: color.surface, borderWidth: 1, border: color.hairline, label: color.text },
+      quiet: { label: color.textSecondary, pressedLabel: color.text },
+      labelType: type.control,
+    },
   },
   // Opaque graphite panels and frames. No glass, blur or coloured glow.
   panel: { fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, radius: 6 },
@@ -280,31 +291,36 @@ export const ref = {
   layout: {
     // 01 · Game mode, the hub at /
     hub: {
-      // Header wordmark height (stroke 8/60 x 14 = 1.9).
+      // Header wordmark height (stroke 8/60 x 14 = 1.9): one stamp line tall.
       wordmarkHeight: 14,
+      // The 1 pt lines the play screen draws: the header rule, the mounts'
+      // brass hairline, the plates' rim, the SOLVED stamp and the notice panel.
+      hairline: 1,
       // The painted glass: a 128 box. Lens centre and radius as fractions of
       // the box, measured on magnifier-1024.png (78.6, 42.4) r 32.3 at 128.
       glass: 128,
       lens: { x: 0.614, y: 0.331, r: 0.252 },
-      // Column spacer weights (divider to safe bottom): above and below the
-      // glass and below the fan; without the glass, above and below the hero.
-      weights: { aboveGlass: 7, belowGlass: 7, belowFan: 50, aboveHero: 23, belowHero: 25 },
-      // Fan: container height (y 392-618), side-card centre offset from the
-      // axis, side-card drop; it needs this width and text scale or it stacks.
-      fan: { height: 226, sideOffset: 105, sideDrop: 10, minWidth: 375, maxFontScale: 1 },
-      // Card-local: tag to note, line art box and centre y, busy indicator box
-      // (y 170-190, the stamp band).
-      card: { noteGap: 6, art: 48, artCentreY: 113, busyTop: 170, busySize: 20 },
-      // Stacked cards (large text, narrow screens): minimum height.
+      // Column spacer weights (rule to safe bottom): above and below the
+      // glass and below the fan; without the glass, above and below the hero
+      // (15 : 17 keeps the title and fan where the glass leaves them on 852).
+      weights: { aboveGlass: 7, belowGlass: 7, belowFan: 50, aboveHero: 15, belowHero: 17 },
+      // Fan: container height, side-card centre offset from the axis, drop and
+      // tilt (deg); `cover` is the strip of a side card's inner edge under the
+      // centre card at its foot (27.7), which its labels, art and indicator
+      // keep off. It needs this width and text scale or it stacks.
+      fan: { height: 226, sideOffset: 105, sideDrop: 10, tilt: 6, cover: 28, minWidth: 375, maxFontScale: 1 },
+      // A card: the 122 x 209 walnut mount; the line art's box and stroke.
+      card: { width: 122, height: 209, art: 48, artStroke: 1.6 },
+      // Stacked cards (large text, narrow screens): minimum height; the plate
+      // at the right end is square at it (96 - 2 x 4 = 88).
       stackedMinHeight: 96,
-      // Stacked cards: the text column's cap, 353 - 2 x 16 padding - 48 art - 16 gap.
-      stackedTextWidth: 257,
-      // How you play: two 56 halves, thumbs inset 3 with a 6 gap (50 x 30).
-      segment: { option: 56, thumbInset: 3, thumbGap: 6 },
-      // The sheet stops at this share of the screen height and scrolls. It
-      // leaves with the live Sheet's slide (ms).
-      sheetMaxHeight: 0.64,
+      // THE STUDY's notice glyph, as /play's failure banner draws it.
+      noticeIcon: 18,
+      // How you play is the live Sheet, which leaves with a 200 ms slide and has
+      // no exit callback: focus returns to How you play after that slide (or
+      // motion.reducedFade) plus this margin for the layer's removal (ms).
       sheetExit: 200,
+      sheetFocusMargin: 100,
     },
     // 02 · Camera
     camera: {
@@ -378,18 +394,27 @@ export const ref = {
       // live Sheet does (under reduced motion: after motion.reducedFade).
       titleFocusDelay: 300,
     },
-    // 04 · First-time photo guide
+    // 04 · First-time photo guide, in the play screen's look (live tokens).
     guide: {
-      // Close sits off the 38 gutter at right inset 34 (as measured); the step
-      // stamp ends 15 clear of it, so its max width is width - 131.
-      closeRight: 34,
-      stampGap: 15,
-      // Illustration art box, centred at x 196.5. On 393 x 852 its voids are
-      // 151 above (header to art) and 88 below (art to title). Text growth
-      // comes out of the 88 first, then the 151; then the box shrinks evenly
-      // keeping ref.space.xl clear above and below, and it hides with its
-      // pool below minHeight. Ink stays within inkMax.
-      art: { width: 240, height: 266, minHeight: 120, above: 151, below: 88, inkMax: 170 },
+      // The 1 pt edges: the mount's brass hairline, the plate's rim and the
+      // drawn phone screen's edge (art units).
+      hairline: 1,
+      // The film-plate mount (SceneView's Kodachrome mount): walnut padding
+      // around the inner plate, and the plate to its plate label.
+      mount: { pad: 6, labelGap: 6 },
+      // The inner plate: 3:4 like a room plate, 264 x 352 on 393 x 852 (mount
+      // 278 x 386 at y 178-564), the art box centred in it. When large text
+      // needs the room it shrinks evenly, the drawing with it, and below
+      // minHeight the whole mount hides.
+      plate: { width: 264, height: 352, minHeight: 160 },
+      // Voids on the base device: header (Close's slop included) to the mount
+      // (y 111-178), and the mount to the title (y 564-620). Text growth comes
+      // out of `below` first, then `above`, each down to space.xl; only then
+      // does the plate shrink.
+      voids: { above: 67, below: 56 },
+      // The art box: the drawings' own units, centred in the plate (x 76.5-316.5,
+      // y 228-494). Ink stays within inkMax.
+      art: { width: 240, height: 266, inkMax: 170 },
       // Body's last line to the button top (y 700-762), and the replay status
       // line's box inside it (y 724-742).
       ctaGap: 62,
@@ -400,21 +425,37 @@ export const ref = {
       swipe: { activeOffsetX: 16, failOffsetY: 16, commitDistance: 56, commitVelocity: 500 },
       // Replay wait: the thinking line appears only past this many ms.
       thinkingDelay: 1000,
+      // Replay error: the Warning glyph beside the caption line.
+      errorIcon: 16,
+      // The line art, warm: stroke and fade length in art units, then each
+      // depth as a live colour and an opacity (kept apart because
+      // react-native-svg ignores a stop colour's alpha). On color.canvas: hero
+      // 17.0:1, mid 7.4:1, back 4.1:1, context 1.6:1. Viewfinder brackets brass.
+      line: {
+        stroke: 1.6,
+        fade: 40,
+        hero: { color: color.text, opacity: 1 },
+        mid: { color: color.textSecondary, opacity: 1 },
+        back: { color: color.textSecondary, opacity: 0.7 },
+        context: { color: color.textSecondary, opacity: 0.3 },
+        bracket: color.accent,
+      },
       // Illustration geometry in the art box's own units (it scales with the
-      // box): the hero phone and its inner-screen insets (44 x 85.5 screen),
-      // the bracket L-shapes, and step 2's phone plan symbols.
-      phone: { width: 70, height: 137, screenInsetX: 13, screenInsetTop: 24.5, screenInsetBottom: 27 },
+      // plate): the hero phone, its corner radius (also the plan symbols') and
+      // inner-screen insets (44 x 85.5 screen), the bracket L-shapes, and step
+      // 2's phone plan symbols.
+      phone: { width: 70, height: 137, radius: 6, screenInsetX: 13, screenInsetTop: 24.5, screenInsetBottom: 27 },
       bracket: { arm: 9, inset: 4 },
       planPhone: { width: 20, height: 40 },
     },
     // 05 · Pro (test paywall)
     pro: {
-      // Safe top to the file label's line box (y 85-101): 04's stamp position,
-      // centred on 04's Close (safe top + 12, 44 tall).
-      labelTop: 26,
-      // Loading: the dither appears only if the access check is still running
-      // after this many ms, so a faster check shows nothing.
-      ditherDelay: 300,
+      // Loading: the brass ActivityIndicator appears only if the access check
+      // is still running after this many ms, so a faster check shows nothing.
+      spinnerDelay: 300,
+      // Notice glyph (Warning / WifiSlash): one caption line square, as the
+      // play screen's failure banner draws it.
+      noticeIcon: 18,
     },
   },
   // Control colour changes only. Functional game motion (scene crossfade,
@@ -436,6 +477,9 @@ export const ref = {
       distance: 8,
       easing: "ease-in-out",
       shimmer: { duration: 2000, easing: "linear", band: 0.8, base: noirColor.meta, highlight: noirColor.bright },
+      // The same sweep in the play screen's warm text colours (hub, guide, Pro).
+      // Reduced motion shows the line still in `still`.
+      shimmerWarm: { base: color.textSecondary, highlight: color.text, still: color.textSecondary },
     },
     // Short waits with no status line: a 4 x 4 Bayer dither dissolve, like a
     // halftone developing. Cells light in Bayer order, each opacity 0.1 to 1
@@ -453,10 +497,12 @@ export const ref = {
       glare: {
         opacity: 0.32,
         fade: 300,
+        // White, with each stop's alpha as a separate opacity (see ref.light).
+        color: "#FFFFFF",
         layers: [
-          { radius: 95, stops: ["rgba(255, 255, 255, 0.48)", "rgba(255, 255, 255, 0.06)", "rgba(255, 255, 255, 0)"], offsets: [0, 0.52, 0.84] },
-          { radius: 200, stops: ["rgba(255, 255, 255, 0.22)", "rgba(255, 255, 255, 0.04)", "rgba(255, 255, 255, 0)"], offsets: [0, 0.58, 0.78] },
-          { radius: 360, stops: ["rgba(255, 255, 255, 0.10)", "rgba(255, 255, 255, 0)"], offsets: [0, 0.88] },
+          { radius: 95, opacities: [0.48, 0.06, 0], offsets: [0, 0.52, 0.84] },
+          { radius: 200, opacities: [0.22, 0.04, 0], offsets: [0, 0.58, 0.78] },
+          { radius: 360, opacities: [0.1, 0], offsets: [0, 0.88] },
         ],
       },
     },

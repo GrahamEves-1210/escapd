@@ -1,8 +1,8 @@
 // Step changes (docs/DESIGN.md 04, States: Transition and Reduced motion).
-// The art, stamp, title and body crossfade over motion.sceneCrossfade, with no
-// drift and no counter roll; under reduced motion it is a motion.reducedFade
-// opacity change. The pool, Close and the button stay still. Taps during the
-// transition are ignored.
+// The art, its plate label, the stamp, title and body crossfade over
+// motion.sceneCrossfade, with no drift and no counter roll; under reduced
+// motion it is a motion.reducedFade opacity change. The mount, Close and the
+// button stay still. Taps during the transition are ignored.
 //
 // One shared clock drives every layer: the n-th step change runs it from n - 1
 // to n. A layer that came in at change e shows clamp(clock - (e - 1)), and one
