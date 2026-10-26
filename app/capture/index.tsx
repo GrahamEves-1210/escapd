@@ -14,6 +14,8 @@
 // and returns to the light table. Leaving is the camera's back button, or the
 // system's back on both states (the iOS edge swipe stays on, Android's back
 // and VoiceOver's escape are handled by each state).
+// Inside a mode (src/capture/ui/palette.ts) the ground is the mode's and 03
+// is the mode's dark sheet, so the status bar keeps light glyphs throughout.
 import { useCallback, useEffect } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
@@ -22,11 +24,12 @@ import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router
 import { setStatusBarStyle } from "expo-status-bar";
 import { usePlates, useSlots } from "@/capture/roll";
 import { CameraPermission } from "@/capture/ui/CameraPermission";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { useGuideBackstop } from "@/capture/ui/permission/useGuideBackstop";
 import { Rangefinder } from "@/capture/ui/Rangefinder";
 import { useShowAfter } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { motion } from "@/theme/tokens";
 
 // Granted: the rangefinder fades in under 03's leaving ground and sheet.
 const SCENE_IN = FadeIn.duration(motion.sceneCrossfade).reduceMotion(ReduceMotion.Never);
@@ -53,6 +56,7 @@ export default function CaptureScreen() {
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const guide = useGuideBackstop(retakeIndex === null);
   const { reducedMotion } = useTheme();
+  const palette = useCapturePalette();
   const close = useCallback(() => (router.canGoBack() ? router.back() : router.replace("/")), []);
 
   // Settings return (03, "Open Settings"): re-read the permission whenever the
@@ -75,17 +79,19 @@ export default function CaptureScreen() {
 
   // The status bar: dark glyphs on 03's white, back to the app's light ones
   // once the camera's ground has faded in (and whenever /capture loses focus,
-  // so the light table and the rest of the app keep theirs).
+  // so the light table and the rest of the app keep theirs). A mode's 03 is
+  // dark: light glyphs all along.
   const cameraShown = useShowAfter(granted, reducedMotion ? motion.reducedFade : motion.sceneCrossfade);
+  const lightGlyphs = cameraShown || !palette.paper;
   useFocusEffect(
     useCallback(() => {
-      setStatusBarStyle(cameraShown ? "light" : "dark");
+      setStatusBarStyle(lightGlyphs ? "light" : "dark");
       return () => setStatusBarStyle("light");
-    }, [cameraShown]),
+    }, [lightGlyphs]),
   );
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: palette.page }]}>
       <Stack.Screen options={SCREEN_OPTIONS} />
       {granted ? (
         <Animated.View entering={reducedMotion ? SCENE_IN_REDUCED : SCENE_IN} style={StyleSheet.absoluteFill}>
@@ -108,7 +114,7 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
-  // The camera's flat ground (02), under both states: 03 covers it with its
-  // own white until a grant fades that out.
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  // The camera's flat ground (02, the palette's page), under both states: 03
+  // covers it with its own ground until a grant fades that out.
+  root: { flex: 1 },
 });

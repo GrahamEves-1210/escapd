@@ -1,17 +1,27 @@
 // The one way into the camera (docs/DESIGN.md, 04 · Entry rule, as changed by
 // 05 · Entry rule). It checks access first; with access it always opens the
 // photo guide, which shows before every new room and then continues to the
-// camera. Callers: 01's YOUR ROOM card (push), the guide's access-checked
-// continue when it was opened directly ({ replace: true, skipGuide: true }),
-// /pro after its test purchase ({ replace: true }) and /tutorial/complete
-// ({ replace: true }, not wired yet). Every caller sits directly on the hub,
-// so back from wherever this lands returns to the hub.
+// camera. Callers: a mode's New case ({ genre }, push), the guide's
+// access-checked continue when it was opened directly ({ replace: true,
+// skipGuide: true }), /pro after its test purchase ({ replace: true }) and
+// /tutorial/complete ({ replace: true }, not wired yet). Every caller sits
+// directly on the hub or a mode screen, so back from wherever this lands
+// returns there. A genre sets the active mode (the guide, camera, review and
+// build wait take its look) and the mode the room is built in; a caller
+// without one keeps the roll's, so the trip through /pro keeps it.
 import { router, type Href } from "expo-router";
+import { setMode } from "@/game/mode";
 import { ensureSession, getMyAccess } from "@/lib/escapd-api";
-import type { MyAccess } from "@/lib/puzzle-types";
+import type { Genre, MyAccess } from "@/lib/puzzle-types";
 import { resetCaptureGuide } from "./guideSeen";
+import { setRollGenre } from "./roll";
 
 export interface OpenCaptureOptions {
+  /**
+   * The mode the new case is for: made the active mode and kept with the
+   * roll, so the room is created in it. Omitted, the roll's mode stays.
+   */
+  genre?: Genre;
   /** Navigate with router.replace instead of router.push, so the caller leaves the stack. */
   replace?: boolean;
   /** Go straight to /capture once access is confirmed: the guide's own continue, when it already showed for this room. */
@@ -70,6 +80,8 @@ function hrefFor(destination: CaptureDestination, access: MyAccess): Href {
  * the custom_rooms entitlement to /pro, and a player at the monthly cap to
  * /capture/develop?from=hub. With access it goes to /capture/guide, which
  * continues to the camera; with skipGuide (the guide itself) to /capture.
+ * A genre is applied first, before any check, so a player sent to /account
+ * or /pro comes back to the same mode.
  * Unless skipGuide is set, a new room starts: the guide's flag for the room
  * is cleared first, so /capture's backstop shows the guide even when the
  * caller falls back to /capture without this check.
@@ -80,8 +92,12 @@ function hrefFor(destination: CaptureDestination, access: MyAccess): Href {
  * backstop still shows the guide first; the guide shows its error line.
  */
 export async function openCapture(options: OpenCaptureOptions = {}): Promise<CaptureDestination | null> {
-  const { replace = false, skipGuide = false, signal } = options;
+  const { replace = false, skipGuide = false, signal, genre } = options;
   if (signal?.aborted) return null;
+  if (genre) {
+    setMode(genre);
+    setRollGenre(genre);
+  }
   if (!skipGuide) resetCaptureGuide();
   await ensureSession();
   if (signal?.aborted) return null;

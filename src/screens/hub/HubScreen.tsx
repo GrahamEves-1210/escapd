@@ -1,62 +1,43 @@
-// 01 · Game mode, the hub at / (docs/DESIGN.md), in Opal's look: a black room
-// with a green-teal glow rising from the floor, a header of round dark chips
-// with a centred title and a faint gradient divider, a large empty band, then
-// the title and a grey subtitle over three tilted glass cards: THE STUDY (the
-// guided first case), YOUR ROOM (photograph a room, behind openCapture's
-// access check) and YOUR CASE (the newest own case). The hub is the app's
-// root, so Opal's dismiss chevron and X disc are left out; the chevron's place
-// stays empty so the title stays centred, and the space under the cards is
-// floor glow.
+// 01 · Home, at / (MODES_PROMPT.md Part 2), the shell: it keeps the
+// reference look (black, Opal's header with the ESCAPD wordmark and the
+// Settings chip, white type, the brass focus ring), and below the header
+// three solid mode cards fill the screen: DETECTIVE NOIR, CRIME SCENE and
+// PARANORMAL, each in its own mode's palette (ModeCard). A short screen or
+// large text scrolls them.
+// - Noir: the first tap runs The Study (/tutorial) while it has never been
+//   played (studyEntry's Unseal); after that it opens /mode/noir.
+// - Crime scene and paranormal: the first time, their one-screen intro
+//   (/mode/<genre>/intro, which continues to the mode); after that /mode/<genre>.
+// Home is the shell, so it clears the active mode each time it gains focus.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  BackHandler,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-  type HostInstance,
-  type LayoutChangeEvent,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { AccessibilityInfo, BackHandler, ScrollView, StyleSheet, View, type HostInstance } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect } from "react-native-svg";
-import { openCapture } from "@/capture/openCapture";
 import { Wordmark } from "@/components/Wordmark";
-import { FloorGlow, gradientLine, gradientStops } from "@/components/noir";
-import { ensureSession, isNetworkError } from "@/lib/escapd-api";
+import { gradientLine, gradientStops } from "@/components/noir";
+import { GENRES } from "@/game/mode";
+import { useModeOnFocus } from "@/game/useModeOnFocus";
+import { ensureSession, getLatestSession, isNetworkError } from "@/lib/escapd-api";
+import type { Genre } from "@/lib/puzzle-types";
+import { useModeArt } from "@/screens/mode/art";
+import { hasSeenIntro } from "@/screens/mode/introSeen";
+import { introHref, modeHref } from "@/screens/mode/routes";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
-import {
-  ROOM_LABEL,
-  ROOM_NOTE,
-  TAGS,
-  caseDisabled,
-  caseHint,
-  caseLabel,
-  caseNote,
-  caseSolved,
-  studyLabel,
-  studyNote,
-  type CardId,
-} from "./caseStatus";
-import { CardStack, Fan, type DeckCard } from "./Deck";
+import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
+import { studyEntry } from "./caseStatus";
 import { Chip, SlidersGlyph } from "./Chip";
-import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { HubNotice } from "./HubNotice";
-import { CHIP_PAD, columnHeight, fanFits, fanGlow, fanScale, fanTop, type Marks } from "./layout";
+import { ModeCard } from "./ModeCard";
+import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
 
-
 const H = ref.layout.hub;
-const W = H.weights;
-const T = ref.type;
+const M = H.modes;
 const DIVIDER = ref.gradient.divider;
-
-type Busy = Extract<CardId, "study" | "room">;
+/** The 6 between a chip's 48 hit box and its 36 disc. */
+const CHIP_PAD = (ref.button.chip.hit - ref.button.chip.size) / 2;
 
 interface Notice {
   /** Bumped per failure, so a repeat failure fades in and is announced again. */
@@ -66,34 +47,22 @@ interface Notice {
 
 export function HubScreen() {
   const insets = useSafeAreaInsets();
-  const { width, height, fontScale } = useWindowDimensions();
   const { reducedMotion } = useTheme();
-  const { study, ownCase } = useHubData();
-  const [busy, setBusy] = useState<Busy | null>(null);
+  const { study, counts } = useHubData();
+  const art = useModeArt();
+  const [busy, setBusy] = useState<Genre | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [marks, setMarks] = useState<Marks>({});
   const helpRef = useRef<HostInstance>(null);
   const action = useRef<AbortController | null>(null);
   const failures = useRef(0);
   const focusReturn = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dividerId = `divider${useId().replace(/[^A-Za-z0-9]/g, "")}`;
 
-  // A narrow or short screen scales the whole fan down; large text (from the
-  // first larger step), or a fan that would drop under 0.75, stacks the
-  // cards. Decided from the window, text size and safe areas; never animated.
-  const scale = fanScale(width, columnHeight(height, insets), fontScale);
-  const stacked = !fanFits(fontScale, scale);
-  // Fanned, the floor glow rises with the fan; stacked, it keeps its own place.
-  const glow = stacked ? undefined : fanGlow(height, fanTop(height, insets, fontScale, scale), scale);
+  // Home is the shell: no mode while it is in front.
+  useModeOnFocus(null);
 
-  const onTopSpacerLayout = (e: LayoutChangeEvent) => {
-    if (notice) return;
-    const topSpacer = e.nativeEvent.layout.height;
-    setMarks((current) => (current.topSpacer === topSpacer ? current : { ...current, topSpacer }));
-  };
-
-  // Leaving the hub drops a late result (nothing navigates a player who has
+  // Leaving home drops a late result (nothing navigates a player who has
   // gone), returns a busy card to idle and clears the notice, which stays
   // only until the next focus.
   useFocusEffect(
@@ -108,11 +77,11 @@ export function HubScreen() {
     ),
   );
 
-  const begin = (card: Busy) => {
+  const begin = (genre: Genre) => {
     setNotice(null);
     const controller = new AbortController();
     action.current = controller;
-    setBusy(card);
+    setBusy(genre);
     return controller.signal;
   };
   // Only the current action ends the busy state; an aborted one already has.
@@ -122,13 +91,22 @@ export function HubScreen() {
     setBusy(null);
   };
 
-  // THE STUDY: sign a new player in as a guest, then resume or start through
-  // /tutorial (start_or_resume_session). A failure shows the notice.
-  const openStudy = async () => {
-    const signal = begin("study");
+  // Noir: The Study first. Once it has been played (Continue or Replay), the
+  // mode screen, where The Study stays as a case to replay. Otherwise sign a
+  // new player in as a guest and run /tutorial; when the focus fetch hasn't
+  // said (still loading, or it failed), ask for the tutorial session first.
+  const openNoir = async () => {
+    if (study === "continue" || study === "replay") {
+      setNotice(null);
+      router.push(modeHref("noir"));
+      return;
+    }
+    const signal = begin("noir");
     try {
       await ensureSession();
-      if (!signal.aborted) router.push("/tutorial");
+      if (signal.aborted) return;
+      const entry = study ?? studyEntry(await getLatestSession(TUTORIAL_ROOM_ID));
+      if (!signal.aborted) router.push(entry === "unseal" ? "/tutorial" : modeHref("noir"));
     } catch (error) {
       if (!signal.aborted) {
         failures.current += 1;
@@ -139,29 +117,19 @@ export function HubScreen() {
     }
   };
 
-  // YOUR ROOM: openCapture() checks access, then opens the photo guide, which
-  // shows before every new room and continues to the camera. If the check
-  // can't run it rejects without navigating and the card carries on to
-  // /capture: its backstop still shows the guide first, and /capture/develop
-  // checks access again before anything is sent.
-  const openRoom = async () => {
-    const signal = begin("room");
-    try {
-      await openCapture({ signal });
-    } catch {
-      if (!signal.aborted) router.push("/capture");
-    } finally {
-      end(signal);
-    }
-  };
-
-  // YOUR CASE: play a ready case (start_or_resume_session resumes or starts
-  // fresh); a building or failed one opens the build wait (/capture/develop).
-  const openCase = () => {
+  // Crime scene and paranormal: the intro the first time, then the mode. The
+  // flag is a quick local read, so the card shows no busy state; a second
+  // tap while it reads is dropped.
+  const opening = useRef(false);
+  const openMode = async (genre: Genre) => {
+    if (opening.current) return;
+    opening.current = true;
     setNotice(null);
-    if (ownCase.kind === "ready") router.push({ pathname: "/play/[roomId]", params: { roomId: ownCase.roomId } });
-    else if (ownCase.kind === "developing" || ownCase.kind === "failed") {
-      router.push({ pathname: "/capture/develop", params: { roomId: ownCase.roomId } });
+    try {
+      const seen = await hasSeenIntro(genre);
+      router.push(seen ? modeHref(genre) : introHref(genre));
+    } finally {
+      opening.current = false;
     }
   };
 
@@ -169,7 +137,7 @@ export function HubScreen() {
     if (focusReturn.current) clearTimeout(focusReturn.current);
     focusReturn.current = null;
   }, []);
-  // A pending focus return never outlives the hub.
+  // A pending focus return never outlives home.
   useEffect(() => cancelFocusReturn, [cancelFocusReturn]);
 
   const openSheet = () => {
@@ -192,7 +160,7 @@ export function HubScreen() {
       if (help) AccessibilityInfo.sendAccessibilityEvent(help, "focus");
     }, exit + H.sheet.focusMargin);
   }, [reducedMotion, cancelFocusReturn]);
-  // A Settings row that leaves the hub: the sheet closes (no focus return), then the route opens.
+  // A Settings row that leaves home: the sheet closes (no focus return), then the route opens.
   // Adding an email comes back here when done, as everywhere else that asks.
   const openRoute = (route: SettingsRoute) => {
     cancelFocusReturn();
@@ -216,70 +184,8 @@ export function HubScreen() {
     }, [sheetOpen, busy, closeSheet]),
   );
 
-  const caseOff = caseDisabled(ownCase);
-  const cards: DeckCard[] = [
-    {
-      id: "study",
-      tag: TAGS.study,
-      note: studyNote(study),
-      accessibilityLabel: studyLabel(study),
-      busy: busy === "study",
-      dimmed: busy !== null && busy !== "study",
-      onPress: () => {
-        openStudy();
-      },
-      testID: "hub-card-study",
-    },
-    {
-      id: "room",
-      tag: TAGS.room,
-      note: ROOM_NOTE,
-      accessibilityLabel: ROOM_LABEL,
-      busy: busy === "room",
-      dimmed: busy !== null && busy !== "room",
-      onPress: () => {
-        openRoom();
-      },
-      testID: "hub-card-room",
-    },
-    {
-      id: "case",
-      tag: TAGS.case,
-      note: caseNote(ownCase),
-      developing: ownCase.kind === "developing",
-      solved: caseSolved(ownCase),
-      accessibilityLabel: caseLabel(ownCase),
-      accessibilityHint: caseHint(ownCase),
-      unavailable: caseOff,
-      // Already at 0.45 when its own state disables it: never dimmed twice.
-      dimmed: busy !== null && !caseOff,
-      waiting: ownCase.kind === "loading",
-      onPress: openCase,
-      testID: "hub-card-case",
-    },
-  ];
-
-  // Always mounted: Android speaks a polite live region when its content
-  // changes, never one that has just mounted.
-  const noticeSlot = (style: StyleProp<ViewStyle>) => (
-    <View accessibilityLiveRegion="polite" style={style} testID="hub-notice-slot">
-      {notice ? <HubNotice key={notice.id} offline={notice.offline} /> : null}
-    </View>
-  );
-
-  const heading = (
-    <>
-      <Text accessibilityRole="header" style={[T.title, styles.title]}>
-        Choose a case
-      </Text>
-      <Text style={[T.subtitle, styles.subtitle]}>Three files on the desk.</Text>
-    </>
-  );
-
   return (
     <View style={styles.root}>
-      {/* Black, with the green-teal glow rising from the floor (static). */}
-      <FloorGlow glow={glow} />
       {/* Everything behind the sheet: hidden from TalkBack while it is open (VoiceOver is trapped by the sheet). */}
       <View
         style={styles.screen}
@@ -288,9 +194,9 @@ export function HubScreen() {
       >
         {/* Chip row: the 36 discs at safe top + 12, 16 from the edges, each in its 48 hit box. */}
         <View style={[styles.header, { paddingTop: insets.top + H.header.top - CHIP_PAD }]}>
-          {/* Opal's dismiss chevron: left out (the hub is the root). Its place keeps the title centred. */}
+          {/* Opal's dismiss chevron: left out (home is the root). Its place keeps the wordmark centred. */}
           <View style={styles.chipSlot} />
-          {/* The ESCAPD wordmark in white, its doorway edge grey (no brass), centred: the screen's name. */}
+          {/* The ESCAPD wordmark in white, its doorway edge grey (no brass), centred: the screen's name (the shell keeps its look). */}
           <View style={styles.titleGroup}>
             <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo">
               <Wordmark height={H.header.logo} tint={ref.color.textPrimary} edgeColor={ref.color.textSecondary} />
@@ -317,31 +223,37 @@ export function HubScreen() {
           </Svg>
         </View>
 
-        {stacked ? (
-          <ScrollView
-            style={styles.column}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + ref.space.lg }]}
-            testID="hub-stacked"
-          >
-            <View
-              onLayout={onTopSpacerLayout}
-              style={notice && marks.topSpacer !== undefined ? { height: marks.topSpacer } : styles.aboveHero}
+        <ScrollView
+          style={styles.column}
+          contentContainerStyle={[styles.cards, { paddingBottom: insets.bottom + M.foot }]}
+          testID="hub-cards"
+        >
+          {GENRES.map((genre) => (
+            <ModeCard
+              key={genre}
+              genre={genre}
+              art={art}
+              count={counts?.[genre]}
+              busy={busy === genre}
+              disabled={busy !== null && busy !== genre}
+              onPress={() => {
+                if (genre === "noir") openNoir();
+                else openMode(genre);
+              }}
+              style={styles.card}
             />
-            {heading}
-            <CardStack cards={cards} style={styles.deck} />
-            {noticeSlot(notice ? styles.stackNotice : null)}
-            <View style={{ flex: W.below }} />
-          </ScrollView>
-        ) : (
-          // Divider to the safe bottom: Opal's 124 band (at most) above the title; the rest below the cards.
-          <View style={[styles.column, { marginBottom: insets.bottom }]} testID="hub-fanned">
-            <View style={styles.aboveHero} />
-            {heading}
-            <Fan cards={cards} scale={scale} style={styles.deck} />
-            {/* The notice overlays this space, so the layout never shifts. */}
-            <View style={{ flex: W.below }}>{noticeSlot(styles.fanNotice)}</View>
-          </View>
-        )}
+          ))}
+        </ScrollView>
+
+        {/* Always mounted: Android speaks a polite live region when its content changes, never one that has just mounted. Over the last card's foot. */}
+        <View
+          accessibilityLiveRegion="polite"
+          pointerEvents="box-none"
+          style={[styles.noticeSlot, { bottom: insets.bottom + M.foot + M.pad }]}
+          testID="hub-notice-slot"
+        >
+          {notice ? <HubNotice key={notice.id} offline={notice.offline} /> : null}
+        </View>
       </View>
 
       {sheetOpen ? <SettingsSheet onClose={closeSheet} onOpen={openRoute} /> : null}
@@ -350,7 +262,7 @@ export function HubScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Opal's black, then the floor glow, then content. No grain.
+  // The shell's black. No glow, no grain.
   root: { flex: 1, backgroundColor: ref.color.void },
   screen: { ...StyleSheet.absoluteFill },
   header: {
@@ -363,14 +275,8 @@ const styles = StyleSheet.create({
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
   divider: { height: H.hairline, marginTop: ref.space.lg - CHIP_PAD },
   column: { flex: 1 },
-  // Opal's band above the title: the spacer's share of the free space, never more than 124.
-  aboveHero: { flex: W.above, maxHeight: H.band },
-  scrollContent: { flexGrow: 1 },
-  // Title and subtitle wrap at large text; nothing shrinks.
-  title: { color: ref.color.textPrimary, textAlign: "center", paddingHorizontal: ref.space.edge },
-  subtitle: { color: ref.color.textSecondaryAlpha, textAlign: "center", marginTop: ref.space.xs, paddingHorizontal: ref.space.edge },
-  deck: { marginTop: ref.space.band },
-  // xl 24 below the fan container, centred.
-  fanNotice: { position: "absolute", top: ref.space.xl, left: ref.space.edge, right: ref.space.edge },
-  stackNotice: { marginTop: ref.space.xl, marginHorizontal: ref.space.edge },
+  // The cards share the column's height; each keeps its content and minimum, so large text scrolls.
+  cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge, gap: M.gap },
+  card: { flexGrow: 1 },
+  noticeSlot: { position: "absolute", left: M.edge + M.pad, right: M.edge + M.pad, alignItems: "center" },
 });

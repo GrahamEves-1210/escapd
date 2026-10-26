@@ -6,8 +6,9 @@ import { createGestureController, getByGestureTestId } from "react-native-gestur
 import { router, useNavigation } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
 import { openCapture, type CaptureDestination } from "@/capture/openCapture";
+import { setMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { color, motion, ref } from "@/theme/tokens";
+import { color, modeThemes, motion, ref } from "@/theme/tokens";
 import { PhotoGuide } from "../PhotoGuide";
 import { swipeStep } from "../swipe";
 
@@ -498,6 +499,54 @@ describe("photo guide: opened directly (?replay=1)", () => {
     expect(signal?.aborted).toBe(true);
     expect(titleOnScreen(2)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Next" }).props.accessibilityState).toMatchObject({ busy: false });
+  });
+});
+
+describe("photo guide: inside a mode", () => {
+  const theme = modeThemes.noir;
+  beforeEach(() => setMode("noir"));
+  afterEach(() => setMode(null));
+
+  it("takes the mode's ground, ink and muted ink", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    expect(styleOf(screen.getByTestId("guide-root")).backgroundColor).toBe(theme.ground);
+    expect(styleOf(screen.getByRole("header", { name: TITLES[0] }))).toMatchObject({ ...ref.type.stepTitle, color: theme.ink });
+    expect(styleOf(screen.getByText("One wide photo. Get the floor and two walls in.")).color).toBe(theme.inkMuted);
+  });
+
+  it("keeps the light glass disc with a dark X, in the mode's muted ink and ground", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{}} />);
+    const [disc] = screen.container.queryAll((node) => node.type === "RNSVGCircle");
+    expect(disc.props.fill).toEqual({ type: 0, payload: processColor(theme.inkMuted) });
+    expect(screen.getByTestId("phosphor-react-native-x-regular", hidden).props.color).toBe(theme.ground);
+  });
+
+  it("makes the step button the mode's primary button, the same 52 pill, and every step still works", async () => {
+    await renderGuide(<PhotoGuide replay={false} carry={{ retake: "2" }} />);
+    const button = screen.getByTestId("guide-step-button");
+    expect(styleOf(button)).toMatchObject({ backgroundColor: theme.accent, minHeight: ref.button.ghost.height, borderRadius: ref.radius.round });
+    expect(styleOf(screen.getByText("Next")).color).toBe(theme.accentInk);
+    expect(pillEdges()).toHaveLength(0);
+    await next();
+    await next();
+    await next();
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(3);
+    await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
+    expect(router.replace).toHaveBeenCalledWith({ pathname: "/capture", params: { retake: "2" } });
+  });
+
+  it("shows the replay check's busy spinner in the accent's ink, and its error line in the muted ink", async () => {
+    let fail: (e: Error) => void = () => {};
+    jest.mocked(openCapture).mockReturnValue(new Promise<CaptureDestination>((_, reject) => (fail = reject)));
+    await renderGuide(<PhotoGuide replay carry={{}} />);
+    await next();
+    await next();
+    await next();
+    await fireEvent.press(screen.getByRole("button", { name: "Open the camera" }));
+    expect(screen.getByTestId("guide-step-button-spinner", hidden).props.color).toBe(theme.accentInk);
+    await act(async () => fail(new Error("offline")));
+    expect(styleOf(screen.getByText("Couldn't connect. Try again.")).color).toBe(theme.inkMuted);
+    expect(screen.getByTestId("phosphor-react-native-warning-regular", hidden).props.color).toBe(color.warning);
   });
 });
 

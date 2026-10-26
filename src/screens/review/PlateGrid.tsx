@@ -21,14 +21,20 @@
 // Screen-reader order per photo: its label, the tile (Retake photo 1), the ×
 // (Remove photo 1). The tile and the × are siblings, never nested, so both
 // stay reachable.
+//
+// Inside a mode each photo is shown in the mode's baked treatment
+// (TreatedImage at ref.layout.review.tile.bake): the photo as taken until
+// its bake is ready, then the treatment fades in over ref.motion.treatment
+// (at once under reduced motion). Labels, rims and the open tile take the
+// mode's colours (src/capture/ui/palette.ts); the × stays white over its halo.
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Svg, { Line } from "react-native-svg";
-import { Image } from "expo-image";
 import type { RetakeReason } from "@/capture/failure";
 import type { Plate, Slot } from "@/capture/roll";
 import { promptFor } from "@/capture/slots";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { XIcon } from "@/components/icons";
-import { FocusRing, useFocusRing } from "@/components/noir";
+import { FocusRing, TreatedImage, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
 import { COPY, fillLabel, plateLabel, plateLabelSpoken, removeLabel, retakeLabel } from "./copy";
@@ -98,13 +104,14 @@ function PlateCell({ index, plate, size, reason, onRetake, onRemove }: PlateCell
   const tileFocus = useFocusRing();
   const removeFocus = useFocusRing();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   const marked = reason !== null;
   const rim = marked ? T.flaggedRim : T.rim;
   const why = reason ? COPY.reasons[reason] : null;
   return (
     <View style={[styles.cell, { width: size }]} testID={`plate-${index}`}>
       <View style={styles.label}>
-        <Text style={[styles.labelText, marked && styles.warning]} accessibilityLabel={plateLabelSpoken(prompt)}>
+        <Text style={[styles.labelText, { color: palette.inkMuted }, marked && styles.warning]} accessibilityLabel={plateLabelSpoken(prompt)}>
           {plateLabel(prompt)}
         </Text>
         {why ? (
@@ -131,11 +138,19 @@ function PlateCell({ index, plate, size, reason, onRetake, onRemove }: PlateCell
           style={({ pressed }) => [StyleSheet.absoluteFill, pressed ? styles.pressed : null]}
         >
           <View
-            style={[styles.frame, { borderWidth: rim, borderColor: marked ? L.warning : ref.color.rim }]}
+            style={[styles.frame, { borderWidth: rim, borderColor: marked ? L.warning : palette.rim }]}
             testID={`plate-${index}-frame`}
           >
-            <View style={styles.loading} />
-            <Image source={{ uri: plate.uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+            <View style={[styles.loading, { backgroundColor: palette.raised }]} />
+            <TreatedImage
+              source={plate.uri}
+              genre={palette.genre}
+              maxEdge={T.bake}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              accessible={false}
+              testID={`plate-${index}-photo`}
+            />
           </View>
           <FocusRing visible={tileFocus.focused} shape="panel" radius={T.radius} />
         </Pressable>
@@ -166,10 +181,11 @@ function OpenCell({ index, size, onTake }: { index: number; size: number; onTake
   const prompt = promptFor(index);
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   return (
     <View style={[styles.cell, { width: size }]} testID={`plate-${index}`}>
       <View style={styles.label}>
-        <Text style={styles.labelText} accessibilityLabel={plateLabelSpoken(prompt)}>
+        <Text style={[styles.labelText, { color: palette.inkMuted }]} accessibilityLabel={plateLabelSpoken(prompt)}>
           {plateLabel(prompt)}
         </Text>
       </View>
@@ -183,8 +199,8 @@ function OpenCell({ index, size, onTake }: { index: number; size: number; onTake
         testID={`plate-${index}-open`}
         style={({ pressed }) => [styles.open, { width: size, height: size }, pressed ? styles.pressed : null]}
       >
-        <CameraGlyph color={ref.color.textSecondary} />
-        <Text style={styles.openText}>{COPY.openTile}</Text>
+        <CameraGlyph color={palette.inkMuted} />
+        <Text style={[styles.openText, { color: palette.inkMuted }]}>{COPY.openTile}</Text>
         <FocusRing visible={focus.focused} shape="panel" radius={T.radius} edge={T.open.border} />
       </Pressable>
     </View>
@@ -217,12 +233,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: G.gap, alignItems: "stretch" },
   cell: { justifyContent: "flex-end", gap: G.labelGap },
   label: { justifyContent: "flex-end" },
-  labelText: { ...L.type.label, color: ref.color.textSecondary },
+  labelText: { ...L.type.label },
   warning: { color: L.warning },
   // No fill on the frame itself: the rim composites over the ground (#282828,
   // 1.29:1, as faint as the reference's edge). The loading fill sits inside it.
   frame: { flex: 1, overflow: "hidden", borderRadius: T.radius, ...curve },
-  loading: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.raised },
+  loading: { ...StyleSheet.absoluteFill },
   // The open slot: a dashed grey rim on the ground, the glyph and its line centred.
   open: {
     alignItems: "center",
@@ -234,7 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: T.radius,
     ...curve,
   },
-  openText: { ...L.type.label, color: ref.color.textSecondary, textAlign: "center" },
+  openText: { ...L.type.label, textAlign: "center" },
   remove: {
     position: "absolute",
     top: R.centre - ref.hit.min / 2,

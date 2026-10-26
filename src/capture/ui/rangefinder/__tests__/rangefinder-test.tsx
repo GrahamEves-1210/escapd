@@ -8,7 +8,8 @@ import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
 import { addPlate, clearPlates, getPlates, getSlots, removePlate } from "@/capture/roll";
 import { MAX_PLATES, PLATE_PROMPTS } from "@/capture/slots";
-import { motion, ref } from "@/theme/tokens";
+import { setMode } from "@/game/mode";
+import { modeThemes, motion, ref } from "@/theme/tokens";
 import { Rangefinder } from "../../Rangefinder";
 import { COPY, counterCopy, libraryError, thinkingCopy } from "../copy";
 import { ULTRA_WIDE_LENS } from "../useLenses";
@@ -46,6 +47,11 @@ jest.mock("@/capture/process-photo", () => ({ processPhoto: jest.fn() }));
 // Stable spies in the full shape, so a test can see which haptic a moment gave.
 const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
+// A bake that is ready at once ("baked/<mode>/<photo>"), and none in the shell, as the real one.
+jest.mock("@/components/noir/treatPhoto", () => ({
+  ...jest.requireActual("@/components/noir/treatPhoto"),
+  useTreatedPhoto: (source: string, genre: string | null) => (genre ? `baked/${genre}/${source}` : null),
+}));
 
 const camera = jest.requireMock<{ mockCamera: { takePictureAsync: jest.Mock; getAvailableLensesAsync: jest.Mock } }>("expo-camera").mockCamera;
 const launch = jest.mocked(ImagePicker.launchImageLibraryAsync);
@@ -784,6 +790,63 @@ describe("copy", () => {
 
   it("uses the one-line detail for photo 5", () => {
     expect(PLATE_PROMPTS[4].detail).toBe("Optional. Anything still unseen.");
+  });
+});
+
+describe("Rangefinder: inside a mode", () => {
+  const theme = modeThemes.crime_scene;
+  const uriOf = (node: { props: { source?: unknown } }) => ([node.props.source].flat()[0] as { uri: string }).uri;
+  beforeEach(() => setMode("crime_scene"));
+  afterEach(() => setMode(null));
+
+  it("takes the mode's ground, raised square buttons, inks and wells", async () => {
+    seedRoll(2);
+    await renderCamera();
+    expect(flat(screen.getByTestId("rangefinder-root"))).toMatchObject({ backgroundColor: theme.surface });
+    expect(flat(screen.getByTestId("back"))).toMatchObject({ backgroundColor: theme.raised, borderColor: theme.rim });
+    expect(flat(screen.getByText(PLATE_PROMPTS[2].title))).toMatchObject({ ...ref.type.serifTitle, color: theme.ink });
+    expect(flat(screen.getByText(PLATE_PROMPTS[2].detail)).color).toBe(theme.inkMuted);
+    expect(flat(screen.getByTestId("viewfinder-well"))).toMatchObject({ backgroundColor: theme.ground });
+    expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: theme.ground });
+    expect(flat(screen.getByTestId("shutter-ring", hidden))).toMatchObject({ backgroundColor: theme.ground, boxShadow: ref.effect.shutterGlow });
+    expect(screen.getByTestId("shutter-glass", hidden).props.color).toBe(theme.ink);
+  });
+
+  it("shows the last photo in the mode's baked treatment, framed in the mode's near-black, ringed in its stamp colour from 3", async () => {
+    seedRoll(3);
+    await renderCamera();
+    expect(uriOf(screen.getByTestId("last-plate-photo-treated", hidden))).toBe("baked/crime_scene/file://old-2.jpg");
+    expect(flat(screen.getByTestId("last-plate"))).toMatchObject({ backgroundColor: theme.ground });
+    expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: ref.layout.camera.cue.width, borderColor: theme.stamp });
+    // Still the way on to the review screen.
+    await userEvent.setup().press(screen.getByTestId("last-plate"));
+    expect(push).toHaveBeenCalledWith("/capture/review");
+  });
+
+  it("bakes each new photo as it is taken, and the live feed is never treated", async () => {
+    await renderCamera();
+    await cameraReady();
+    await userEvent.setup().press(screen.getByRole("button", { name: "Take photo 1, From the doorway" }));
+    expect(uriOf(screen.getByTestId("last-plate-photo-treated", hidden))).toBe("baked/crime_scene/file://plate-shot.jpg");
+    expect(screen.queryByTestId("camera-treated", hidden)).toBeNull();
+  });
+
+  it("draws the lens segment in the mode's well, raised thumb and ink", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+    await renderCamera();
+    await cameraReady();
+    expect(flat(screen.getByTestId("lens-track", hidden)).backgroundColor).toBe(theme.ground);
+    expect(flat(screen.getByTestId("lens-thumb", hidden)).backgroundColor).toBe(theme.raised);
+    expect(screen.getByTestId("lens-mark", hidden).props.color).toBe(theme.ink);
+  });
+});
+
+describe("Rangefinder: in the shell (no mode)", () => {
+  it("shows the last photo as taken, with the cross-dissolve and no treatment", async () => {
+    seedRoll(2);
+    await renderCamera();
+    expect(thumbnailUri()).toBe("file://old-1.jpg");
+    expect(screen.queryByTestId("last-plate-photo-treated", hidden)).toBeNull();
   });
 });
 

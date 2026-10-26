@@ -13,6 +13,8 @@
 // ref.motion.sheetRise and its bottom stays fixed, the buttons with it. With
 // large text it grows up to ref.space.lg below the safe top; past that the
 // panel is dropped, then the text scrolls while the controls stay pinned.
+// Inside a mode the sheet, title and body take the mode's sheet colours
+// (src/capture/ui/palette.ts): a dark `surface` sheet, ink and muted ink.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, ScrollView, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent } from "react-native";
 import Animated, {
@@ -26,6 +28,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { sheetEntering, sheetExiting, toEasing } from "@/components/noir";
+import { useCapturePalette } from "../palette";
 import { IllustrationPanel } from "./IllustrationPanel";
 
 const P = ref.layout.permission;
@@ -64,6 +67,7 @@ export interface PermissionSheetProps {
 export function PermissionSheet({ copyKey, title, body, notice, children, testID }: PermissionSheetProps) {
   const insets = useSafeAreaInsets();
   const { reducedMotion } = useTheme();
+  const palette = useCapturePalette();
   const titleRef = useRef<HostInstance>(null);
   const [hostHeight, setHostHeight] = useState(0);
   const [textHeight, setTextHeight] = useState(0);
@@ -106,12 +110,12 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
     <LayoutAnimationConfig skipEntering skipExiting>
       <View style={styles.text} onLayout={onText} testID="permission-text">
         <Animated.View key={`title-${copyKey}`} entering={FADE_IN} exiting={FADE_OUT}>
-          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+          <Text ref={titleRef} accessibilityRole="header" style={[styles.title, { color: palette.sheetInk }]}>
             {title}
           </Text>
         </Animated.View>
         <Animated.View key={`body-${copyKey}`} entering={FADE_IN} exiting={FADE_OUT} style={styles.body}>
-          <Text style={styles.bodyText}>{body}</Text>
+          <Text style={[styles.bodyText, { color: palette.sheetMuted }]}>{body}</Text>
         </Animated.View>
         {notice ? (
           <Animated.View key={notice.key} entering={FADE_IN} exiting={notice.fadeOut ? FADE_OUT : undefined} style={styles.notice}>
@@ -139,7 +143,7 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
         entering={reducedMotion ? FADE_IN : RISE}
         exiting={reducedMotion ? FADE_OUT : FALL}
         layout={resize}
-        style={styles.sheet}
+        style={[styles.sheet, { backgroundColor: palette.sheet }]}
       >
         {panel ? <IllustrationPanel /> : null}
         {scroll ? (
@@ -168,7 +172,6 @@ const styles = StyleSheet.create({
   // square at the screen's foot, clipping the panel. Opaque, no shadow.
   sheet: {
     flexShrink: 1,
-    backgroundColor: ref.color.paper,
     borderTopLeftRadius: ref.radius.bottomSheet,
     borderTopRightRadius: ref.radius.bottomSheet,
     ...ref.curve,
@@ -178,11 +181,11 @@ const styles = StyleSheet.create({
   // Title box ref.space.xl below the panel (or the sheet's top when the panel is dropped).
   text: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.xl },
   // pushr's title: Archivo Black 30/36, lowercase (ref.type.display), black, left-aligned.
-  title: { ...ref.type.display, color: ref.color.inkDisplay },
+  title: { ...ref.type.display },
   // The body: the system font 17/22, the reference's grey, lowercase, ragged right; its box
   // titleToBody 14 below the title's (title baseline to first body baseline 39, as measured).
   body: { marginTop: P.titleToBody },
-  bodyText: { ...ref.type.body, color: ref.color.inkMuted, textTransform: "lowercase" },
+  bodyText: { ...ref.type.body, textTransform: "lowercase" },
   notice: { marginTop: ref.space.sm },
   // The pill sits ref.space.band below the body's box (or the notice); the quiet buttons ref.space.sm below it, and apart.
   controls: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.band, gap: ref.space.sm },

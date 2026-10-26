@@ -11,6 +11,7 @@ import Animated, { FadeOut, ReduceMotion, useAnimatedStyle } from "react-native-
 import { toEasing, useStateProgress } from "@/components/noir";
 import { containBox, type Box } from "@/render/geometry";
 import { curve, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { COPY } from "./copy";
 
 const L = ref.layout.camera;
@@ -56,9 +57,10 @@ export function Viewfinder({
   onMountError,
   onAvailableLensesChanged,
 }: ViewfinderProps) {
+  const palette = useCapturePalette();
   return (
     <View
-      style={[styles.well, { left: layout.x, top: layout.y, width: layout.width, height: layout.height }]}
+      style={[styles.well, { backgroundColor: palette.well, left: layout.x, top: layout.y, width: layout.width, height: layout.height }]}
       testID="viewfinder-well"
     >
       {/* The feed is not a stop for screen readers: the viewfinder isn't tappable and the prompt says what to frame. */}
@@ -126,7 +128,6 @@ const styles = StyleSheet.create({
   well: {
     position: "absolute",
     overflow: "hidden",
-    backgroundColor: ref.color.void,
     borderRadius: ref.radius.viewfinder,
     ...curve,
   },

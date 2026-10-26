@@ -21,3 +21,8 @@ jest.mock("@/game/feedback", () => ({
     error: jest.fn(),
   }),
 }));
+
+// Skia under Jest: jest/skia-mock.js records what a bake draws instead of
+// drawing (the package's own mock needs CanvasKit's wasm in every file).
+// Tests read and reset it through `require("@shopify/react-native-skia").__skia`.
+jest.mock("@shopify/react-native-skia", () => require("./skia-mock"));

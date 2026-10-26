@@ -1,8 +1,9 @@
 import type { PuzzleDefinitionV1, SessionState } from "@/lib/puzzle-types";
 import { initialState, studyPublic } from "@/test-utils/seed";
 import {
-  QUIET_COPY, availableCodePuzzle, definitionProblem, exploreEntries, gainedItems, hotspotA11yLabel, hotspotById,
-  hotspotsForScene, inventoryItems, quietReason, scenesWithHotspots, tapIntent,
+  QUIET_COPY, accusePuzzle, anomalies, availableCodePuzzle, canAccuse, definitionProblem, exploreEntries, gainedItems,
+  hotspotA11yLabel, hotspotById, hotspotsForScene, inventoryItems, isAnomalyFound, newlyContradicted, presence,
+  presenceLabel, quietReason, scenesWithHotspots, suspectById, suspectCards, tapIntent,
 } from "../selectors";
 
 const def = studyPublic();
@@ -37,7 +38,7 @@ describe("definitionProblem", () => {
     expect(definitionProblem(haunted)).toBeNull();
   });
 
-  it("still refuses an accuse step until the player has an accuse screen", () => {
+  it("plays a crime scene: its accuse step is a known kind", () => {
     const option = (id: string) => ({ id, name: id });
     const crimeScene: PuzzleDefinitionV1 = {
       ...def,
@@ -48,7 +49,15 @@ describe("definitionProblem", () => {
         motives: [option("m_debt")], methods: [option("x_tea")],
       }],
     };
-    expect(definitionProblem(crimeScene)).toBe("unknown_kind");
+    expect(definitionProblem(crimeScene)).toBeNull();
+  });
+
+  it("refuses an accusation with nothing to pick in one of its lists", () => {
+    const empty: PuzzleDefinitionV1 = {
+      ...def,
+      puzzles: [...def.puzzles, { id: "name_the_killer", kind: "accuse", suspects: [{ id: "s", name: "S" }], motives: [{ id: "m", name: "M" }], methods: [] }],
+    };
+    expect(definitionProblem(empty)).toBe("malformed");
   });
 
   it("rejects a hotspot pointing at a photo that does not exist", () => {
@@ -153,5 +162,81 @@ describe("explore list and labels", () => {
   it("maps revealed hotspots to their photos", () => {
     expect(scenesWithHotspots(def, ["safe"])).toEqual([1]);
     expect(scenesWithHotspots(def, undefined)).toEqual([]);
+  });
+});
+
+describe("crime scene: the accusation and the suspects", () => {
+  // The Study with an accusation that needs the key and the left half of the note.
+  const crime: PuzzleDefinitionV1 = {
+    ...def,
+    genre: "crime_scene",
+    puzzles: [...def.puzzles, {
+      id: "name_the_killer", kind: "accuse", requires: ["find_key", "find_note_left"],
+      suspects: [
+        { id: "s_ivy", name: "Ivy Marsh", role: "The housekeeper", alibi: "In the garden all evening." },
+        { id: "s_tobias", name: "Tobias Reed", role: "The business partner", alibi: "On the late train home." },
+      ],
+      motives: [{ id: "m_debt", name: "A debt" }],
+      methods: [{ id: "x_tea", name: "Poison in the tea" }],
+    }],
+  };
+
+  it("finds the accusation, and opens it only once every evidence step is solved", () => {
+    expect(accusePuzzle(crime)?.id).toBe("name_the_killer");
+    expect(accusePuzzle(def)).toBeUndefined();
+    expect(canAccuse(crime, start)).toBe(false);
+    expect(canAccuse(crime, { ...start, solved: ["find_key"] })).toBe(false);
+    expect(canAccuse(crime, { ...start, solved: ["find_key", "find_note_left"] })).toBe(true);
+    // Solved: the accusation is over.
+    expect(canAccuse(crime, { ...start, solved: ["find_key", "find_note_left", "name_the_killer"] })).toBe(false);
+    expect(canAccuse(def, start)).toBe(false);
+  });
+
+  it("marks suspects contradicted only when the server lists them, and tolerates an older state without the list", () => {
+    expect(suspectCards(crime, start).map((s) => [s.id, s.contradicted])).toEqual([["s_ivy", false], ["s_tobias", false]]);
+    const broken = { ...start, contradicted: ["s_tobias"] };
+    expect(suspectCards(crime, broken).find((s) => s.id === "s_tobias")).toMatchObject({
+      name: "Tobias Reed", role: "The business partner", alibi: "On the late train home.", contradicted: true,
+    });
+    expect(newlyContradicted(crime, start, broken).map((s) => s.name)).toEqual(["Tobias Reed"]);
+    expect(newlyContradicted(crime, broken, broken)).toEqual([]);
+    expect(suspectById(crime, "s_ivy")?.name).toBe("Ivy Marsh");
+    expect(suspectById(crime, undefined)).toBeUndefined();
+  });
+
+  it("opens the Accuse screen from a case-board hotspot, and labels it", () => {
+    const board: PuzzleDefinitionV1 = {
+      ...crime,
+      puzzles: crime.puzzles.map((p) => (p.kind === "accuse" ? { ...p, hotspot_id: "door" } : p)),
+    };
+    const ready = { ...start, solved: ["find_key", "find_note_left"] };
+    expect(tapIntent(board, start, "door").kind).toBe("inspect");
+    expect(tapIntent(board, ready, "door").kind).toBe("accuse");
+    expect(hotspotA11yLabel(board, ready, hotspotById(board, "door")!, { kind: "default" })).toBe("Door, make your accusation");
+    // The usual accusation has no hotspot: taps everywhere still inspect.
+    expect(tapIntent(crime, ready, "door").kind).toBe("inspect");
+  });
+});
+
+describe("paranormal: the presence", () => {
+  const haunted: PuzzleDefinitionV1 = {
+    ...def,
+    genre: "paranormal",
+    hotspots: def.hotspots.map((h) => ({ ...h, effect: ({ desk_drawer: "flicker", cabinet: "moved", safe: "whisper" } as const)[h.id as "desk_drawer"] })),
+  };
+
+  it("counts effect hotspots as anomalies, hidden ones included", () => {
+    expect(anomalies(haunted).map((h) => h.id).sort()).toEqual(["cabinet", "desk_drawer", "safe"]);
+    expect(presence(haunted, start)).toEqual({ found: 0, total: 3 });
+    expect(presence(def, start)).toEqual({ found: 0, total: 0 });
+  });
+
+  it("finds an anomaly when a step on it is solved, or when the hidden one is revealed", () => {
+    const drawer = hotspotById(haunted, "desk_drawer")!;
+    expect(isAnomalyFound(haunted, start, drawer)).toBe(false);
+    expect(isAnomalyFound(haunted, { ...start, solved: ["find_key"] }, drawer)).toBe(true);
+    // The cabinet's step is a use_item; the safe was hidden until the cabinet opened.
+    expect(presence(haunted, afterCabinet)).toEqual({ found: 3, total: 3 });
+    expect(presenceLabel({ found: 2, total: 5 })).toBe("The presence: 2 of 5");
   });
 });

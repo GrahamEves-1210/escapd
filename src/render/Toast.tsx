@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
 
@@ -13,6 +14,7 @@ const T = ref.layout.play.toast;
  */
 export function Toast({ text, onHide }: { text: string; onHide: () => void }) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   useEffect(() => {
     AccessibilityInfo.announceForAccessibility(text);
     const t = setTimeout(onHide, motion.toast);
@@ -22,7 +24,7 @@ export function Toast({ text, onHide }: { text: string; onHide: () => void }) {
   return (
     <Animated.View entering={FadeIn.duration(d)} exiting={FadeOut.duration(d)} style={styles.toast} pointerEvents="none" testID="toast">
       <View style={styles.fill} />
-      <Text style={styles.text}>{text}</Text>
+      <Text style={[styles.text, { color: theme.ink }]}>{text}</Text>
     </Animated.View>
   );
 }

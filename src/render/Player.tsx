@@ -2,16 +2,26 @@
 //
 // It renders schema v1, sends GameActions, and trusts ActionResults. It never
 // computes progress: usePlayer replaces state only from a solved result.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+//
+// Modes (docs/DESIGN.md, Modes): the case's genre comes from its definition
+// (absent means noir) and sets the active mode, so every part takes the
+// mode's ground, ink, accent and stamp, and the photos show in its baked
+// treatment. Crime scene adds the Suspects sheet and the Accuse screen;
+// paranormal adds the hotspot effects and the presence meter, and on case
+// closed the room snaps back to its own colours.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Alert, StyleSheet, Switch, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { ActionResult, GameAction, Hotspot, Id, Puzzle } from "@/lib/puzzle-types";
+import { UsersThreeIcon } from "phosphor-react-native/src/icons/UsersThree";
+import type { ActionResult, Genre, GameAction, Hotspot, Id, Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
+import { genreOf, setMode, themeFor } from "@/game/mode";
 import { usePreferences } from "@/game/preferences";
 import {
-  QUIET_COPY, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
-  inventoryItems, isHotspotSolved, itemName, quietReason, scenesWithHotspots, tapIntent,
+  QUIET_COPY, accusePuzzle, canAccuse, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
+  inventoryItems, isHotspotSolved, itemName, newlyContradicted, presence as presenceOf, quietReason,
+  scenesWithHotspots, suspectCards, tapIntent, type SuspectCard,
 } from "@/game/selectors";
 import { usePlayer, type LoadError, type Player as PlayerModel } from "@/game/usePlayer";
 import { useSceneSources } from "@/game/useSceneSources";
@@ -24,13 +34,19 @@ import { StateScreen } from "@/components/StateScreen";
 import {
   ArrowLeftIcon, DotsThreeIcon, ICON_WEIGHT, WarningIcon, WifiSlashIcon,
 } from "@/components/icons";
+import { AccuseScreen, type Accusation, type AccuseOutcome } from "./AccuseScreen";
+import { WRONG_ACCUSATION } from "./accuse";
+import { stashClosedCase } from "./closedCase";
 import { CodePad, type CodeOutcome } from "./CodePad";
 import { CoachCard } from "./CoachCard";
+import { EffectLayer } from "./EffectLayer";
 import { HotspotLayer, type HotspotRef, type Thread } from "./HotspotLayer";
 import { InventoryBar } from "./InventoryBar";
+import { PresenceMeter } from "./PresenceMeter";
 import { ResultSheet, type ResultContent } from "./ResultSheet";
 import { ScenePager } from "./ScenePager";
 import { SceneView, type SceneSource } from "./SceneView";
+import { SuspectsSheet } from "./SuspectsSheet";
 import { Toast } from "./Toast";
 import { Card, NoticeLine, OutlinePill, SquareButton } from "./parts";
 
@@ -44,6 +60,11 @@ const STATE_ICON = P.stateIcon;
 export interface CompletionSummary {
   message?: string;
   exitMessage?: string | null;
+  /** The case's mode (its definition's genre; noir when it has none). */
+  genre: Genre;
+  title?: string;
+  /** Crime scene: the suspect the player accused. */
+  accused?: Id;
 }
 
 export interface PlayerProps {
@@ -79,6 +100,7 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
   }
   return (
     <PlayerStage
+      roomId={roomId}
       player={player}
       sources={sources.sources}
       ui={ui}
@@ -142,11 +164,15 @@ type SheetState =
   | { kind: "result"; content: ResultContent; returnTo?: Id }
   | { kind: "code"; puzzle: Puzzle; hotspotId: Id }
   | { kind: "menu" }
+  | { kind: "suspects" }
+  // Opened from the Suspects sheet (closing goes back to it) or from a case-board hotspot.
+  | { kind: "accuse"; puzzle: Puzzle; from: "suspects" | { hotspotId: Id } }
   | null;
 
 const uniq = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
 
-function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
+function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }: {
+  roomId: string;
   player: PlayerModel;
   sources: SceneSource[];
   ui: ReturnType<typeof useUiMemory>;
@@ -161,6 +187,11 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   const { reducedMotion } = useTheme();
   const insets = useSafeAreaInsets();
 
+  // The case's mode. Set before paint, so no part ever draws in the last mode's colours.
+  const genre = genreOf(def);
+  const theme = themeFor(genre);
+  useLayoutEffect(() => setMode(genre), [genre]);
+
   const sceneCount = def.photos.length;
   const sceneIndex = Math.min(Math.max(ui.memory.sceneIndex, 0), sceneCount - 1);
   const [picked, setPicked] = useState<Id[]>([]);
@@ -172,6 +203,10 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   const [fresh, setFresh] = useState<number[]>([]);
   const [chromeHidden, setChromeHidden] = useState(false);
   const [completing, setCompleting] = useState(false);
+  // Crime scene: the accusation held; the accused card comes forward under GUILTY.
+  const [revealed, setRevealed] = useState<SuspectCard | null>(null);
+  // Paranormal: the presence is gone; the room shows in its own colours.
+  const [cleared, setCleared] = useState(false);
   // A finger on a code wheel: the code sheet holds its scroll.
   const [wheelDrag, setWheelDrag] = useState(false);
   const hotspotRefs = useRef(new Map<Id, HotspotRef>());
@@ -196,6 +231,11 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
     }
     return ids;
   }, [def, state, sceneHotspots]);
+  const accuse = useMemo(() => accusePuzzle(def), [def]);
+  const suspects = useMemo(() => suspectCards(def, state), [def, state]);
+  const accuseOpen = canAccuse(def, state);
+  const broken = suspects.filter((s) => s.contradicted).length;
+  const presence = useMemo(() => presenceOf(def, state), [def, state]);
   const coachStep = coach?.({ state, visitedScenes: ui.memory.visited }) ?? null;
   const coachHighlight = coachStep?.target.kind === "hotspot" && coachStep.target.photoIndex === sceneIndex
     ? coachStep.target.hotspotId : undefined;
@@ -231,7 +271,13 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   }, [sceneIndex, ui]);
 
   const closeSheet = useCallback(() => {
-    const returnTo = sheet?.kind === "result" ? sheet.returnTo : sheet?.kind === "code" ? sheet.hotspotId : undefined;
+    if (sheet?.kind === "accuse" && sheet.from === "suspects") {
+      setSheet({ kind: "suspects" });
+      return;
+    }
+    const returnTo = sheet?.kind === "result" ? sheet.returnTo
+      : sheet?.kind === "code" ? sheet.hotspotId
+        : sheet?.kind === "accuse" && sheet.from !== "suspects" ? sheet.from.hotspotId : undefined;
     setSheet(null);
     setThread(null);
     setIrisId(null);
@@ -243,23 +289,46 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
     }, reducedMotion ? 120 : 360);
   }, [sheet, reducedMotion]);
 
-  const complete = useCallback((result: ActionResult) => {
-    setSheet(null);
+  /**
+   * The case is closed. Noir pulls the photo back and hands off; crime scene
+   * holds the reveal (the accused under GUILTY) first; paranormal snaps the
+   * room back to its own colours and holds "The presence is gone." first.
+   */
+  const complete = useCallback((result: ActionResult, accused?: SuspectCard) => {
+    if (!accused) setSheet(null);
     setPicked([]);
     setCompleting(true);
+    if (genre === "paranormal") {
+      setCleared(true);
+      AccessibilityInfo.announceForAccessibility("The presence is gone.");
+    }
     // A replay starts from the first view.
     ui.forget();
+    stashClosedCase({
+      roomId,
+      genre,
+      title: def.title,
+      accused: accused
+        ? { id: accused.id, name: accused.name, role: accused.role, alibi: accused.alibi, contradicted: accused.contradicted }
+        : undefined,
+      photo: sources[0],
+    });
+    const hold = accused
+      ? (reducedMotion ? P.reveal.holdReduced : P.reveal.hold)
+      : genre === "paranormal"
+        ? (reducedMotion ? P.gone.holdReduced : P.gone.hold)
+        : (reducedMotion ? 300 : motion.completionPullBack + 250);
     setTimeout(
-      () => onComplete({ message: result.message, exitMessage: result.exit_message }),
-      reducedMotion ? 300 : motion.completionPullBack + 250,
+      () => onComplete({ message: result.message, exitMessage: result.exit_message, genre, title: def.title, accused: accused?.id }),
+      hold,
     );
-  }, [onComplete, reducedMotion, ui]);
+  }, [genre, ui, roomId, def.title, sources, reducedMotion, onComplete]);
 
   /**
    * Presentation for a solved result. Returns null when the room is complete
    * (the completion sequence takes over).
    */
-  const afterSolved = useCallback((result: ActionResult, hotspotId?: Id) => {
+  const afterSolved = useCallback((result: ActionResult, hotspotId?: Id, accused?: SuspectCard) => {
     const next = result.state ?? state;
     feedback.success();
     if (hotspotId) setFlash({ id: hotspotId, key: Date.now() });
@@ -285,12 +354,15 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
     const elsewhere = revealedScenes.filter((s) => s !== sceneIndex);
     if (elsewhere.length) setFresh((f) => uniq([...f, ...elsewhere]));
     if (result.completed) {
-      complete(result);
+      complete(result, accused);
       return null;
     }
     const revealed: ResultContent["revealed"] = revealedScenes.length === 0
       ? "none" : revealedScenes.includes(sceneIndex) ? "here" : "elsewhere";
-    return { gained, revealed };
+    const contradicted = newlyContradicted(def, state, next).map((s) => s.name);
+    const presenceRose = presenceOf(def, next).found > presenceOf(def, state).found;
+    const accuseReady = !canAccuse(def, state) && canAccuse(def, next);
+    return { gained, revealed, contradicted, presenceRose, accuseReady };
   }, [def, state, sceneIndex, feedback, complete]);
 
   const act = useCallback(async (action: GameAction, attempt: Attempt) => {
@@ -391,6 +463,10 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
       setSheet({ kind: "code", puzzle: intent.puzzle, hotspotId: hotspot.id });
       return;
     }
+    if (intent.kind === "accuse") {
+      setSheet({ kind: "accuse", puzzle: intent.puzzle, from: { hotspotId: hotspot.id } });
+      return;
+    }
     inspect(hotspot);
   }, [player.pending, completing, selected, applyItem, showToast, def, state, inspect]);
 
@@ -427,6 +503,42 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
     return { kind: "invalid", message: result.message ?? "That doesn't work right now." };
   }, [sheet, player, feedback, def, afterSolved]);
 
+  /** Crime scene's accusation, as submitCode: failures stay inline on the Accuse screen. */
+  const submitAccuse = useCallback(async ({ suspect, motive, method }: Accusation): Promise<AccuseOutcome> => {
+    if (sheet?.kind !== "accuse") return { kind: "invalid", message: "You can't accuse anyone yet." };
+    const { puzzle } = sheet;
+    const outcome = await player.send({ type: "accuse", puzzle_id: puzzle.id, suspect_id: suspect, motive_id: motive, method_id: method });
+    if (outcome.kind !== "result") {
+      player.dismissFailure();
+      return {
+        kind: "failed",
+        message: outcome.kind === "failed" && outcome.offline
+          ? "No connection. Your progress is safe. Try again."
+          : "That didn't go through. Try again.",
+      };
+    }
+    const result = outcome.result;
+    if (result.outcome === "wrong") {
+      feedback.error();
+      // Never the server's wording: a wrong accusation never says which part was wrong.
+      return { kind: "wrong", message: WRONG_ACCUSATION, retryAfter: result.retry_after };
+    }
+    if (result.outcome === "invalid" && result.reason === "cooldown") {
+      feedback.warning();
+      return { kind: "cooldown", retryAfter: result.retry_after };
+    }
+    if (result.outcome === "solved") {
+      const accused = suspects.find((s) => s.id === suspect);
+      if (result.completed && accused) setRevealed(accused);
+      const after = afterSolved(result, undefined, accused);
+      if (after) {
+        setSheet({ kind: "result", content: { title: puzzle.title ?? "The accusation", message: result.message, ...after } });
+      }
+      return { kind: "solved" };
+    }
+    return { kind: "invalid", message: result.message ?? "You can't accuse anyone yet." };
+  }, [sheet, player, feedback, suspects, afterSolved]);
+
   const toggleItem = useCallback((id: Id) => {
     feedback.tick();
     setPicked((raw) => {
@@ -457,24 +569,49 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
 
   const modal = sheet !== null;
   const codeHotspot = sheet?.kind === "code" ? hotspotById(def, sheet.hotspotId) : undefined;
+  const suspectsLabel = [
+    "Suspects",
+    broken > 0 ? `, ${broken} ${broken === 1 ? "alibi" : "alibis"} broken` : "",
+    accuseOpen ? ". You can accuse" : "",
+  ].join("");
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: theme.ground }]} testID={`player-${genre}`}>
       <Animated.View
-        style={[styles.topBar, { paddingTop: insets.top + P.top }, chromeStyle]}
+        style={[styles.topBar, { paddingTop: insets.top + P.top, backgroundColor: theme.ground }, chromeStyle]}
         importantForAccessibility={modal ? "no-hide-descendants" : "auto"}
       >
         <SquareButton icon={ArrowLeftIcon} accessibilityLabel="Back" onPress={onExit} testID="player-back" />
         <View style={styles.prompt}>
-          <Text numberOfLines={1} accessibilityRole="header" style={styles.title}>
+          <Text numberOfLines={1} accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>
             {def.title ?? "Untitled case"}
           </Text>
-          {/* The photo's own label and the page dots say which view this is. */}
-          <Text numberOfLines={1} style={styles.meta} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            {`View ${sceneIndex + 1} of ${sceneCount}`}
-          </Text>
+          {genre === "paranormal" && presence.total > 0 ? (
+            // The presence takes the view line's place: the page dots already say which view this is.
+            <PresenceMeter presence={presence} gone={cleared} />
+          ) : (
+            // The photo's own label and the page dots say which view this is.
+            <Text numberOfLines={1} style={[styles.meta, { color: theme.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {`View ${sceneIndex + 1} of ${sceneCount}`}
+            </Text>
+          )}
         </View>
-        <SquareButton icon={DotsThreeIcon} accessibilityLabel="Case options" onPress={() => setSheet({ kind: "menu" })} testID="player-options" />
+        {accuse ? (
+          <View style={styles.squares}>
+            <SquareButton
+              icon={UsersThreeIcon}
+              caption="Suspects"
+              accessibilityLabel={suspectsLabel}
+              accessibilityHint="Opens the suspects, their alibis, and the accusation."
+              badge={broken > 0 ? String(broken) : undefined}
+              onPress={() => setSheet({ kind: "suspects" })}
+              testID="player-suspects"
+            />
+            <SquareButton icon={DotsThreeIcon} accessibilityLabel="Case options" onPress={() => setSheet({ kind: "menu" })} testID="player-options" />
+          </View>
+        ) : (
+          <SquareButton icon={DotsThreeIcon} accessibilityLabel="Case options" onPress={() => setSheet({ kind: "menu" })} testID="player-options" />
+        )}
       </Animated.View>
 
       <View style={styles.scene} importantForAccessibility={modal ? "no-hide-descendants" : "auto"}>
@@ -489,6 +626,9 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
           renderPage={(i, active, onWindow, pager) => (
             <SceneView
               source={sources[i]}
+              genre={genre}
+              treated={!cleared}
+              cacheKey={photoKey(def.photos[i])}
               accessibilityLabel={`View ${i + 1} of ${sceneCount}`}
               active={active}
               armed={active && selected.length === 1}
@@ -500,28 +640,32 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
               pagerGesture={pager}
             >
               {(stage) => (
-                <HotspotLayer
-                  hotspots={sceneHotspots}
-                  stage={stage}
-                  persistent={prefs.hotspotAssist || selected.length === 1}
-                  highlightId={coachHighlight}
-                  flash={flash}
-                  solvedIds={solvedIds}
-                  irisId={irisId ?? undefined}
-                  thread={thread ?? undefined}
-                  labelFor={labelFor}
-                  onPress={onHotspotPress}
-                  onPressIn={feedback.press}
-                  registerRef={registerRef}
-                />
+                <>
+                  <EffectLayer hotspots={sceneHotspots} stage={stage} gone={cleared} />
+                  <HotspotLayer
+                    hotspots={sceneHotspots}
+                    stage={stage}
+                    persistent={prefs.hotspotAssist || selected.length === 1}
+                    highlightId={coachHighlight}
+                    flash={flash}
+                    solvedIds={solvedIds}
+                    irisId={irisId ?? undefined}
+                    thread={thread ?? undefined}
+                    labelFor={labelFor}
+                    onPress={onHotspotPress}
+                    onPressIn={feedback.press}
+                    registerRef={registerRef}
+                  />
+                </>
               )}
             </SceneView>
           )}
         />
+        {cleared ? <PresenceGone /> : null}
       </View>
 
       <Animated.View
-        style={[styles.bottom, { paddingBottom: insets.bottom + P.band.foot }, bottomStyle]}
+        style={[styles.bottom, { paddingBottom: insets.bottom + P.band.foot, backgroundColor: theme.ground }, bottomStyle]}
         importantForAccessibility={modal ? "no-hide-descendants" : "auto"}
       >
         {player.failed ? (
@@ -559,6 +703,26 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
           <CodePad puzzle={sheet.puzzle} items={items} onSubmit={submitCode} onWheelDrag={setWheelDrag} />
         </DarkSheet>
       ) : null}
+      {sheet?.kind === "suspects" && accuse ? (
+        <SuspectsSheet
+          suspects={suspects}
+          motives={accuse.motives ?? []}
+          methods={accuse.methods ?? []}
+          canAccuse={accuseOpen}
+          onAccuse={() => setSheet({ kind: "accuse", puzzle: accuse, from: "suspects" })}
+          onClose={closeSheet}
+        />
+      ) : null}
+      {sheet?.kind === "accuse" ? (
+        <AccuseScreen
+          puzzle={sheet.puzzle}
+          suspects={suspects}
+          items={items}
+          onSubmit={submitAccuse}
+          onClose={closeSheet}
+          revealed={revealed}
+        />
+      ) : null}
       {sheet?.kind === "menu" ? (
         <CaseOptions
           hotspotAssist={prefs.hotspotAssist}
@@ -570,6 +734,30 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
           onClose={() => setSheet(null)}
         />
       ) : null}
+    </View>
+  );
+}
+
+/** A stable id for a photo whose signed URL changes: its photo id. Bundled photos need none. */
+function photoKey(photo: { photo_id: string } | { asset_key: string }) {
+  return "photo_id" in photo ? `photo:${photo.photo_id}` : undefined;
+}
+
+/** Paranormal's case closed, over the room as it snaps back to its own colours. */
+function PresenceGone() {
+  const { reducedMotion } = useTheme();
+  const theme = themeFor("paranormal");
+  const G = P.gone;
+  return (
+    <View style={styles.goneSlot} pointerEvents="none">
+      <Animated.View
+        entering={FadeIn.duration(reducedMotion ? motion.reducedFade : ref.motion.treatment.duration * 2).delay(reducedMotion ? 0 : ref.motion.treatment.duration)}
+        style={styles.gone}
+        testID="presence-gone"
+      >
+        <View style={[StyleSheet.absoluteFill, styles.goneFill, { backgroundColor: theme.ground, opacity: G.fillOpacity }]} />
+        <Text style={[P.type.gone, { color: theme.ink }]}>The presence is gone.</Text>
+      </Animated.View>
     </View>
   );
 }
@@ -637,8 +825,13 @@ const styles = StyleSheet.create({
   prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: P.promptTop, alignItems: "center", gap: P.metaGap },
   title: { ...ref.type.serifTitle, color: ref.color.textPrimary, textAlign: "center" },
   meta: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
+  // Crime scene: Suspects, then Case options, the squares' slop apart.
+  squares: { flexDirection: "row", gap: ref.space.sm },
   // The photo area: full width, from band.photo under the squares.
   scene: { flex: 1, marginTop: P.band.photo - SLOP },
+  goneSlot: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", zIndex: z.toast },
+  gone: { paddingHorizontal: P.gone.padX, paddingVertical: P.gone.padY, borderRadius: ref.radius.round, overflow: "hidden", ...ref.curve },
+  goneFill: { borderRadius: ref.radius.round },
   bottom: {
     gap: P.band.row,
     paddingTop: P.band.tray,

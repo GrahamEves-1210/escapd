@@ -9,8 +9,15 @@ import type { ActionResult, GameAction, SessionState } from "@/lib/puzzle-types"
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
 import { tutorialCoach } from "@/tutorial/coach";
-import { ref } from "@/theme/tokens";
+import { getMode } from "@/game/mode";
+import { modeThemes, ref } from "@/theme/tokens";
 import { Player } from "../Player";
+
+// The Study has no genre: it plays as noir, in noir's colours.
+const NOIR = modeThemes.noir;
+
+// Each test renders the whole player and lays it out: slow when every suite runs at once.
+jest.setTimeout(60_000);
 
 // Haptics with stable spies, so a test can check which one fired (the full shape, as jest/setup.js).
 const mockFeedback = {
@@ -216,8 +223,8 @@ describe("Player: The Study", () => {
     await screen.findByTestId("code-sheet");
     await dial("1234");
     expect(await screen.findByText("Nothing happens.")).toBeTruthy();
-    // 02's error line: white words, no amber or oxblood.
-    expect(flat(screen.getByText("Nothing happens."))).toMatchObject({ color: ref.color.textPrimary });
+    // 02's error line: the mode's ink, no amber or oxblood.
+    expect(flat(screen.getByText("Nothing happens."))).toMatchObject({ color: NOIR.ink });
     expect(screen.getByTestId("code-sheet")).toBeTruthy();
     await dial("0427");
     expect(lastAction()).toEqual({ type: "solve", puzzle_id: "open_safe", answer: "0427" });
@@ -227,12 +234,14 @@ describe("Player: The Study", () => {
     // Completion comes from the server's `completed`, then hands off.
     await goToView(2);
     await press("hotspot-door");
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith({
+    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
       message: secret.puzzles.escape.message,
       exitMessage: def.exit.message,
-    }), { timeout: 3000 });
+      genre: "noir",
+      title: "The Study",
+    })), { timeout: 3000 });
     // Plays the whole tutorial with real timers: slow when every suite runs at once.
-  }, 30_000);
+  }, 120_000);
 
   it("says the door does not open yet, and shows invalid as a toast", async () => {
     mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
@@ -265,31 +274,41 @@ const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(no
 const P = ref.layout.play;
 
 describe("Player: the reference look", () => {
-  it("frames the photo as 02 does: flat ground, Once's squares, the serif title over the view meta", async () => {
+  it("frames the photo as 02 does in noir's colours: flat ground, Once's squares, the serif title over the view meta", async () => {
     mocked.submitAction.mockImplementation(async (_s, action) => studyServer()(action));
     await renderStudy();
-    expect(flat(screen.getByTestId("scene-view"))).toMatchObject({ backgroundColor: ref.color.ground });
+    // The Study is noir: the player sets the active mode from its definition.
+    expect(getMode()).toBe("noir");
+    expect(flat(screen.getByTestId("player-noir"))).toMatchObject({ backgroundColor: NOIR.ground });
+    expect(flat(screen.getByTestId("scene-view"))).toMatchObject({ backgroundColor: NOIR.ground });
+    // The photo is the baked treatment's frame (TreatedImage): the original until the bake lands, then the treated layer.
+    expect(screen.getByTestId("scene-photo")).toBeTruthy();
+    expect(screen.queryByTestId("scene-photo-original") ?? screen.queryByTestId("scene-photo-treated")).toBeTruthy();
     for (const id of ["player-back", "player-options"]) {
       expect(flat(screen.getByTestId(id))).toMatchObject({
         width: ref.button.square.size,
         height: ref.button.square.size,
         borderRadius: ref.button.square.radius,
-        backgroundColor: ref.button.square.fill,
+        backgroundColor: NOIR.raised,
         borderColor: P.squareRim,
       });
     }
+    // No Suspects and no presence outside their modes.
+    expect(screen.queryByTestId("player-suspects")).toBeNull();
+    expect(screen.queryByTestId("presence-meter")).toBeNull();
+    expect(screen.queryByTestId("effect-layer")).toBeNull();
     // Explore as list is gone; every object is a button on the photo instead.
     expect(screen.queryByLabelText("Explore as list")).toBeNull();
     expect(screen.getByLabelText("Back")).toBeTruthy();
     expect(screen.getByLabelText("Case options")).toBeTruthy();
-    expect(flat(screen.getByText("The Study"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
-    expect(flat(screen.getByText("View 1 of 3", { includeHiddenElements: true }))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
-    // The coach mark is a 07 card with white text.
-    expect(flat(screen.getByTestId("coach-card"))).toMatchObject({ backgroundColor: ref.color.raised, borderRadius: P.card.radius });
-    // No strip of thumbnails: page dots, the view in view white.
+    expect(flat(screen.getByText("The Study"))).toMatchObject({ ...ref.type.serifTitle, color: NOIR.ink });
+    expect(flat(screen.getByText("View 1 of 3", { includeHiddenElements: true }))).toMatchObject({ ...ref.type.meta, color: NOIR.inkMuted });
+    // The coach mark is a 07 card in the mode's raised fill.
+    expect(flat(screen.getByTestId("coach-card"))).toMatchObject({ backgroundColor: NOIR.raised, borderRadius: P.card.radius });
+    // No strip of thumbnails: page dots, the view in view in ink.
     expect(screen.queryByTestId("scene-0")).toBeNull();
-    expect(flat(screen.getByTestId("view-dot-0-current"))).toMatchObject({ backgroundColor: ref.color.textPrimary });
-    expect(flat(screen.getByTestId("view-dot-1"))).toMatchObject({ backgroundColor: ref.color.textSecondary });
+    expect(flat(screen.getByTestId("view-dot-0-current"))).toMatchObject({ backgroundColor: NOIR.ink });
+    expect(flat(screen.getByTestId("view-dot-1"))).toMatchObject({ backgroundColor: NOIR.inkMuted });
   });
 
   it("lays the photo full bleed: the screen's width, square edges, cropped only into hotspot-free margins", async () => {
@@ -341,18 +360,18 @@ describe("Player: the reference look", () => {
     await renderStudy();
     await press("hotspot-desk_drawer");
     const bar = await screen.findByTestId("result-continue");
-    // 07's white bar on the kit's dark sheet; finding an item is a success haptic.
+    // 07's bar in the mode's accent on the kit's dark sheet; finding an item is a success haptic.
     expect(mockFeedback.success).toHaveBeenCalled();
-    expect(flat(bar)).toMatchObject({ backgroundColor: P.bar.fill, borderRadius: P.bar.radius });
-    expect(flat(screen.getByTestId("result-sheet"))).toMatchObject({ backgroundColor: ref.color.ground, borderTopLeftRadius: ref.radius.bottomSheet });
+    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: P.bar.radius });
+    expect(flat(screen.getByTestId("result-sheet"))).toMatchObject({ backgroundColor: NOIR.surface, borderTopLeftRadius: ref.radius.bottomSheet });
     await press("result-continue");
 
     expect(screen.queryByTestId("scene-armed")).toBeNull();
     mockFeedback.tick.mockClear();
     await press("item-brass_key");
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
-    expect(flat(screen.getByTestId("item-brass_key-selected"))).toMatchObject({ borderColor: ref.color.textPrimary, borderWidth: P.tray.selectedRing });
-    expect(flat(screen.getByTestId("scene-armed"))).toMatchObject({ borderColor: ref.color.textPrimary, borderWidth: P.photo.armed });
+    expect(flat(screen.getByTestId("item-brass_key-selected"))).toMatchObject({ borderColor: NOIR.ink, borderWidth: P.tray.selectedRing });
+    expect(flat(screen.getByTestId("scene-armed"))).toMatchObject({ borderColor: NOIR.ink, borderWidth: P.photo.armed });
     expect(screen.getByTestId("use-card")).toBeTruthy();
     expect(screen.getByText("Select an object in the room to use this artifact.")).toBeTruthy();
     // The use card takes the coach's place.
@@ -379,7 +398,7 @@ describe("Player: the reference look", () => {
   it("opens Case options on the kit's dark sheet, with no Explore as list and a tick on the switch", async () => {
     await renderStudy();
     await press("player-options");
-    expect(flat(await screen.findByTestId("case-options"))).toMatchObject({ backgroundColor: ref.color.ground });
+    expect(flat(await screen.findByTestId("case-options"))).toMatchObject({ backgroundColor: NOIR.surface });
     expect(screen.queryByText("Explore as list")).toBeNull();
     mockFeedback.tick.mockClear();
     await fireEvent(screen.getByLabelText("Show interactives"), "valueChange", true);
@@ -391,8 +410,8 @@ describe("Player: the reference look", () => {
     await renderStudy();
     await press("hotspot-desk_drawer");
     const banner = await screen.findByTestId("failure-banner");
-    expect(flat(banner)).toMatchObject({ backgroundColor: ref.color.raised });
-    expect(flat(screen.getByText("No connection. Your progress is safe."))).toMatchObject({ color: ref.color.textPrimary });
+    expect(flat(banner)).toMatchObject({ backgroundColor: NOIR.raised });
+    expect(flat(screen.getByText("No connection. Your progress is safe."))).toMatchObject({ color: NOIR.ink });
     await fireEvent.press(screen.getByLabelText("Dismiss"));
     expect(screen.queryByTestId("failure-banner")).toBeNull();
   });
@@ -461,6 +480,7 @@ describe("tokens only", () => {
     path.join(APP, "tutorial/index.tsx"),
     path.join(APP, "tutorial/complete.tsx"),
     path.join(APP, "play/[roomId].tsx"),
+    path.join(APP, "play/complete/[roomId].tsx"),
     path.join(__dirname, "../../components/noir/DarkSheet.tsx"),
   ];
 

@@ -13,6 +13,12 @@
 // "Before you build" with its tips and the privacy note; then the pinned
 // build bar. The
 // column scrolls under the bar; text follows the system size.
+//
+// Inside a mode (openCapture({ genre }) sets it) the screen takes the mode's
+// colours (src/capture/ui/palette.ts): its ground, raised notes and discs,
+// ink and muted ink, the build bar as the mode's primary button, and every
+// photo in the mode's baked treatment (TreatedImage), so the player sees the
+// room as the case will show it. The flagged amber stays.
 import { useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
@@ -20,6 +26,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { decodeFlags, decodeIssue, type RetakeReason } from "@/capture/failure";
 import { getSlots, removePlate, usePlates, useSlots } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { AddPlateButton } from "./AddPlateButton";
 import { ChecksSection } from "./ChecksSection";
@@ -37,6 +44,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
   const slots = useSlots();
   const plates = usePlates();
   const insets = useSafeAreaInsets();
+  const palette = useCapturePalette();
   // Pin each flag to the photo in its slot at that moment (recomputed only
   // when the param changes), so a retaken photo loses its mark and a new
   // failure that returns here adds its marks.
@@ -60,18 +68,18 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
   const hasPlates = plates.length > 0;
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: palette.page }]} testID="review-root">
       <ReviewHeader top={insets.top} onBack={back} />
       <ScrollView contentContainerStyle={styles.content} testID="review-scroll">
         {issue ? (
-          <View style={styles.issue} testID="review-issue">
-            <Text style={styles.issueText}>{COPY.issues[issue]}</Text>
+          <View style={[styles.issue, { backgroundColor: palette.raised }]} testID="review-issue">
+            <Text style={[styles.issueText, { color: palette.ink }]}>{COPY.issues[issue]}</Text>
           </View>
         ) : null}
-        <Text accessibilityRole="header" style={styles.heading}>
+        <Text accessibilityRole="header" style={[styles.heading, { color: palette.ink }]}>
           {COPY.heading}
         </Text>
-        <Text style={styles.caption}>{COPY.caption(plates.length, MAX_PLATES)}</Text>
+        <Text style={[styles.caption, { color: palette.ink }]}>{COPY.caption(plates.length, MAX_PLATES)}</Text>
         {plates.length < MAX_PLATES ? <AddPlateButton onPress={() => router.push("/capture")} style={styles.add} /> : null}
         {hasPlates ? (
           <View style={styles.grid}>
@@ -83,7 +91,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
             />
           </View>
         ) : null}
-        {hasPlates ? <NoteRow glyph={<TapGlyph color={ref.color.textSecondary} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
+        {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
         <ChecksSection style={hasPlates ? styles.checksAfterHint : styles.checks} />
       </ScrollView>
       <DevelopFooter bottom={insets.bottom} blocked={blocked} onDevelop={() => router.push("/capture/develop")} />
@@ -92,20 +100,20 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  // The flat ground: the palette's page.
+  root: { flex: 1 },
   content: { paddingTop: GAP.title, paddingBottom: GAP.end },
-  heading: { ...L.type.title, color: ref.color.textPrimary, marginHorizontal: L.gutter },
+  heading: { ...L.type.title, marginHorizontal: L.gutter },
   // A failure about the whole set: a calm raised note above the heading (no glyph, not amber).
   issue: {
     marginHorizontal: ref.space.edge,
     marginBottom: L.issue.gap,
     padding: L.issue.pad,
     borderRadius: L.issue.radius,
-    backgroundColor: ref.color.raised,
     ...ref.curve,
   },
-  issueText: { ...L.type.hint, color: ref.color.textPrimary },
-  caption: { ...L.type.body, color: ref.color.textPrimary, marginLeft: L.gutter, marginRight: L.captionInsetEnd, marginTop: GAP.body },
+  issueText: { ...L.type.hint },
+  caption: { ...L.type.body, marginLeft: L.gutter, marginRight: L.captionInsetEnd, marginTop: GAP.body },
   add: { marginTop: GAP.add },
   grid: { marginTop: GAP.grid },
   hint: { marginTop: GAP.hint },

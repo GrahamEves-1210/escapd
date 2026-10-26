@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import * as api from "@/lib/escapd-api";
 import type { GenerationJob } from "@/lib/escapd-api";
-import { addPlate, clearPlates, currentTicket, removePlate } from "../roll";
+import { addPlate, clearPlates, currentTicket, removePlate, setRollGenre } from "../roll";
 import { POLL_MS, useDevelopment } from "../useDevelopment";
 
 jest.mock("expo-file-system", () => ({
@@ -151,6 +151,24 @@ describe("useDevelopment", () => {
     expect(mocked.createRoom).toHaveBeenCalledTimes(1);
     expect(mocked.uploadRoomPhoto.mock.calls.slice(2).map(([p]) => p.position)).toEqual([1, 2]);
     expect(mocked.requestGeneration).toHaveBeenCalledWith("r1", key);
+  });
+});
+
+describe("useDevelopment in a mode", () => {
+  afterEach(() => setRollGenre(null));
+
+  it("creates the room in the roll's mode; generation then takes the room's", async () => {
+    setRollGenre("paranormal");
+    const { result } = await renderHook(() => useDevelopment());
+    await waitFor(() => expect(result.current.stage.kind).toBe("waiting"));
+    expect(mocked.createRoom).toHaveBeenCalledWith(undefined, "paranormal");
+    expect(mocked.requestGeneration).toHaveBeenCalledWith("r1", currentTicket().key);
+  });
+
+  it("without a mode the server makes it noir", async () => {
+    const { result } = await renderHook(() => useDevelopment());
+    await waitFor(() => expect(result.current.stage.kind).toBe("waiting"));
+    expect(mocked.createRoom).toHaveBeenCalledWith(undefined, undefined);
   });
 });
 

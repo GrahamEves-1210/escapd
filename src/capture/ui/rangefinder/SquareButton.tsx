@@ -9,10 +9,12 @@
 // - Disabled: 0.4, eased over ref.motion.control (Dimmable).
 // - Focus: the kit's brass ring, concentric with the 14 corners.
 // - Haptic: the light `press` as it is pressed in.
+// - In a mode: the mode's raised fill, rim and ink (src/capture/ui/palette.ts).
 import { Pressable, StyleSheet } from "react-native";
 import { FocusRing, useFocusRing, type NoirIcon } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { Dimmable } from "./Dimmable";
 
 const B = ref.button.square;
@@ -32,6 +34,7 @@ export interface SquareButtonProps {
 export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled = false, testID }: SquareButtonProps) {
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   return (
     <Dimmable dimmed={disabled}>
       <Pressable
@@ -45,9 +48,9 @@ export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled
         onBlur={focus.onBlur}
         hitSlop={SQUARE_SLOP}
         testID={testID}
-        style={({ pressed }) => [styles.box, pressed ? styles.pressed : null]}
+        style={({ pressed }) => [styles.box, { backgroundColor: palette.raised, borderColor: palette.squareRim }, pressed ? styles.pressed : null]}
       >
-        <Icon size={L.headerIcon.size} color={ref.color.textPrimary} weight={L.headerIcon.weight} />
+        <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
         <FocusRing visible={focus.focused} shape="panel" edge={B.borderWidth} radius={B.radius} />
       </Pressable>
     </Dimmable>
@@ -60,9 +63,7 @@ const styles = StyleSheet.create({
     height: B.size,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: B.fill,
     borderWidth: B.borderWidth,
-    borderColor: L.squareRim,
     borderRadius: B.radius,
     ...curve,
   },

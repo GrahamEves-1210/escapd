@@ -2,6 +2,7 @@
 // Soot, walnut, and tarnished brass for the instrument. Manila and carbon ink
 // for anything the player has to read. Room photos keep their own colour.
 import type { TextStyle, ViewStyle } from "react-native";
+import type { Genre } from "@/lib/puzzle-types";
 
 export const color = {
   canvas: "#090807",
@@ -241,7 +242,7 @@ const refColor = {
   raisedPressed: "#474747",
 } as const;
 
-// The two non-system faces (loaded in app/_layout.tsx). Every other style is
+// The non-system faces (loaded in app/_layout.tsx). Every other style is
 // the platform system font (SF Pro on iOS, Roboto on Android): no fontFamily,
 // a fontWeight. A named face carries its own weight, so it sets no fontWeight.
 const refFont = {
@@ -251,6 +252,12 @@ const refFont = {
   italic: "CrimsonText_400Regular_Italic",
   /** pushr's wide grotesk (03's and 05's titles): Archivo ExtraBold, which matches its stroke (4.98 vs 5.05 pt); Black was 18 % heavier. */
   grotesk: "Archivo_800ExtraBold",
+  /** DETECTIVE NOIR's name (modeThemes.noir.display): Playfair Display Black. */
+  noirDisplay: "PlayfairDisplay_900Black",
+  /** CRIME SCENE's name (modeThemes.crime_scene.display): Archivo Black. */
+  crimeDisplay: "Archivo_900Black",
+  /** PARANORMAL's name (modeThemes.paranormal.display): Crimson Text SemiBold Italic. */
+  paranormalDisplay: "CrimsonText_600SemiBold_Italic",
 } as const;
 
 const stop = (offset: number, color: `#${string}`, opacity = 1): GradientStop => ({ offset, color, opacity });
@@ -552,9 +559,9 @@ export const ref = {
   // Screen geometry from docs/DESIGN.md that no shared token covers, one block
   // per screen. Shared values stay above; these are only the screen's own.
   layout: {
-    // 01 · Game mode, the hub at / (Opal), measured on 393 x 852 (safe 59 / 34).
-    // The chips are ref.button.chip, the cards ref.button.gameCard over
-    // ref.gradient.card / cardRim, the glow ref.gradient.bottomGlow.
+    // 01 · Home, at / (the shell's reference look), measured on 393 x 852
+    // (safe 59 / 34): Opal's header (ref.button.chip), then the three mode
+    // cards, each in its mode's theme (modeThemes).
     hub: {
       // The 1 pt lines: the divider, the card rims, the tag pills, the notice's and the sheet's edges.
       hairline: 1,
@@ -576,44 +583,65 @@ export const ref = {
       // in the 18 chip glyph box: rails 13 wide, stroke 1.2, 3.96 apart; ring
       // knobs 3.8 across at these shares of the rail (top, middle, bottom).
       sliders: { width: 13, stroke: 1.2, pitch: 3.96, knob: 3.8, knobs: [0.73, 0.41, 0.7] },
-      // Column spacers (divider to the safe bottom): above the title and below
-      // the cards. The top one never grows past `band`, Opal's 124 from the
-      // divider to the title box (title box y 248, cards from y 330 on 852);
-      // the rest of the column goes below the cards.
-      weights: { above: 131, below: 96 },
-      band: 124,
-      // Opal's cards are see-through: where the centre card lies over a side
-      // card it is white `overlap` brighter, and each side card darkens to
-      // black `falloff` at its outer edge, as the floor light falls off.
-      glass: { overlap: 0.02, falloff: 0.18 },
-      // The three-card fan, a hand in Opal's band (visual x 19.3-373.7 on
-      // 393): container height (the side cards' visual foot), side-card
-      // centre offset from the axis, drop and tilt (deg). `cover` is the strip
-      // of a side card's inner edge the centre card lies over, at its top and
-      // its foot (linear between): a side card centres its content on the
-      // rest (105 wide at the pills, 89 at the icon). Designed on a
-      // `designWidth` screen; narrower or shorter, it scales down as a whole
-      // to `minScale`, then the cards stack; above `maxFontScale` they stack.
-      fan: {
-        height: 335,
-        sideOffset: 93.2,
-        sideDrop: 10,
-        tilt: 6,
-        cover: { top: 29.85, foot: 63.49 },
-        designWidth: 393,
-        minScale: 0.75,
-        maxFontScale: 1,
+      // The three mode cards (MODES_PROMPT.md Part 2), one column under the
+      // divider: the first `top` below it, `edge` from the screen's sides,
+      // `gap` apart, the last `foot` above the safe bottom. They share the
+      // height and fill the screen; none is shorter than `minHeight` (all three
+      // fit a 375 x 667 iPhone SE; large text scrolls). Each card is solid and physical: the
+      // mode's photo full bleed (baked at `artEdge` on its long edge), corners
+      // `radius` (continuous), a `rim` pt edge in the mode's rim. Its name and
+      // tagline sit `pad` in from the sides and foot on a plate of the mode's
+      // ground at `plate` opacity that fades up from clear over `fade` pt
+      // above them (`fadeStops`, shares of the fade, end on `plate`): enough
+      // for the mode's ink at 4.5:1 over a white photo (hub-test). The count
+      // is a capsule in the mode's ground at the top left, `pad` in, with a
+      // `rim` pt edge, `chip` padding. Pressed: `pressScale` (instant).
+      modes: {
+        top: 16,
+        edge: 16,
+        gap: 12,
+        foot: 12,
+        minHeight: 168,
+        radius: 20,
+        rim: 1,
+        pad: 18,
+        plate: 0.72,
+        fade: 56,
+        fadeStops: [
+          { offset: 0, opacity: 0 },
+          { offset: 0.5, opacity: 0.38 },
+          { offset: 1, opacity: 0.72 },
+        ],
+        taglineGap: 2,
+        chip: { padX: 10, padY: 4 },
+        pressScale: 0.98,
+        artEdge: 1000,
+        // Each mode's one signature touch, decorative and static:
+        // noir's brass rule `gap` above the name;
+        rule: { width: 28, height: 2, gap: 10 },
+        // crime scene's strip of police tape across the top-right corner
+        // (`length` x `height`, its centre `inset` in from the top and right
+        // edges, turned `angle`), its words (`repeat` times, past both ends)
+        // in the ground colour;
+        tape: { length: 240, height: 18, inset: 34, angle: "38deg", repeat: 3 },
+        // paranormal's soft glow: a radial light in the mode's glow colour
+        // centred at (cx, cy) of the card, `r` of its width across.
+        glow: {
+          cx: 0.74,
+          cy: 0.3,
+          r: 0.62,
+          stops: [
+            { offset: 0, opacity: 0.3 },
+            { offset: 0.45, opacity: 0.12 },
+            { offset: 1, opacity: 0 },
+          ],
+        },
+        type: {
+          tagline: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
+          count: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
+          tape: { fontSize: 8, lineHeight: 10, fontWeight: "800", letterSpacing: 1.6, textTransform: "uppercase" },
+        } as const satisfies Record<string, TextStyle>,
       },
-      // A fan card at Opal's height (319.6) and the widest that still shows a
-      // side card's Opal-size pill whole (Opal's 187 would leave 82 of face for
-      // a 92-97 pill): the tag pill's top (Opal's 24); the state line's gap
-      // under it; the hero icon's box (ref.icon.heroMax: the art's ink is
-      // about 62, Opal's 62-68, its stroke 4.9 as Opal's) and its centre, and
-      // the SOLVED pill's centre, as shares of the height; the press scale
-      // (proposal; the reference shows no press).
-      card: { width: 140, height: 320, tagTop: 24, noteGap: 6, icon: 68, iconCentre: 0.54, solvedCentre: 0.74, pressScale: 0.97 },
-      // Stacked cards (large text, narrow screens): minimum height.
-      stackedMinHeight: 96,
       // THE STUDY's notice glyph: one meta line square.
       noticeIcon: 16,
       // How you play, a dark sheet in the chips' and cards' material. Scrim
@@ -630,8 +658,9 @@ export const ref = {
         titleFocus: 300,
         titleFocusReduced: 50,
         focusMargin: 100,
-        // Show interactives: the track takes the line icons' aqua when on.
-        switch: { on: refColor.lineEnd, off: refColor.textTertiary, thumb: refColor.textPrimary },
+        // Every switch (Settings, Case options): a white track with a black
+        // thumb when on, grey when off. No green, mint or aqua anywhere.
+        switch: { on: refColor.textPrimary, off: refColor.textTertiary, thumb: refColor.void },
       },
       // Settings (the hub's DarkSheet), grouped rows in the review screen's
       // list style: a Bold 14 section heading `headingGap` above its group;
@@ -653,6 +682,98 @@ export const ref = {
         pressedOpacity: 0.75,
         maxHeight: "88%",
       },
+    },
+    // A mode's own screens (/mode/<genre> and its first-time intro), in the
+    // mode's theme (modeThemes): every colour is the mode's, never one here.
+    mode: {
+      // The back square (ref.button.square in the mode's raised and rim) `edge`
+      // from the side and `top` below the safe top, as on the camera.
+      edge: 21,
+      top: 8,
+      // The fixed header's backing, so the list never runs under the square
+      // or the status bar: the ground from the screen's top to `header.below`
+      // under the square, then a `header.shade`-tall fade to clear. It fades
+      // in over the last `header.fade` pt of scroll before the banner's foot
+      // reaches the backing's foot, so at rest the square sits on the art.
+      // The list reports its scroll every `throttle` ms (a frame at 60 fps).
+      header: { below: 8, fade: 24, shade: 24, throttle: 16 },
+      // The banner: the mode's art (home's card art) full bleed from the
+      // screen's top to `banner` below the safe top, baked at `artEdge`,
+      // shaded in the ground behind the status bar and fading into it over
+      // its lower part (`bannerFade`, shares of its height). The back square
+      // sits on it; the words sit below it.
+      banner: 148,
+      artEdge: 1000,
+      bannerFade: [
+        { offset: 0, opacity: 0.55 },
+        { offset: 0.3, opacity: 0 },
+        { offset: 0.42, opacity: 0 },
+        { offset: 0.78, opacity: 0.62 },
+        { offset: 1, opacity: 1 },
+      ],
+      // The column's side inset; the name `titleTop` under the banner, the
+      // tagline `taglineGap` under the name; the list's heading `sectionTop`
+      // under the tagline and `sectionGap` above the first case file.
+      inset: 20,
+      titleTop: 4,
+      taglineGap: 4,
+      sectionTop: 28,
+      sectionGap: 12,
+      // A case file: a panel in the mode's surface with a `rim` pt edge in its
+      // rim, `radius` corners, `pad` inside, at least `minHeight` tall, `gap`
+      // between files; the treated thumbnail `thumb` square (baked at
+      // `thumbEdge`) with `thumbRadius` corners, the words `textGap` from it,
+      // the date `metaGap` under the title. Pressed at `pressedOpacity`.
+      file: { radius: 8, rim: 1, pad: 12, minHeight: 88, gap: 10, thumb: 64, thumbRadius: 4, thumbEdge: 256, textGap: 14, metaGap: 4, pressedOpacity: 0.75 },
+      // A stamp (OPEN, IN PROGRESS, CLOSED, BUILDING, DIDN'T BUILD): a `border`
+      // pt outline in the mode's stamp colour, `radius` corners, padding, set
+      // at `angle` like a rubber stamp; CLOSED is inked solid. In Archivo
+      // ExtraBold caps (ref.font.grotesk).
+      stamp: {
+        border: 1.5,
+        radius: 3,
+        padX: 6,
+        padY: 3,
+        angle: "-5deg",
+        type: { fontFamily: refFont.grotesk, fontSize: 11, lineHeight: 14, letterSpacing: 1, textTransform: "uppercase" } as const satisfies TextStyle,
+      },
+      // The one strong action (New case, Start), pinned to the foot: the light
+      // table's bar in the mode's accent with its accentInk label, `height`
+      // tall, `radius` corners, `pad` above it and `foot` above the safe
+      // bottom; the list scrolls under a `shade`-tall fade into the ground.
+      // The Pro lock: a capsule `lock.border` pt in accentInk at the bar's
+      // right, `lock.inset` in, a LockSimple glyph at `lock.icon` and "Pro".
+      bar: {
+        height: 48,
+        radius: 2,
+        pad: 12,
+        foot: 8,
+        shade: 24,
+        lock: { inset: 12, icon: 13, gap: 4, padX: 8, padY: 2, border: 1 },
+      },
+      // No cases yet: the friendly line inside an empty file's outline (a
+      // dashed `empty.border` pt edge in the mode's muted ink, the file's
+      // corners, `empty.pad` inside, at least a file's height). The error
+      // line sits `emptyTop` under the heading.
+      emptyTop: 4,
+      empty: { border: 1, pad: 20 },
+      // The first-time intro: the kicker `introTop` under the banner; the
+      // steps `stepsTop` under the tagline, `stepGap` apart; each step's
+      // numeral (the mode's display face at `numeral`) in a `numeralWidth`
+      // column, its words `stepTextGap` under the step's title.
+      intro: { introTop: 4, stepsTop: 32, stepGap: 24, numeralWidth: 40, stepTextGap: 4 },
+      type: {
+        tagline: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
+        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+        kicker: { fontSize: 13, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2, textTransform: "uppercase" },
+        title: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
+        meta: { fontSize: 13, lineHeight: 16, fontWeight: "400" },
+        body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
+        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+        lock: { fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 0.4 },
+        step: { fontSize: 17, lineHeight: 22, fontWeight: "600" },
+        numeral: { fontSize: 34, lineHeight: 38 },
+      } as const satisfies Record<string, TextStyle>,
     },
     // 02 · Camera (Once), measured on 393 x 852 (safe 59 / 34). The controls
     // themselves are ref.button.square / bare / segment / shutter / thumbnail.
@@ -1127,9 +1248,104 @@ export const ref = {
         noticeIcon: 14,
         messageMin: 20,
       },
-      // Case closed: the column's inset, the tag pill (01's), the gaps.
-      complete: { inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 } },
+      // Case closed: the column's inset, the tag pill (01's), the gaps;
+      // paranormal's room back in full colour as a `photo` (aspect, corners).
+      complete: { inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 }, photo: { aspect: 2, radius: 8, width: "100%" } },
+      // ---- The modes in the player (MODES_PROMPT.md, Part 2). Every colour is
+      // the mode's (modeThemes, read through useModeTheme); these are shapes and times.
+      // A stamp (CONTRADICTED on a suspect card; CASE CLOSED and GUILTY on case
+      // closed): the mode's stamp colour, a `border` frame (`borderLarge` for
+      // the large ones) with `radius` corners, tilted `tilt` degrees, the
+      // frame at `opacity` like ink. The word is always solid: at 11 pt
+      // CONTRADICTED needs its full 4.5:1 on a card's raised fill, which any
+      // ink fade would take away. A large stamp slams down: from `slamFrom` times its
+      // size to rest over `slam` ms after `slamDelay`, and the card under it
+      // jolts `jolt` pt. Reduced motion: it fades in.
+      stamp: {
+        border: 1.5,
+        borderLarge: 4,
+        radius: 4,
+        padX: 6,
+        padY: 2,
+        padXLarge: 14,
+        padYLarge: 4,
+        tilt: -6,
+        opacity: 0.94,
+        slamFrom: 2.2,
+        slam: 220,
+        slamDelay: 420,
+        jolt: 3,
+        joltTime: 60,
+        // Room above and below a large stamp for its tilt (layout ignores rotation).
+        tiltRoom: 16,
+      },
+      // 1 pt edges: suspect cards, list dividers, the Accuse screen's footer.
+      hairline: 1,
+      // Crime scene's Suspects square: the count of broken alibis on a
+      // stamp-coloured disc (`badge` across) over its top right corner, and
+      // the word "Suspects" under it in the meta line's type, `captionGap`
+      // below (the title's metaGap), so the control the result sheet names
+      // is named on screen too. The square keeps its 44 width in the row (so
+      // the title keeps its room); the word is centred under it in a
+      // `captionWidth` box that spills into the empty band under the title
+      // and Case options, wide enough for the word at twice the text size.
+      suspects: { badge: 18, badgeInset: -6, captionGap: 3, captionWidth: 120 },
+      // The Accuse screen: radio cards (07's card; picked, a `ring` in the
+      // stamp colour and a filled `dot` in the `radio` disc), `rowGap` apart,
+      // the three lists `section` apart.
+      accuse: { radio: 22, radioRing: 1.5, dot: 10, ring: 2, rowGap: 8, section: 28 },
+      // The accusation's reveal: the form dims to `scrim`, the accused card
+      // comes forward (from `cardFrom` times its size, `rise` pt low, over
+      // `enter` ms), the GUILTY stamp slams; case closed follows after `hold`
+      // (`holdReduced` under reduced motion, where it all fades).
+      reveal: { scrim: 0.94, cardFrom: 0.9, rise: 28, enter: 360, hold: 2800, holdReduced: 1600 },
+      // Paranormal's "the presence": one `segment` per anomaly, `height`
+      // tall and `gap` apart, after its label in the header; a segment lights
+      // over `rise` ms as its anomaly is found (reduced motion: reducedFade),
+      // with a `halo` of the glow where the platform draws coloured shadows.
+      presence: { segment: 14, height: 3, gap: 3, labelGap: 8, rise: 600, halo: { opacity: 0.9, radius: 4 } },
+      // Paranormal's case closed: the room snaps back to full colour (the
+      // treatment's own fade) and "The presence is gone." holds over it, on
+      // 02's see-through void pill, for `hold` ms (`holdReduced`).
+      gone: { hold: 2800, holdReduced: 1800, padX: 18, padY: 10, fillOpacity: 0.6 },
+      // Paranormal hotspot effects, drawn over the photo in the mode's glow
+      // and never touchable. Animated on the UI thread (opacity and transform
+      // only), one `cycle` ms loop each; reduced motion holds each at `rest`.
+      // - flicker: a pool of light `spread` times the target (at least `min`
+      //   pt across, so a small object still glows), stuttering between `low`
+      //   and `peak`.
+      // - apparition: a faint figure, a tall haze (`rx`, `ry` of the target)
+      //   under a smaller head (`head` of rx, `headRise` of ry above), drawn
+      //   `spread` times the target so it fades out past its edges; it
+      //   breathes between `low` and `peak` and drifts `drift` pt up and down.
+      // - moved: the object's ghost outline, `dx` / `dy` pt from where it
+      //   stands, dashed (`dash`, `stroke`), easing `settle` of the way back.
+      // - cold: a frost halo, drawn `spread` times the target: clear to
+      //   `inner` of the way out, at `edge` strength by `rim` (about the
+      //   target's edge), gone again at the halo's edge.
+      // - whisper: two rings (cold white, then the glow) growing steadily from
+      //   `from` to `to` times the target's long side as they fade from
+      //   `peak`, half a cycle apart.
+      effects: {
+        flicker: { spread: 1.6, min: 120, low: 0.18, peak: 0.85, rest: 0.5, cycle: 2600, core: 0.75 },
+        apparition: { spread: 1.5, rx: 0.36, ry: 0.5, head: 0.42, headRise: 0.78, low: 0.45, peak: 0.95, rest: 0.75, drift: 6, cycle: 4200, core: 0.7 },
+        moved: { dx: -8, dy: -6, dash: 5, stroke: 1.5, radius: 6, settle: 0.5, low: 0.35, peak: 0.85, rest: 0.65, cycle: 3400 },
+        cold: { spread: 1.3, inner: 0.45, rim: 0.78, edge: 0.45, low: 0.55, peak: 1, rest: 0.8, cycle: 4800 },
+        whisper: { stroke: 2, from: 0.25, to: 1.3, peak: 0.9, rest: [0.6, 0.35], cycle: 3000 },
+      },
       type: {
+        /** A stamp on a card (CONTRADICTED): pushr's grotesk, small and tracked. */
+        stamp: { fontFamily: refFont.grotesk, fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: "uppercase" },
+        /** Case closed's stamps (CASE CLOSED, GUILTY): Archivo Black, tracked wide. */
+        stampLarge: { fontFamily: refFont.crimeDisplay, fontSize: 34, lineHeight: 40, letterSpacing: 4, textTransform: "uppercase" },
+        /** A suspect's name on a card: Bold 18. */
+        suspect: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
+        /** A count on a badge: Bold 11. */
+        badge: { fontSize: 11, lineHeight: 14, fontWeight: "700" },
+        /** The presence's label: Semibold 11 caps, tracked. */
+        presence: { fontSize: 11, lineHeight: 14, fontWeight: "600", letterSpacing: 1.2, textTransform: "uppercase" },
+        /** "The presence is gone.": paranormal's face at reading size. */
+        gone: { fontFamily: refFont.paranormalDisplay, fontSize: 26, lineHeight: 32 },
         /** Code digits: 02's counter. */
         digit: { fontFamily: refFont.italic, fontSize: 29, lineHeight: 34, letterSpacing: 1.75 },
         /** Keypad digits: system Medium 24. */
@@ -1237,6 +1453,11 @@ export const ref = {
         // A slot the player emptied: a 1 pt dashed rim in the tertiary grey
         // (clearly a gap, not a photo), the camera glyph and "Take this photo" `gap` apart.
         open: { border: 1, rim: refColor.textTertiary, gap: 6 },
+        // Inside a mode, the capture flow's thumbnails (these tiles, the
+        // camera's last photo, the build wait's strip) bake the mode's
+        // treatment at this long edge (px): a tile is 112 pt, 336 px at 3x.
+        // One size for all three, so one bake per photo serves them all.
+        bake: 360,
       },
       // The retake hint's row: a 20 glyph box at the edge (the tap art), the text 2 from it.
       note: { icon: 20, gap: 2 },
@@ -1299,5 +1520,256 @@ export const ref = {
       // The same sweep on paper (03's sheet).
       shimmerPaper: { base: refColor.inkMuted, highlight: refColor.inkDisplay, still: refColor.inkMuted },
     },
+    // A mode photo: the original shows until its baked treatment is ready,
+    // then the treatment fades in over it; the same fade takes it away again
+    // (paranormal's case closed, back to full colour). Reduced motion: instant.
+    treatment: { duration: 240, easing: "ease-out" },
+  },
+  // How a mode photo is baked (src/components/noir/treatPhoto.ts): once per
+  // photo and mode, on an offscreen Skia surface, never per frame. The
+  // strengths per mode are modeThemes[genre].treatment.
+  treatment: {
+    // Photos are at most 1600 on the long edge (src/capture/fit.ts); a larger
+    // source is baked down to this. Encoded as JPEG at `quality`.
+    maxEdge: 1600,
+    quality: 88,
+    // Film grain: one tileable square of fractal noise (`frequency` cycles per
+    // pixel, `octaves` layers, fixed `seed`), made grey and stretched `stretch`
+    // times about mid-grey, then repeated across the photo with an overlay
+    // blend at the mode's grain strength. Baked at full size, so it sits at
+    // about one device pixel on a phone-width photo.
+    grain: { tile: 256, frequency: 0.75, octaves: 2, seed: 7, stretch: 2.6 },
+    // The vignette: a radial gradient from the centre to the corners, clear to
+    // `from` of the way out, then black at the mode's vignette strength.
+    vignette: { from: 0.5 },
+    // Paranormal's soft glow: the graded photo blurred at `scale` of its size
+    // (blur `sigma` x the long edge) and screened back over it at the mode's
+    // bloom strength.
+    bloom: { scale: 0.25, sigma: 0.012 },
   },
 } as const;
+
+// ---------------------------------------------------------------------------
+// The modes (MODES_PROMPT.md, Part 2). The shell (home, Pro, account) keeps
+// the reference look above; the screens inside a mode (its mode screen, the
+// capture flow, the player and its case closed) take that mode's theme, read
+// through useModeTheme() in src/game/mode.ts. Colours here are the only mode
+// colours: screen code never writes one.
+// ---------------------------------------------------------------------------
+
+/**
+ * A mode photo's look, baked once per photo (treatPhoto.ts): the colour
+ * matrix over its toe, then the grain, then the vignette; `bloom` adds
+ * paranormal's glow. Strengths are 0 to 1.
+ */
+export interface PhotoTreatment {
+  /** A 4 x 5 row-major colour matrix (Skia's ColorFilter.MakeMatrix; offsets 0 to 1). Skia clamps its output to 0 to 1. */
+  readonly matrix: readonly number[];
+  /**
+   * The shadow floor under a hard `matrix`, the same shape: each channel keeps
+   * whichever of the two is brighter (drawn first, then `matrix` over it with
+   * Lighten). Where the grade's contrast would crush the darkest tones to
+   * black, the toe keeps them apart; above where the two cross, the grade
+   * rules. Null when the grade already keeps its blacks.
+   */
+  readonly toe: readonly number[] | null;
+  readonly grain: number;
+  readonly vignette: number;
+  readonly bloom: number;
+}
+
+export interface ModeTheme {
+  /** The mode, or null for the shell's neutral theme. */
+  readonly genre: Genre | null;
+  /** The mode's name in title case ("Detective Noir"), for labels and screen readers; `display` sets its case on screen. */
+  readonly name: string;
+  readonly tagline: string;
+  /** The screen's ground. */
+  readonly ground: `#${string}`;
+  /** Panels on the ground: case files, sheets, wells. */
+  readonly surface: `#${string}`;
+  /** Raised controls: square buttons, chips, rows. */
+  readonly raised: `#${string}`;
+  /** Primary text and glyphs. 4.5:1 or more on ground, surface and raised (tokens-test). */
+  readonly ink: `#${string}`;
+  /** Secondary text. 4.5:1 or more on ground, surface and raised. */
+  readonly inkMuted: `#${string}`;
+  /** The mode's colour as a fill: the primary button, meters, the selected card's edge. Not a text colour (crime scene's red is too dark for text). */
+  readonly accent: `#${string}`;
+  /** Text and glyphs on `accent`. 4.5:1 or more. */
+  readonly accentInk: `#${string}`;
+  /** Stamps (OPEN, IN PROGRESS, CLOSED, CONTRADICTED, GUILTY) and any text in the mode's colour. 4.5:1 or more on ground, surface and raised. */
+  readonly stamp: `#${string}`;
+  /** 1 pt edges and dividers. */
+  readonly rim: string;
+  /** A soft glow colour (paranormal: the presence meter, the apparition). */
+  readonly glow?: `#${string}`;
+  /** A tiny accent, used sparingly (crime scene: the police-tape yellow). */
+  readonly detail?: `#${string}`;
+  /** The mode's name in its display face: family, size, tracking and case. */
+  readonly display: TextStyle;
+  /** The baked photo look; null in the shell (photos show as they are). */
+  readonly treatment: PhotoTreatment | null;
+}
+
+/** Rec. 709 luma weights: the grey a desaturated pixel takes. */
+const LUMA = [0.2126, 0.7152, 0.0722] as const;
+
+/**
+ * A photo grade as one colour matrix. Applied in order: `saturation` (0 is
+ * grey, 1 unchanged); `contrast` about `pivot`, plus `offset`; a per-channel
+ * `gain`; then a per-channel `lift`, which maps 0 to 1 onto `lift` to 1.
+ * Alpha passes through. Black lands on the lift only when the contrast keeps
+ * black at 0 (pivot x (1 - contrast) + offset = 0, as paranormal's does). A
+ * harder contrast takes black below 0 and Skia clips everything under that
+ * to black: pair such a grade with a toe().
+ */
+function grade({
+  saturation = 1,
+  contrast = 1,
+  pivot = 0.5,
+  offset = 0,
+  gain = [1, 1, 1],
+  lift = [0, 0, 0],
+}: {
+  saturation?: number;
+  contrast?: number;
+  pivot?: number;
+  offset?: number;
+  gain?: readonly [number, number, number];
+  lift?: readonly [number, number, number];
+}): readonly number[] {
+  const rows = [0, 1, 2].flatMap((r) => {
+    const scale = (1 - lift[r]) * gain[r];
+    const columns = [0, 1, 2].map((c) => scale * contrast * ((1 - saturation) * LUMA[c] + (r === c ? saturation : 0)));
+    return [...columns, 0, scale * (pivot * (1 - contrast) + offset) + lift[r]];
+  });
+  return [...rows, 0, 0, 0, 1, 0];
+}
+
+/**
+ * A grade's toe (PhotoTreatment.toe) as a colour matrix: after `saturation`
+ * (as in grade()), each channel's black lands on `black` and rises `slope`
+ * times as fast as the photo. Its offsets are never below 0, so no tone
+ * clips: under a hard grade, the darkest tones keep their steps.
+ */
+function toe({
+  saturation = 1,
+  black,
+  slope,
+}: {
+  saturation?: number;
+  black: readonly [number, number, number];
+  slope: readonly [number, number, number];
+}): readonly number[] {
+  const rows = [0, 1, 2].flatMap((r) => {
+    const columns = [0, 1, 2].map((c) => slope[r] * ((1 - saturation) * LUMA[c] + (r === c ? saturation : 0)));
+    return [...columns, 0, black[r]];
+  });
+  return [...rows, 0, 0, 0, 1, 0];
+}
+
+/** Every mode's look. Home shows them in this order: noir, crime_scene, paranormal. */
+export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
+  // Monochrome with warm brass: the reference look's greys, the live theme's brass.
+  noir: {
+    genre: "noir",
+    name: "Detective Noir",
+    tagline: "Solve the case",
+    ground: "#0D0D0D",
+    surface: "#171717",
+    raised: "#222222",
+    ink: "#F2EFE9",
+    inkMuted: "#A19C93",
+    accent: color.accent,
+    accentInk: color.onAccent,
+    stamp: color.accent,
+    rim: "rgba(255, 255, 255, 0.10)",
+    display: { fontFamily: refFont.noirDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 1, textTransform: "uppercase" },
+    // Grey, a hard contrast pivoted low so dark rooms keep their midtones, heavy grain, a deep vignette.
+    // The toe holds black at 9/255 and keeps the shadows' steps (the grade alone clips everything under 0.094 grey).
+    treatment: {
+      matrix: grade({ saturation: 0, contrast: 1.4, pivot: 0.38, offset: 0.02 }),
+      toe: toe({ saturation: 0, black: [0.035, 0.035, 0.035], slope: [0.8, 0.8, 0.8] }),
+      grain: 0.14,
+      vignette: 0.6,
+      bloom: 0,
+    },
+  },
+  // Near-black (warm), blood red, bone white; police-tape yellow only as a detail.
+  crime_scene: {
+    genre: "crime_scene",
+    name: "Crime Scene",
+    tagline: "Find the killer",
+    ground: "#0E0B0A",
+    surface: "#181211",
+    raised: "#221917",
+    ink: "#ECE4D3",
+    inkMuted: "#ACA191",
+    // The user's range (#8E1B1B to #A3201F), at its brightest: a fill under bone text (6.5:1).
+    accent: "#A3201F",
+    accentInk: "#F3EDE1",
+    // The same red lifted until stamp text reads at 4.5:1 on every crime-scene ground.
+    stamp: "#E2524C",
+    rim: "rgba(236, 228, 211, 0.10)",
+    detail: "#E9C33B",
+    display: { fontFamily: refFont.crimeDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 2.4, textTransform: "uppercase" },
+    // Nearly grey, a harsh flash contrast, red pushed into the shadows. The grade alone clips red under
+    // 0.09 grey and green and blue under 0.15; the toe sets black at (23, 0, 0) and keeps the shadows'
+    // steps in red, with green and blue held low and harsh.
+    treatment: {
+      matrix: grade({ saturation: 0.15, contrast: 1.55, pivot: 0.43, gain: [1.02, 0.95, 0.93], lift: [0.09, 0.004, 0.004] }),
+      toe: toe({ saturation: 0.15, black: [0.09, 0, 0], slope: [0.65, 0.55, 0.55] }),
+      grain: 0.12,
+      vignette: 0.68,
+      bloom: 0,
+    },
+  },
+  // Pale, cold blue-green (ectoplasm) kept grey and between 188° and 200° so it never reads as mint; cold white; a soft glow.
+  paranormal: {
+    genre: "paranormal",
+    name: "Paranormal",
+    tagline: "Face the unknown",
+    ground: "#0A0E10",
+    surface: "#111A1D",
+    raised: "#1A2529",
+    ink: "#EDF3F5",
+    inkMuted: "#93A8AF",
+    accent: "#A7C7CE",
+    accentInk: "#0A1316",
+    stamp: "#B8D7DD",
+    rim: "rgba(190, 228, 236, 0.12)",
+    glow: "#BFE4EC",
+    display: { fontFamily: refFont.paranormalDisplay, fontSize: 32, lineHeight: 38, letterSpacing: 1.6, textTransform: "uppercase" },
+    // Cool blue-green, lifted blacks (the grade keeps black on its lift, so no toe), a soft glow, light grain.
+    treatment: {
+      matrix: grade({ saturation: 0.1, contrast: 1.05, pivot: 0.4, offset: 0.02, gain: [0.8, 0.96, 1], lift: [0.04, 0.09, 0.11] }),
+      toe: null,
+      grain: 0.07,
+      vignette: 0.5,
+      bloom: 0.35,
+    },
+  },
+};
+
+/**
+ * The shell's neutral theme (no mode): today's reference-look colours, so a
+ * screen that reads useModeTheme() outside a mode looks as it did before the
+ * modes. Photos stay untreated.
+ */
+export const shellTheme: ModeTheme = {
+  genre: null,
+  name: "ESCAPD",
+  tagline: "",
+  ground: refColor.void,
+  surface: refColor.ground,
+  raised: refColor.raised,
+  ink: refColor.textPrimary,
+  inkMuted: refColor.textSecondary,
+  accent: refColor.paper,
+  accentInk: refColor.ground,
+  stamp: refColor.textPrimary,
+  rim: refColor.rim,
+  display: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
+  treatment: null,
+};

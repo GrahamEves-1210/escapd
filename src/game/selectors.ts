@@ -5,11 +5,13 @@
 // only state transition, and its returned `state` replaces ours wholesale.
 import type { Hotspot, Id, Puzzle, PuzzleDefinitionV1, SessionState } from "@/lib/puzzle-types";
 
-// "accuse" stays out until the player has its Suspects and Accuse screens, so a
-// crime-scene room (its finale is an accuse step) reports unknown_kind and shows
-// "This case can't be opened here" for now. Paranormal rooms use only these
-// kinds and play today; their hotspot effects are simply not drawn yet.
-const KNOWN_KINDS = new Set<Puzzle["kind"]>(["inspect", "code", "use_item", "combine"]);
+// Every kind the player can present. Crime scene's finale is an accuse step
+// (the Suspects sheet and the Accuse screen); paranormal rooms use the other
+// kinds plus hotspot effects. A kind added later reports unknown_kind, so an
+// older build shows "This case can't be opened here" instead of a dead end.
+const KNOWN_KINDS = new Set<Puzzle["kind"]>(["inspect", "code", "use_item", "combine", "accuse"]);
+
+const hasOptions = (options: unknown) => Array.isArray(options) && options.length > 0;
 
 export const EMPTY_STATE: SessionState = { solved: [], inventory: [], revealed_hotspots: [] };
 
@@ -26,6 +28,10 @@ export function definitionProblem(def: unknown): string | null {
   if (!Array.isArray(d.hotspots) || !Array.isArray(d.puzzles) || !Array.isArray(d.items)) return "malformed";
   if (!d.exit || !Array.isArray(d.exit.requires)) return "malformed";
   if (d.puzzles.some((p) => !KNOWN_KINDS.has(p.kind))) return "unknown_kind";
+  // An accusation needs something to pick in each of its three lists.
+  if (d.puzzles.some((p) => p.kind === "accuse" && !(hasOptions(p.suspects) && hasOptions(p.motives) && hasOptions(p.methods)))) {
+    return "malformed";
+  }
   if (d.hotspots.some((h) => h.photo_index < 0 || h.photo_index >= d.photos!.length)) return "bad_photo_index";
   return null;
 }
@@ -68,16 +74,107 @@ export function availableCodePuzzle(def: PuzzleDefinitionV1, state: SessionState
   return def.puzzles.find((p) => p.kind === "code" && p.hotspot_id === hotspotId && isOpen(p, state));
 }
 
-export type TapIntent = { kind: "code"; puzzle: Puzzle } | { kind: "inspect" };
+export type TapIntent = { kind: "code"; puzzle: Puzzle } | { kind: "accuse"; puzzle: Puzzle } | { kind: "inspect" };
 
 /**
- * Which widget a plain tap opens. A code puzzle opens the keypad; everything
- * else sends `inspect` and lets the server decide. We never skip the request
- * on a guess that it would do nothing: a wrong guess here would softlock.
+ * Which widget a plain tap opens. A code puzzle opens the keypad; an open
+ * accusation placed on this hotspot (a case board) opens the Accuse screen;
+ * everything else sends `inspect` and lets the server decide. We never skip
+ * the request on a guess that it would do nothing: a wrong guess here would softlock.
  */
 export function tapIntent(def: PuzzleDefinitionV1, state: SessionState, hotspotId: Id): TapIntent {
   const puzzle = availableCodePuzzle(def, state, hotspotId);
-  return puzzle ? { kind: "code", puzzle } : { kind: "inspect" };
+  if (puzzle) return { kind: "code", puzzle };
+  const accuse = accusePuzzle(def);
+  if (accuse?.hotspot_id === hotspotId && isHotspotVisible(state, hotspotId) && isOpen(accuse, state)) {
+    return { kind: "accuse", puzzle: accuse };
+  }
+  return { kind: "inspect" };
+}
+
+// ---------------------------------------------------------------------------
+// Crime scene: the accusation and the suspects.
+// ---------------------------------------------------------------------------
+
+/** The case's accusation (crime scene's finale), if it has one. */
+export function accusePuzzle(def: PuzzleDefinitionV1): Puzzle | undefined {
+  return def.puzzles.find((p) => p.kind === "accuse");
+}
+
+/**
+ * The accusation can be made: it is unsolved and every step it requires (the
+ * evidence) is solved. The server still checks the triple; this only enables
+ * the Accuse button.
+ */
+export function canAccuse(def: PuzzleDefinitionV1, state: SessionState): boolean {
+  const puzzle = accusePuzzle(def);
+  return !!puzzle && isOpen(puzzle, state);
+}
+
+export interface SuspectCard {
+  id: Id;
+  name: string;
+  role?: string;
+  alibi?: string;
+  /** A clue the player holds breaks this suspect's alibi (state.contradicted). */
+  contradicted: boolean;
+}
+
+/** The accusation's suspects in the definition's order, each marked when the server lists it in state.contradicted. */
+export function suspectCards(def: PuzzleDefinitionV1, state: SessionState): SuspectCard[] {
+  const contradicted = state.contradicted ?? [];
+  return (accusePuzzle(def)?.suspects ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    role: s.role,
+    alibi: s.alibi,
+    contradicted: contradicted.includes(s.id),
+  }));
+}
+
+/** Suspects whose alibi broke between two states (newly in `contradicted`), for the result sheet. */
+export function newlyContradicted(def: PuzzleDefinitionV1, before: SessionState, after: SessionState): SuspectCard[] {
+  const was = new Set(before.contradicted ?? []);
+  return suspectCards(def, after).filter((s) => s.contradicted && !was.has(s.id));
+}
+
+/** One suspect, motive or method by id: the accused card on case closed. */
+export function suspectById(def: PuzzleDefinitionV1, id: Id | undefined) {
+  return id ? accusePuzzle(def)?.suspects?.find((s) => s.id === id) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Paranormal: the presence.
+// ---------------------------------------------------------------------------
+
+/** Hotspots with an effect: the room's anomalies, visible or still hidden. */
+export function anomalies(def: PuzzleDefinitionV1): Hotspot[] {
+  return def.hotspots.filter((h) => h.effect !== undefined);
+}
+
+/**
+ * An anomaly is found once a step on it is solved (its inspect, or an item
+ * used there), or, for one that was hidden, once the server reveals it.
+ */
+export function isAnomalyFound(def: PuzzleDefinitionV1, state: SessionState, hotspot: Hotspot): boolean {
+  if (hotspot.hidden && isHotspotVisible(state, hotspot.id)) return true;
+  return def.puzzles.some((p) => p.hotspot_id === hotspot.id && state.solved.includes(p.id));
+}
+
+export interface Presence {
+  found: number;
+  total: number;
+}
+
+/** "The presence": anomalies found out of all of them. Zero total means the case has no presence meter. */
+export function presence(def: PuzzleDefinitionV1, state: SessionState): Presence {
+  const all = anomalies(def);
+  return { found: all.filter((h) => isAnomalyFound(def, state, h)).length, total: all.length };
+}
+
+/** The meter's accessibility label, e.g. "The presence: 2 of 5". */
+export function presenceLabel({ found, total }: Presence) {
+  return `The presence: ${found} of ${total}`;
 }
 
 export type QuietReason = "needs_item" | "locked" | "spent" | "plain";
@@ -155,7 +252,10 @@ export type HotspotMode = { kind: "default" } | { kind: "use"; itemName: string 
 export function hotspotA11yLabel(def: PuzzleDefinitionV1, state: SessionState, hotspot: Hotspot, mode: HotspotMode) {
   const name = hotspotName(hotspot);
   if (mode.kind === "use") return `${name}, use ${mode.itemName} here`;
-  return tapIntent(def, state, hotspot.id).kind === "code" ? `${name}, enter a code` : `${name}, inspectable`;
+  const intent = tapIntent(def, state, hotspot.id).kind;
+  if (intent === "code") return `${name}, enter a code`;
+  if (intent === "accuse") return `${name}, make your accusation`;
+  return `${name}, inspectable`;
 }
 
 export interface ExploreEntry {

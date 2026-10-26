@@ -9,8 +9,9 @@ import { router } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
 import { addPlate, clearPlates, getPlates, usePlates } from "@/capture/roll";
+import { setMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { modeThemes, ref } from "@/theme/tokens";
 import { CameraPermission } from "../../CameraPermission";
 import type { CameraPermissionProps } from "../../types";
 import { COPY, PERMISSION_COPY } from "../copy";
@@ -322,6 +323,67 @@ describe("Default", () => {
     });
     // Keyboard and switch focus: the pill, then the quiet button.
     expect(buttonLabels()).toEqual(["Allow the camera", "Choose photos instead"]);
+  });
+});
+
+describe("inside a mode: the mode's dark sheet", () => {
+  const theme = modeThemes.paranormal;
+  beforeEach(() => setMode("paranormal"));
+  afterEach(() => setMode(null));
+
+  it("lays the mode's ground with no haze, and a surface sheet with the title in ink and the body in muted ink", async () => {
+    await renderScreen();
+    expect(styleOf(screen.getByTestId("permission-ground", hidden)).backgroundColor).toBe(theme.ground);
+    expect(screen.queryByTestId("permission-haze", hidden)).toBeNull();
+    expect(styleOf(screen.getByTestId("permission-sheet")).backgroundColor).toBe(theme.surface);
+    const title = screen.getByRole("header", { name: PERMISSION_COPY.default.title });
+    expect(styleOf(title)).toMatchObject({ ...ref.type.display, color: theme.ink, textTransform: "lowercase" });
+    expect(styleOf(screen.getByText(PERMISSION_COPY.default.body)).color).toBe(theme.inkMuted);
+  });
+
+  it("makes the pill the mode's primary button and the quiet way out its muted ink, with the same sizes", async () => {
+    await renderScreen();
+    const pill = screen.getByRole("button", { name: "Allow the camera" });
+    expect(styleOf(pill)).toMatchObject({ minHeight: ref.button.primary.height, alignSelf: "stretch", backgroundColor: theme.accent });
+    expect(styleOf(within(pill).getByText("allow the camera"))).toMatchObject({ ...ref.type.ctaLabel, color: theme.accentInk });
+    const quiet = screen.getByRole("button", { name: "Choose photos instead" });
+    expect(styleOf(quiet)).toMatchObject({ minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignSelf: "center" });
+    expect(styleOf(quiet).backgroundColor).toBeUndefined();
+    expect(styleOf(within(quiet).getByText("choose photos instead"))).toMatchObject({ ...ref.type.headline, color: theme.inkMuted });
+  });
+
+  it("draws the phone dark on the mode's raised panel", async () => {
+    await renderScreen();
+    const panel = screen.getByTestId("permission-illustration", hidden);
+    expect(styleOf(panel).backgroundColor).toBe(theme.raised);
+    const fills = inner(panel)
+      .filter((n) => n.type === "RNSVGPath" || n.type === "RNSVGRect")
+      .map((n) => solid(n.props.fill));
+    expect(fills.filter((c) => c === processColor(theme.ground))).toHaveLength(2);
+    expect(fills.filter((c) => c === processColor(theme.raised))).toHaveLength(1);
+  });
+
+  it("still requests, busy with the spinner in the accent's ink, and gives the success haptic on a grant", async () => {
+    let answer: (value: PermissionResponse) => void = () => {};
+    const requestPermission = jest.fn(() => new Promise<PermissionResponse>((resolve) => (answer = resolve)));
+    await renderScreen({ requestPermission });
+    await userEvent.setup().press(screen.getByRole("button", { name: "Allow the camera" }));
+    const pill = screen.getByRole("button", { name: "Allow the camera" });
+    expect(pill.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
+    expect(screen.getByTestId("permission-primary-spinner", hidden).props.color).toBe(theme.accentInk);
+    expect(opacityOf(screen.getByRole("button", { name: "Choose photos instead" }))).toBe(DIMMED);
+    await act(async () => answer({ ...permission(), granted: true, status: "granted" } as PermissionResponse));
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
+  });
+
+  it("puts the error notice in the mode's sheet colours", async () => {
+    const requestPermission = jest.fn(async (): Promise<PermissionResponse> => {
+      throw new Error("no answer");
+    });
+    await renderScreen({ requestPermission });
+    await fireEvent.press(screen.getByRole("button", { name: "Allow the camera" }));
+    expect(styleOf(screen.getByText("The camera didn't answer. Try again.")).color).toBe(theme.inkMuted);
+    expect(screen.getByTestId("phosphor-react-native-warning-regular", hidden).props.color).toBe(theme.ink);
   });
 });
 

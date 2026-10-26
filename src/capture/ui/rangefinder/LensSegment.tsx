@@ -16,6 +16,8 @@
 // - VoiceOver and TalkBack: a radiogroup "Lens" holding two radios.
 // - Disabled sets the state and blocks presses; the Dimmable around it eases
 //   the dim.
+// - In a mode: the track in the mode's well, the thumb raised, the chosen
+//   label and its mark in the mode's ink (src/capture/ui/palette.ts).
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { ReduceMotion, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -23,6 +25,7 @@ import { FocusRing, timingFor, usePressProgress, useStateProgress } from "@/comp
 import { XIcon } from "@/components/icons";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, motion, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { COPY } from "./copy";
 import type { LensChoice } from "./useLenses";
 
@@ -59,6 +62,7 @@ export interface LensSegmentProps {
 
 export function LensSegment({ value, onChange, disabled, testID }: LensSegmentProps) {
   const { reducedMotion } = useTheme();
+  const palette = useCapturePalette();
   const [focused, setFocused] = useState(false);
   const index = OPTIONS.findIndex((option) => option.value === value);
   const pos = useSharedValue(index);
@@ -76,8 +80,8 @@ export function LensSegment({ value, onChange, disabled, testID }: LensSegmentPr
 
   return (
     <View testID={testID} accessibilityRole="radiogroup" accessibilityLabel={COPY.lens} style={styles.frame}>
-      <View pointerEvents="none" style={styles.track} testID={testID ? `${testID}-track` : undefined}>
-        <Animated.View style={[styles.thumb, thumbStyle]} testID={testID ? `${testID}-thumb` : undefined} />
+      <View pointerEvents="none" style={[styles.track, { backgroundColor: palette.well }]} testID={testID ? `${testID}-track` : undefined}>
+        <Animated.View style={[styles.thumb, { backgroundColor: palette.thumb }, thumbStyle]} testID={testID ? `${testID}-thumb` : undefined} />
         <FocusRing visible={focused} shape="panel" radius={G.radius} />
       </View>
       {OPTIONS.map((option, i) => (
@@ -86,6 +90,7 @@ export function LensSegment({ value, onChange, disabled, testID }: LensSegmentPr
           option={option}
           index={i}
           selected={i === index}
+          active={palette.ink}
           disabled={disabled}
           onSelect={() => onChange(option.value)}
           onFocus={() => setFocused(true)}
@@ -100,6 +105,7 @@ function LensHalf({
   option,
   index,
   selected,
+  active,
   disabled,
   onSelect,
   onFocus,
@@ -108,6 +114,8 @@ function LensHalf({
   option: LensOption;
   index: number;
   selected: boolean;
+  /** The chosen label's and mark's colour. */
+  active: string;
   disabled: boolean;
   onSelect: () => void;
   onFocus: () => void;
@@ -117,7 +125,7 @@ function LensHalf({
   const on = useStateProgress(selected);
   const labelStyle = useAnimatedStyle(() => {
     const inactive = interpolateColor(press.progress.get(), [0, 1], [G.inactive, ref.color.textSecondary]);
-    return { color: interpolateColor(on.get(), [0, 1], [inactive, G.active]) };
+    return { color: interpolateColor(on.get(), [0, 1], [inactive, active]) };
   });
   // The large-content viewer shows the label as Once writes it, "1.0 ×".
   const title = selected ? `${option.label}${COPY.lensMark}` : option.label;
@@ -136,7 +144,7 @@ function LensHalf({
         </Animated.Text>
         {selected ? (
           <View style={styles.mark}>
-            <XIcon size={L.lensMark.size} color={G.active} weight="bold" testID="lens-mark" />
+            <XIcon size={L.lensMark.size} color={active} weight="bold" testID="lens-mark" />
           </View>
         ) : null}
       </View>
@@ -167,7 +175,6 @@ const styles = StyleSheet.create({
     width: G.width,
     height: G.height,
     borderRadius: G.radius,
-    backgroundColor: G.fill,
     ...curve,
   },
   thumb: {
@@ -177,7 +184,6 @@ const styles = StyleSheet.create({
     width: G.thumbWidth,
     height: G.thumbHeight,
     borderRadius: G.thumbRadius,
-    backgroundColor: G.thumbFill,
     ...curve,
   },
   // The label (and the chosen one's mark) centred on its thumb's stop.

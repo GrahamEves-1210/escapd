@@ -4,7 +4,8 @@
 // like the rest of the screen. Progress: the text alone. Error: a Phosphor
 // Warning (ref.layout.permission.noticeIcon, the raised ink glyphs take on
 // paper) centred on the first line, ref.space.sm before the same grey text.
-// The reference has no colour accent, so neither does the notice.
+// The reference has no colour accent, so neither does the notice. Inside a
+// mode, the mode's sheet colours (src/capture/ui/palette.ts).
 //
 // The row is not an accessibility element: on Android `accessible` makes a
 // view a keyboard and D-pad focus stop, and 03's keyboard and switch focus
@@ -16,6 +17,7 @@ import { useEffect } from "react";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { ICON_WEIGHT, WarningIcon } from "@/components/icons";
 import { ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 
 export interface PermissionNoticeProps {
   /** "error": the Warning icon, then the text. "progress": the text alone. */
@@ -26,6 +28,7 @@ export interface PermissionNoticeProps {
 
 export function PermissionNotice({ kind, text, testID }: PermissionNoticeProps) {
   const { fontScale } = useWindowDimensions();
+  const palette = useCapturePalette();
 
   useEffect(() => {
     // Android speaks the new text through the polite live region below.
@@ -46,10 +49,10 @@ export function PermissionNotice({ kind, text, testID }: PermissionNoticeProps) 
           style={[styles.iconBox, { height: firstLine }]}
           testID={testID ? `${testID}-icon` : undefined}
         >
-          <WarningIcon size={ref.layout.permission.noticeIcon} color={ref.color.raised} weight={ICON_WEIGHT} />
+          <WarningIcon size={ref.layout.permission.noticeIcon} color={palette.noticeGlyph} weight={ICON_WEIGHT} />
         </View>
       ) : null}
-      <Text style={styles.text}>{text}</Text>
+      <Text style={[styles.text, { color: palette.sheetMuted }]}>{text}</Text>
     </View>
   );
 }
@@ -58,5 +61,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
   iconBox: { justifyContent: "center" },
   // The message wraps in the column beside the icon; nothing shrinks.
-  text: { ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase", flexShrink: 1 },
+  text: { ...ref.type.meta, textTransform: "lowercase", flexShrink: 1 },
 });

@@ -6,9 +6,11 @@
 // it grows, it grows upward; when it still doesn't fit, it scrolls while the
 // button stays pinned. Hidden copies of every step's text reserve the tallest
 // block, so a step whose text wraps to more lines never moves the drawing.
+// Inside a mode: the mode's ink and muted ink (src/capture/ui/palette.ts).
 import { useState, type ComponentRef, type Ref } from "react";
 import { PixelRatio, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { STEPS } from "./copy";
 import { FadeLayer, type StepLayer } from "./stepper";
@@ -16,12 +18,13 @@ import { FadeLayer, type StepLayer } from "./stepper";
 export type TitleRef = ComponentRef<typeof Text>;
 
 function Block({ step, titleRef }: { step: number; titleRef?: Ref<TitleRef> }) {
+  const palette = useCapturePalette();
   return (
     <>
-      <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+      <Text ref={titleRef} accessibilityRole="header" style={[styles.title, { color: palette.ink }]}>
         {STEPS[step].title}
       </Text>
-      <Text style={styles.body}>{STEPS[step].body}</Text>
+      <Text style={[styles.body, { color: palette.guideBody }]}>{STEPS[step].body}</Text>
     </>
   );
 }
@@ -92,6 +95,6 @@ const styles = StyleSheet.create({
   // A leaving block keeps its bottom edge where it was while the next fades in.
   leaving: { position: "absolute", left: 0, right: 0, bottom: 0 },
   sizers: { position: "absolute", top: 0, left: 0, right: 0, opacity: 0 },
-  title: { ...ref.type.stepTitle, color: ref.color.textPrimary },
-  body: { ...ref.type.stepBody, color: ref.layout.guide.bodyText, marginTop: ref.layout.guide.titleGap },
+  title: { ...ref.type.stepTitle },
+  body: { ...ref.type.stepBody, marginTop: ref.layout.guide.titleGap },
 });

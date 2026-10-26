@@ -4,8 +4,10 @@
 // reference's square camera, Glyphs.tsx) and a Semibold 16 label, centred as
 // one group.
 // Pressed: the inside fills with ref.color.raised (a proposal; the reference
-// shows no press).
+// shows no press). Inside a mode: the outline, glyph and label in the mode's
+// ink, pressed in its raised fill (src/capture/ui/palette.ts).
 import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { FocusRing, useFocusRing } from "@/components/noir";
 import { curve, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
@@ -16,6 +18,7 @@ const A = L.add;
 
 export function AddPlateButton({ onPress, style }: { onPress: () => void; style?: StyleProp<ViewStyle> }) {
   const focus = useFocusRing();
+  const palette = useCapturePalette();
   return (
     <Pressable
       accessibilityRole="button"
@@ -24,10 +27,10 @@ export function AddPlateButton({ onPress, style }: { onPress: () => void; style?
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
       testID="add-plate"
-      style={({ pressed }) => [styles.pill, pressed ? styles.pressed : null, style]}
+      style={({ pressed }) => [styles.pill, { borderColor: palette.ink }, pressed ? { backgroundColor: palette.raised } : null, style]}
     >
-      <CameraGlyph color={ref.color.textPrimary} />
-      <Text style={styles.label}>{COPY.add}</Text>
+      <CameraGlyph color={palette.ink} />
+      <Text style={[styles.label, { color: palette.ink }]}>{COPY.add}</Text>
       <FocusRing visible={focus.focused} shape="pill" edge={A.border} />
     </Pressable>
   );
@@ -43,10 +46,8 @@ const styles = StyleSheet.create({
     gap: A.gap,
     paddingHorizontal: ref.space.xl,
     borderWidth: A.border,
-    borderColor: ref.color.textPrimary,
     borderRadius: ref.radius.round,
     ...curve,
   },
-  pressed: { backgroundColor: A.pressedFill },
-  label: { ...L.type.action, color: ref.color.textPrimary, flexShrink: 1 },
+  label: { ...L.type.action, flexShrink: 1 },
 });

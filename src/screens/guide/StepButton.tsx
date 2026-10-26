@@ -7,10 +7,12 @@
 // reference shows no step count). Replay's wait is its `busy` with the small
 // spinner; the label stays. With larger text it grows upward from 814, and
 // its slot reserves the longer label's height, so the label swap on step 4
-// never moves the text or the drawing above it.
+// never moves the text or the drawing above it. Inside a mode it is the
+// mode's primary button (ModePill: the mode's accent capsule at the same
+// 52, src/capture/ui/palette.ts).
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { PillButton } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
 import { ref } from "@/theme/tokens";
 import { COPY, stepAnnouncement } from "./copy";
 
@@ -31,7 +33,7 @@ export function StepButton({ step, last, busy, onPress }: { step: number; last: 
           {COPY.openCamera}
         </Text>
       </View>
-      <PillButton
+      <ModePill
         label={last ? COPY.openCamera : COPY.next}
         variant="ghost"
         busy={busy}

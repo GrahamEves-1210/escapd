@@ -6,9 +6,12 @@ import {
 } from "react-native-gesture-handler";
 import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import type { Genre } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
+import { TreatedImage } from "@/components/noir";
 import {
   MIN_ZOOM, clampTransform, doubleTapTarget, fillWidthFit, freeMargin, zoomAround, type Size, type Transform,
 } from "./geometry";
@@ -25,6 +28,12 @@ export interface LoupeTarget {
 
 export interface SceneViewProps {
   source: SceneSource;
+  /** The case's mode: the photo shows in its baked treatment (TreatedImage), on the stage and in the loupe. */
+  genre: Genre | null;
+  /** False fades the treatment away to the photo's own colours (paranormal's case closed). Default true. */
+  treated?: boolean;
+  /** A stable id for the photo when its uri is a signed URL that changes. */
+  cacheKey?: string;
   accessibilityLabel: string;
   /** Rendered inside the image box, so children position in image fractions. Only on the page in view. */
   children: (stage: Size) => ReactNode;
@@ -63,17 +72,19 @@ export function bundledAspect(source: SceneSource): number | null {
 
 /**
  * One room photo, full bleed: it fills the page's width with square edges,
- * in full colour on the flat ground; a short page crops it evenly top and
+ * in the mode's baked treatment on the mode's ground (the original shows
+ * until the bake is ready); a short page crops it evenly top and
  * bottom, but only into margins no hotspot reaches (else it is contained).
  * No mount, rim or label. Use mode draws a white ring inside its edge.
  * Pinch, pan and the loupe all happen inside the visible window, so hotspot
  * fractions stay locked to the photograph.
  */
 export function SceneView({
-  source, accessibilityLabel, children, onInteractionChange, pulledBack,
+  source, genre, treated = true, cacheKey, accessibilityLabel, children, onInteractionChange, pulledBack,
   armed = false, loupeTargets = [], active = true, pageable, onAspect, onWindow, pagerGesture,
 }: SceneViewProps) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const feedback = useFeedback();
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(() => bundledAspect(source));
@@ -312,7 +323,7 @@ export function SceneView({
   const laidOut = fit && windowWidth > 0 && windowHeight > 0;
   return (
     <View
-      style={styles.root}
+      style={[styles.root, { backgroundColor: theme.ground }]}
       onLayout={(e) => setViewport(e.nativeEvent.layout)}
       accessibilityElementsHidden={!active}
       importantForAccessibility={active ? "auto" : "no-hide-descendants"}
@@ -328,24 +339,36 @@ export function SceneView({
                 stageStyle,
               ]}
             >
-              <Image
+              {/* One baked image whose source changes once: the transform moves it, so pan and zoom cost nothing per frame. */}
+              <TreatedImage
                 source={source}
+                genre={genre}
+                original={!treated}
+                cacheKey={cacheKey}
                 style={StyleSheet.absoluteFill}
                 contentFit="fill"
-                transition={0}
                 accessible={active}
                 accessibilityRole="image"
                 accessibilityLabel={accessibilityLabel}
                 accessibilityHint={reducedMotion ? undefined : "Pinch to look closer. Press and hold for the loupe."}
                 onLoad={(e) => setAspect(e.source.width / e.source.height)}
+                testID={active ? "scene-photo" : undefined}
               />
               {active ? children({ width: imageWidth, height: imageHeight }) : null}
             </Animated.View>
-            {armed && active ? <View pointerEvents="none" style={styles.armed} testID="scene-armed" /> : null}
+            {armed && active ? <View pointerEvents="none" style={[styles.armed, { borderColor: theme.ink }]} testID="scene-armed" /> : null}
             <Animated.View pointerEvents="none" style={[styles.loupe, loupeFrame]}>
               <View style={styles.loupeLens}>
                 <Animated.View style={[styles.loupeImage, loupeImageStyle]}>
-                  <Image source={source} style={StyleSheet.absoluteFill} contentFit="fill" />
+                  <TreatedImage
+                    source={source}
+                    genre={genre}
+                    original={!treated}
+                    cacheKey={cacheKey}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="fill"
+                    accessible={false}
+                  />
                 </Animated.View>
                 <View style={styles.loupeRim} />
               </View>

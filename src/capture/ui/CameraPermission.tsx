@@ -14,15 +14,22 @@
 // button), Roll full and Retake mode. On a grant the route shell swaps in the
 // rangefinder: the sheet slides out and the ground fades out over it (exiting
 // animations in PermissionSheet and PermissionGround).
+//
+// Inside a mode (src/capture/ui/palette.ts) the same screen is the mode's
+// dark sheet: the mode's ground, a `surface` sheet with a `raised` panel, the
+// title in its ink and the body in its muted ink, the pill the mode's primary
+// button and the quiet ways out in its muted ink (ModePill), no haze.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Linking, StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { getPlates } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
-import { PillButton, ThinkingStates, useShowAfter } from "@/components/noir";
+import { ThinkingStates, useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
+import { ModePill } from "./ModePill";
+import { useCapturePalette } from "./palette";
 import { COPY, PERMISSION_COPY } from "./permission/copy";
 import { PermissionGround } from "./permission/PermissionGround";
 import { PermissionNotice } from "./permission/PermissionNotice";
@@ -45,6 +52,8 @@ interface Notice {
 export function CameraPermission({ permission, checking, requestPermission, retakeIndex, plateCount, onClose }: CameraPermissionProps) {
   const library = useLibraryImport({ retakeIndex });
   const feedback = useFeedback();
+  const { paper } = useCapturePalette();
+  const thinkingGround = paper ? "paper" : "dark";
   const [requesting, setRequesting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   // The roll count the quiet buttons are drawn from while a library import
@@ -164,7 +173,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
       fadeOut: false,
       node: (
         <ThinkingStates
-          ground="paper"
+          ground={thinkingGround}
           lines={[lower(COPY.busyLine(current, thinking.total))]}
           sizeTo={[lower(COPY.busyLine(thinking.total, thinking.total))]}
           accessibilityLabel={COPY.busyLabel}
@@ -193,7 +202,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
         // its label exists before then, and it stops the moment Checking ends.
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
           <ThinkingStates
-            ground="paper"
+            ground={thinkingGround}
             lines={CHECKING_LINES}
             accessibilityLabel={COPY.checking}
             announceOnMount
@@ -203,7 +212,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
         </View>
       ) : (
         <PermissionSheet copyKey={copyKey} title={copy.title} body={copy.body} notice={slot} testID="permission-sheet">
-          <PillButton
+          <ModePill
             label={lower(copy.action)}
             accessibilityLabel={copy.action}
             onPress={denied ? openSettings : request}
@@ -242,14 +251,15 @@ interface QuietPillProps {
 
 /**
  * The kit's quiet pill on paper (ref.button.quiet.paper: the reference's grey,
- * darkening when pressed), lowercase like the rest of the screen. Requesting:
+ * darkening when pressed; in a mode, the mode's muted ink), lowercase like
+ * the rest of the screen. Requesting:
  * disabled. Library busy: disabled and busy, so dimmed, inert and
  * { disabled, busy }, its label kept and still focusable (the button that
  * started an import keeps focus; the thinking line carries the progress).
  */
 function QuietPill({ label, onPress, requesting, busy, testID }: QuietPillProps) {
   return (
-    <PillButton
+    <ModePill
       variant="quiet"
       ground="paper"
       label={lower(label)}

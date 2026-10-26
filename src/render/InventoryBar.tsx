@@ -4,6 +4,7 @@ import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
 import type { Id } from "@/lib/puzzle-types";
 import type { InventoryItem } from "@/game/selectors";
 import { FocusRing, PillButton, useFocusRing } from "@/components/noir";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
@@ -47,6 +48,7 @@ export interface InventoryBarProps {
  */
 export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, busy }: InventoryBarProps) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const { width } = useWindowDimensions();
   const picked = selected.map((id) => items.find((i) => i.id === id)).filter((i): i is InventoryItem => !!i);
   const slots = Math.max(T.columns, items.length);
@@ -58,9 +60,9 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
         <Animated.View entering={FadeIn.duration(motion.reducedFade)} accessibilityLiveRegion="polite" style={styles.edge}>
           <Card style={styles.useCard} testID="use-card">
             <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>{picked[0].name}</Text>
-              {picked[0].description ? <Text style={styles.detail}>{picked[0].description}</Text> : null}
-              <Text style={styles.instruction}>Select an object in the room to use this artifact.</Text>
+              <Text style={[styles.cardTitle, { color: theme.ink }]}>{picked[0].name}</Text>
+              {picked[0].description ? <Text style={[styles.detail, { color: theme.inkMuted }]}>{picked[0].description}</Text> : null}
+              <Text style={[styles.instruction, { color: theme.inkMuted }]}>Select an object in the room to use this artifact.</Text>
             </View>
             <PillButton variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
           </Card>
@@ -72,7 +74,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
             <View style={styles.sockets}>
               <Socket label="A" item={picked[0]} />
               <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                <PlusIcon size={P.card.icon} weight="regular" color={ref.color.textSecondary} />
+                <PlusIcon size={P.card.icon} weight="regular" color={theme.inkMuted} />
               </View>
               <Socket label="B" item={picked[1]} />
             </View>
@@ -88,7 +90,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
 
       {items.length === 0 ? (
         <View style={[styles.edge, styles.emptyTray]}>
-          <Text style={styles.emptyText}>Items you find appear here.</Text>
+          <Text style={[styles.emptyText, { color: theme.inkMuted }]}>Items you find appear here.</Text>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.slots}>
@@ -115,6 +117,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
 
 function Tile({ item, width, selected, onToggle }: { item: InventoryItem; width: number; selected: boolean; onToggle: (id: Id) => void }) {
   const focus = useFocusRing();
+  const theme = useModeTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -125,23 +128,24 @@ function Tile({ item, width, selected, onToggle }: { item: InventoryItem; width:
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
       testID={`item-${item.id}`}
-      style={({ pressed }) => [styles.slot, { width }, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.slot, { width, backgroundColor: theme.raised }, pressed && styles.pressed]}
     >
       <ItemIcon name={item.name} size={T.icon} filled={selected} />
-      <Text numberOfLines={2} style={styles.slotLabel}>{item.name}</Text>
-      {selected ? <View pointerEvents="none" style={styles.selectedRing} testID={`item-${item.id}-selected`} /> : null}
+      <Text numberOfLines={2} style={[styles.slotLabel, { color: theme.ink }]}>{item.name}</Text>
+      {selected ? <View pointerEvents="none" style={[styles.selectedRing, { borderColor: theme.ink }]} testID={`item-${item.id}-selected`} /> : null}
       <FocusRing visible={focus.focused} shape="panel" edge={SQ.borderWidth} radius={SQ.radius} />
     </Pressable>
   );
 }
 
 function Socket({ label, item }: { label: string; item: InventoryItem }) {
+  const theme = useModeTheme();
   return (
     <View style={styles.socket} accessible accessibilityLabel={`Slot ${label}, ${item.name}`}>
       <ItemIcon name={item.name} size={T.icon} />
       <View style={styles.socketText}>
-        <Text style={styles.socketLabel}>Slot {label}</Text>
-        <Text numberOfLines={2} style={styles.socketName}>{item.name}</Text>
+        <Text style={[styles.socketLabel, { color: theme.inkMuted }]}>Slot {label}</Text>
+        <Text numberOfLines={2} style={[styles.socketName, { color: theme.ink }]}>{item.name}</Text>
       </View>
     </View>
   );

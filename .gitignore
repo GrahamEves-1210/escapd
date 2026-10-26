@@ -37,3 +37,6 @@ npm-debug.*
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# CanvasKit for Skia on the web: copied from canvaskit-wasm by postinstall (setup-skia-web)
+public/canvaskit.wasm

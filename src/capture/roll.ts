@@ -4,8 +4,10 @@
 // down, a retake replaces in place, and the camera's next shot fills the first
 // open slot. Photos live in memory for the session so the camera and the
 // review screen can share them. Nothing here is uploaded; send.ts uploads each
-// photo with position = its slot.
+// photo with position = its slot. The roll also keeps the mode its room is
+// for (openCapture({ genre }) sets it), so the build creates the room in it.
 import { useSyncExternalStore } from "react";
+import type { Genre } from "@/lib/puzzle-types";
 import { newId } from "@/lib/uuid";
 import { MAX_PLATES } from "./slots";
 
@@ -22,7 +24,8 @@ export type Slot = Plate | null;
  * One build attempt for the current photos: the draft room they are being
  * sent to and the idempotency key for the generation request. Reused on
  * retries so a flaky network never creates a second room or a second charge;
- * dropped whenever any slot changes, because a sent room's photos are fixed.
+ * dropped whenever any slot changes, because a sent room's photos are fixed,
+ * and whenever the roll's mode does.
  */
 export interface Ticket {
   key: string;
@@ -35,6 +38,8 @@ let slots: readonly Slot[] = [];
 // The filled photos in slot order, kept with `slots` (a stable snapshot).
 let plates: readonly Plate[] = [];
 let ticket: Ticket | null = null;
+// The mode the room is for; null builds a noir room (the server's default).
+let genre: Genre | null = null;
 const listeners = new Set<() => void>();
 
 function commit(next: Slot[]) {
@@ -123,4 +128,21 @@ export function currentTicket(): Ticket {
 
 export function setTicketRoom(roomId: string) {
   currentTicket().roomId = roomId;
+}
+
+/** The mode this roll's room is for, or null (noir). */
+export function getRollGenre(): Genre | null {
+  return genre;
+}
+
+/**
+ * Sets the mode the room is for. A different mode drops the build ticket, so
+ * a draft room already made for the old mode is never built in it. It stays
+ * through clearPlates (a retake after a failed build keeps its mode) until
+ * the next openCapture({ genre }).
+ */
+export function setRollGenre(next: Genre | null) {
+  if (next === genre) return;
+  genre = next;
+  ticket = null;
 }

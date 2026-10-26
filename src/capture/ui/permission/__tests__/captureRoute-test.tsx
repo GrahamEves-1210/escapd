@@ -10,7 +10,8 @@ import { setStatusBarStyle } from "expo-status-bar";
 import { captureGuideSeenThisSession, hasSeenCaptureGuide } from "@/capture/guideSeen";
 import { addPlate, clearPlates, removePlate } from "@/capture/roll";
 import type { CameraPermissionProps } from "@/capture/ui/types";
-import { motion, ref } from "@/theme/tokens";
+import { setMode } from "@/game/mode";
+import { modeThemes, motion, ref } from "@/theme/tokens";
 import CaptureScreen from "../../../../../app/capture/index";
 
 jest.mock("expo-camera", () => ({ useCameraPermissions: jest.fn() }));
@@ -114,6 +115,20 @@ describe("/capture", () => {
       expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  it("inside a mode, lays the mode's ground and keeps light glyphs, since 03 is the mode's dark sheet", async () => {
+    setMode("crime_scene");
+    try {
+      withPermission(response(false));
+      await render(<CaptureScreen />);
+      const root = screen.getByTestId("permission").parent as unknown as { props: { style?: unknown } };
+      expect(StyleSheet.flatten(root.props.style as never)).toMatchObject({ backgroundColor: modeThemes.crime_scene.surface });
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
+      expect(jest.mocked(setStatusBarStyle)).not.toHaveBeenCalledWith("dark");
+    } finally {
+      setMode(null);
     }
   });
 

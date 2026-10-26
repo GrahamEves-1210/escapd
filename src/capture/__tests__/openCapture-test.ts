@@ -1,8 +1,10 @@
 import { router } from "expo-router";
+import { getMode, setMode } from "@/game/mode";
 import * as api from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
 import { resetCaptureGuide } from "../guideSeen";
 import { openCapture } from "../openCapture";
+import { currentTicket, getRollGenre, setRollGenre, setTicketRoom } from "../roll";
 
 jest.mock("expo-router", () => ({
   router: { push: jest.fn(), replace: jest.fn() },
@@ -30,6 +32,8 @@ const access = (overrides: Partial<MyAccess> = {}): MyAccess => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  setMode(null);
+  setRollGenre(null);
   mocked.ensureSession.mockResolvedValue({} as Awaited<ReturnType<typeof api.ensureSession>>);
   mocked.getMyAccess.mockResolvedValue(access());
 });
@@ -125,6 +129,32 @@ describe("openCapture", () => {
     await expect(openCapture({ signal: controller.signal })).resolves.toBeNull();
     expect(push).not.toHaveBeenCalled();
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("a genre becomes the active mode and the roll's, before any check", async () => {
+    mocked.ensureSession.mockImplementation(async () => {
+      expect([getMode(), getRollGenre()]).toEqual(["crime_scene", "crime_scene"]);
+      return {} as Awaited<ReturnType<typeof api.ensureSession>>;
+    });
+    await expect(openCapture({ genre: "crime_scene" })).resolves.toBe("guide");
+    expect(mocked.ensureSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the mode through a detour to /pro: the continue after the purchase passes none", async () => {
+    mocked.getMyAccess.mockResolvedValueOnce(access({ has_custom_rooms_entitlement: false }));
+    await expect(openCapture({ genre: "paranormal" })).resolves.toBe("pro");
+    // /pro, after its test purchase.
+    await expect(openCapture({ replace: true })).resolves.toBe("guide");
+    expect([getMode(), getRollGenre()]).toEqual(["paranormal", "paranormal"]);
+  });
+
+  it("a new mode starts a new build: a draft room made for the old one is never built in it", async () => {
+    await openCapture({ genre: "noir" });
+    setTicketRoom("noir-draft");
+    await openCapture({ genre: "noir" });
+    expect(currentTicket().roomId).toBe("noir-draft");
+    await openCapture({ genre: "crime_scene" });
+    expect(currentTicket().roomId).toBeNull();
   });
 
   it("does no work with a signal that is already aborted", async () => {

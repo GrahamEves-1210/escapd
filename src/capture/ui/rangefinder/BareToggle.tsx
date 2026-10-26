@@ -10,6 +10,7 @@ import { Pressable, StyleSheet } from "react-native";
 import type { IconWeight } from "phosphor-react-native";
 import { FocusRing, useFocusRing, type NoirIcon } from "@/components/noir";
 import { ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { Dimmable } from "./Dimmable";
 
 const B = ref.button.bare;
@@ -26,6 +27,7 @@ export interface BareToggleProps {
 
 export function BareToggle({ icon: Icon, weight, accessibilityLabel, on, disabled, onPress, testID }: BareToggleProps) {
   const focus = useFocusRing();
+  const palette = useCapturePalette();
   return (
     <Dimmable dimmed={disabled}>
       <Pressable
@@ -39,7 +41,7 @@ export function BareToggle({ icon: Icon, weight, accessibilityLabel, on, disable
         testID={testID}
         style={({ pressed }) => [styles.box, pressed ? styles.pressed : null]}
       >
-        <Icon size={ref.layout.camera.controlIcon} color={B.glyph} weight={weight} />
+        <Icon size={ref.layout.camera.controlIcon} color={palette.ink} weight={weight} />
         <FocusRing visible={focus.focused} shape="pill" />
       </Pressable>
     </Dimmable>

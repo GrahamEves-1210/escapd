@@ -6,8 +6,13 @@
 // the case is ready, a neutral void veil sits over photos still to send
 // (lighter over sent ones), so the strip fills in as the photos go. Hidden
 // from screen readers: the copy and the thinking line carry the status.
+// Inside a mode each photo is in the mode's baked treatment (TreatedImage, at
+// the review tiles' bake size, so their bakes are reused here) and the
+// numbers, rims and loading fill take the mode's colours
+// (src/capture/ui/palette.ts); the veil stays neutral.
 import { StyleSheet, Text, View } from "react-native";
-import { Image } from "expo-image";
+import { useCapturePalette } from "@/capture/ui/palette";
+import { TreatedImage } from "@/components/noir";
 import { ref } from "@/theme/tokens";
 
 const P = ref.layout.develop.plate;
@@ -20,16 +25,25 @@ export function PlateStrip({ plates, sent, developed }: {
   sent?: number;
   developed?: boolean;
 }) {
+  const palette = useCapturePalette();
   return (
     <View style={styles.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="darkroom-plates">
       {plates.map((plate, i) => (
         <View key={plate.uri} style={styles.cell}>
-          <Text style={styles.label} numberOfLines={1}>
+          <Text style={[styles.label, { color: palette.inkMuted }]} numberOfLines={1}>
             {plate.number ?? i + 1}
           </Text>
-          <View style={styles.tile} testID={`darkroom-plate-${i}`}>
-            <View style={styles.loading} />
-            <Image source={{ uri: plate.uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} />
+          <View style={[styles.tile, { borderColor: palette.rim }]} testID={`darkroom-plate-${i}`}>
+            <View style={[styles.loading, { backgroundColor: palette.raised }]} />
+            <TreatedImage
+              source={plate.uri}
+              genre={palette.genre}
+              maxEdge={ref.layout.review.tile.bake}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              accessible={false}
+              testID={`darkroom-photo-${i}`}
+            />
             {developed ? null : (
               <View style={[styles.veil, { opacity: sent !== undefined && i < sent ? V.sent : V.unsent }]} testID={`darkroom-veil-${i}`} />
             )}
@@ -43,7 +57,7 @@ export function PlateStrip({ plates, sent, developed }: {
 const styles = StyleSheet.create({
   strip: { flexDirection: "row", gap: P.gap },
   cell: { width: P.size, gap: P.labelGap },
-  label: { ...P.label, color: ref.color.textSecondary },
+  label: { ...P.label },
   tile: {
     width: P.size,
     height: P.size,
@@ -51,9 +65,8 @@ const styles = StyleSheet.create({
     borderRadius: P.radius,
     ...ref.curve,
     borderWidth: P.rim,
-    borderColor: ref.color.rim,
   },
   // Shows only while the image loads, as 07's tiles.
-  loading: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.raised },
+  loading: { ...StyleSheet.absoluteFill },
   veil: { ...StyleSheet.absoluteFill, backgroundColor: V.color },
 });

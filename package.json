@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "jest"
+    "test": "jest",
+    "postinstall": "setup-skia-web public"
   },
   "dependencies": {
     "@expo-google-fonts/archivo": "^0.4.2",
@@ -19,6 +20,7 @@
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo-google-fonts/roboto-serif": "^0.4.3",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@shopify/react-native-skia": "2.14.0",
     "@supabase/supabase-js": "^2.118.0",
     "aes-js": "^3.1.2",
     "expo": "~58.0.19",
@@ -67,7 +69,7 @@
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|phosphor-react-native|react-native-reanimated|react-native-worklets)"
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|react-native-svg|phosphor-react-native|react-native-reanimated|react-native-worklets|@shopify/react-native-skia)"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",

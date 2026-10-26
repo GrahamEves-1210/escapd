@@ -1,5 +1,6 @@
 import { StyleSheet, Text } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { LightbulbIcon } from "@/components/icons";
@@ -13,20 +14,21 @@ const P = ref.layout.play;
  */
 export function CoachCard({ text }: { text: string }) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const d = reducedMotion ? motion.reducedFade : 240;
   return (
     <Animated.View
       key={text}
       entering={FadeIn.duration(d)}
       exiting={FadeOut.duration(d)}
-      style={styles.card}
+      style={[styles.card, { backgroundColor: theme.raised }]}
       accessibilityLiveRegion="polite"
       accessible
       accessibilityLabel={`Tip: ${text}`}
       testID="coach-card"
     >
-      <LightbulbIcon size={P.card.icon} weight="regular" color={ref.color.textPrimary} />
-      <Text style={styles.text}>{text}</Text>
+      <LightbulbIcon size={P.card.icon} weight="regular" color={theme.ink} />
+      <Text style={[styles.text, { color: theme.ink }]}>{text}</Text>
     </Animated.View>
   );
 }

@@ -7,17 +7,20 @@
 // wall down the right, a gloss line along the top band, and the island's gloss
 // line and flat lit right face. The panel's foot crops the phone. ESCAPD's own
 // vector drawing, fitted to the reference's outline; every value is
-// ref.layout.permission's. Decorative:
+// ref.layout.permission's. Inside a mode the panel is the mode's `raised`,
+// the phone its `ground` and the lights its muted ink
+// (src/capture/ui/palette.ts): a dark phone on a dark panel, lit along the
+// same edges. Decorative:
 // hidden from screen readers, no touches, never animated.
 import { useId } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { ref } from "@/theme/tokens";
+import { useCapturePalette, type CapturePalette } from "../palette";
 
 const P = ref.layout.permission;
 const A = P.phone;
 const I = P.island;
-const SHADE = ref.color.illustrationBevel;
 /** The shear: the top edge falls this much per point to the right. */
 const SLOPE = Math.tan((ref.effect.illustrationTilt * Math.PI) / 180);
 
@@ -88,21 +91,24 @@ const FACE_TOP = -FACE.height / 2;
 /** The panel: full-bleed, ref.layout.permission.panel tall, clipped by the sheet's top corners. */
 export function IllustrationPanel() {
   const { width } = useWindowDimensions();
+  const palette = useCapturePalette();
   return (
     <View
       accessible={false}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
-      style={styles.panel}
+      style={[styles.panel, { backgroundColor: palette.panel }]}
       testID="permission-illustration"
     >
-      <PhoneDrawing width={width} />
+      <PhoneDrawing width={width} palette={palette} />
     </View>
   );
 }
 
-function PhoneDrawing({ width }: { width: number }) {
+function PhoneDrawing({ width, palette }: { width: number; palette: CapturePalette }) {
+  // Every light is this colour at a stop opacity.
+  const SHADE = palette.phoneLight;
   const id = `phone${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   // The frame's origin in the panel, and the shear about it.
   const x0 = width / 2 + A.dx;
@@ -143,7 +149,7 @@ function PhoneDrawing({ width }: { width: number }) {
 
       <G transform={frame}>
         {/* The solid frame, its lights, then the open screen in the panel's grey. */}
-        <Path d={OUTER} fill={ref.color.inkDisplay} />
+        <Path d={OUTER} fill={palette.phone} />
         <Path d={BEVEL} fill="none" stroke={`url(#${id}bevel)`} strokeWidth={A.bevel.width} />
         <Path d={SHEEN} fill="none" stroke={`url(#${id}sheen)`} strokeWidth={S.width} />
         <Path
@@ -153,11 +159,11 @@ function PhoneDrawing({ width }: { width: number }) {
           strokeWidth={A.gloss.width}
           strokeLinecap="round"
         />
-        <Path d={SCREEN} fill={ref.color.panel} />
+        <Path d={SCREEN} fill={palette.panel} />
       </G>
 
       <G transform={island}>
-        <Path d={ISLAND} fill={ref.color.inkDisplay} />
+        <Path d={ISLAND} fill={palette.phone} />
         <Rect
           x={FACE.from}
           y={FACE_TOP}
@@ -181,5 +187,5 @@ function PhoneDrawing({ width }: { width: number }) {
 
 const styles = StyleSheet.create({
   // Full-bleed under the sheet's top corners (the sheet clips it), cropping the phone at its foot.
-  panel: { height: ref.layout.permission.panel, backgroundColor: ref.color.panel, overflow: "hidden" },
+  panel: { height: ref.layout.permission.panel, overflow: "hidden" },
 });

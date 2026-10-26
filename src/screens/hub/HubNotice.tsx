@@ -1,4 +1,4 @@
-// THE STUDY's error notice (docs/DESIGN.md, 01 · States: Error), in the
+// Home's error notice when noir's first tap can't start The Study (docs/DESIGN.md, 01 · States: Error), in the
 // chips' material: a capsule in ref.color.ground (the chips' fill) with a 1 pt rim
 // (white 10 %), padding 8 x 16. Inside: a Phosphor glyph (WifiSlash offline,
 // Warning otherwise) at 16 in textPrimary, centred on the first meta line,

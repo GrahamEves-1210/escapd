@@ -3,6 +3,7 @@ import { AccessibilityInfo, StyleSheet, Text, TextInput, View } from "react-nati
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import type { Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { codeKind, codeLength, type InventoryItem } from "@/game/selectors";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
@@ -40,6 +41,7 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   onWheelDrag?: (dragging: boolean) => void;
 }) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const feedback = useFeedback();
   const kind = codeKind(puzzle);
   const length = codeLength(puzzle);
@@ -125,11 +127,11 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
       {length
         ? Array.from({ length }, (_, i) => (
           <View key={i} style={styles.slot}>
-            <Text style={styles.digit}>{value[i] ?? ""}</Text>
-            {i === value.length ? <View pointerEvents="none" style={styles.slotActive} /> : null}
+            <Text style={[styles.digit, { color: theme.ink }]}>{value[i] ?? ""}</Text>
+            {i === value.length ? <View pointerEvents="none" style={[styles.slotActive, { borderColor: theme.ink }]} /> : null}
           </View>
         ))
-        : <Text style={[styles.digit, !value && styles.secondary]}>{value || "—"}</Text>}
+        : <Text style={[styles.digit, { color: value ? theme.ink : theme.inkMuted }]}>{value || "—"}</Text>}
     </Animated.View>
   ) : (
     <Animated.View style={shakeStyle}>
@@ -146,15 +148,15 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
         onSubmitEditing={submit}
         accessibilityLabel="Code"
         placeholder="Enter the code"
-        placeholderTextColor={ref.color.textSecondary}
-        style={styles.input}
+        placeholderTextColor={theme.inkMuted}
+        style={[styles.input, { color: theme.ink }]}
       />
     </Animated.View>
   );
 
   return (
     <View style={styles.root}>
-      {puzzle.prompt ? <Text style={styles.prompt}>{puzzle.prompt}</Text> : null}
+      {puzzle.prompt ? <Text style={[styles.prompt, { color: theme.inkMuted }]}>{puzzle.prompt}</Text> : null}
       {tumbler ? wheels : keypad}
       <View style={styles.messageRow} accessibilityLiveRegion="polite" testID="code-message">
         {message ? <NoticeLine icon={WarningIcon} text={message.text} /> : null}
@@ -173,11 +175,11 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
               accessibilityRole="button"
               accessibilityLabel={key === "back" ? "Delete" : key === "clear" ? "Clear" : key}
               testID={`key-${key}`}
-              style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
+              style={({ pressed }) => [styles.key, { backgroundColor: theme.raised }, pressed && styles.keyPressed]}
             >
               {key === "back"
-                ? <BackspaceIcon size={P.tray.icon} weight={ICON_WEIGHT} color={ref.color.textPrimary} />
-                : <Text style={key === "clear" ? styles.clear : styles.keyLabel}>
+                ? <BackspaceIcon size={P.tray.icon} weight={ICON_WEIGHT} color={theme.ink} />
+                : <Text style={key === "clear" ? [styles.clear, { color: theme.inkMuted }] : [styles.keyLabel, { color: theme.ink }]}>
                   {key === "clear" ? "Clear" : key}
                 </Text>}
             </RingPressable>
@@ -205,8 +207,8 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
           />
           {showItems ? items.map((item) => (
             <Card key={item.id} style={styles.item}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              {item.description ? <Text style={styles.itemDetail}>{item.description}</Text> : null}
+              <Text style={[styles.itemName, { color: theme.ink }]}>{item.name}</Text>
+              {item.description ? <Text style={[styles.itemDetail, { color: theme.inkMuted }]}>{item.description}</Text> : null}
             </Card>
           )) : null}
         </View>
@@ -219,7 +221,6 @@ const styles = StyleSheet.create({
   root: { gap: ref.space.lg },
   prompt: { ...P.type.hint, color: ref.color.textSecondary },
   digit: { ...P.type.digit, color: ref.color.textPrimary, textAlign: "center" },
-  secondary: { color: ref.color.textSecondary },
   wheels: { flexDirection: "row", justifyContent: "center", gap: ref.space.sm },
   slots: { flexDirection: "row", justifyContent: "center", gap: ref.space.sm },
   slot: {

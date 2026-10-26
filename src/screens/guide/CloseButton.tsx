@@ -7,12 +7,15 @@
 // draw the reference's Liquid Glass; on pure black the solid grey looks the
 // same). Pressed at the disc's 0.75 opacity. The brass focus ring (ref.focus)
 // circles it while it has keyboard, D-pad or switch focus. Pressing in gives
-// the light `press` haptic.
+// the light `press` haptic. Inside a mode the disc is the mode's muted ink
+// and the X its ground (src/capture/ui/palette.ts): still a light disc with a
+// dark glyph, the ring's highlights unchanged.
 import { useId } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
 import { ICON_WEIGHT, XIcon } from "@/components/icons";
 import { FocusRing, gradientLine, gradientStops, useFocusRing } from "@/components/noir";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 
@@ -28,6 +31,7 @@ const RING_LINE = gradientLine(RING.angle, CLOSE_DISC, CLOSE_DISC);
 export function CloseButton({ accessibilityLabel, onPress }: { accessibilityLabel: string; onPress: () => void }) {
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   const ringId = `guideRing${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
     <Pressable
@@ -47,11 +51,11 @@ export function CloseButton({ accessibilityLabel, onPress }: { accessibilityLabe
           </LinearGradient>
         </Defs>
         {/* The stroke's centre half a ring width in from the edge: the fill is the 48 disc, the stroke the outer 1. */}
-        <Circle cx={CENTRE} cy={CENTRE} r={CENTRE - D.ringWidth / 2} fill={D.fill} stroke={`url(#${ringId})`} strokeWidth={D.ringWidth} />
+        <Circle cx={CENTRE} cy={CENTRE} r={CENTRE - D.ringWidth / 2} fill={palette.closeFill} stroke={`url(#${ringId})`} strokeWidth={D.ringWidth} />
       </Svg>
       {/* In a view of its own, so it paints over the disc on the web too (an absolute svg outranks a static one there). */}
       <View pointerEvents="none">
-        <XIcon size={D.icon} weight={ICON_WEIGHT} color={D.glyph} />
+        <XIcon size={D.icon} weight={ICON_WEIGHT} color={palette.closeGlyph} />
       </View>
       <FocusRing visible={focus.focused} shape="pill" />
     </Pressable>

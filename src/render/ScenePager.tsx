@@ -5,6 +5,7 @@ import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, wi
 import { scheduleOnRN } from "react-native-worklets";
 import { FocusRing, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import type { Size } from "./geometry";
@@ -49,6 +50,7 @@ export interface ScenePagerProps {
  */
 export function ScenePager({ count, index, onIndexChange, marked, pageable, renderPage, overlay, disabled = false }: ScenePagerProps) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const feedback = useFeedback();
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   // Each mounted page's visible photo height, for the dots on its foot.
@@ -169,7 +171,7 @@ export function ScenePager({ count, index, onIndexChange, marked, pageable, rend
   const footInset = Math.max(0, (size.height - (windows[index] ?? size.height)) / 2) + D.inset;
 
   return (
-    <View style={styles.root} onLayout={(e) => setSize(e.nativeEvent.layout)} testID="scene-pager">
+    <View style={[styles.root, { backgroundColor: theme.ground }]} onLayout={(e) => setSize(e.nativeEvent.layout)} testID="scene-pager">
       {W > 0 ? (
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.row, { width: W * count }, rowStyle]}>
@@ -197,6 +199,7 @@ function Dots({ count, index, marked, bottom, onGo }: {
   onGo: (next: number) => void;
 }) {
   const focus = useFocusRing();
+  const theme = useModeTheme();
   const [pillWidth, setPillWidth] = useState(0);
   const fresh = marked.filter((m) => m !== index);
   const value = `${index + 1} of ${count}${fresh.length ? `. Something new on view ${fresh.map((m) => m + 1).join(" and ")}` : ""}`;
@@ -235,7 +238,10 @@ function Dots({ count, index, marked, bottom, onGo }: {
             return (
               <View
                 key={i}
-                style={[styles.dot, current ? styles.dotCurrent : isNew ? styles.dotNew : styles.dotOther]}
+                style={[
+                  styles.dot,
+                  current ? { backgroundColor: theme.ink } : isNew ? [styles.dotNew, { borderColor: theme.ink }] : { backgroundColor: theme.inkMuted },
+                ]}
                 testID={current ? `view-dot-${i}-current` : isNew ? `view-dot-${i}-new` : `view-dot-${i}`}
               />
             );
@@ -266,8 +272,6 @@ const styles = StyleSheet.create({
   },
   pillFill: { ...StyleSheet.absoluteFill, borderRadius: ref.radius.round, backgroundColor: ref.color.void, opacity: D.fillOpacity },
   dot: { width: D.size, height: D.size, borderRadius: ref.radius.round },
-  dotCurrent: { backgroundColor: ref.color.textPrimary },
-  dotOther: { backgroundColor: ref.color.textSecondary },
   // Something new: a white ring, a different shape from the filled dots.
   dotNew: { width: D.marked, height: D.marked, borderWidth: D.ring, borderColor: ref.color.textPrimary },
 });

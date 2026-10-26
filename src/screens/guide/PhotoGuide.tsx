@@ -14,6 +14,10 @@
 // (644-700), bottom-anchored; a 62 gap that holds the check's status line
 // (723-739); the pill at 762-814; then safe bottom + ref.space.ctaBottom.
 // Large text grows the block upward from 814.
+// Inside a mode (openCapture({ genre }) sets it) the guide takes the mode's
+// colours (src/capture/ui/palette.ts): its ground, ink and muted ink, the
+// close disc in its muted ink, and the step button as the mode's primary
+// button. The line drawings keep their greys.
 import { useCallback, useEffect, useRef } from "react";
 import { AccessibilityInfo, BackHandler, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
@@ -21,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import { router, useFocusEffect, useNavigation, type NativeStackNavigationProp } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { useFeedback } from "@/game/feedback";
 import { ThinkingStates } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -51,6 +56,7 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   const insets = useSafeAreaInsets();
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
   const { state, clock, goTo, isMoving, currentStep } = useStepper(
     STEPS.length,
@@ -184,7 +190,7 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   });
 
   return (
-    <View style={[styles.root, { paddingBottom: insets.bottom + ref.space.ctaBottom }]}>
+    <View style={[styles.root, { backgroundColor: palette.well, paddingBottom: insets.bottom + ref.space.ctaBottom }]} testID="guide-root">
       <View style={[styles.header, { paddingTop: insets.top + G.close.top }]}>
         <CloseButton accessibilityLabel={COPY.skip} onPress={onClose} />
       </View>
@@ -216,8 +222,8 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
 }
 
 const styles = StyleSheet.create({
-  // Pure black, as the reference: no still, grain or glow.
-  root: { flex: 1, backgroundColor: ref.color.void },
+  // Pure black (the palette's well), as the reference: no still, grain or glow.
+  root: { flex: 1 },
   // The disc's outer edge 10 below the safe top and 32 from the right edge.
   header: { flexDirection: "row", justifyContent: "flex-end", paddingRight: G.close.right },
   // y 119-762 on the base device: the swipe area, between the disc and the pill.

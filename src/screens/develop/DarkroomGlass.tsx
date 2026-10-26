@@ -15,7 +15,9 @@ import { ref } from "@/theme/tokens";
 const L = ref.layout.develop;
 const { size, lensX, lensY } = L.glass;
 const DRIFT = L.drift;
-// The 96 pt set: the platform picks @2x or @3x.
+// The 96 pt set: the platform picks @2x or @3x. Shown untinted in every mode,
+// so its lens is painted clear grey glass in the brass rim (no green or mint:
+// the modes' rule); the darkroom test pins every scale.
 const GLASS = require("../../../assets/brand/magnifier.png");
 // One loop of the phase, 0 to 1; withRepeat restarts it from 0, where the path closes.
 const LOOP = timingFor(DRIFT);

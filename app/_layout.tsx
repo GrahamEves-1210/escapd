@@ -8,6 +8,7 @@ import { PlayfairDisplay_400Regular } from "@expo-google-fonts/playfair-display/
 import { PlayfairDisplay_400Regular_Italic } from "@expo-google-fonts/playfair-display/400Regular_Italic";
 import { PlayfairDisplay_600SemiBold } from "@expo-google-fonts/playfair-display/600SemiBold";
 import { PlayfairDisplay_700Bold } from "@expo-google-fonts/playfair-display/700Bold";
+import { PlayfairDisplay_900Black } from "@expo-google-fonts/playfair-display/900Black";
 import { PlusJakartaSans_400Regular } from "@expo-google-fonts/plus-jakarta-sans/400Regular";
 import { PlusJakartaSans_500Medium } from "@expo-google-fonts/plus-jakarta-sans/500Medium";
 import { PlusJakartaSans_600SemiBold } from "@expo-google-fonts/plus-jakarta-sans/600SemiBold";
@@ -16,8 +17,11 @@ import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono/500Me
 import { JetBrainsMono_600SemiBold } from "@expo-google-fonts/jetbrains-mono/600SemiBold";
 import { RobotoSerif_400Regular } from "@expo-google-fonts/roboto-serif/400Regular";
 import { CrimsonText_400Regular_Italic } from "@expo-google-fonts/crimson-text/400Regular_Italic";
+import { CrimsonText_600SemiBold_Italic } from "@expo-google-fonts/crimson-text/600SemiBold_Italic";
 import { Archivo_800ExtraBold } from "@expo-google-fonts/archivo/800ExtraBold";
+import { Archivo_900Black } from "@expo-google-fonts/archivo/900Black";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
+import { useSkiaReady } from "@/lib/skiaReady";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { color } from "@/theme/tokens";
 
@@ -40,14 +44,21 @@ export default function RootLayout() {
     RobotoSerif_400Regular,
     CrimsonText_400Regular_Italic,
     Archivo_800ExtraBold,
+    // The modes' names (modeThemes[genre].display).
+    PlayfairDisplay_900Black,
+    Archivo_900Black,
+    CrimsonText_600SemiBold_Italic,
   });
+  // Web only: mode photos are baked with Skia, whose CanvasKit loads first.
+  // Native Skia is in the binary, so this is true at once and never waits.
+  const skiaReady = useSkiaReady();
 
   useEffect(() => {
     if (loaded || error) SplashScreen.hideAsync().catch(() => {});
   }, [loaded, error]);
 
   // If fonts fail to load, continue with system fonts rather than block play.
-  if (!loaded && !error) return null;
+  if ((!loaded && !error) || !skiaReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: color.canvas }}>

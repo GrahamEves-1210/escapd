@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import type { ReactElement } from "react";
 import { StyleSheet } from "react-native";
 import { act, render, screen, userEvent } from "@testing-library/react-native";
@@ -5,9 +7,10 @@ import { getAnimatedStyle } from "react-native-reanimated";
 import { router } from "expo-router";
 import type { DevStage } from "@/capture/useDevelopment";
 import { addPlate, clearPlates, removePlate } from "@/capture/roll";
+import { setMode } from "@/game/mode";
 import type { GenerationJob } from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { modeThemes, ref } from "@/theme/tokens";
 import DarkroomScreen from "../../../../app/capture/develop";
 import { DEVELOPING_LINES, WAITING_LINE, sendingLine, waitingCopy } from "../copy";
 import { DarkroomGlass, GLASS_CENTRE_Y } from "../DarkroomGlass";
@@ -41,9 +44,26 @@ const mockFeedback = {
 const mockSuccess = mockFeedback.success;
 const mockWarning = mockFeedback.warning;
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
+// A bake that is ready at once ("baked/<mode>/<photo>"), and none in the shell, as the real one.
+jest.mock("@/components/noir/treatPhoto", () => ({
+  ...jest.requireActual("@/components/noir/treatPhoto"),
+  useTreatedPhoto: (source: string, genre: string | null) => (genre ? `baked/${genre}/${source}` : null),
+}));
 
 const D = ref.layout.develop;
 const T = ref.motion.thinking;
+const ROOT = path.join(__dirname, "../../../..");
+// pngjs comes with Expo's image tooling (@expo/image-utils); it has no types of its own.
+type DecodedPng = { width: number; height: number; data: Uint8Array };
+const { PNG } = jest.requireActual<{ PNG: { sync: { read: (file: Buffer) => DecodedPng } } }>("pngjs");
+/** Hue in degrees and HSV saturation of an sRGB pixel. */
+function hueSat(r: number, g: number, b: number) {
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let hue = 0;
+  if (d) hue = max === r ? (((g - b) / d) % 6) * 60 : max === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60;
+  return { hue: hue < 0 ? hue + 360 : hue, sat: max ? d / max : 0 };
+}
 const PERIOD = T.gap + T.swap + T.hold;
 const hidden = { includeHiddenElements: true } as const;
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
@@ -189,6 +209,35 @@ describe("DarkroomGlass", () => {
     });
     // The lens rests on the tiles' middle, under the numerals.
     expect(GLASS_CENTRE_Y).toBe(D.stage.stripTop + D.plate.label.lineHeight + D.plate.labelGap + D.plate.size / 2);
+  });
+
+  // The glass shows untinted in every mode, so its lens must be neutral: a green
+  // lens tipped noir's monochrome and paranormal's cool blue-green toward mint
+  // ("No green or mint anywhere else"). Pins the painted set and its master.
+  it("paints the lens as clear grey glass in a brass rim, with no green or mint, at every scale", () => {
+    for (const name of ["magnifier.png", "magnifier@2x.png", "magnifier@3x.png", "magnifier-1024.png"]) {
+      const { width, height, data } = PNG.sync.read(fs.readFileSync(path.join(ROOT, "assets/brand", name)));
+      const cx = D.glass.lensX * width;
+      const cy = D.glass.lensY * height;
+      let glass = 0;
+      let brass = 0;
+      const green: string[] = [];
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          if (data[i + 3] < 8) continue;
+          const { hue, sat } = hueSat(data[i], data[i + 1], data[i + 2]);
+          const r = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / width;
+          if (hue >= 70 && hue <= 200 && sat > 0.12 && Math.max(data[i], data[i + 1], data[i + 2]) > 20) green.push(`${x},${y}`);
+          // The see-through lens inside the rim, and the rim round it.
+          if (r < 0.2 && data[i + 3] < 250) glass++;
+          if (r > 0.25 && r < 0.29 && hue >= 20 && hue <= 50 && sat > 0.4) brass++;
+        }
+      }
+      expect({ name, green: green.slice(0, 5) }).toEqual({ name, green: [] });
+      expect(glass).toBeGreaterThan(width * width * 0.1);
+      expect(brass).toBeGreaterThan(width * width * 0.03);
+    }
   });
 });
 
@@ -473,5 +522,79 @@ describe("back to the photos after a failed build", () => {
     await renderIn(<DarkroomScreen />);
     await user().press(screen.getByRole("button", { name: "Retake photos" }));
     expect(router.dismissTo).toHaveBeenCalledWith({ pathname: "/capture/review", params: { flag: "", issue: "too_few_objects" } });
+  });
+});
+
+describe("inside a mode", () => {
+  const theme = modeThemes.paranormal;
+  const uriOf = (node: { props: { source?: unknown } }) => ([node.props.source].flat()[0] as { uri: string }).uri;
+  beforeEach(() => setMode("paranormal"));
+  afterEach(() => setMode(null));
+
+  it("tints the wait: the mode's ground and inks, the stamp in its stamp colour, the clock in its well", async () => {
+    mockStage = running;
+    await renderIn(<DarkroomScreen />);
+    expect(styleOf(screen.getByTestId("darkroom-root")).backgroundColor).toBe(theme.surface);
+    expect(styleOf(screen.getByText("BUILDING"))).toMatchObject({ ...ref.type.tag, color: theme.stamp });
+    expect(styleOf(screen.getByTestId("darkroom-stamp")).borderColor).toBe(theme.stamp);
+    expect(styleOf(screen.getByRole("header", { name: "Building your case" })).color).toBe(theme.ink);
+    expect(styleOf(screen.getByText(/This usually takes a minute or two/)).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByTestId("darkroom-elapsed")).backgroundColor).toBe(theme.ground);
+    expect(styleOf(screen.getByText("1", hidden)).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByTestId("darkroom-plate-0", hidden)).borderColor).toBe(theme.rim);
+  });
+
+  it("shows the photos in the mode's baked treatment, under the same neutral veil", async () => {
+    mockStage = sending(1);
+    await renderIn(<DarkroomScreen />);
+    expect(uriOf(screen.getByTestId("darkroom-photo-0-treated", hidden))).toBe("baked/paranormal/file://plate-0.jpg");
+    expect(styleOf(screen.getByTestId("darkroom-veil-1", hidden))).toMatchObject({ backgroundColor: ref.color.void, opacity: D.veil.unsent });
+  });
+
+  it("opens the case from the mode's primary button, with the weighty thud", async () => {
+    mockStage = { kind: "ready", roomId: "r9" };
+    await renderIn(<DarkroomScreen />);
+    const bar = screen.getByTestId("open-case");
+    expect(styleOf(bar)).toMatchObject({
+      backgroundColor: theme.accent,
+      minHeight: ref.layout.state.bar.height,
+      borderRadius: ref.layout.state.bar.radius,
+    });
+    expect(styleOf(screen.getByText("Open the case")).color).toBe(theme.accentInk);
+    await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole("button", { name: "Open the case" }));
+    expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+    expect(router.replace).toHaveBeenCalledWith("/play/r9");
+  });
+
+  it("keeps the quiet way out in the mode's ink, and it still leaves", async () => {
+    mockStage = running;
+    await renderIn(<DarkroomScreen />);
+    expect(styleOf(screen.getByText("Leave it building")).color).toBe(theme.ink);
+    await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole("button", { name: "Leave it building" }));
+    expect(router.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("draws the calm states (errors, asks, One moment) in the mode's colours, with every action working", async () => {
+    mockStage = { kind: "error", message: "Couldn't connect." };
+    await renderIn(<DarkroomScreen />);
+    expect(styleOf(screen.getByTestId("state-screen")).backgroundColor).toBe(theme.surface);
+    expect(styleOf(screen.getByText("The case didn't go through")).color).toBe(theme.ink);
+    expect(styleOf(screen.getByText("Couldn't connect.")).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByText("Try again")).color).toBe(theme.accentInk);
+    expect(styleOf(screen.getByText("Back to your photos")).color).toBe(theme.ink);
+    await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole("button", { name: "Try again" }));
+    expect(mockRetry).toHaveBeenCalled();
+    await goTo({ kind: "checking" });
+    expect(screen.getByTestId("state-loading", hidden)).toBeTruthy();
+    expect(styleOf(screen.getByTestId("state-screen")).backgroundColor).toBe(theme.surface);
+  });
+});
+
+describe("in the shell (no mode)", () => {
+  it("shows the photos as taken, with no treatment", async () => {
+    mockStage = sending(1);
+    await renderIn(<DarkroomScreen />);
+    expect(screen.queryByTestId("darkroom-photo-0-treated", hidden)).toBeNull();
+    expect(screen.getByTestId("darkroom-photo-0-original", hidden)).toBeTruthy();
   });
 });

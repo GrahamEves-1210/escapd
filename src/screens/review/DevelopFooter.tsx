@@ -7,7 +7,11 @@
 // warning colour for marked photos, grey for too few) and the bar dims to
 // ref.button.disabledOpacity.pill. Pressing in on the live bar gives the
 // medium `thud` haptic: committing to build a case (as PillButton haptic="thud").
+// Inside a mode the band is the mode's ground, the helper its muted ink, and
+// the bar the mode's primary button: its accent with the accent's ink
+// (src/capture/ui/palette.ts).
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { FocusRing, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
@@ -27,10 +31,11 @@ export function DevelopFooter({ bottom, blocked, onDevelop }: DevelopFooterProps
   const focus = useFocusRing();
   const disabled = blocked !== null;
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   return (
-    <View style={[styles.footer, { paddingBottom: F.pad + bottom }]} testID="develop-footer">
+    <View style={[styles.footer, { backgroundColor: palette.page, paddingBottom: F.pad + bottom }]} testID="develop-footer">
       {blocked ? (
-        <Text style={[styles.helper, blocked.kind === "flagged" && styles.warning]} testID="develop-helper">
+        <Text style={[styles.helper, { color: palette.inkMuted }, blocked.kind === "flagged" && styles.warning]} testID="develop-helper">
           {blocked.kind === "flagged" ? COPY.flaggedHelp : COPY.tooFew(blocked.min)}
         </Text>
       ) : null}
@@ -44,9 +49,9 @@ export function DevelopFooter({ bottom, blocked, onDevelop }: DevelopFooterProps
         onFocus={focus.onFocus}
         onBlur={focus.onBlur}
         testID="develop"
-        style={({ pressed }) => [styles.bar, disabled ? styles.disabled : pressed ? styles.pressed : null]}
+        style={({ pressed }) => [styles.bar, { backgroundColor: palette.primary }, disabled ? styles.disabled : pressed ? styles.pressed : null]}
       >
-        <Text style={styles.label}>{COPY.develop}</Text>
+        <Text style={[styles.label, { color: palette.onPrimary }]}>{COPY.develop}</Text>
         <FocusRing visible={focus.focused} shape="panel" radius={F.radius} />
       </Pressable>
     </View>
@@ -58,9 +63,8 @@ const styles = StyleSheet.create({
     paddingTop: F.pad,
     paddingHorizontal: ref.space.edge,
     gap: F.helperGap,
-    backgroundColor: ref.color.ground,
   },
-  helper: { ...L.type.hint, color: ref.color.textSecondary, textAlign: "center" },
+  helper: { ...L.type.hint, textAlign: "center" },
   warning: { color: L.warning },
   bar: {
     minHeight: F.bar,
@@ -68,10 +72,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: ref.space.lg,
     borderRadius: F.radius,
-    backgroundColor: F.fill,
     ...curve,
   },
-  label: { ...L.type.action, color: F.label, textAlign: "center" },
+  label: { ...L.type.action, textAlign: "center" },
   pressed: { opacity: L.pressedOpacity },
   disabled: { opacity: ref.button.disabledOpacity.pill },
 });

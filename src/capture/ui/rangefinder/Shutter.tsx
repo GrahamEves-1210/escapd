@@ -18,6 +18,8 @@
 // - Busy: taps are ignored; it stays still at full opacity, with
 //   accessibilityState.busy.
 // - Focus: the kit's brass ring, a circle 4 outside the ring.
+// - In a mode: the ring in the mode's near-black and the glass in its ink;
+//   the disk keeps its neutral greys (src/capture/ui/palette.ts).
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
@@ -25,6 +27,7 @@ import { FocusRing, gradientLine, gradientStops, timingFor, useFocusRing } from 
 import { ICON_WEIGHT, MagnifyingGlassIcon } from "@/components/icons";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { Dimmable } from "./Dimmable";
 
 const B = ref.button.shutter;
@@ -46,6 +49,7 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
   const { reducedMotion } = useTheme();
   const press = useSharedValue(0);
   const focus = useFocusRing();
+  const palette = useCapturePalette();
   const inert = disabled || busy;
 
   const diskStyle = useAnimatedStyle(() => ({
@@ -70,7 +74,7 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
         testID={testID}
         style={styles.box}
       >
-        <View pointerEvents="none" style={styles.ring} testID={testID ? `${testID}-ring` : undefined} />
+        <View pointerEvents="none" style={[styles.ring, { backgroundColor: palette.frame }]} testID={testID ? `${testID}-ring` : undefined} />
         <Animated.View pointerEvents="none" style={[styles.disk, diskStyle]} testID={testID ? `${testID}-disk` : undefined}>
           <Svg width={B.disk} height={B.disk} style={StyleSheet.absoluteFill}>
             <Defs>
@@ -96,7 +100,7 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
           </Animated.View>
           {/* In a View, so it stacks above the absolute layers on the web too. */}
           <View style={styles.glass}>
-            <MagnifyingGlassIcon size={B.iconFallback} color={ref.color.textPrimary} weight={ICON_WEIGHT} testID={testID ? `${testID}-glass` : undefined} />
+            <MagnifyingGlassIcon size={B.iconFallback} color={palette.ink} weight={ICON_WEIGHT} testID={testID ? `${testID}-glass` : undefined} />
           </View>
         </Animated.View>
         <FocusRing visible={focus.focused} shape="pill" />
@@ -115,7 +119,6 @@ const styles = StyleSheet.create({
   ring: {
     ...StyleSheet.absoluteFill,
     borderRadius: ref.radius.round,
-    backgroundColor: B.ringFill,
     boxShadow: ref.effect.shutterGlow,
     ...curve,
   },

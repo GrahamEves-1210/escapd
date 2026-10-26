@@ -1,6 +1,10 @@
 import { StyleSheet, Text, View } from "react-native";
+import { GavelIcon } from "phosphor-react-native/src/icons/Gavel";
+import { GhostIcon } from "phosphor-react-native/src/icons/Ghost";
+import { UsersThreeIcon } from "phosphor-react-native/src/icons/UsersThree";
 import type { InventoryItem } from "@/game/selectors";
-import { DarkSheet } from "@/components/noir";
+import { useModeTheme } from "@/game/mode";
+import { DarkSheet, type NoirIcon } from "@/components/noir";
 import { EyeIcon } from "@/components/icons";
 import { ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
@@ -22,6 +26,12 @@ export interface ResultContent {
   /** Items the server just granted (already in inventory). */
   gained: InventoryItem[];
   revealed: "none" | "here" | "elsewhere";
+  /** Crime scene: suspects whose alibi this just broke (their names). */
+  contradicted?: string[];
+  /** Paranormal: this found an anomaly, so the presence rose. */
+  presenceRose?: boolean;
+  /** Crime scene: this was the last of the evidence, so the accusation is open. */
+  accuseReady?: boolean;
 }
 
 /**
@@ -33,6 +43,7 @@ export interface ResultContent {
  * bar to go on. Item descriptions are shown only for items the server granted.
  */
 export function ResultSheet({ content, onClose }: { content: ResultContent; onClose: () => void }) {
+  const theme = useModeTheme();
   const slip = content.message || content.description || content.quiet;
   return (
     <DarkSheet
@@ -53,23 +64,23 @@ export function ResultSheet({ content, onClose }: { content: ResultContent; onCl
     >
       {slip ? (
         <Card style={styles.slip} testID="result-text">
-          {content.message ? <Text style={styles.body}>{content.message}</Text> : null}
-          {content.description ? <Text style={styles.detail}>{content.description}</Text> : null}
-          {content.quiet ? <Text style={styles.body}>{content.quiet}</Text> : null}
+          {content.message ? <Text style={[styles.body, { color: theme.ink }]}>{content.message}</Text> : null}
+          {content.description ? <Text style={[styles.detail, { color: theme.inkMuted }]}>{content.description}</Text> : null}
+          {content.quiet ? <Text style={[styles.body, { color: theme.ink }]}>{content.quiet}</Text> : null}
         </Card>
       ) : null}
 
       {content.gained.length > 0 ? (
         <View style={styles.section}>
-          <Text style={styles.heading} accessibilityRole="header">Added to your items</Text>
+          <Text style={[styles.heading, { color: theme.ink }]} accessibilityRole="header">Added to your items</Text>
           {content.gained.map((item) => (
             <View key={item.id} style={styles.item} accessible accessibilityLabel={`${item.name}. ${item.description ?? ""}`}>
               <View style={styles.well}>
                 <ItemIcon name={item.name} size={P.tray.icon} />
               </View>
               <View style={styles.itemText}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                {item.description ? <Text style={styles.detail}>{item.description}</Text> : null}
+                <Text style={[styles.itemName, { color: theme.ink }]}>{item.name}</Text>
+                {item.description ? <Text style={[styles.detail, { color: theme.inkMuted }]}>{item.description}</Text> : null}
               </View>
             </View>
           ))}
@@ -77,16 +88,44 @@ export function ResultSheet({ content, onClose }: { content: ResultContent; onCl
       ) : null}
 
       {content.revealed !== "none" ? (
-        <View style={styles.hint} testID="result-revealed">
-          <View style={styles.hintIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <EyeIcon size={P.card.icon} weight="regular" color={content.revealed === "here" ? ref.color.textPrimary : ref.color.textSecondary} />
-          </View>
-          <Text style={[styles.hintText, content.revealed === "here" && styles.hintHere]}>
-            {content.revealed === "here" ? "Something new is within reach." : "Something changed on another view."}
-          </Text>
-        </View>
+        <HintRow
+          icon={EyeIcon}
+          strong={content.revealed === "here"}
+          text={content.revealed === "here" ? "Something new is within reach." : "Something changed on another view."}
+          testID="result-revealed"
+        />
+      ) : null}
+      {content.contradicted?.map((name) => (
+        <HintRow key={name} icon={UsersThreeIcon} strong tone="stamp" text={`${name}'s alibi doesn't hold up.`} testID="result-contradicted" />
+      ))}
+      {content.presenceRose ? (
+        <HintRow icon={GhostIcon} strong tone="glow" text="The presence grows stronger." testID="result-presence" />
+      ) : null}
+      {content.accuseReady ? (
+        <HintRow icon={GavelIcon} strong tone="stamp" text="You have enough to accuse. Open Suspects." testID="result-accuse-ready" />
       ) : null}
     </DarkSheet>
+  );
+}
+
+/** 07's hint row: a glyph and a line; `strong` in ink, otherwise muted; `tone` gives the glyph the mode's stamp or glow. */
+function HintRow({ icon: Icon, text, strong = false, tone, testID }: {
+  icon: NoirIcon;
+  text: string;
+  strong?: boolean;
+  tone?: "stamp" | "glow";
+  testID?: string;
+}) {
+  const theme = useModeTheme();
+  const textColor = strong ? theme.ink : theme.inkMuted;
+  const glyph = tone === "stamp" ? theme.stamp : tone === "glow" ? theme.glow ?? textColor : textColor;
+  return (
+    <View style={styles.hint} testID={testID}>
+      <View style={styles.hintIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Icon size={P.card.icon} weight="regular" color={glyph} />
+      </View>
+      <Text style={[styles.hintText, { color: textColor }]}>{text}</Text>
+    </View>
   );
 }
 
@@ -111,5 +150,4 @@ const styles = StyleSheet.create({
   hint: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
   hintIcon: { height: P.type.hint.lineHeight, justifyContent: "center" },
   hintText: { ...P.type.hint, flexShrink: 1, color: ref.color.textSecondary },
-  hintHere: { color: ref.color.textPrimary },
 });

@@ -7,6 +7,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { timingFor } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { RingPressable } from "./parts";
@@ -50,6 +51,7 @@ export interface CodeWheelProps {
  */
 export function CodeWheel({ index, value, onChange, onDragChange }: CodeWheelProps) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const feedback = useFeedback();
   const pos = useSharedValue(value);
   const start = useSharedValue(0);
@@ -182,7 +184,7 @@ export function CodeWheel({ index, value, onChange, onDragChange }: CodeWheelPro
           <Animated.View style={[styles.column, brightStyle]}>
             {COLUMN.map((digit, k) => (
               <View key={k} style={styles.cell}>
-                <Text style={styles.digit}>{digit}</Text>
+                <Text style={[styles.digit, { color: theme.ink }]}>{digit}</Text>
               </View>
             ))}
           </Animated.View>

@@ -16,6 +16,8 @@
 // - Display only, so it is no keyboard stop: on Android `accessible` would
 //   make it keyboard-focusable, so there it is screenReaderFocusable instead,
 //   and its texts stay out of Android's accessibility tree.
+// - In a mode: the pill in the mode's well and the current numeral in the
+//   mode's stamp colour, the camera's one touch of it (src/capture/ui/palette.ts).
 import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
@@ -31,6 +33,7 @@ import { timingFor } from "@/components/noir";
 import { PLATE_PROMPTS } from "@/capture/slots";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, motion, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 
 const C = ref.layout.camera.counter;
 const NUMERALS = PLATE_PROMPTS.map((prompt) => prompt.numeral);
@@ -55,6 +58,7 @@ export interface PlateCounterProps {
 
 export function PlateCounter({ current, solo, accessibilityLabel }: PlateCounterProps) {
   const { reducedMotion } = useTheme();
+  const palette = useCapturePalette();
   const [centres, setCentres] = useState<readonly (number | null)[]>(() => NUMERALS.map(() => null));
   const placed = centres.every((c) => c !== null);
   const centreLine = useSharedValue<number[]>(INDICES.map(() => 0));
@@ -81,7 +85,7 @@ export function PlateCounter({ current, solo, accessibilityLabel }: PlateCounter
 
   return (
     <View
-      style={styles.pill}
+      style={[styles.pill, { backgroundColor: palette.well }]}
       accessible={Platform.OS === "ios"}
       screenReaderFocusable
       accessibilityRole="text"
@@ -96,24 +100,26 @@ export function PlateCounter({ current, solo, accessibilityLabel }: PlateCounter
         testID="plate-counter-strip"
       >
         {NUMERALS.map((numeral, i) => (
-          <Numeral key={numeral} numeral={numeral} index={i} pos={pos} hidden={solo && i !== current} onLayout={onNumeral(i)} />
+          <Numeral key={numeral} numeral={numeral} index={i} pos={pos} lit={palette.lit} hidden={solo && i !== current} onLayout={onNumeral(i)} />
         ))}
       </Animated.View>
     </View>
   );
 }
 
-function Numeral({ numeral, index, pos, hidden, onLayout }: {
+function Numeral({ numeral, index, pos, lit: litColor, hidden, onLayout }: {
   numeral: string;
   index: number;
   pos: SharedValue<number>;
+  /** The current numeral's colour. */
+  lit: string;
   hidden: boolean;
   onLayout: (e: LayoutChangeEvent) => void;
 }) {
   const style = useAnimatedStyle(() => {
     // 1 on the current numeral, falling to 0 one place away: the roll's colour.
     const lit = Math.max(0, 1 - Math.abs(pos.get() - index));
-    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, ref.color.textPrimary]) };
+    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, litColor]) };
   });
   return (
     <Animated.Text
@@ -132,7 +138,6 @@ const styles = StyleSheet.create({
     width: C.width,
     height: C.height,
     overflow: "hidden",
-    backgroundColor: ref.color.void,
     borderRadius: ref.radius.nested,
     ...curve,
   },

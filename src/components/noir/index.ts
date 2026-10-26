@@ -1,5 +1,6 @@
 // The reference-look kit: shared pieces for the hub, camera, permission, photo
-// guide and Pro screens. Every value comes from `ref` in src/theme/tokens.ts.
+// guide and Pro screens, and the mode photo treatment (TreatedImage). Every
+// value comes from `ref` and `modeThemes` in src/theme/tokens.ts.
 // Import from "@/components/noir".
 export { DarkSheet, type DarkSheetProps } from "./DarkSheet";
 export { FocusRing, focusRingStyle, useFocusRing, type FocusShape } from "./focus";
@@ -34,5 +35,14 @@ export {
 export { PillButton, type PillButtonProps, type PillGround, type PillVariant } from "./PillButton";
 export { trackingPad } from "./text";
 export { ThinkingStates, type ThinkingGround, type ThinkingStatesProps, type ThinkingVariant } from "./ThinkingStates";
+export { TreatedImage, type TreatedImageProps } from "./TreatedImage";
+export {
+  clearTreatedPhotos,
+  peekTreatedPhoto,
+  treatPhoto,
+  useTreatedPhoto,
+  type TreatOptions,
+  type TreatSource,
+} from "./treatPhoto";
 export type { NoirIcon } from "./types";
 export { useShowAfter } from "./useShowAfter";

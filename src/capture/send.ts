@@ -2,13 +2,15 @@
 import { File } from "expo-file-system";
 import { createRoom, getRoomPhotos, requestGeneration, uploadRoomPhoto, type GenerationJob } from "@/lib/escapd-api";
 import { newId } from "@/lib/uuid";
-import { currentTicket, setTicketRoom, type Slot } from "./roll";
+import { currentTicket, getRollGenre, setTicketRoom, type Slot } from "./roll";
 
 /**
  * Uploads every filled slot the server doesn't have yet, in slot order, each
  * with position = its slot (room_photos allows positions 0-11 with gaps and
  * orders by position; request_room_generation only counts them), then
  * requests generation. The server's flagged positions are therefore slots.
+ * The room is created in the roll's mode (getRollGenre); generation then
+ * uses the room's, so a retry or a resume can never change it.
  * Safe to call again after any failure: the ticket keeps the same draft room
  * and idempotency key until a slot changes.
  */
@@ -19,7 +21,7 @@ export async function developPlates(
   const ticket = currentTicket();
   let roomId = ticket.roomId;
   if (!roomId) {
-    roomId = (await createRoom()).id;
+    roomId = (await createRoom(undefined, getRollGenre() ?? undefined)).id;
     setTicketRoom(roomId);
   }
   const filled = slots.flatMap((plate, position) => (plate ? [{ plate, position }] : []));

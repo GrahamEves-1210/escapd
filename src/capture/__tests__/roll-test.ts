@@ -1,4 +1,16 @@
-import { addPlate, clearPlates, currentTicket, firstOpenSlot, getPlates, getSlots, removePlate, replacePlate, setTicketRoom } from "../roll";
+import {
+  addPlate,
+  clearPlates,
+  currentTicket,
+  firstOpenSlot,
+  getPlates,
+  getRollGenre,
+  getSlots,
+  removePlate,
+  replacePlate,
+  setRollGenre,
+  setTicketRoom,
+} from "../roll";
 
 const plate = (n: number) => ({ uri: `file://plate-${n}.jpg`, width: 1200, height: 1600 });
 const uris = () => getSlots().map((slot) => slot?.uri ?? null);
@@ -73,5 +85,28 @@ describe("photos by slot", () => {
     const third = currentTicket();
     replacePlate(0, plate(2));
     expect(currentTicket()).not.toBe(third);
+  });
+});
+
+describe("the roll's mode", () => {
+  beforeEach(() => setRollGenre(null));
+
+  it("drops the build ticket when it changes, not when it is set again", () => {
+    addPlate(plate(0));
+    setRollGenre("paranormal");
+    const ticket = currentTicket();
+    setTicketRoom("r1");
+    setRollGenre("paranormal");
+    expect(currentTicket()).toBe(ticket);
+    setRollGenre("noir");
+    expect(currentTicket()).not.toBe(ticket);
+    expect(currentTicket().roomId).toBeNull();
+  });
+
+  it("stays through clearPlates, so a retake after a failed build keeps its mode", () => {
+    setRollGenre("crime_scene");
+    addPlate(plate(0));
+    clearPlates();
+    expect(getRollGenre()).toBe("crime_scene");
   });
 });

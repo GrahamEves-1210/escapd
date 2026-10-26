@@ -12,16 +12,23 @@
 // - Disabled before plate I (a full-opacity empty well) and while busy
 //   (dimmed, keeping its image and ring).
 // - Focus: the kit's brass ring 2 outside the frame, concentric with it.
+// - In a mode (src/capture/ui/palette.ts): the frame and well in the mode's
+//   near-black, the way-on ring in its stamp colour, and the photo in the
+//   mode's baked treatment (TreatedImage, at the review tiles' bake size so
+//   one bake serves both): each new photo shows as taken, then its treatment
+//   fades in over ref.motion.treatment (at once under reduced motion).
 import { Pressable, StyleSheet, View } from "react-native";
 import { useFeedback } from "@/game/feedback";
 import { Image, type ImageTransition } from "expo-image";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
-import { FocusRing, useFocusRing, useStateProgress } from "@/components/noir";
+import { FocusRing, TreatedImage, useFocusRing, useStateProgress } from "@/components/noir";
 import { curve, ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { Dimmable } from "./Dimmable";
 
 const T = ref.button.thumbnail;
 const CUE = ref.layout.camera.cue;
+const BAKE = ref.layout.review.tile.bake;
 
 const SWAP: ImageTransition = {
   duration: ref.motion.control.duration,
@@ -46,7 +53,9 @@ export function LastPlate({ uri, ring, accessibilityLabel, disabled, dimmed, onP
   const ringOn = useStateProgress(ring);
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   const ringStyle = useAnimatedStyle(() => ({ opacity: ringOn.get() }));
+  const photoID = testID ? `${testID}-photo` : undefined;
 
   return (
     <Dimmable dimmed={dimmed}>
@@ -61,22 +70,31 @@ export function LastPlate({ uri, ring, accessibilityLabel, disabled, dimmed, onP
         onFocus={focus.onFocus}
         onBlur={focus.onBlur}
         testID={testID}
-        style={({ pressed }) => [styles.frame, pressed ? styles.pressed : null]}
+        style={({ pressed }) => [styles.frame, { backgroundColor: palette.frame }, pressed ? styles.pressed : null]}
       >
-        <View style={styles.image} testID={testID ? `${testID}-image` : undefined}>
-          {uri ? (
-            <Image
-              source={{ uri }}
+        <View style={[styles.image, { backgroundColor: palette.well }]} testID={testID ? `${testID}-image` : undefined}>
+          {uri && palette.genre ? (
+            // Keyed by photo, so each new one bakes and fades in on its own.
+            <TreatedImage
+              key={uri}
+              source={uri}
+              genre={palette.genre}
+              maxEdge={BAKE}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              transition={SWAP}
               accessible={false}
-              testID={testID ? `${testID}-photo` : undefined}
+              testID={photoID}
             />
+          ) : uri ? (
+            <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={SWAP} accessible={false} testID={photoID} />
           ) : null}
         </View>
         <View pointerEvents="none" style={styles.rim} />
-        <Animated.View pointerEvents="none" style={[styles.ring, ringStyle]} testID={testID ? `${testID}-ring` : undefined} />
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.ring, { borderColor: palette.cue }, ringStyle]}
+          testID={testID ? `${testID}-ring` : undefined}
+        />
         <FocusRing visible={focus.focused} shape="panel" radius={T.radius} />
       </Pressable>
     </Dimmable>
@@ -88,7 +106,6 @@ const styles = StyleSheet.create({
   frame: {
     width: T.size,
     height: T.size,
-    backgroundColor: T.frameFill,
     borderRadius: T.radius,
     ...curve,
   },
@@ -100,7 +117,6 @@ const styles = StyleSheet.create({
     right: T.frameWidth,
     bottom: T.frameWidth,
     overflow: "hidden",
-    backgroundColor: ref.color.void,
     borderRadius: T.imageRadius,
     ...curve,
   },
@@ -118,7 +134,6 @@ const styles = StyleSheet.create({
   ring: {
     ...StyleSheet.absoluteFill,
     borderWidth: CUE.width,
-    borderColor: CUE.color,
     borderRadius: T.radius,
     ...curve,
   },

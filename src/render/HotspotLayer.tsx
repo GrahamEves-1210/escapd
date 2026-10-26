@@ -7,13 +7,14 @@ import Svg, { Line, Path } from "react-native-svg";
 import { CheckIcon } from "@/components/icons";
 import { FocusRing, useFocusRing } from "@/components/noir";
 import type { Hotspot, Id } from "@/lib/puzzle-types";
+import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { hit, motion, ref } from "@/theme/tokens";
 import { hitSlopFor, type Size } from "./geometry";
 
-// White and grey, as 02's cue ring: open brackets white, solved ones grey with
-// a check, a just-revealed one heavier. A void halo keeps them legible on a
-// bright wall (02's privacy-note black).
+// The mode's ink and muted ink, as 02's cue ring in white and grey: open
+// brackets in ink, solved ones muted with a check, a just-revealed one
+// heavier. A void halo keeps them legible on a bright wall (02's privacy-note black).
 const B = ref.layout.play.brackets;
 const SEAL = ref.layout.play.seal;
 const TRACE = ref.layout.play.trace;
@@ -69,6 +70,7 @@ export function readingOrder(hotspots: readonly Hotspot[]): Id[] {
 export function HotspotLayer({
   hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, onPressIn, registerRef,
 }: HotspotLayerProps) {
+  const theme = useModeTheme();
   return (
     <View
       style={StyleSheet.absoluteFill}
@@ -94,7 +96,7 @@ export function HotspotLayer({
               y1={thread.y1 * stage.height}
               x2={thread.x2 * stage.width}
               y2={thread.y2 * stage.height}
-              stroke={ref.color.textPrimary}
+              stroke={theme.ink}
               strokeWidth={THREAD.width}
               strokeDasharray={[THREAD.dash, THREAD.dash]}
             />
@@ -133,6 +135,7 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
   registerRef?: (id: Id, node: HotspotRef | null) => void;
 }) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const focus = useFocusRing();
   const rect = {
     left: hotspot.shape.x * stage.width,
@@ -199,10 +202,10 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
       {solved ? (
         <View pointerEvents="none" style={styles.seal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={styles.sealFill} />
-          <CheckIcon size={SEAL.icon} weight="bold" color={ref.color.textPrimary} />
+          <CheckIcon size={SEAL.icon} weight="bold" color={theme.ink} />
         </View>
       ) : null}
-      <Animated.View style={[StyleSheet.absoluteFill, styles.trace, traceStyle]} pointerEvents="none" />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.trace, { borderColor: theme.ink }, traceStyle]} pointerEvents="none" />
       <FocusRing visible={focus.focused} shape="panel" radius={TRACE.radius} />
     </Pressable>
   );
@@ -210,6 +213,7 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
 
 /** Four 10 pt corner brackets, with a tick at the middle of each side, on a void halo. */
 function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "iris" }) {
+  const theme = useModeTheme();
   const len = B.arm;
   const i = B.inset;
   const tick = B.tick;
@@ -225,7 +229,7 @@ function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "ir
     `M${mx} ${height - i}V${height - i - tick}`,
     `M${i} ${my}H${i + tick}`,
   ].join("");
-  const stroke = tone === "spent" ? ref.color.textSecondary : ref.color.textPrimary;
+  const stroke = tone === "spent" ? theme.inkMuted : theme.ink;
   const weight = tone === "iris" ? B.iris : B.stroke;
   return (
     <View style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">

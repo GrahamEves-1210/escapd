@@ -15,11 +15,14 @@
 // is not a keyboard stop. Its texts are kept out of Android's accessibility
 // tree, so on Android 7-8.1, where screenReaderFocusable does nothing,
 // TalkBack still reads the prompt once, by its label.
+// Colours are the capture palette's (the shell's white and grey, or the
+// mode's ink and muted ink).
 import type { Ref } from "react";
 import { Platform, StyleSheet, Text, View, useWindowDimensions, type HostInstance, type StyleProp, type ViewStyle } from "react-native";
 import { ArrowLeftIcon, ICON_WEIGHT, ImagesIcon, WarningIcon } from "@/components/icons";
 import { ThinkingStates } from "@/components/noir";
 import { ref } from "@/theme/tokens";
+import { useCapturePalette } from "../palette";
 import { SquareButton } from "./SquareButton";
 
 const L = ref.layout.camera;
@@ -55,6 +58,7 @@ export function Header({
   promptRef,
   style,
 }: HeaderProps) {
+  const palette = useCapturePalette();
   return (
     <View style={[styles.row, style]}>
       <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} testID="back" />
@@ -68,7 +72,7 @@ export function Header({
         style={styles.prompt}
         testID="prompt"
       >
-        <Text style={styles.title} importantForAccessibility="no">
+        <Text style={[styles.title, { color: palette.ink }]} importantForAccessibility="no">
           {title}
         </Text>
         <Subtitle subtitle={subtitle} />
@@ -85,6 +89,7 @@ export function Header({
 }
 
 function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
+  const palette = useCapturePalette();
   switch (subtitle.kind) {
     case "thinking":
       // The prompt's own label carries the status, so the line itself is hidden.
@@ -98,7 +103,7 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
       );
     case "detail":
       return (
-        <Text style={[styles.meta, styles.detail]} importantForAccessibility="no">
+        <Text style={[styles.meta, styles.detail, { color: palette.inkMuted }]} importantForAccessibility="no">
           {subtitle.text}
         </Text>
       );
@@ -113,14 +118,15 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
  */
 function ErrorLine({ text }: { text: string }) {
   const { fontScale } = useWindowDimensions();
+  const palette = useCapturePalette();
   // The glyph stays 14 at every text size; its box follows the first line.
   const firstLine = ref.type.meta.lineHeight * fontScale;
   return (
     <View style={styles.errorLine} testID="notice">
       <View style={[styles.errorIcon, { height: firstLine }]} testID="notice-icon">
-        <WarningIcon size={L.noticeIcon} color={ref.color.textPrimary} weight={ICON_WEIGHT} />
+        <WarningIcon size={L.noticeIcon} color={palette.ink} weight={ICON_WEIGHT} />
       </View>
-      <Text style={[styles.error, styles.errorText]}>{text}</Text>
+      <Text style={[styles.error, styles.errorText, { color: palette.ink }]}>{text}</Text>
     </View>
   );
 }
@@ -129,10 +135,10 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: L.edge },
   // Between the buttons, space.sm clear of each: 247 wide on a 393 screen.
   prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: L.promptTop, alignItems: "center" },
-  title: { ...ref.type.serifTitle, color: ref.color.textPrimary, textAlign: "center" },
+  title: { ...ref.type.serifTitle, textAlign: "center" },
   meta: { marginTop: L.metaGap },
-  detail: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
-  error: { ...ref.type.meta, color: ref.color.textPrimary, textAlign: "center" },
+  detail: { ...ref.type.meta, textAlign: "center" },
+  error: { ...ref.type.meta, textAlign: "center" },
   errorLine: { flexDirection: "row", alignItems: "flex-start", justifyContent: "center", gap: ref.space.xs },
   errorIcon: { justifyContent: "center" },
   errorText: { flexShrink: 1 },

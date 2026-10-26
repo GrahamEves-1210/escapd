@@ -1,6 +1,6 @@
 // The reference look's dark bottom sheet, generalised from the hub's How you
 // play sheet (docs/DESIGN.md, 01 · How you play sheet), so every dark sheet is
-// one sheet: fill ref.color.ground, top corners ref.radius.bottomSheet 40 (the camera's)
+// one sheet: fill the mode's surface (ref.color.ground in the shell), top corners ref.radius.bottomSheet 40 (the camera's)
 // (continuous), a 1 pt ref.color.rim along its top and sides, over a black
 // 55 % scrim (or a clear one, so the scene stays visible). The header is the
 // title on the 24 gutter, an optional grey meta line under it, and Close as
@@ -20,6 +20,7 @@ import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
 import { XIcon } from "phosphor-react-native/src/icons/X";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { motion, ref, z } from "@/theme/tokens";
 import { sheetEntering, sheetExiting } from "./motion";
 import { FocusRing, useFocusRing } from "./focus";
@@ -67,6 +68,8 @@ export function DarkSheet({
   scrollEnabled = true,
 }: DarkSheetProps) {
   const { reducedMotion } = useTheme();
+  // Inside a mode the sheet takes that mode's panel, edge and ink colours; in the shell these are today's ref colours.
+  const theme = useModeTheme();
   const insets = useSafeAreaInsets();
   const titleRef = useRef<HostInstance>(null);
 
@@ -98,14 +101,14 @@ export function DarkSheet({
         exiting={exiting}
         accessibilityViewIsModal
         testID={testID}
-        style={[styles.sheet, { maxHeight, paddingBottom: insets.bottom + ref.space.lg }]}
+        style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.rim, maxHeight, paddingBottom: insets.bottom + ref.space.lg }]}
       >
         <View style={styles.header}>
           <View style={styles.titleColumn}>
-            <Text ref={titleRef} accessibilityRole="header" style={[titleStyle === "serif" ? ref.type.serifTitle : ref.type.headline, styles.title]}>
+            <Text ref={titleRef} accessibilityRole="header" style={[titleStyle === "serif" ? ref.type.serifTitle : ref.type.headline, { color: theme.ink }]}>
               {title}
             </Text>
-            {meta ? <Text style={styles.meta}>{meta}</Text> : null}
+            {meta ? <Text style={[styles.meta, { color: theme.inkMuted }]}>{meta}</Text> : null}
           </View>
           <CloseChip onPress={onClose} testID={closeTestID} />
         </View>
@@ -122,6 +125,7 @@ export function DarkSheet({
 function CloseChip({ onPress, testID }: { onPress: () => void; testID?: string }) {
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const theme = useModeTheme();
   const id = `sheetchip${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
     <Pressable
@@ -134,7 +138,7 @@ function CloseChip({ onPress, testID }: { onPress: () => void; testID?: string }
       testID={testID}
       style={({ pressed }) => [styles.chipHit, pressed && styles.chipPressed]}
     >
-      <View style={styles.chip}>
+      <View style={[styles.chip, { backgroundColor: theme.surface }]}>
         <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Svg width={C.size} height={C.size}>
             <Defs>
@@ -145,7 +149,7 @@ function CloseChip({ onPress, testID }: { onPress: () => void; testID?: string }
             <Circle cx={MID} cy={MID} r={MID - C.ringWidth / 2} fill="none" stroke={`url(#${id})`} strokeWidth={C.ringWidth} />
           </Svg>
         </View>
-        <XIcon size={ref.icon.chip} weight="regular" color={ref.color.textPrimary} />
+        <XIcon size={ref.icon.chip} weight="regular" color={theme.ink} />
         <FocusRing visible={focus.focused} shape="pill" />
       </View>
     </Pressable>
@@ -160,14 +164,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: ref.color.ground,
     borderTopLeftRadius: ref.radius.bottomSheet,
     borderTopRightRadius: ref.radius.bottomSheet,
     ...ref.curve,
     borderTopWidth: H.hairline,
     borderLeftWidth: H.hairline,
     borderRightWidth: H.hairline,
-    borderColor: ref.color.rim,
     overflow: "hidden",
   },
   // The title on the 24 gutter; Close's disc sits concentric with the sheet's 40 pt corner (CLOSE_INSET from the top and right edges).
@@ -180,8 +182,7 @@ const styles = StyleSheet.create({
     gap: ref.space.sm,
   },
   titleColumn: { flex: 1, gap: ref.space.xs },
-  title: { color: ref.color.textPrimary },
-  meta: { ...ref.type.meta, color: ref.color.textSecondary },
+  meta: ref.type.meta,
   scroll: { flexGrow: 0 },
   content: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.sm, paddingBottom: ref.space.sm, gap: ref.space.xl },
   footer: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.lg, gap: ref.space.sm },
@@ -190,7 +191,6 @@ const styles = StyleSheet.create({
     width: C.size,
     height: C.size,
     borderRadius: C.radius,
-    backgroundColor: C.fill,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -8,7 +8,8 @@ import { act, render, screen, userEvent } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { addPlate, clearPlates, getPlates, getSlots, removePlate, replacePlate } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES, promptFor } from "@/capture/slots";
-import { ref } from "@/theme/tokens";
+import { setMode } from "@/game/mode";
+import { modeThemes, ref } from "@/theme/tokens";
 import LightTableScreen from "../../../../app/capture/review";
 import { COPY, plateLabel } from "../copy";
 
@@ -20,6 +21,11 @@ jest.mock("expo-router", () => ({
 // Stable spies, so a test can see which haptic a moment gave.
 const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
+// A bake that is ready at once ("baked/<mode>/<photo>"), and none in the shell, as the real one.
+jest.mock("@/components/noir/treatPhoto", () => ({
+  ...jest.requireActual("@/components/noir/treatPhoto"),
+  useTreatedPhoto: (source: string, genre: string | null) => (genre ? `baked/${genre}/${source}` : null),
+}));
 
 const L = ref.layout.review;
 const params = useLocalSearchParams as jest.Mock;
@@ -346,5 +352,66 @@ describe("navigation", () => {
     await userEvent.setup().press(screen.getByRole("button", { name: COPY.backLabel }));
     expect(router.replace).toHaveBeenCalledWith("/capture");
     expect(router.back).not.toHaveBeenCalled();
+  });
+});
+
+describe("inside a mode", () => {
+  const hidden = { includeHiddenElements: true } as const;
+  const theme = modeThemes.crime_scene;
+  beforeEach(() => setMode("crime_scene"));
+  afterEach(() => setMode(null));
+
+  it("takes the mode's ground, inks, raised fills and rims", async () => {
+    fill(4);
+    await renderAt(undefined, "too_few_objects");
+    expect(styleOf(screen.getByTestId("review-root")).backgroundColor).toBe(theme.surface);
+    expect(styleOf(screen.getByRole("header", { name: COPY.title })).color).toBe(theme.ink);
+    expect(styleOf(screen.getByRole("header", { name: COPY.heading })).color).toBe(theme.ink);
+    expect(styleOf(screen.getByText(COPY.caption(4, MAX_PLATES))).color).toBe(theme.ink);
+    expect(styleOf(screen.getByText(COPY.back)).color).toBe(theme.ink);
+    expect(styleOf(screen.getByTestId("review-issue")).backgroundColor).toBe(theme.raised);
+    expect(styleOf(screen.getByText("1 · From the doorway")).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByTestId("plate-0-frame")).borderColor).toBe(theme.rim);
+    expect(styleOf(screen.getByText(COPY.hint)).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByTestId("privacy-note")).color).toBe(theme.inkMuted);
+    expect(restStyleOf(screen.getByTestId("add-plate")).borderColor).toBe(theme.ink);
+    expect(styleOf(screen.getByTestId("develop-footer")).backgroundColor).toBe(theme.surface);
+  });
+
+  it("shows every photo in the mode's baked treatment", async () => {
+    fill(2);
+    await renderAt();
+    for (const i of [0, 1]) {
+      const treated = screen.getByTestId(`plate-${i}-photo-treated`, hidden);
+      expect([treated.props.source].flat()[0]).toMatchObject({ uri: `baked/crime_scene/file:///plate-${i}.jpg` });
+    }
+  });
+
+  it("makes the build bar the mode's primary button, still dimmed while blocked", async () => {
+    fill(MIN_PLATES);
+    await renderAt();
+    const bar = screen.getByTestId("develop");
+    expect(restStyleOf(bar)).toMatchObject({ backgroundColor: theme.accent, borderRadius: L.footer.radius, minHeight: L.footer.bar });
+    expect(styleOf(screen.getByText(COPY.develop)).color).toBe(theme.accentInk);
+    await userEvent.setup().press(bar);
+    expect(router.push).toHaveBeenCalledWith("/capture/develop");
+    expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the flagged amber, which is a warning, not the mode's colour", async () => {
+    fill(3);
+    await renderAt("1:person");
+    expect(styleOf(screen.getByTestId("plate-1-frame")).borderColor).toBe(L.warning);
+    expect(styleOf(screen.getByTestId("develop-helper")).color).toBe(L.warning);
+  });
+});
+
+describe("in the shell (no mode)", () => {
+  it("shows the photos as taken, with no treatment", async () => {
+    fill(2);
+    await renderAt();
+    expect(screen.queryByTestId("plate-0-photo-treated", { includeHiddenElements: true })).toBeNull();
+    const original = screen.getByTestId("plate-0-photo-original", { includeHiddenElements: true });
+    expect([original.props.source].flat()[0]).toMatchObject({ uri: "file:///plate-0.jpg" });
   });
 });

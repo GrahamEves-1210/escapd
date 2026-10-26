@@ -23,7 +23,7 @@
 // kit's, which presses too.
 // Render it conditionally: it animates in on mount and out on unmount.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
 import { DarkSheet, FocusRing, useFocusRing } from "@/components/noir";
@@ -57,6 +57,12 @@ export const COPY = {
 } as const;
 const SW = H.sheet.switch;
 const T = ref.type;
+/**
+ * react-native-web draws an on switch's thumb in its own teal unless it is
+ * given activeThumbColor (a web-only prop the native types don't know):
+ * the black thumb on every platform.
+ */
+const WEB_THUMB: object = Platform.OS === "web" ? { activeThumbColor: SW.thumb } : {};
 
 /** The app's version, from the app config (expo-constants). */
 const VERSION = Constants.expoConfig?.version ?? null;
@@ -253,6 +259,7 @@ function SwitchRow({
           focusable={false}
           trackColor={{ true: SW.on, false: SW.off }}
           thumbColor={SW.thumb}
+          {...WEB_THUMB}
           ios_backgroundColor={SW.off}
           testID={`${testID}-switch`}
         />

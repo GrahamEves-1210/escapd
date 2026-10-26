@@ -10,6 +10,10 @@
 // its prompt and counter are that slot's. With ?retake=<slot> it takes
 // exactly that slot (replacing its photo in place, or filling it when the
 // player removed it) and returns to the review screen ("Photos").
+// Inside a mode the screen takes the mode's colours (src/capture/ui/palette.ts):
+// its ground, raised buttons and inks, the counter's numeral and the way-on
+// ring in the mode's stamp colour, and the last photo in the mode's baked
+// treatment. The live feed itself is never treated.
 // Haptics: thud as the shutter fires, error on a failed shot, success when
 // the 6th photo fills the set, tick on flash, grid and lens changes, press
 // on the square buttons and the thumbnail (inside those components).
@@ -33,6 +37,7 @@ import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { motion, ref } from "@/theme/tokens";
+import { useCapturePalette } from "./palette";
 import { ControlRow } from "./rangefinder/ControlRow";
 import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
 import { Header, type PromptSubtitle } from "./rangefinder/Header";
@@ -73,6 +78,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const camera = useRef<CameraView>(null);
   const promptRef = useRef<HostInstance>(null);
   const feedback = useFeedback();
+  const palette = useCapturePalette();
   const library = useLibraryImport({ retakeIndex });
   const lenses = useLenses(camera);
   const [ready, setReady] = useState(false);
@@ -234,7 +240,13 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const viewfinder = viewfinderLayout(area);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + L.top - SQUARE_SLOP, paddingBottom: insets.bottom + L.band.foot - BOTTOM_PAD }]}>
+    <View
+      style={[
+        styles.root,
+        { backgroundColor: palette.page, paddingTop: insets.top + L.top - SQUARE_SLOP, paddingBottom: insets.bottom + L.band.foot - BOTTOM_PAD },
+      ]}
+      testID="rangefinder-root"
+    >
       <Header
         backLabel={filling ? COPY.cancelFill : retake ? COPY.cancelRetake : COPY.close}
         onBack={close}
@@ -301,8 +313,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
 }
 
 const styles = StyleSheet.create({
-  // Once's flat ground: no grain, glow or vignette, so photos are judged on a plain ground.
-  root: { flex: 1, backgroundColor: ref.color.ground },
+  // Once's flat ground (the palette's page): no grain, glow or vignette, so photos are judged on a plain ground.
+  root: { flex: 1 },
   headerRow: { paddingVertical: SQUARE_SLOP },
   // The viewfinder takes what's left between the header and the control row,
   // space.plate from the sides; on 852 that is exactly its 3:4 box.
