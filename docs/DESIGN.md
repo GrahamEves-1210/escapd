@@ -11,7 +11,7 @@
 | 03 | Camera permission | `/capture` (before access) | [pushr, permission sheet](refs/03-camera-permission.png) | none |
 | 04 | First-time photo guide | `/capture/guide` | [Apple Health, how-to steps](refs/04-photo-tutorial.png) | "taking photos step by step short tutorial for first onboarding." |
 | 05 | Pro (test paywall) | `/pro` | none: built on 03's sheet | none |
-| 06 | Building your case (the build wait), and the shared loading and error screen | `/capture/develop`; `StateScreen` everywhere | none: derived from 07, 02 and 01 | "dont forget the thinking states … under the moving magnifine glass" |
+| 06 | Building your case (the build wait), and the shared loading and error screen | `/capture/develop`; `StateScreen` everywhere | none: derived from 02, the modes and case closed | Round 8: "way more premium and fun … no leave room thing"; "increase size of the magic rotating text" |
 | 07 | Light table | `/capture/review` | [Vestiaire Collective, Photos](refs/07-light-table.png) | "you dont have to port over the colors but everything else." |
 | 08 | In-game player and Case closed | `/tutorial`, `/play/[roomId]`, `/tutorial/complete` | none: derived from 02, 01 and 07 | "the showing photos actual in game screen and loading screen hasnt been changed to match the new premium look" |
 
@@ -119,8 +119,8 @@ Phosphor regular. Chrome glyphs are 18–26 pt (`ref.icon`). 04's line drawings 
 - **Presses:** `control` 120 ms ease-out for every press; `shutterPress` 0.94 over 100 ms.
 - **Camera:** `counterRoll` 220 ms and `segmentSlide` 200 ms.
 - **Bottom sheets:** `sheetRise` slides them up over 380 ms on a long ease-out with no overshoot (cubic-bezier 0.32, 0.72, 0, 1), and `sheetFall` slides them away over 240 ms on an ease-in. They are never sprung: you found the old bounce cheap. Kit helpers: `sheetEntering`, `sheetExiting`, `sheetRiseTiming`.
-- **Thinking states** (`thinking`): a line holds, exits up as the next rises in, and a highlight band about 0.8× the line's width sweeps it. It runs only during a real wait. Under reduced motion the lines swap with a fade and nothing moves.
-- **The glass while a case builds:** its drift is in `ref.layout.develop`.
+- **Thinking states** (`thinking`): a line holds, exits up as the next rises in, and a highlight band about 0.8× the line's width sweeps it. It runs only during a real wait. Under reduced motion the lines swap with a fade and nothing moves. Sizes: `meta`, `body`, `tag`, and (round 8) `status`, Medium 22/28, the build wait's feature line; a caller may pass its own sweep `colors` (a mode's muted ink to its stamp colour) and a longer `hold`.
+- **The room while a case builds:** its drift, drag, torch beam and ready moment are in `ref.layout.develop` (06 · Motion).
 - **Photo pager and code wheels (08):** follow the finger and settle on a no-overshoot ease-out, sized to the release speed (`ref.layout.play.pager`, `code.wheel`).
 - Nothing else animates.
 
@@ -748,38 +748,130 @@ Screen-reader order: title (header) → the three lines → the error or info li
 1. **The art.** A case file (03's phone with a folder tab and a label) is the subject chosen here. If you'd rather see a key, an evidence bag or the magnifier in pushr's style, it is one drawing in `CaseFilePanel.tsx` with its geometry in `ref.layout.pro.art`.
 2. **Where test purchases may run** (unchanged from round 2): the server secret is the only real gate; please confirm the project and build profiles.
 
-## 06 · Building your case (the build wait, formerly the darkroom)
+## 06 · Building your case (the build wait)
 
-Reference: none. It's derived from 07 Photos (the review screen it opens from), 02 Camera and 01 Home. Values are in pt, on 393 × 852 (safe areas 59 / 34).
+Reference: none. Its frame is 02 Camera's viewfinder and square button, its type the modes' display faces, its foot the photo guide's pill, and its ready moment case closed's stamp (Game feel 5). Values are in pt, on 393 × 852 (safe areas 59 / 34).
 
-**Round 4: plain language.** The user said to "drop the light table dark room thing, it's not very self explanatory". The screen is no longer named; the wait is "Building your case". Every visible and spoken string follows the round-4 glossary: photo (not plate), build / building / ready (not develop), home screen (not title screen), Arabic numerals, and no AI. Layout, the glass, its drift and the thinking line are unchanged. Internal names (`/capture/develop`, `useDevelopment`, testIDs, `ref.layout.develop`, file names) stay as they are.
+**Round 8 (2026-10-26), the user:** "work on making the generating room way more premium and fun, its cluttered with useless stuff like no leave room thing and it just looks slop", then "increase size of the magic rotating text on that screen too". The screen was rebuilt around one idea: **the wait is the show.** Gone: the stamp pill (SENDING PHOTOS, BUILDING, IN THE QUEUE, SECOND TRY), the body paragraph, the strip of tiny numbered tiles, the painted glass, the elapsed clock and the "Leave it building" button. What is left during the wait: the player's own room turning slowly in a viewfinder frame under a torch beam, one title, one status line (now 22 pt, the feature line), and a small square close in the header. `useDevelopment`'s state logic and the route are unchanged; internal names (`/capture/develop`, `useDevelopment`, `darkroom-root`, `ref.layout.develop`, `darkroom-test.tsx`) stay.
 
-Route: `app/capture/develop.tsx` (`/capture/develop`, optional `?roomId=<id>`). `useDevelopment` logic and routing are unchanged.
+Route: `app/capture/develop.tsx` (`/capture/develop`, optional `?roomId=<id>` from home's Continue). It routes each stage: the wait and ready go to `BuildWait`, everything else to the shared `StateScreen`.
 
 Files in `src/screens/develop/`:
-- `copy.ts`: the stamp, title and body, and the thinking line for each wait stage.
-- `PlateStrip.tsx`: the player's photos as 07's tiles in miniature.
-- `DarkroomGlass.tsx`: the glass and its drift.
-- `DarkroomHero.tsx`: the strip, with the glass over it and the line under it.
+- `BuildWait.tsx`: the screen during the wait and at ready: the header's close, the room, the title, the status line, the stamp and the foot; the room tone, the typewriter cue, Android back and the ready cues.
+- `RoomPanorama.tsx`: the room. The photos as a looping row of tiles, the drift and the drag, the torch beam, the lights coming up; the Reduce Motion still and the no-photos cover.
+- `copy.ts`: the title, the status lines per stage and per mode, the ready line and the stamp's word.
 
-Other files:
-- The non-wait states and the pinned buttons are the shared `src/components/StateScreen.tsx` (its section is below).
-- Failure copy is in `src/capture/failure.ts`, and the error lines in `src/capture/useDevelopment.ts` (strings only).
+Removed: `PlateStrip.tsx`, `DarkroomGlass.tsx`, `DarkroomHero.tsx`, and their tokens (`develop.plate`, `.veil`, `.glass`, `.stage`, `.clock`, the old `.gap` and `.drift`). The painted magnifier (`assets/brand/magnifier*.png`) is no longer drawn anywhere; the files are kept (see Needs you).
 
-Tests:
-- `src/screens/develop/__tests__/darkroom-test.tsx` (34, including a plain-language sweep of every stage and 5 haptics tests)
-- `src/components/__tests__/StateScreen-test.tsx` (4)
-- `src/capture/__tests__/failure-test.ts` (+1 plain-language test)
+Tests: `src/screens/develop/__tests__/darkroom-test.tsx` (52). The words per stage and mode; the loop's arithmetic; no old clutter; the live region; the line's rotation and size; the drift, the drag (it pauses the drift, follows the finger, coasts, rests and drifts again) and the settle; the baked photos and the no-photos cover with `?roomId`; Reduce Motion; the close (label, home, `press`), Android back, nothing while sending; ready's cue order (`stamp`, then `success`, then the pill) and Open the case (`thud`); send ticks; the typewriter's rules; the room tone; every StateScreen path (account, Pro, limit, error, retry, privacy flags, whole-set note, no photos); the plain-language sweep; the mode's colours and the shell.
 
-Tokens:
-- `ref.layout.develop` and `ref.layout.state`
-- the shared `ref.color`, `ref.type`, `ref.space.edge`, `ref.radius.round`, `ref.button.gameCard` (the tag pill), `ref.curve`, `ref.motion.thinking`, and `ref.focus` via the kit's FocusRing
+Tokens: `ref.layout.develop` (below), `ref.type.status` (new: Medium 22/28), the kit's `ThinkingStates` (new: the `status` variant and its `colors` and `hold` props), `ref.button.square`, `ref.radius.viewfinder`, `ref.layout.play.stamp` and `.complete.slam` (the stamp and its nudge), `ref.layout.review.tile.bake`, `ref.layout.state` (the foot).
 
 ### Feel
 
-A calm "we're on it" page, one step after Photos. It uses the same flat #101010 ground. The player's photos sit in a numbered row (1 to 6), still dark where they haven't been sent yet. The painted glass drifts over them, with a grey shimmering line under it saying what's happening: "Finding the objects", "Choosing what to hide", "Writing the case". Below sit a small outlined tag (BUILDING), a white title and a grey line saying how long it takes. When the case is ready, the photos come up in full colour and the white bar says "Open the case". Every failure reads as a friendly next step, never an alarm.
+A loading screen from a good game, not a form. You stand in the middle of your own room in the dark and someone turns slowly with a torch: your six photos run side by side round the 360, the beam wandering over them, faintly brass in noir, blood red in a crime scene, cold pale blue in paranormal. You can grab the room and turn it yourself; let go and it carries on. Under it, one title in the mode's own face and one living line that says, plainly, what is happening. When the case is ready the room slows to a stop, the lights stutter on, CASE READY slams down onto the room and it jolts, and "Open the case" fades in at the foot.
 
-### Copy, before → after (round 4)
+Nothing on screen claims progress it doesn't have. The server reports only queued and running, so there is no bar, no percentage, no fake find or marker in the room; the running lines rotate through what building does, with no order.
+
+### Layout, top to bottom
+
+| Element | Size and spacing | Style | Tokens |
+|---|---|---|---|
+| Ground | Full bleed, flat | The capture palette's `page`: #101010 in the shell, the mode's `surface` | `palette.page` |
+| Close | 02's 44 square (14 corners, 1 pt rim, 48 hit), 21 from the left, 8 below the safe top. Not shown while the photos send | Phosphor X, bold 18, in `ink` on `raised` (the camera's `SquareButton`) | `develop.header` { edge 21, top 8 } |
+| Column | Under the header (16 to the room), between the screen's edges at 20; centred vertically in what's left above the foot | — | `develop.header.below`, `ref.space.edge` |
+| Room (frame) | Full column width (353 on 393, 335 on 375); as tall as fits, 220 to 440 (440 on 393 × 852, about 380 on an SE) | 02's viewfinder: corners 40 continuous, the `well` colour, a 1 pt `rim` drawn over the photos | `develop.frame` { minHeight 220, maxHeight 440, rim 1 }, `ref.radius.viewfinder` |
+| Tiles | As tall as the frame, 0.56 × its height wide (a centre crop of each 3 : 4 photo: neighbours in a 360 overlap, so the crop trims the repeats and about 1.5 photos show at once), 2 apart in the well's colour; drawn round the loop with enough copies that it never shows a gap | `TreatedImage`, `cover`, the mode's bake at 720 (07's bakes, reused) | `develop.tile` { aspect 0.56, gap 2 } |
+| Torch beam | A veil three frames wide and tall over the room: the `well` colour at 0.84, with a soft pool of light 0.52 × the frame's width in radius (the veil at 0 in its centre, × 0.12 at 0.38 of the radius, × 0.75 at 0.78, full at the edge), tinted at its centre with the mode's `stamp` at 0.18 (none in the shell) | react-native-svg radial gradients, moved by transform only | `develop.beam` |
+| Title | 28 under the room, one line at 375 in every mode | The mode's display face (`theme.display`: Playfair Display Black, Archivo Black, Crimson Text SemiBold Italic, in capitals; Roboto Serif in the shell) at the mode's size: noir 26, crime scene 21 (its wide tracking), paranormal 30, shell 26; line height × 1.22; `ink`; role header | `develop.gap.title`, `develop.titleSize` |
+| Status line | 10 under the title, the column's width, one line at 375 for every line it shows | The kit's `ThinkingStates`, `status` variant: system Medium 22/28 (was 17 under the glass, and 13 before that). Its sweep runs from `inkMuted` up to the mode's `stamp` colour (to `ink` in the shell) and back; still and Reduce Motion in `inkMuted`. At large accessibility sizes it falls back to plain text and wraps, centred | `develop.gap.status`, `ref.type.status`, `develop.status.hold` |
+| Stamp (ready) | Centred on the room, the large stamp: Archivo Black 34/40, tracked 4, a 4 pt frame, tilted −6° | `Stamp` (`src/render/Stamp.tsx`) in the mode's `stamp` colour (white in the shell). Hidden from screen readers (the title says it) | `play.stamp`, `play.type.stampLarge` |
+| Foot | Kept all along so nothing moves when the pill comes: 16, the guide's 52 pill, `ctaBottom` 4 over the safe bottom, in the reading column (38 in). Empty during the wait | `StateActions` with `ModePill variant="ghost"`: the shell's hairline pill, or the mode's `accent` with `accentInk` | `ref.layout.state.footer`, `ref.button.ghost` |
+
+### Motion
+
+All on the UI thread, transforms and opacity only. The drift and the beam share one frame callback (`useFrameCallback`) that moves two shared values; nothing re-renders per frame. The callback stops once ready has settled. Photos are baked once (07's size) and never per frame.
+
+| Motion | Values | Tokens |
+|---|---|---|
+| Drift | 24 pt/s to the left (photo 1, then 2: clockwise, as taken), so a turn of six photos at 440 tall takes about 62 s; it wraps round the loop with no jump. It eases up from rest over 1600 ms (ease-in-out) | `develop.drift` { speed 24, rampIn 1600 } |
+| Drag | A horizontal drag (8 pt dead zone, 16 pt vertical hands it back) takes the room at once: the drift stops and the room follows the finger 1 : 1. Let go and it coasts (decay, deceleration 0.996, from the fling), rests 900 ms, then eases back to 24 pt/s over 1600 ms | `develop.drift` { resume 900, deceleration 0.996 } |
+| Beam | The pool's centre wanders ±0.3 × the frame's width on a 9000 ms sine and ±0.16 × its height on a 6400 ms sine, so its path never quite repeats | `develop.beam` { x, y, periodX, periodY } |
+| Ready: settle | The drift eases to rest over 1200 ms (ease-out cubic) | `drift.settle` |
+| Ready: lights on | The veil catches to 0.25 in 80 ms, stutters back to 0.7 in 90 ms, then lifts to 0 over 700 ms (ease-out) | `beam.flicker` [0.25, 80, 0.7, 90], `beam.lightsOn` 700 |
+| Ready: stamp | 700 ms after ready, it falls from 2.2× over 220 ms, overshoots to 0.93, settles over 140 ms, its ink spreading (1.22×, from 0.45, over 420 ms); `stamp` fires on impact and the room jolts (5 pt down, 3 pt shake, 50 ms steps) | `develop.ready.stampDelay`, `play.stamp`, `play.complete.slam` |
+| Ready: title and line | "Your case is ready" and its line fade in over 240 ms | `ref.motion.treatment` |
+| Ready: pill | 180 ms after impact `success`; the pill fades in over 320 ms from impact | `develop.ready` { success 180, pillFade 320 } |
+| Status line | Each running line holds 3200 ms; the swap is the kit's (the old line rises 8 and fades over 150, the new one 50 behind it); the sweep crosses the line every 2000 ms. A new photo count swaps the same way | `develop.status.hold`, `ref.motion.thinking` |
+| **Reduce Motion** | No drift, no wandering beam, no drag. One photo at a time fills the frame and cross-fades to the next (hold 4000, fade 900); the pool stays still in the middle. The lights simply fade (700). The stamp is just there (no fall, no jolt); `stamp` then `success` 180 ms later still fire, and the pill is there at once. The status line is plain text swapping with a 140 ms fade | `develop.still` { hold 4000, fade 900 } |
+
+### Copy, before → after (round 8)
+
+| Where | Before | After |
+|---|---|---|
+| Sending: stamp / title / body | SENDING PHOTOS / Sending your photos / Photo 2 of 6. Keep the app open until they're all sent. | — / Building your case / — |
+| Sending: line | Sending photo 2 of 6 | Sending photo 2 of 6 (unchanged, factual) |
+| Queued: stamp / title / body | IN THE QUEUE / Your case is next / You can leave this screen. It keeps building, and you'll find it on the home screen. | — / Building your case / — |
+| Queued: line | Waiting to start | Your case is next |
+| Running: stamp / body | BUILDING / Finding the objects, choosing what to hide, and writing the case. This usually takes a minute or two. | — / — |
+| Running: lines (shell) | Finding the objects · Choosing what to hide · Writing the case | unchanged |
+| Running: lines (noir) | (as the shell) | Going over every object · Choosing what to hide · Writing the case |
+| Running: lines (crime scene) | (as the shell) | Logging every object · Choosing what to hide · Writing up the case |
+| Running: lines (paranormal) | (as the shell) | Searching every corner · Choosing what to hide · Writing the case |
+| Running: what screen readers hear | Building your case | Building your case: finding the objects, choosing what to hide and writing the case |
+| Retry: stamp / title / body / line | SECOND TRY / Trying again / The first try didn't finish, so it's starting again. You don't need to do anything. / Trying again | — / Building your case / — / Trying again |
+| Ready: stamp | CASE READY (a tag pill) | CASE READY (slammed onto the room) |
+| Ready: title / body | Your case is ready / Everything you need is somewhere in your photos. | Your case is ready / It's all in your photos |
+| Elapsed clock | 3 min | — (gone) |
+| Waiting button | Leave it building | — (gone). The header's square close: "Leave. Your case keeps building." (at ready: "Back to home") |
+| Open the case | Open the case | unchanged |
+
+Every StateScreen string (One moment, the account, Pro, limit, failure and error copy) is unchanged; see round 4 below.
+
+### Tappable elements, haptics and sound
+
+Haptics use the shared vocabulary in `src/game/feedback.ts`, one per moment, never on mount or per frame.
+
+| Element / moment | When | Action | Haptic / sound |
+|---|---|---|---|
+| **Close** (square X, testID `build-close`) | queued, running, retry, ready | `router.replace("/")`: home; the case keeps building and home's Continue reopens this screen with `?roomId` | `press` |
+| Android back | the same | the same (returns true) | — |
+| (nothing) | sending | No close and no back handler of ours: the photos must all go first (as before) | — |
+| The room | the wait | Drag to turn it (above). Not a button; hidden from screen readers | — |
+| A photo finishes sending | the count steps up | — | `tick` (never on mount or when resuming mid-send) |
+| The status changes meaning | queued, building, trying again | — | `typewriter` (sound only), never on mount, never for a photo count or a rotating line, at most once every 4 s (`TYPEWRITER_GAP`) |
+| The stamp lands | ready | — | `stamp` (heavy, with its sound) |
+| Then | 180 ms later | — | `success` (not `solved`: the case isn't solved yet) |
+| **Open the case** (the guide's pill, testID `open-case`) | once the stamp has landed | Clears the photos, `router.replace("/play/<roomId>")` | `thud` on press-in |
+| The case failed | `failed` | StateScreen | `warning` (calm, never `error`) |
+| Room tone | while the wait or ready is on screen and has focus | `useRoomTone(true)`: the mode's 16 s loop at the play screen's lowered level, fading in over 1.6 s; it hands straight on to the play screen's own tone when the case opens | — |
+
+### States
+
+| Stage | What shows |
+|---|---|
+| `checking` | StateScreen loading: the thinking line "One moment" alone |
+| `account` | "Keep your cases on an account" · Add your email · Back to your photos |
+| `access` (entitlement) | "Your own rooms are part of ESCAPD Pro" · Try again · Back to your photos |
+| `access` (cap) | "You've built every case this month allows" · Back to home |
+| `sending` | The room turning, "Building your case", "Sending photo n of total". No close. A tick per photo sent |
+| `waiting` queued | The room, the title, "Your case is next", the close |
+| `waiting` running | The room, the title, the mode's three lines rotating, the close |
+| `waiting` retry | The room, the title, "Trying again", the close |
+| `ready` | The room settles and lights up, CASE READY slams, "Your case is ready", "It's all in your photos", then Open the case. The close says "Back to home" |
+| no photos on this phone (followed from home after the app restarted) | Inside a mode, its drawn cover (`ModeCover`) fills the frame under the wandering beam; in the shell, the empty well. Everything else as above |
+| `failed` | StateScreen with the failure copy: Retake photos / Take the photos again / Try again / Back to home, plus Back to home (quiet) unless "later". Warning haptic |
+| `error` | "The case didn't go through" + the error line · Try again · Back to your photos |
+
+### Accessibility
+
+- The room (photos, beam, cover) and the stamp are hidden from screen readers.
+- The status line is one polite live region, read by its fixed label: "Sending photo 2 of 6", "Your case is next", "Trying again", or the running label above. Rotations are never announced. At ready, "It's all in your photos" is the polite region and the title is a header.
+- The close is labelled "Leave. Your case keeps building." ("Back to home" at ready), 48 hit, with the brass focus ring. Open the case is the screen's one primary.
+- The status line keeps 4.5:1: its base and still colour is the mode's `inkMuted`; the sweep only brightens it. A test walks every stage for the old words (plate, develop, darkroom, light table, title screen, roll, film, AI).
+- The title fits one line at 375 at the default size; at large text the title and the line wrap, centred.
+
+### Copy, before → after (round 4, kept for the StateScreen states)
 
 | Where | Before | After |
 |---|---|---|
@@ -811,75 +903,6 @@ A calm "we're on it" page, one step after Photos. It uses the same flat #101010 
 
 Unchanged: "Keep your cases on an account", "Add your email", "Your own rooms are part of ESCAPD Pro", "Try again", "The case didn't go through", "Trying again", "Open the case", "Elapsed n min".
 
-### Layout, top to bottom (unchanged in round 4)
-
-The column is centred vertically between the safe top and the pinned band. The hero and the clock sit at `ref.space.edge` 20 from the screen edges, and the text at `ref.layout.state.textInset` 32.
-
-| Element | Size and spacing | Style | Tokens |
-|---|---|---|---|
-| Ground | Full bleed, flat | `ref.color.ground` #101010, as 02 and 07 | `ref.color.ground` |
-| Stage (during a wait) | Column width × 122. The strip sits 4 below its top | Holds the strip; the glass is drawn over it | `develop.stage` { height 122, stripTop 4 } |
-| Photo strip | 3–6 cells, 48 wide, 8 apart (6 = 328 wide), centred | Each cell has its number (1–6), then the tile 2 below. Hidden from screen readers | `develop.plate` { size 48, gap 8, labelGap 2 } |
-| Number | 17 tall line box | Regular 12/17, `textSecondary` #949494 (6.3:1), 07's tile-label style | `develop.plate.label` |
-| Tile | 48 × 48, corners 4 continuous, 1 pt edge | Photo cover in full colour inside a `ref.color.rim` edge. A `raised` fill shows only while it loads | `develop.plate` { radius 4, rim 1 } |
-| Veil (until ready) | Over the whole tile | `void` at 0.7 over photos still to send and 0.35 over sent ones. Neutral, so hues never shift | `develop.veil` |
-| Glass | 96 × 96. The lens centre rests on the tiles' middle, 47 below the stage top | `assets/brand/magnifier.png` @2x / @3x | `develop.glass` |
-| Thinking line | 12 below the stage, the column's width | Kit `ThinkingStates`, meta 13/16, dark ground | `develop.gap.line` 12, `ref.motion.thinking` |
-| Stamp | 28 below the hero. 26 tall, 9 to the text | 01's tag pill: 1 pt `rim`, radius 8, `ref.type.tag` in `textLabel` | `develop.gap.copy`, `ref.button.gameCard.tag*` |
-| Title | 16 below the stamp | `ref.type.title` Semibold 22/28, `textPrimary`, centred, role header | `develop.gap.title` |
-| Body | 8 below | `ref.type.subtitle` Medium 17/22, `textSecondary`, centred | `develop.gap.body` |
-| Elapsed (queued or running) | 20 below the body; at least 32 tall, 14 to the text | "3 min" in `ref.type.meta` grey on a `void` pill (7:1) | `develop.gap.clock`, `develop.clock` |
-| Pinned band | 16, action(s), 16 + the safe bottom; sides 20 | StateScreen's `StateActions`. No band while sending | `ref.layout.state.footer`, `.bar` |
-
-### Tappable elements and haptics
-
-Haptics use the shared vocabulary in `src/game/feedback.ts`. There is one per moment, never stacked, never on mount or on animation frames.
-
-| Element / moment | When | Action | Haptic |
-|---|---|---|---|
-| A photo finishes sending | `sending` count steps up | — | `tick` (each step; never on mount, never when resuming mid-send) |
-| The case is ready | `ready` | — | `success` (kept) |
-| The case failed | `failed` | — | `warning` (kept: calm, never `error`) |
-| **Open the case** (the guide's pill, testID `open-case`) | `ready` | Clears the photos, replaces with `/play/<roomId>` | `thud` on press-in (committing to play) |
-| **Leave it building** (quiet pill) | `waiting` | `router.replace("/")` | `press` (the kit's default) |
-| StateScreen bar and quiet button | the other states | as listed under States | `press` on press-in by default |
-
-Sizes: the bar is at least 48 tall, full width minus 40, radius 2, with a paper fill and a ground label (19:1). The quiet pill is 48 tall. Both draw the brass focus ring.
-
-### States
-
-| Stage | What shows |
-|---|---|
-| `checking` | StateScreen loading: the thinking line "One moment" alone |
-| `account` | "Keep your cases on an account" · Add your email · Back to your photos |
-| `access` (entitlement) | "Your own rooms are part of ESCAPD Pro" · Try again · Back to your photos |
-| `access` (cap) | "You've built every case this month allows" · Back to home |
-| `sending` | Photos veiled (sent ones lighter), the glass, "Sending photo n of total", SENDING PHOTOS, no band. A tick per photo sent |
-| `waiting` queued | Glass, "Waiting to start", IN THE QUEUE, "Your case is next", the clock, Leave it building |
-| `waiting` running | Glass, the three lines rotating under the fixed status "Building your case", BUILDING, the clock, Leave it building |
-| `waiting` retry | Glass, "Trying again", SECOND TRY, the clock, Leave it building |
-| `ready` | No glass and no line. Photos in full colour, CASE READY, "Your case is ready", Open the case. Success haptic |
-| `failed` | StateScreen with the failure copy above: Retake photos / Take the photos again / Try again / Back to home, plus Back to home (quiet) unless "later". Warning haptic |
-| `error` | "The case didn't go through" + the error line · Try again · Back to your photos |
-
-Glass motion is unchanged: a figure-eight with x 56, y 8, tilt ±5°, one loop per 4000 ms on the UI thread, carried across sending → queued → running. Reduced motion: still glass and a plain grey line that swaps with a fade.
-
-### Accessibility
-
-- The strip and the glass are hidden from screen readers. The thinking line is one polite status, read by its fixed label ("Sending photo 2 of 5", "Your case is next", "Building your case", "Trying again").
-- The stamp, title and body make one polite live region. The elapsed clock sits outside it ("Elapsed 3 min"), so its ticks aren't re-read.
-- A test walks every stage and asserts that no visible text or accessibility label contains plate, develop, darkroom, light table, title screen, roll or AI.
-- Contrast:
-
-  | Text | Ratio |
-  |---|---|
-  | Title | 19:1 |
-  | Tag | 13:1 |
-  | Grey text | 6.3:1 |
-  | Clock | 7:1 |
-  | Bar label | 19:1 |
-- Tap targets are at least 48.
-
 ### StateScreen (`src/components/StateScreen.tsx`, shared)
 
 Used by the player (loading, offline, unsupported, not ready, error, update needed), the build wait, and `/account/confirmed`.
@@ -903,29 +926,34 @@ Accessibility: when not loading, the icon, title and body form one polite live r
 
 ### Decisions
 
-- **The queued title and line now differ.** The title is "Your case is next" and the line under the glass is "Waiting to start", so the two no longer repeat each other. The line's status label is the title.
-- **"One moment"** for the access check. It's plain, and it names no screen.
-- **Calm failure titles:** "A few photos need a retake" rather than "something private", and "That took longer than it should" rather than "busy" or "closed". Every failure that keeps the photos says "Your photos are safe".
-- **"Back to your photos"** replaces "Back to the light table", matching the review screen's new title, "Photos".
-- **"Leave it building"** keeps the old button's reassurance that the case carries on in the background.
-- **Primary is the photo guide's pill (round 6),** shared with StateScreen; 07's white bar is gone everywhere. "Open the case" fires `thud`, the weighty commit; every other bar or quiet press fires `press`, matching the kit's pills.
-- **The send tick** fires only when the count steps up from a count already shown. It never fires on mount, when resuming mid-send, or on the move to the queue.
+- **One visual, one title, one line (round 8).** The stamp pill, the body, the tile strip, the glass and the clock each restated something; together they read as a form. The room is the only picture, the title the only heading and the line the only status.
+- **The room is the player's own 360,** side by side round the loop, so the wait shows them their room becoming a case, not a generic spinner. Tiles crop the photos' overlapping sides so the row reads as one room, not six postcards.
+- **A torch, not a scanner.** A wandering pool of light fits all three modes (the detective's torch, the investigator's flashlight, the ghost hunt) and claims nothing; a scan line or markers would suggest progress or finds we can't vouch for.
+- **A toy, not a progress bar:** drag to look round, and it carries on by itself after.
+- **The way out is quiet:** the camera's square close in the header replaces the "Leave it building" button. It isn't offered while the photos send (as before, they must all go first).
+- **The status line is the feature line (the user: "increase size of the magic rotating text").** 22 pt Medium, title-adjacent, with the kit's sweep kept and now in the mode's colours; every line is 24 characters or fewer so it stays on one line at 375.
+- **The title keeps one wording through the whole wait** ("Building your case"); the line carries the stage. The display face makes it the mode's.
+- **Light voice on the running lines only.** The counts, the queue and "Trying again" stay plain; no darkroom or film words; AI never mentioned.
+- **Ready is a reward:** lights on, CASE READY slammed (the victory screen's own stamp), `stamp` then `success` (not `solved`, which belongs to a solved case), and only then the pill. Its space is kept from the start so nothing jumps.
+- **Sound:** the room tone plays quietly from the wait, so the room already sounds like the case when it opens; `typewriter` marks a change of status, not every line, so a two-minute wait isn't a typing loop.
+- **Kept:** "One moment" for the access check, the calm failure titles and "Your photos are safe", "Back to your photos", the guide's pill for Open the case with `thud`, and the send tick's rules.
 
 ### Shots
 
-All shots were taken with Supabase blocked. They're in `C:/Users/Dell/AppData/Local/Temp/claude/f--escapd-escapd/079a8a0e-2bca-41c1-b406-d4915e22da25/scratchpad/darkroom06/out/`:
-- `contact-waits.png`: checking, sending, queued, running, retry, no photos, ready, running under reduced motion
-- `contact-states.png`: account, Pro access, limit, privacy failure, transient failure, error, play-loading
-- one PNG per state
+Taken on the web build (Chromium, 2×) with Supabase mocked and six sample photos in the capture store, in `/tmp/claude-0/-home-user-escapd/17b70037-fc42-5c44-8d58-80a4e3449f5e/scratchpad/buildwait/`:
+- `contact-393x852.png` and `contact-375x667.png`: noir, crime scene and paranormal, each sending, queued, running (two frames 2.6 s apart), ready mid-slam and ready settled
+- `contact-extras.png`: a drag in progress, and Reduce Motion (running, the next photo, ready)
+- one PNG per stage, mode and size (`<mode>-<size>-<n>-<stage>.png`), the shell (`shell-393x852-*`), and the old screen (`before-*`, `before-contact.png`)
 
-The harness is `darkroom06/shoot.mjs`. It shims `useDevelopment` to a canned stage, puts fake photos in the capture store, and reports `onTextLayout` from the DOM so the kit's line draws on the web.
+The harness is `buildwait/shoot.js`: it swaps `useDevelopment` for a store the script drives, fills the capture store and patches react-native-web's missing `sendAccessibilityEvent`.
 
 ### Needs you
 
-- **ThinkingStates on the web needs `onTextLayout`,** which react-native-web never fires. The shots use a harness shim. Native is fine.
-- **The player's StateScreen glyphs** are coloured by `src/render/Player.tsx`, the player agent's file.
-- **The darkroom's StateScreen states have no glyph.** If you want one per state, it can be passed through `icon`.
-- **Check the 0.7 veil on a device,** on very dark rooms.
+- **Feel it on a phone:** the drift speed (24 pt/s), the beam's darkness (0.84) and the drag's coast are tuned on the web build.
+- **The 720 bake** (07's, reused so nothing new bakes) is a little soft on a 3× phone at 440 pt tall; a bigger bake would mean baking every photo again as the wait starts.
+- **The painted magnifier** (`assets/brand/magnifier*.png`) is no longer used; delete it if nothing else will want it.
+- **Typewriter and room tone volumes** follow `src/game/sound.ts`; check them on a device.
+- **The StateScreen states still have no glyph;** one per state can be passed through `icon`.
 
 ## 07 · Review screen ("Photos", formerly the light table)
 
@@ -1377,7 +1405,7 @@ Three modes (MODES_PROMPT.md, Part 2): Detective Noir, Crime Scene and Paranorma
 
 ### Photo treatment
 
-- **Baked once:** every photo inside a mode is shown through `TreatedImage` (`src/components/noir`): the /play pager and loupe, review tiles, the build-wait strip, the camera's last photo and home's mode cards. `treatPhoto.ts` bakes each photo once per mode on an offscreen Skia surface (`@shopify/react-native-skia` 2.14.0), at its own size up to 1600 on the long edge. The order is the mode's colour matrix over its toe (each channel keeps the brighter of the two, so a hard contrast never crushes the darkest tones to one black), then paranormal's glow (the graded photo at quarter size, blurred and screened back over it), then grain (a tile of fractal noise, overlaid), then a radial vignette. It is encoded to JPEG and cached by (photo, mode, size): on native in the cache directory, on the web as a data URL in memory. Bakes run one at a time.
+- **Baked once:** every photo inside a mode is shown through `TreatedImage` (`src/components/noir`): the /play pager and loupe, review tiles, the build wait's turning room, the camera's last photo and home's mode cards. `treatPhoto.ts` bakes each photo once per mode on an offscreen Skia surface (`@shopify/react-native-skia` 2.14.0), at its own size up to 1600 on the long edge. The order is the mode's colour matrix over its toe (each channel keeps the brighter of the two, so a hard contrast never crushes the darkest tones to one black), then paranormal's glow (the graded photo at quarter size, blurred and screened back over it), then grain (a tile of fractal noise, overlaid), then a radial vignette. It is encoded to JPEG and cached by (photo, mode, size): on native in the cache directory, on the web as a data URL in memory. Bakes run one at a time.
 - **Cache files** are named for the recipe (`ref.treatment` and every mode's treatment) and the photo: its `cacheKey`, its uri (a signed URL without its token), or a bundled asset's content hash, so The Study's art bakes once, not every launch. A photo with no lasting identity (a data: or content: uri) gets a name for this launch. The first write of each launch deletes every other launch's and recipe's files.
 - **Never per frame:** pan, zoom and the loupe move an ordinary image, so the treatment costs nothing while they run.
 - **Showing it:** the original shows until the bake is ready, then the treatment fades in over it (`ref.motion.treatment`, 240 ms; instant under reduced motion). Once the treatment covers it, the original unmounts, so a settled photo is one decoded image. A photo baked before shows treated at once, with no original under it. `original` mounts the original again, waits for it to load, then fades the treatment away: paranormal's case closed snaps to full colour.
@@ -1447,18 +1475,17 @@ The photo guide (04), camera permission (03), camera (02), review screen (07) an
 | `well` | the guide's ground and every well: the empty viewfinder, the counter pill, the zoom track | `ground` |
 | `raised`, `ink`, `inkMuted`, `rim` | square buttons, the zoom thumb, notes, loading tiles; text; 1 pt edges | the mode's own roles |
 | `primary` / `onPrimary` | 03's pill, 04's step button, 07's build pill, 06's pill (round 6: all the guide's pill) | `accent` / `accentInk` |
-| `stamp`, `lit`, `cue` | 06's BUILDING / CASE READY stamp, the counter's current numeral, the camera's way-on ring | `stamp` |
+| `stamp`, `lit`, `cue` | 06's CASE READY stamp, its status line's sweep and its torch beam's tint, the counter's current numeral, the camera's way-on ring | `stamp` |
 
 - **Permission (03):** pushr's white paper becomes the mode's dark sheet. The mode's `ground` sits behind a `surface` sheet with a `raised` panel, and the phone is drawn in `ground` and lit in `inkMuted`. The title is in `ink`, and the body and notices in `inkMuted`. There is no haze: `PaperHaze` belongs to the shell's paper only. The status bar's glyphs are light (`app/capture/index.tsx`), and the thinking line uses the kit's dark ground. Section 03's paper, haze, black pill and pressed fill describe the shell.
 - **Guide (04):** the mode's `ground`, `ink` and `inkMuted`. The close disc is a light `inkMuted` disc with a `ground` X, and the step button is the mode's primary. The line drawings keep their greys.
-- **Photos:** the camera's last photo, the review tiles and the build-wait strip bake at one size, `ref.layout.review.tile.bake` (720 px on the long edge), so one bake per photo serves all three. Each photo shows as taken, then its treatment fades in (`TreatedImage`). The live camera feed is never treated, so you frame the real room.
-- **Pressed:** inside a mode the pills (`ModePill`: 03's pill and quiet ways out, 04's step button, the build wait's quiet button) press to 0.75 opacity (`ref.button.square.pressedOpacity`), because the kit's colour step (`raised` → `raisedPressed`) has no mode tokens. Squares, bare glyphs, the thumbnail and the bars press as they do in the shell.
+- **Photos:** the camera's last photo, the review tiles and the build wait's turning room bake at one size, `ref.layout.review.tile.bake` (720 px on the long edge), so one bake per photo serves all three. Each photo shows as taken, then its treatment fades in (`TreatedImage`). The live camera feed is never treated, so you frame the real room.
+- **Pressed:** inside a mode the pills (`ModePill`: 03's pill and quiet ways out, 04's step button, the build wait's Open the case) press to 0.75 opacity (`ref.button.square.pressedOpacity`), because the kit's colour step (`raised` → `raisedPressed`) has no mode tokens. Squares, bare glyphs, the thumbnail and the bars press as they do in the shell.
 - **Calm states:** the build wait's One moment, account and access asks, and failures are the shared `StateScreen`, which reads the mode itself (round 6; `DevelopStateScreen` and `src/screens/develop/ModeState.tsx` are gone). Inside a mode it uses the mode's `surface`, `ink` and `inkMuted`, with the guide's pill in the mode's accent.
 - **The same in every mode:**
   - the warning amber (`ref.layout.review.warning`, #D4883A) on a marked photo's rim, its reason and the footer's helper, so a problem never changes colour;
   - the instrument greys: the shutter disk, the × halo and the framing grid;
   - the brass focus ring;
-  - the build wait's painted magnifier. Its lens is clear grey glass in a brass rim, with no green, so it never tips a mode toward mint. `darkroom-test.tsx` pins every scale of the asset.
 - **Tests:** `src/capture/ui/__tests__/palette-test.ts`, plus each screen's "inside a mode" block.
 
 ## Game feel (GAME_FEEL_PROMPT.md)

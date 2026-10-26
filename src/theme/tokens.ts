@@ -380,6 +380,8 @@ export const ref = {
     label: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
     /** 01's game-card tags: Semibold 13, +0.4, uppercase, textLabel. */
     tag: { fontSize: 13, lineHeight: 16, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
+    /** 06's status line, the feature line under the build wait's title: Medium 22, centred. One line at 375 for every line it shows. */
+    status: { fontSize: 22, lineHeight: 28, fontWeight: "500" },
   } as const satisfies Record<string, TextStyle>,
   // Spacing that more than one screen uses. ctaBottom is added to the bottom
   // safe-area inset. A screen's own distances live in its ref.layout block.
@@ -1077,46 +1079,55 @@ export const ref = {
         },
       },
     },
-    // 06 · Darkroom wait (/capture/develop). No reference screen: derived
-    // from 02 and 07. 07's ground and tiles (in miniature), 01's tag pill as
-    // the stamp, 01's title and subtitle, a void pill (02's wells) for the
-    // clock, and the state screen's actions (ref.layout.state). The
-    // painted glass drifts over the plates with a thinking line
-    // (ref.motion.thinking, dark ground) under it, only while a real wait runs
-    // (sending, queued, developing, retrying).
+    // 06 · Building your case (/capture/develop): the build wait. No
+    // reference screen. One focal visual (the room: the player's photos side
+    // by side in a viewfinder frame, turning round the loop under a wandering
+    // torch beam), the title in the mode's display face, one status line
+    // (ThinkingStates "status"), and on ready the CASE READY stamp and the
+    // guide's pill. A square close button (02's) in the header.
     develop: {
-      // One plate on the strip: 07's tile in miniature (square, photo in full
-      // colour, a 1 pt ref.color.rim edge, 07's 5 corners scaled to 48 = 4),
-      // with its numeral above it in 07's label style (Regular 12/17 grey), the
-      // label box `labelGap` above the tile. Tiles `gap` apart.
-      plate: { size: 48, radius: 4, rim: 1, gap: 8, label: { fontSize: 12, lineHeight: 17, fontWeight: "400" }, labelGap: 2 },
-      // A void veil over plates still to send (lighter over sent ones) until
-      // the case is developed: neutral, so the photos' colours never shift.
-      veil: { color: refColor.void, unsent: 0.7, sent: 0.35 },
-      // The glass: the magnifier.png @2x / @3x set at its own 96 pt (288 px at
-      // 3x), and the lens centre as a share of the image box (measured on
-      // magnifier-1024: 640, 336). It leans about the lens centre.
-      glass: { size: 96, lensX: 0.625, lensY: 0.33 },
-      // The stage the glass works over: the strip sits stripTop below its top
-      // and the lens path centres on the tiles' middle (4 + 17 + 2 + 24 = 47
-      // below the top). The rim reaches 28 above the lens centre and the
-      // handle's end 61 below it (66 at full lean, plus drift.y 8), so at full
-      // drift the art stays inside the height.
-      stage: { height: 122, stripTop: 4 },
-      // Column gaps: the stage to the thinking line (the kit asks 8 or more),
-      // the hero to the stamp, the stamp to the title, the title to the body,
-      // the body to the clock.
-      gap: { line: 12, copy: 28, title: 16, body: 8, clock: 20 },
-      // The elapsed clock ("3 min"): ref.type.meta in textSecondary on a void
-      // pill (02's wells; 7:1), `padX` to the text, at least `height` tall.
-      clock: { height: 32, padX: 14, fill: refColor.void },
-      // The drift: a figure-eight (a 1 : 2 Lissajous) over the plates. The lens
-      // centre runs x sin t, y sin 2t and the glass leans tilt sin t degrees,
-      // one loop per `duration`. The phase runs linearly so the glass never
-      // stalls; the path is sinusoidal, so each axis eases in and out at its
-      // turns. x is one plate pitch (48 + space.sm). Reduced motion: the glass
-      // holds still and level at the path's centre.
-      drift: { x: 56, y: 8, tilt: 5, duration: 4000, easing: "linear" },
+      // The close square: 02's header button, `edge` from the left, `top`
+      // below the safe top. The column starts `below` under it.
+      header: { edge: 21, top: 8, below: 16 },
+      // The room's frame: the screen's width less space.edge each side, as
+      // tall as the column allows between minHeight and maxHeight, with 02's
+      // viewfinder corners (ref.radius.viewfinder 40, continuous) on the
+      // capture palette's well.
+      frame: { minHeight: 220, maxHeight: 440, rim: 1 },
+      // Each photo is a tile as tall as the frame, `aspect` wide (a centre
+      // crop of the 3 : 4 photo: neighbours in a 360 overlap, so the crop
+      // trims the repeats and about 1.7 photos show at once), `gap` apart in
+      // the well's colour. They bake at review.tile.bake (07's bakes, reused).
+      tile: { aspect: 0.56, gap: 2 },
+      // The turn round the room: `speed` pt/s to the left (photo 1, then 2:
+      // clockwise, as they were taken), eased up from rest over `rampIn`. A
+      // drag takes over at once; on release the room coasts (decay
+      // `deceleration`), rests `resume`, then eases back up. Ready: it eases
+      // to rest over `settle`.
+      drift: { speed: 24, rampIn: 1600, resume: 900, settle: 1200, deceleration: 0.996 },
+      // The torch beam: a dark veil (the page's colour at `veil`) over the
+      // room with a soft clear pool `radius` x the frame's width across, its
+      // centre wandering x / y (shares of the frame) on two sines of
+      // `periodX` / `periodY`, the pool tinted with the mode's stamp colour
+      // at `tint`. Ready: the lights come on. They catch (the veil to
+      // flicker[0] over flicker[1] ms), stutter back to flicker[2] over
+      // flicker[3] ms, then the veil lifts over `lightsOn`. Reduced motion:
+      // the veil simply fades over `lightsOn`.
+      beam: { radius: 0.52, veil: 0.84, soft: 0.38, tint: 0.18, x: 0.3, y: 0.16, periodX: 9000, periodY: 6400, lightsOn: 700, flicker: [0.25, 80, 0.7, 90] },
+      // Reduced motion: one photo at a time, filling the frame, held `hold`
+      // and cross-faded over `fade`; the beam a still pool in the middle.
+      still: { hold: 4000, fade: 900 },
+      // Below the frame: the title (the mode's display face at the mode's
+      // `titleSize`, one line at 375) `gap.title` under it, the status line
+      // `gap.status` under the title. The status rotates every `hold` ms.
+      gap: { title: 28, status: 10 },
+      titleSize: { shell: 26, noir: 26, crime_scene: 21, paranormal: 30 },
+      status: { hold: 3200 },
+      // Ready: the stamp slams `stampDelay` after the wait ends (as the drift
+      // settles and the lights come on), centred on the frame; `success`
+      // ms after it lands, then the pill fades in over `pillFade`. As it lands
+      // the room jolts (case closed's nudge, play.complete.slam.nudge).
+      ready: { stampDelay: 700, success: 180, pillFade: 320 },
     },
     // The shared state screen (src/components/StateScreen.tsx): loading,
     // offline, error and access states for the player, the build wait and

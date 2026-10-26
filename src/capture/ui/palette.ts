@@ -15,7 +15,7 @@
 // - raised controls on `raised`, text in `ink` and `inkMuted`, edges `rim`;
 // - the primary button (03's pill, 04's step button, and the same pill on
 //   07 and 06) in `accent` with `accentInk`;
-// - stamps (06's BUILDING / CASE READY), the counter's current numeral and
+// - stamps (06's CASE READY, and the sweep of its status line), the counter's current numeral and
 //   the camera's way-on ring in `stamp`;
 // - 03's white paper sheet becomes the mode's dark sheet (`surface` over
 //   `ground`, its panel `raised`, the phone drawn in `ground`).
@@ -45,7 +45,7 @@ export interface CapturePalette {
   readonly raised: string;
   readonly ink: string;
   readonly inkMuted: string;
-  /** 1 pt edges: tiles, the strip's photos, the stamp in the shell. */
+  /** 1 pt edges: tiles, 06's room frame, the stamp in the shell. */
   readonly rim: string;
   /** The square header buttons' 1 pt rim. */
   readonly squareRim: string;
@@ -56,7 +56,7 @@ export interface CapturePalette {
   /** The primary button's fill and its label. */
   readonly primary: string;
   readonly onPrimary: string;
-  /** Stamp text (06's BUILDING / CASE READY) and its edge. */
+  /** Stamp text (06's CASE READY stamp, its status line's sweep) and its edge. */
   readonly stamp: string;
   readonly stampRim: string;
   /** The counter's current numeral. */

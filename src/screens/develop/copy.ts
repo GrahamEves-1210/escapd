@@ -1,75 +1,68 @@
-// 06 · The build wait: what the screen says during each real wait. Plain
-// language (round 4): photos, "building", "ready"; the screen is never named.
-// The stamp, title and body are the screen's copy; `thinking` is the line
-// under the glass. The generation job reports only queued and running, so the
-// lines describe the job and never claim to be the live step.
+// 06 · The build wait's words. Plain language (round 4): photos, building,
+// ready; the screen is never named, no darkroom or film words, and AI is never
+// mentioned. One short title and one status line under it. The generation
+// job reports only queued and running, so the running lines describe what
+// building does, in rotation, and never claim to be the live step or an order.
+// A light touch of each mode's voice (src/render/voice.ts) on those lines
+// only; the counts and the queue stay factual.
 import type { DevStage } from "@/capture/useDevelopment";
-import type { GenerationJob } from "@/lib/escapd-api";
+import type { Genre } from "@/lib/puzzle-types";
 
-/** The stages that are a real wait: plates sending, or the job queued or running. */
+/** The stages that are a real wait: photos sending, or the job queued or running. */
 export type WaitStage = Extract<DevStage, { kind: "sending" | "waiting" }>;
 
-/** The thinking line: its lines, the extra strings its box is sized to, and the fixed status screen readers hear. */
-export interface WaitLine {
+/** What the status line says during a wait. `key` changes only when the meaning does (a new count is a new key). */
+export interface WaitStatus {
+  /** sending · queued · running · retry: the kind of wait, for the typewriter cue. */
+  phase: "sending" | "queued" | "running" | "retry";
   lines: readonly string[];
+  /** Extra strings the line's box is sized to, so it never resizes as a count climbs. */
   sizeTo?: readonly string[];
+  /** The fixed status screen readers hear (never the rotating copy). */
   label: string;
 }
 
-export interface WaitCopy {
-  stamp: string;
-  title: string;
-  body: string;
-  thinking: WaitLine;
-}
+/** The title, through every wait. */
+export const BUILD_TITLE = "Building your case";
+export const READY_TITLE = "Your case is ready";
+/** The status line once ready. */
+export const READY_LINE = "It's all in your photos";
+export const STAMP_TEXT = "CASE READY";
 
-/** Running: the three things building does, in rotation (no order is claimed). */
-export const DEVELOPING_LINES = ["Finding the objects", "Choosing what to hide", "Writing the case"] as const;
+/** The queued line. */
+export const QUEUED_LINE = "Your case is next";
+export const RETRY_LINE = "Trying again";
 
-/** Queued: the one line under the glass (the title says the case is next). */
-export const WAITING_LINE = "Waiting to start";
+/** Running: what building does, per mode. Each says the same three real steps: the objects, what to hide, the case. */
+export const BUILDING_LINES: Readonly<Record<Genre | "shell", readonly string[]>> = {
+  shell: ["Finding the objects", "Choosing what to hide", "Writing the case"],
+  noir: ["Going over every object", "Choosing what to hide", "Writing the case"],
+  crime_scene: ["Logging every object", "Choosing what to hide", "Writing up the case"],
+  paranormal: ["Searching every corner", "Choosing what to hide", "Writing the case"],
+};
+
+/** What screen readers hear while it builds (one fixed label; the rotation is never announced). */
+export const BUILDING_LABEL = "Building your case: finding the objects, choosing what to hide and writing the case";
+
+/** The longest a status line may be: one line at 22 pt on a 375 pt screen. */
+export const STATUS_MAX = 24;
 
 export const sendingLine = (n: number, total: number) => `Sending photo ${n} of ${total}`;
 
-export function waitingCopy(stage: WaitStage): WaitCopy {
+export function waitStatus(stage: WaitStage, genre: Genre | null): WaitStatus {
   if (stage.kind === "sending") {
     const n = Math.min(stage.sent + 1, stage.total);
     const line = sendingLine(n, stage.total);
     return {
-      stamp: "SENDING PHOTOS",
-      title: "Sending your photos",
-      body: `Photo ${n} of ${stage.total}. Keep the app open until they're all sent.`,
-      // Sized to every count, so the box never resizes as the count climbs.
-      thinking: { lines: [line], sizeTo: Array.from({ length: stage.total }, (_, i) => sendingLine(i + 1, stage.total)), label: line },
+      phase: "sending",
+      lines: [line],
+      sizeTo: Array.from({ length: stage.total }, (_, i) => sendingLine(i + 1, stage.total)),
+      label: line,
     };
   }
-  return jobCopy(stage.job);
-}
-
-function jobCopy(job: GenerationJob): WaitCopy {
-  if (job.status === "running") {
-    const title = "Building your case";
-    return {
-      stamp: "BUILDING",
-      title,
-      body: "Finding the objects, choosing what to hide, and writing the case. This usually takes a minute or two.",
-      thinking: { lines: DEVELOPING_LINES, label: title },
-    };
+  if (stage.job.status === "running") {
+    return { phase: "running", lines: BUILDING_LINES[genre ?? "shell"], label: BUILDING_LABEL };
   }
-  if (job.attempt_count > 0) {
-    const title = "Trying again";
-    return {
-      stamp: "SECOND TRY",
-      title,
-      body: "The first try didn't finish, so it's starting again. You don't need to do anything.",
-      thinking: { lines: [title], label: title },
-    };
-  }
-  const title = "Your case is next";
-  return {
-    stamp: "IN THE QUEUE",
-    title,
-    body: "You can leave this screen. It keeps building, and you'll find it on the home screen.",
-    thinking: { lines: [WAITING_LINE], label: title },
-  };
+  if (stage.job.attempt_count > 0) return { phase: "retry", lines: [RETRY_LINE], label: RETRY_LINE };
+  return { phase: "queued", lines: [QUEUED_LINE], label: QUEUED_LINE };
 }

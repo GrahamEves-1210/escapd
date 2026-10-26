@@ -53,15 +53,19 @@ const GROUNDS: Record<ThinkingGround, GroundColors> = {
   paper: T.shimmerPaper,
 };
 
-/** "meta" (13/16 Regular), "body" (17/22 Regular) or "tag" (13/16 Semibold, uppercase, tracked: a card's note). */
-export type ThinkingVariant = "meta" | "body" | "tag";
+/**
+ * "meta" (13/16 Regular), "body" (17/22 Regular), "tag" (13/16 Semibold,
+ * uppercase, tracked: a card's note) or "status" (22/28 Medium: the build
+ * wait's feature line).
+ */
+export type ThinkingVariant = "meta" | "body" | "tag" | "status";
 // System-font styles: the SVG glyphs take the same weight as the hidden sizer.
 interface LineStyle extends Omit<TextStyle, "fontWeight" | "fontFamily"> {
   fontSize: number;
   lineHeight: number;
   fontWeight: "400" | "500" | "600" | "700";
 }
-const TYPE: Record<ThinkingVariant, LineStyle> = { meta: ref.type.meta, body: ref.type.body, tag: ref.type.tag };
+const TYPE: Record<ThinkingVariant, LineStyle> = { meta: ref.type.meta, body: ref.type.body, tag: ref.type.tag, status: ref.type.status };
 // Swap to swap: the incoming line starts 50 ms in, settles at 200, holds 2000.
 const PERIOD = T.gap + T.swap + T.hold;
 const SWEEP = timingFor({ duration: SHIMMER.duration, easing: SHIMMER.easing });
@@ -108,6 +112,14 @@ interface BaseProps {
   variant?: ThinkingVariant;
   /** Default "dark". "paper" for a line on 03's light sheet. */
   ground?: ThinkingGround;
+  /**
+   * The sweep's own colours, in place of the ground's greys: a mode's muted
+   * ink as the base and still line, and its own colour as the highlight (06).
+   * The base and still colours must keep 4.5:1 on the ground.
+   */
+  colors?: { base: string; highlight: string; still: string };
+  /** How long each rotating line holds before the next, in ms. Default ref.motion.thinking.hold (2000). */
+  hold?: number;
   /**
    * Extra strings measured for the box width, e.g. the longest count line
    * "Preparing photo 4 of 4", so the box never resizes when the count changes.
@@ -163,12 +175,13 @@ export function ThinkingStates(props: ThinkingStatesProps) {
 
 function ThinkingLine(props: ThinkingStatesProps) {
   const { lines, variant = "meta", ground = "dark", sizeTo, announceOnMount = false, testID, style } = props;
+  const period = props.hold === undefined ? PERIOD : T.gap + T.swap + props.hold;
   const decorative = props.decorative === true;
   const label = props.accessibilityLabel;
   const { reducedMotion } = useTheme();
   const { fontScale } = useWindowDimensions();
   const typeStyle = TYPE[variant];
-  const colors = GROUNDS[ground];
+  const colors = props.colors ?? GROUNDS[ground];
   const [measures, setMeasures] = useState<Record<string, Measure>>({});
   const [tick, setTick] = useState(0);
 
@@ -176,9 +189,9 @@ function ThinkingLine(props: ThinkingStatesProps) {
   const rotating = count > 1;
   useEffect(() => {
     if (!rotating) return;
-    const id = setInterval(() => setTick((t) => t + 1), PERIOD);
+    const id = setInterval(() => setTick((t) => t + 1), period);
     return () => clearInterval(id);
-  }, [rotating]);
+  }, [rotating, period]);
 
   // Screen readers hear the fixed label: on iOS through an announcement, on
   // Android through the polite live region. Rotations are never announced.
