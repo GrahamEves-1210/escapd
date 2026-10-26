@@ -28,6 +28,29 @@ describe("definitionProblem", () => {
     expect(definitionProblem(null)).toBe("missing_definition");
   });
 
+  it("plays a paranormal room: genre and hotspot effects are optional extras", () => {
+    const haunted: PuzzleDefinitionV1 = {
+      ...def,
+      genre: "paranormal",
+      hotspots: def.hotspots.map((h, i) => (i === 0 ? { ...h, effect: "flicker" } : h)),
+    };
+    expect(definitionProblem(haunted)).toBeNull();
+  });
+
+  it("still refuses an accuse step until the player has an accuse screen", () => {
+    const option = (id: string) => ({ id, name: id });
+    const crimeScene: PuzzleDefinitionV1 = {
+      ...def,
+      genre: "crime_scene",
+      puzzles: [...def.puzzles, {
+        id: "name_the_killer", kind: "accuse", requires: ["open_safe"],
+        suspects: [{ id: "s_ivy", name: "Ivy Marsh", role: "The housekeeper", alibi: "In the garden all evening." }],
+        motives: [option("m_debt")], methods: [option("x_tea")],
+      }],
+    };
+    expect(definitionProblem(crimeScene)).toBe("unknown_kind");
+  });
+
   it("rejects a hotspot pointing at a photo that does not exist", () => {
     const bad: PuzzleDefinitionV1 = { ...def, hotspots: [{ ...def.hotspots[0], photo_index: 9 }] };
     expect(definitionProblem(bad)).toBe("bad_photo_index");

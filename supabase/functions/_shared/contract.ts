@@ -6,6 +6,20 @@
 // and docs/BACKEND.md). The database validates the output before publishing,
 // so a bad generation can never become playable.
 
+// Closed vocabularies of the public definition (optional schema-v1 fields).
+// The SQL validator holds the same lists.
+export const GENRES = ["noir", "crime_scene", "paranormal"] as const;
+export type Genre = typeof GENRES[number];
+export const isGenre = (value: unknown): value is Genre => (GENRES as readonly unknown[]).includes(value);
+
+/** Optional hotspot overlay, set by the template role, never by the model. */
+export const HOTSPOT_EFFECTS = ["flicker", "apparition", "moved", "cold", "whisper"] as const;
+export type HotspotEffect = typeof HOTSPOT_EFFECTS[number];
+
+/** The three parts of an accusation: who, why, how. */
+export const ACCUSE_DIMENSIONS = ["suspect", "motive", "method"] as const;
+export type Dimension = typeof ACCUSE_DIMENSIONS[number];
+
 export interface GenerationPhoto {
   photoId: string;      // must be echoed back as photos[].photo_id
   position: number;
@@ -19,6 +33,8 @@ export interface GenerationInput {
   attempt: number;
   promptVersion: string;
   outputSchemaVersion: number;
+  /** Snapshot of rooms.genre on the job. Absent means noir (callers that predate genres). */
+  genre?: Genre;
   photos: GenerationPhoto[];
 }
 

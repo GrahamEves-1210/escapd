@@ -9,11 +9,31 @@
 // is the only publisher. Where the SQL silently accepts a malformed value
 // (missing photo_index or rect coordinates evaluate to NULL there), this check
 // is deliberately stricter.
+//
+// Genres (20261026000100_genres_and_accuse.sql): an optional top-level genre,
+// an optional hotspot effect, and the accuse kind, whose secret answer must be
+// deducible from the evidence items the player holds when it becomes attemptable.
+//
+// Normalization follows private.normalize_answer, whose lower() and \s depend
+// on the database locale. JS \s and toLowerCase() agree with the usual UTF-8
+// and Windows locales on most Unicode spaces (such as U+3000); glibc keeps
+// the no-break spaces (U+00A0, U+2007, U+202F), and a C locale strips ASCII
+// whitespace only and lowercases ASCII letters only. Generated text stays
+// clear of the spaces (prose.ts turns every JS \s into a plain space), and the
+// preview RPC runs the SQL validator itself before anything is published.
+import { ACCUSE_DIMENSIONS, type Dimension, GENRES, HOTSPOT_EFFECTS } from "./contract.ts";
 import { decimalSumGreaterThan } from "./geometry.ts";
 
 export const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-const KINDS = new Set(["inspect", "code", "use_item", "combine"]);
-const FORBIDDEN_PUBLIC_KEYS = new Set(["answer", "rewards", "inputs", "solution", "hints"]);
+const KINDS = new Set(["inspect", "code", "use_item", "combine", "accuse"]);
+const FORBIDDEN_PUBLIC_KEYS = new Set(["answer", "rewards", "inputs", "solution", "hints", "evidence"]);
+const EFFECTS = new Set<unknown>(HOTSPOT_EFFECTS);
+/** Public option list of an accuse puzzle per dimension. */
+export const OPTION_LISTS: Record<Dimension, string> = { suspect: "suspects", motive: "motives", method: "methods" };
+export const OPTION_COUNT = 3;
+export const MAX_OPTION_NAME = 60;
+export const MAX_SUSPECT_ROLE = 60;
+export const MAX_SUSPECT_ALIBI = 200;
 export const MAX_PUBLIC_BYTES = 262_144;
 export const MAX_SECRET_BYTES = 131_072;
 export const HINT_COUNT = 3;
@@ -47,10 +67,53 @@ function text(obj: unknown, key: string): string | null {
 }
 
 const bytes = (s: string) => new TextEncoder().encode(s).length;
+/** char_length: code points, not UTF-16 units. */
+const chars = (s: string) => [...s].length;
 
-/** private.normalize_answer: lower(), then strip runs of whitespace and - _ . , : ; ' " */
+/** private.normalize_answer: lower(), then strip runs of whitespace (\s) and - _ . , : ; ' " */
 export function normalizeAnswer(s: string | null | undefined): string {
-  return (s ?? "").toLowerCase().replace(/[ \t\n\r\v\f\-_.,:;'"]+/g, "");
+  return (s ?? "").toLowerCase().replace(/[\s\-_.,:;'"]+/g, "");
+}
+
+/** Within one dimension, every normalized name is non-empty, and none equals or contains another. */
+export function namesDistinct(names: readonly string[]): boolean {
+  const normalized = names.map(normalizeAnswer);
+  return normalized.every((a, i) => a !== "" && normalized.every((b, j) => i === j || !b.includes(a)));
+}
+
+/**
+ * Deducibility of one dimension: the evidence text names the right option and
+ * none of the others (normalized substring match, as in SQL).
+ */
+export function provesOption(description: string, rightName: string, wrongNames: readonly string[]): boolean {
+  const text = normalizeAnswer(description);
+  const right = normalizeAnswer(rightName);
+  return right !== "" && text.includes(right) && wrongNames.every((w) => !text.includes(normalizeAnswer(w)));
+}
+
+/** Whether the text names any of these options (normalized substring). */
+export function namesAny(text: string, names: readonly string[]): boolean {
+  const t = normalizeAnswer(text);
+  return names.some((n) => normalizeAnswer(n) !== "" && t.includes(normalizeAnswer(n)));
+}
+
+/** One dimension of an accusation as public text sees it: the right option's name and all three names. */
+export interface AnswerList {
+  right: string;
+  names: readonly string[];
+}
+
+/**
+ * Generator rule for public text outside the evidence: it gives the accusation
+ * away when it names a dimension's right option without naming all three of
+ * that dimension (a list of all three singles nobody out). Normalized
+ * substring, as for codes, so it errs toward calling a text a leak.
+ */
+export function revealsAnswer(text: string, lists: readonly AnswerList[]): boolean {
+  const t = normalizeAnswer(text);
+  return lists.some(({ right, names }) =>
+    normalizeAnswer(right) !== "" && t.includes(normalizeAnswer(right)) && !names.every((n) => t.includes(normalizeAnswer(n)))
+  );
 }
 
 function hasForbiddenKey(v: unknown): boolean {
@@ -84,7 +147,11 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
   if (bytes(jsonbText(pub)) > MAX_PUBLIC_BYTES) errors.push("public definition exceeds 256 KB");
   if (bytes(jsonbText(secret)) > MAX_SECRET_BYTES) errors.push("solution exceeds 128 KB");
   if (hasForbiddenKey(pub)) {
+    // SQL keeps this text as it was when `evidence` joined the list.
     errors.push("public definition contains solution-only keys (answer/rewards/inputs/solution/hints)");
+  }
+  if (Object.hasOwn(pub, "genre") && !(GENRES as readonly unknown[]).includes(own(pub, "genre"))) {
+    errors.push("public.genre must be one of noir, crime_scene, paranormal");
   }
 
   const photos = own(pub, "photos");
@@ -142,6 +209,9 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
     if (Object.hasOwn(hs, "hidden") && typeof own(hs, "hidden") !== "boolean") {
       errors.push(`hotspot ${id}: hidden must be boolean`);
     }
+    if (Object.hasOwn(hs, "effect") && !EFFECTS.has(own(hs, "effect"))) {
+      errors.push(`hotspot ${id} has an unknown effect`);
+    }
     const shape = own(hs, "shape");
     const num = (k: string) => (isObject(shape) ? own(shape, k) : undefined);
     const coords = ["x", "y", "w", "h"].map(num);
@@ -166,6 +236,7 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
   }
 
   // Puzzle bodies + matching solutions
+  const definitionIds = new Set([...itemIds, ...hotspotIds, ...puzzleIds]);   // accuse option ids join these
   for (const p of puzzles) {
     const pid = text(p, "id");
     if (pid === null || !ID_RE.test(pid)) continue;
@@ -175,7 +246,7 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
       errors.push(`puzzle ${pid} has invalid kind`);
       continue;
     }
-    if (kind !== "combine") {
+    if (kind !== "combine" && kind !== "accuse") {
       const hid = text(pz, "hotspot_id");
       if (hid === null || !hotspotIds.includes(hid)) {
         errors.push(`puzzle ${pid} references unknown hotspot ${hid ?? "<missing>"}`);
@@ -191,6 +262,7 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
         }
       }
     }
+    if (kind === "accuse") errors.push(...checkAccuseOptions(pid, pz, definitionIds));
 
     const s = own(solutions, pid);
     if (!isObject(s)) {
@@ -214,6 +286,8 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
           if (!itemIds.includes(r)) errors.push(`combine puzzle ${pid} uses unknown item ${r}`);
         }
       }
+    } else if (kind === "accuse") {
+      errors.push(...checkAccuseSolution(pid, pz, s, itemIds));
     }
     if (Object.hasOwn(s, "rewards")) {
       const rw = own(s, "rewards");
@@ -247,6 +321,76 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
   return simulate(pub, solutions, items as Json[], hotspots as Json[], puzzles as Json[], exitRequires as string[]);
 }
 
+/** A JSON string that is not blank (btrim trims spaces) and at most `max` characters. */
+const boundedText = (v: unknown, max: number) => typeof v === "string" && v.replace(/^ +| +$/g, "") !== "" && chars(v) <= max;
+
+/**
+ * Public shape of an accuse puzzle: three options per dimension, ids unique
+ * across the whole definition (`taken` gains them), bounded texts, and names
+ * that are distinct and never contain one another (deducibility reads them as
+ * substrings of the evidence).
+ */
+function checkAccuseOptions(pid: string, pz: Json, taken: Set<string>): string[] {
+  const errors: string[] = [];
+  for (const d of ACCUSE_DIMENSIONS) {
+    const options = own(pz, OPTION_LISTS[d]);
+    if (!Array.isArray(options) || options.length !== OPTION_COUNT) {
+      errors.push(`accuse puzzle ${pid} needs exactly ${OPTION_COUNT} ${OPTION_LISTS[d]}`);
+      continue;
+    }
+    for (const o of options) {
+      const id = text(o, "id");
+      if (!ID_RE.test(id ?? "")) errors.push(`accuse puzzle ${pid} has an invalid option id: ${id ?? "<missing>"}`);
+      else if (taken.has(id!)) errors.push(`duplicate option id: ${id}`);
+      else taken.add(id!);
+      const field = (k: string) => (isObject(o) ? own(o, k) : undefined);
+      if (!boundedText(field("name"), MAX_OPTION_NAME)) {
+        errors.push(`accuse puzzle ${pid}: ${d} ${id ?? "?"} needs a name of 1-${MAX_OPTION_NAME} characters`);
+      }
+      if (d === "suspect" && !boundedText(field("role"), MAX_SUSPECT_ROLE)) {
+        errors.push(`accuse puzzle ${pid}: suspect ${id ?? "?"} needs a role of 1-${MAX_SUSPECT_ROLE} characters`);
+      }
+      if (d === "suspect" && !boundedText(field("alibi"), MAX_SUSPECT_ALIBI)) {
+        errors.push(`accuse puzzle ${pid}: suspect ${id ?? "?"} needs an alibi of 1-${MAX_SUSPECT_ALIBI} characters`);
+      }
+    }
+    if (!namesDistinct(options.map((o) => text(o, "name") ?? ""))) {
+      errors.push(`accuse puzzle ${pid}: ${d} names must be distinct and none may contain another`);
+    }
+  }
+  return errors;
+}
+
+/** Secret side of an accuse puzzle: the answer picks a public option per dimension; each dimension's evidence is an item. */
+function checkAccuseSolution(pid: string, pz: Json, s: Json, itemIds: string[]): string[] {
+  const errors: string[] = [];
+  for (const d of ACCUSE_DIMENSIONS) {
+    const options = own(pz, OPTION_LISTS[d]);
+    const answer = text(own(s, "answer"), d);
+    if (!(Array.isArray(options) ? options : []).some((o) => answer !== null && text(o, "id") === answer)) {
+      errors.push(`accuse puzzle ${pid}: answer.${d} must be one of its ${OPTION_LISTS[d]}`);
+    }
+    if (!itemIds.includes(text(own(s, "evidence"), d) ?? "")) errors.push(`accuse puzzle ${pid}: evidence.${d} references unknown item`);
+  }
+  return errors;
+}
+
+/** Deducibility at this point of the simulation: every dimension proved by an evidence item already held. */
+function accusationDeducible(p: Json, s: Json, inventory: ReadonlySet<string>, itemDescription: ReadonlyMap<string, string>): boolean {
+  const answer = own(s, "answer");
+  const evidence = own(s, "evidence");
+  return ACCUSE_DIMENSIONS.every((d) => {
+    const item = text(evidence, d) ?? "";
+    if (!inventory.has(item)) return false;
+    const options = own(p, OPTION_LISTS[d]) as unknown[];
+    const right = text(answer, d);
+    const name = (o: unknown) => text(o, "name") ?? "";
+    const correct = options.find((o) => text(o, "id") === right);
+    return correct !== undefined &&
+      provesOption(itemDescription.get(item) ?? "", name(correct), options.filter((o) => o !== correct).map(name));
+  });
+}
+
 /**
  * Greedy solvability simulation, as in SQL, plus clue coverage as a solve
  * condition: a code puzzle counts as solvable only once its normalized answer
@@ -254,6 +398,9 @@ function checkStructureAndSolvability(pub: Json, secret: Json): string[] {
  * simulated inventory and the currently revealed hotspots. (The SQL joins the
  * descriptions with "|", which survives normalization, so digits never stitch
  * across two descriptions.) A code that never becomes clued is reported.
+ * Deducibility works the same way for an accusation: attemptable once its
+ * requires are solved, solvable only once each dimension's evidence item is
+ * held and names the right option and neither of the others.
  */
 function simulate(
   _pub: Json,
@@ -272,6 +419,7 @@ function simulate(
     .filter((h) => !(own(h, "hidden") === true))
     .map((h) => text(h, "id")!);
   const unclued = new Set<string>();
+  const undeducible = new Set<string>();
   const list = (s: Json, k: string) => {
     const rw = own(s, "rewards");
     const v = isObject(rw) ? own(rw, k) : undefined;
@@ -287,7 +435,7 @@ function simulate(
       const s = own(solutions, pid) as Json;
       const requires = Array.isArray(own(p, "requires")) ? (own(p, "requires") as unknown[]).map(String) : [];
       let canSolve = requires.every((r) => solved.has(r));
-      if (canSolve && kind !== "combine") canSolve = revealed.includes(text(p, "hotspot_id") ?? "");
+      if (canSolve && kind !== "combine" && kind !== "accuse") canSolve = revealed.includes(text(p, "hotspot_id") ?? "");
       if (canSolve && kind === "use_item") canSolve = inventory.has(text(s, "item_id") ?? "");
       if (canSolve && kind === "combine") {
         canSolve = (own(s, "inputs") as unknown[]).every((i) => inventory.has(String(i)));
@@ -302,6 +450,10 @@ function simulate(
           unclued.add(pid);
           canSolve = false;
         }
+      }
+      if (canSolve && kind === "accuse" && !accusationDeducible(p, s, inventory, itemDescription)) {
+        undeducible.add(pid);
+        canSolve = false;
       }
       if (canSolve) {
         solved.add(pid);
@@ -324,6 +476,7 @@ function simulate(
     if (unclued.has(pid)) {
       errors.push(`puzzle ${pid}: code answer is not written anywhere the player can read before solving it`);
     }
+    if (undeducible.has(pid)) errors.push(`accusation ${pid} cannot be worked out from the clues`);
     errors.push(`puzzle ${pid} can never be solved`);
   }
   return errors;
@@ -347,7 +500,11 @@ function checkPhotoIds(pub: Json, opts: CheckOptions): string[] {
   return errors;
 }
 
-/** Generator-only rules: hint ladder shape and no code answer in public text outside item descriptions. */
+/**
+ * Generator-only rules: hint ladder shape, no code answer in public text
+ * outside item descriptions, and an accusation's answer read off its evidence
+ * items only (accusationContract).
+ */
 function checkGenerationContract(pub: Json, secret: Json): string[] {
   const errors: string[] = [];
   const solutions = own(secret, "puzzles");
@@ -372,17 +529,83 @@ function checkGenerationContract(pub: Json, secret: Json): string[] {
     if (!isObject(h)) continue;
     for (const k of ["name", "description", "object_label"]) add(`hotspot ${text(h, "id")}.${k}`, own(h, k));
   }
+  const kinds = new Map<string, string | null>();
   for (const p of (own(pub, "puzzles") as unknown[] | undefined) ?? []) {
     if (!isObject(p)) continue;
+    kinds.set(text(p, "id") ?? "", text(p, "kind"));
     for (const k of ["title", "prompt"]) add(`puzzle ${text(p, "id")}.${k}`, own(p, k));
+    for (const listName of Object.values(OPTION_LISTS)) {
+      const options = own(p, listName);
+      if (!Array.isArray(options)) continue;
+      for (const o of options) {
+        if (!isObject(o)) continue;
+        for (const k of ["name", "role", "alibi"]) add(`puzzle ${text(p, "id")} ${listName} ${text(o, "id")}.${k}`, own(o, k));
+      }
+    }
   }
   for (const [pid, s] of Object.entries(solutions)) {
+    if (kinds.get(pid) !== "code") continue;
     const answer = normalizeAnswer(isObject(s) ? text(s, "answer") : null);
     if (answer.length < 3) continue;
     for (const [where, value] of publicTexts) {
       if (normalizeAnswer(value).includes(answer)) {
         errors.push(`code puzzle ${pid} answer appears in public text outside item descriptions (${where})`);
       }
+    }
+  }
+  for (const p of (own(pub, "puzzles") as unknown[] | undefined) ?? []) {
+    if (isObject(p) && text(p, "kind") === "accuse") {
+      const s = own(solutions, text(p, "id") ?? "");
+      if (isObject(s)) errors.push(...accusationContract(pub, p, s));
+    }
+  }
+  return errors;
+}
+
+/**
+ * The accusation is worked out from its evidence items alone. Outside them
+ * (and outside the options, the solved messages and the hints), no public
+ * prose names a right option unless it names all three of that list
+ * (revealsAnswer); and the evidence items name no wrong option of any list,
+ * so what they say can never contradict the answer. The object_label comes
+ * from perception, not prose, and is not checked.
+ */
+function accusationContract(pub: Json, p: Json, s: Json): string[] {
+  const pid = text(p, "id");
+  const lists: AnswerList[] = [];
+  const wrong: string[] = [];
+  for (const d of ACCUSE_DIMENSIONS) {
+    const options = own(p, OPTION_LISTS[d]);
+    const right = Array.isArray(options) ? options.find((o) => text(o, "id") === text(own(s, "answer"), d)) : undefined;
+    if (!Array.isArray(options) || right === undefined) return [];   // reported by checkAccuseSolution
+    const name = (o: unknown) => text(o, "name") ?? "";
+    lists.push({ right: name(right), names: options.map(name) });
+    wrong.push(...options.filter((o) => o !== right).map(name));
+  }
+  const evidence = new Set(ACCUSE_DIMENSIONS.map((d) => text(own(s, "evidence"), d)));
+
+  const errors: string[] = [];
+  const story: Array<[string, unknown]> = [["title", own(pub, "title")], ["intro", own(pub, "intro")]];
+  const exit = own(pub, "exit");
+  if (isObject(exit)) story.push(["exit.message", own(exit, "message")]);
+  for (const h of (own(pub, "hotspots") as unknown[] | undefined) ?? []) {
+    for (const k of ["name", "description"]) story.push([`hotspot ${text(h, "id")}.${k}`, isObject(h) ? own(h, k) : undefined]);
+  }
+  for (const q of (own(pub, "puzzles") as unknown[] | undefined) ?? []) {
+    for (const k of ["title", "prompt"]) story.push([`puzzle ${text(q, "id")}.${k}`, isObject(q) ? own(q, k) : undefined]);
+  }
+  for (const it of (own(pub, "items") as unknown[] | undefined) ?? []) {
+    const id = text(it, "id");
+    for (const k of ["name", "description"]) {
+      const value = isObject(it) ? own(it, k) : undefined;
+      if (typeof value !== "string") continue;
+      if (!evidence.has(id)) story.push([`item ${id}.${k}`, value]);
+      else if (namesAny(value, wrong)) errors.push(`accusation ${pid} evidence names a wrong option (item ${id}.${k})`);
+    }
+  }
+  for (const [where, value] of story) {
+    if (typeof value === "string" && revealsAnswer(value, lists)) {
+      errors.push(`accusation ${pid} answer appears in public text outside the evidence (${where})`);
     }
   }
   return errors;

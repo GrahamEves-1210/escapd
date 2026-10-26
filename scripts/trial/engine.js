@@ -1,9 +1,12 @@
 // Local port of the puzzle engine for the developer trial preview (play.html).
 //
-// The database is the authority: public.submit_action and public.use_hint in
-// supabase/migrations/20261024000200_hints_and_cooldown.sql, start_or_resume_session
-// and private.normalize_answer in 20261023000500_gameplay.sql. This file mirrors
-// them so a generated room can be played offline before it is ever published.
+// The database is the authority: public.submit_action, public.use_hint and
+// public.start_or_resume_session in
+// supabase/migrations/20261026000100_genres_and_accuse.sql (the accuse action,
+// the shared cooldown and how a new session inherits it, state.contradicted)
+// and private.normalize_answer in 20261023000500_gameplay.sql. This file
+// mirrors them so a generated room can be played offline before it is ever
+// published.
 // It never ships in the app, which only renders what submit_action returns.
 // If this file and the SQL disagree, the SQL is right; fix this file.
 //
@@ -11,26 +14,64 @@
 // `export` keywords, and the Deno tests import it as a module.
 //
 // Sessions are plain objects and every call returns a new one:
-//   { status, state: { solved, inventory, revealed_hotspots }, action_count,
-//     wrong_answer_count, hints_used, hint_progress, code_wrong_streak,
-//     code_locked_until (ms since epoch | null) }
+//   { status, state: { solved, inventory, revealed_hotspots, contradicted? },
+//     action_count, wrong_answer_count, hints_used, hint_progress,
+//     code_wrong_streak, code_locked_until (ms since epoch | null) }
+// As in SQL, a new session has no `contradicted`; every state write adds it.
 
 export const COOLDOWN_DEFAULTS = { wrongAnswers: 8, minutes: 10 };
 
+/** The accuse step's dimensions: action key, secret answer/evidence key, public option list. */
+const ACCUSE_DIMENSIONS = [
+  { action: "suspect_id", key: "suspect", options: "suspects" },
+  { action: "motive_id", key: "motive", options: "motives" },
+  { action: "method_id", key: "method", options: "methods" },
+];
+
 const MAX_ACTION_BYTES = 2048;
 
-/** private.normalize_answer: lower-case, then drop whitespace and - _ . , : ; ' " */
+/** private.normalize_answer: lower-case, then drop whitespace (any \s, as puzzle-check.ts) and - _ . , : ; ' " */
 export function normalizeAnswer(value) {
-  return String(value ?? "").toLowerCase().replace(/[ \t\n\r\f\v\-_.,:;'"]+/g, "");
+  return String(value ?? "").toLowerCase().replace(/[\s\-_.,:;'"]+/g, "");
 }
 
 const list = (value) => (Array.isArray(value) ? value.map(String) : []);
 const secretOf = (secret, puzzleId) => (secret && secret.puzzles && secret.puzzles[puzzleId]) || null;
 const requiresMet = (puzzle, solved) => list(puzzle.requires).every((r) => solved.includes(r));
 const unique = (values) => [...new Set(values)];
+/** Postgres `->>` on a JSON value: strings as they are, anything else as JSON text, missing as null. */
+const textOf = (value) => (value == null ? null : typeof value === "string" ? value : JSON.stringify(value));
 
-/** start_or_resume_session for a new session: every non-hidden hotspot is revealed. */
-export function createSession(def) {
+/** The accused suspect of each accusation whose suspect evidence is held (state.contradicted). */
+function contradictedSuspects(def, secret, inventory) {
+  return (def.puzzles || [])
+    .filter((p) => p.kind === "accuse" && inventory.includes(secretOf(secret, p.id)?.evidence?.suspect))
+    .map((p) => secretOf(secret, p.id).answer?.suspect ?? null);
+}
+
+/** The wrong-answer path shared by codes and accusations: one streak, one lock. */
+function wrongAnswer(session, puzzleId, message, now, cooldown) {
+  // The wrong answer that completes the streak starts the lock and resets the streak.
+  const lock = session.code_wrong_streak + 1 >= cooldown.wrongAnswers ? now + cooldown.minutes * 60_000 : null;
+  const next = {
+    ...session,
+    wrong_answer_count: session.wrong_answer_count + 1,
+    action_count: session.action_count + 1,
+    code_wrong_streak: lock === null ? session.code_wrong_streak + 1 : 0,
+    code_locked_until: lock,
+  };
+  const result = { outcome: "wrong", puzzle_id: puzzleId, message };
+  if (lock !== null) result.retry_after = new Date(lock).toISOString();
+  return { session: next, result };
+}
+
+/**
+ * start_or_resume_session for a new session: every non-hidden hotspot is
+ * revealed. The streak and lock carry over from `previous`, the player's last
+ * session on this room if any (private.code_cooldowns), so starting again
+ * never lifts a lock.
+ */
+export function createSession(def, previous = null) {
   return {
     status: "active",
     state: {
@@ -42,8 +83,8 @@ export function createSession(def) {
     wrong_answer_count: 0,
     hints_used: 0,
     hint_progress: {},
-    code_wrong_streak: 0,
-    code_locked_until: null,
+    code_wrong_streak: previous?.code_wrong_streak ?? 0,
+    code_locked_until: previous?.code_locked_until ?? null,
   };
 }
 
@@ -96,18 +137,32 @@ export function submitAction(session, def, secret, action, opts = {}) {
     }
     const expected = secretOf(secret, puzzle.id)?.answer;
     if (normalizeAnswer(action.answer) !== normalizeAnswer(expected)) {
-      // The wrong answer that completes the streak starts the lock and resets the streak.
-      const lock = session.code_wrong_streak + 1 >= cooldown.wrongAnswers ? now + cooldown.minutes * 60_000 : null;
-      const next = {
-        ...session,
-        wrong_answer_count: session.wrong_answer_count + 1,
-        action_count: session.action_count + 1,
-        code_wrong_streak: lock === null ? session.code_wrong_streak + 1 : 0,
-        code_locked_until: lock,
-      };
-      const result = { outcome: "wrong", puzzle_id: puzzle.id, message: "Nothing happens." };
-      if (lock !== null) result.retry_after = new Date(lock).toISOString();
-      return { session: next, result };
+      return wrongAnswer(session, puzzle.id, "Nothing happens.", now, cooldown);
+    }
+  } else if (action.type === "accuse") {
+    // Cooldown: shared with codes, so the same lock stops a walk through all 27 accusations.
+    if (session.code_locked_until != null && session.code_locked_until > now) {
+      return same({
+        outcome: "invalid",
+        reason: "cooldown",
+        retry_after: new Date(session.code_locked_until).toISOString(),
+        message: "Take a breath. Try another accusation in a few minutes; everything else is still within reach.",
+      });
+    }
+    puzzle = puzzles.find((p) => p.id === textOf(action.puzzle_id) && p.kind === "accuse") || null;
+    if (!puzzle || solved.includes(puzzle.id) || !requiresMet(puzzle, solved)) {
+      return same({ outcome: "invalid", message: "That puzzle is not available." });
+    }
+    // Decided from the public options alone, so it says nothing about the answer.
+    const offered = (d) => (Array.isArray(puzzle[d.options]) ? puzzle[d.options] : [])
+      .some((o) => o != null && textOf(o.id) !== null && textOf(o.id) === textOf(action[d.action]));
+    if (!ACCUSE_DIMENSIONS.every(offered)) {
+      return same({ outcome: "invalid", message: "Pick one of each." });
+    }
+    const answer = secretOf(secret, puzzle.id)?.answer || {};
+    if (ACCUSE_DIMENSIONS.some((d) => textOf(action[d.action]) !== textOf(answer[d.key]))) {
+      // Exactly the wrong-code path: same streak, same lock, one reply for every wrong triple.
+      return wrongAnswer(session, puzzle.id, "That doesn't add up.", now, cooldown);
     }
   } else if (action.type === "use_item") {
     const target = action.hotspot_id;
@@ -151,14 +206,20 @@ export function submitAction(session, def, secret, action, opts = {}) {
   const nextInventory = unique([...inventory, ...gained]).filter((i) => !consumed.includes(i));
   const nextRevealed = unique([...revealed, ...reveal]);
   const completed = list(def.exit && def.exit.requires).every((r) => nextSolved.includes(r));
-  const state = { solved: nextSolved, inventory: nextInventory, revealed_hotspots: nextRevealed };
+  const state = {
+    solved: nextSolved,
+    inventory: nextInventory,
+    revealed_hotspots: nextRevealed,
+    // Only what the player already holds: the suspect evidence names the culprit.
+    contradicted: contradictedSuspects(def, secret, nextInventory),
+  };
 
   const next = {
     ...session,
     state,
     action_count: session.action_count + 1,
-    // a correct code clears the wrong-code streak
-    code_wrong_streak: action.type === "solve" ? 0 : session.code_wrong_streak,
+    // a correct code or accusation clears the wrong-answer streak
+    code_wrong_streak: action.type === "solve" || action.type === "accuse" ? 0 : session.code_wrong_streak,
     status: completed ? "completed" : session.status,
   };
   return {
@@ -189,8 +250,9 @@ export function hintTarget(session, def, secret) {
   if (stored != null && !solved.includes(stored) && puzzles.some((p) => p.id === stored)) return stored;
 
   const open = (p) => !solved.includes(p.id) && requiresMet(p, solved);
+  // combine and accuse have no hotspot: their requires (and inputs) alone make them attemptable.
   const attemptable = puzzles.find((p) => open(p) &&
-    (p.kind === "combine" || revealed.includes(p.hotspot_id)) &&
+    (p.kind === "combine" || p.kind === "accuse" || revealed.includes(p.hotspot_id)) &&
     (p.kind !== "use_item" || inventory.includes(secretOf(secret, p.id)?.item_id)) &&
     (p.kind !== "combine" || list(secretOf(secret, p.id)?.inputs).every((i) => inventory.includes(i))));
   if (attemptable) return attemptable.id;
@@ -274,14 +336,21 @@ export function actionFor(puzzle, secret) {
   if (puzzle.kind === "inspect") return { type: "inspect", hotspot_id: puzzle.hotspot_id };
   if (puzzle.kind === "code") return { type: "solve", puzzle_id: puzzle.id, answer: String(sol.answer ?? "") };
   if (puzzle.kind === "use_item") return { type: "use_item", item_id: sol.item_id, hotspot_id: puzzle.hotspot_id };
+  if (puzzle.kind === "accuse") {
+    const answer = sol.answer || {};
+    const action = { type: "accuse", puzzle_id: puzzle.id };
+    for (const d of ACCUSE_DIMENSIONS) action[d.action] = answer[d.key];
+    return action;
+  }
   return { type: "combine", item_ids: list(sol.inputs).slice(0, 2) };
 }
 
 /**
  * Puzzles the exit depends on: through requires, through the items a puzzle
- * consumes, through revealing its hidden hotspot, and, for a code, through
- * whatever makes the answer readable (an item or hidden hotspot whose
- * description contains it, the clue-coverage rule).
+ * consumes, through revealing its hidden hotspot, for a code through whatever
+ * makes the answer readable (an item or hidden hotspot whose description
+ * contains it, the clue-coverage rule), and for an accusation through the
+ * puzzles that grant its evidence items (the deducibility rule).
  */
 export function requiredPuzzleIds(def, secret) {
   const puzzles = def.puzzles || [];
@@ -303,7 +372,10 @@ export function requiredPuzzleIds(def, secret) {
     const p = byId.get(id);
     const sol = secretOf(secret, id) || {};
     queue.push(...list(p.requires));
-    const items = p.kind === "use_item" ? [sol.item_id] : p.kind === "combine" ? list(sol.inputs) : [];
+    const items = p.kind === "use_item" ? [sol.item_id]
+      : p.kind === "combine" ? list(sol.inputs)
+      : p.kind === "accuse" ? ACCUSE_DIMENSIONS.map((d) => sol.evidence?.[d.key]).filter((i) => i != null).map(String)
+      : [];
     if (p.kind === "code") {
       const answer = normalizeAnswer(sol.answer);
       const mentions = (text) => answer !== "" && normalizeAnswer(text).includes(answer);

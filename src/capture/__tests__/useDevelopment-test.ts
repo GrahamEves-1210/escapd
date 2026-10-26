@@ -42,7 +42,7 @@ const job = (overrides: Partial<GenerationJob> = {}): GenerationJob => ({
   id: "j1", room_id: "r1", owner_id: "u1", idempotency_key: "k", status: "queued", attempt_count: 0, max_attempts: 3,
   prompt_version: "v1", output_schema_version: 1, next_attempt_at: "", lease_token: null, leased_by: null,
   lease_expires_at: null, error_code: null, error_message: null, result_version_id: null, started_at: null,
-  finished_at: null, created_at: "2026-10-24T00:00:00Z", updated_at: "", ...overrides,
+  finished_at: null, created_at: "2026-10-24T00:00:00Z", updated_at: "", genre: "noir", ...overrides,
 });
 
 /** Captures the realtime listener so a test can push job updates. */

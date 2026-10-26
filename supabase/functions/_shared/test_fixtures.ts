@@ -135,14 +135,59 @@ function enumOf(call: JsonCall<unknown>, list: string): string[] {
   return props?.id?.enum ?? [];
 }
 
-/** Writes plausible prose for whatever ids the schema allows. */
-export function proseHandler(opts: { writeLiteral?: boolean; leakCodeInHotspot?: boolean } = {}): StageHandler {
+/** Fictional names the crime-scene fixture writes, by option position. */
+export const FIXTURE_OPTIONS = {
+  suspects: [
+    { name: "Ivy Marsh", role: "The housekeeper", alibi: "Says she was at the market until six." },
+    { name: "Tobias Reed", role: "The old business partner", alibi: "Says he never left the club." },
+    { name: "Clara Finch", role: "The goddaughter", alibi: "Says she was asleep upstairs by ten." },
+  ],
+  motives: [{ name: "A debt she could not pay" }, { name: "A rewritten will" }, { name: "A partnership about to end" }],
+  methods: [{ name: "Poison in the evening tea" }, { name: "A loosened stair rail" }, { name: "A sleeping draught in the wine" }],
+} as const;
+
+/**
+ * The accusation part of a crime-scene response: three options per list for
+ * the schema's ids, and evidence sentences naming the options the brief marks
+ * as true (or, with `wrongEvidence`, a wrong one, to exercise the fallback).
+ */
+function accusationProse(call: JsonCall<unknown>, brief: string, wrongEvidence: boolean): Record<string, unknown> {
+  if (!call.schema.properties?.suspects) return {};
+  const lists = ["suspects", "motives", "methods"] as const;
+  const truth = {
+    suspects: brief.match(/The culprit is "([a-z0-9_-]+)"/)?.[1],
+    motives: brief.match(/The true motive is "([a-z0-9_-]+)"/)?.[1],
+    methods: brief.match(/The true method is "([a-z0-9_-]+)"/)?.[1],
+  };
+  const named = (list: typeof lists[number]) => {
+    const ids = enumOf(call, list);
+    const right = Math.max(0, ids.indexOf(truth[list] ?? ""));
+    return FIXTURE_OPTIONS[list][wrongEvidence ? (right + 1) % 3 : right].name;
+  };
+  return {
+    ...Object.fromEntries(lists.map((list) => [list, enumOf(call, list).map((id, i) => ({ id, ...FIXTURE_OPTIONS[list][i] }))])),
+    evidence: [
+      { dimension: "suspect", sentence: `The stub is stamped after nine, so ${named("suspects")} was not where the alibi says.` },
+      { dimension: "motive", sentence: `Underlined in the margin: ${named("motives")}.` },
+      { dimension: "method", sentence: `It shows how it was done: ${named("methods")}.` },
+    ],
+  };
+}
+
+/** Writes plausible prose for whatever ids the schema allows; the story family comes from the schema's enum. */
+export function proseHandler(
+  opts: { writeLiteral?: boolean; leakCodeInHotspot?: boolean; wrongEvidence?: boolean } = {},
+): StageHandler {
   return (call) => {
     const brief = textOf(call);
     const code = brief.match(/The case code is (\d{4})/)?.[1] ?? "";
     const clueIds = new Set([...brief.matchAll(/id "([a-z0-9_-]+)" \(clue_full\)/g)].map((m) => m[1]));
+    // The schema allows the genre's families; a well-behaved model writes the one the brief fixes.
+    const families = call.schema.properties?.story_family?.enum ?? [];
+    const stated = brief.match(/Story family: ([a-z_]+)\./)?.[1] ?? "";
+    const family = families.includes(stated) ? stated : families[0];
     return {
-      story_family: "unfinished_map",
+      story_family: family,
       title: "The Unfinished Map",
       intro: "Someone has been correcting the room by hand. The corrections are small, and they point somewhere.",
       exit_message: "The map is finished. The room is yours again.",
@@ -165,6 +210,7 @@ export function proseHandler(opts: { writeLiteral?: boolean; leakCodeInHotspot?:
         message: "Something gives, quietly.",
         hints: ["Look around the room again.", "Two of the things you noticed are related.", "Act on the connection."],
       })),
+      ...accusationProse(call, brief, opts.wrongEvidence === true),
     };
   };
 }

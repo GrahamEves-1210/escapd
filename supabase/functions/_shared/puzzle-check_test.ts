@@ -1,6 +1,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { checkPuzzle, normalizeAnswer } from "./puzzle-check.ts";
-import { loadSeed } from "./test_fixtures.ts";
+import { HOTSPOT_EFFECTS } from "./contract.ts";
+import { assembleDefinition } from "./prose.ts";
+import { checkPuzzle, namesAny, namesDistinct, normalizeAnswer, provesOption, revealsAnswer } from "./puzzle-check.ts";
+import { assignRoles, compileTemplate, CRIME_SCENE_TEMPLATES } from "./templates.ts";
+import { FAKE_OBJECTS, loadSeed, seededRandomInt } from "./test_fixtures.ts";
 
 // deno-lint-ignore no-explicit-any
 type Json = Record<string, any>;
@@ -21,6 +24,8 @@ Deno.test("normalizeAnswer mirrors private.normalize_answer", () => {
   assertEquals(normalizeAnswer(" 12 34 "), "1234");
   assertEquals(normalizeAnswer("A.b,c:d;e'f\"g_h\ti\nj"), "abcdefghij");
   assertEquals(normalizeAnswer(null), "");
+  // \s, as in the SQL regex under the usual locales: Unicode spaces go too.
+  assertEquals(normalizeAnswer("a b　c d"), "abcd");
 });
 
 Deno.test("rejects non-object inputs", () => {
@@ -236,4 +241,191 @@ Deno.test("generation contract: hints and code leaks", () => {
 
   sol.puzzles.find_key.hints = ["a", "b", "x".repeat(401)];
   has(checkPuzzle(pub, sol, { generation: true }), "puzzle find_key needs exactly 3 hint strings");
+});
+
+// ---------------------------------------------------------------------------
+// Genres: genre, hotspot effect, accuse
+// ---------------------------------------------------------------------------
+Deno.test("genre: absent or one of the three; anything else is rejected", () => {
+  for (const genre of ["noir", "crime_scene", "paranormal"]) {
+    const { pub, sol } = fresh();
+    pub.genre = genre;
+    assertEquals(checkPuzzle(pub, sol), [], genre);
+  }
+  for (const genre of ["horror", "Noir", "", null, 1]) {
+    const { pub, sol } = fresh();
+    pub.genre = genre;
+    has(checkPuzzle(pub, sol), "public.genre must be one of noir, crime_scene, paranormal");
+  }
+});
+
+Deno.test("effect: the five known effects pass; anything else is rejected", () => {
+  for (const effect of HOTSPOT_EFFECTS) {
+    const { pub, sol } = fresh();
+    hotspot(pub, "rug").effect = effect;
+    assertEquals(checkPuzzle(pub, sol), [], effect);
+  }
+  for (const effect of ["scream", "", null, ["cold"], "COLD"]) {
+    const { pub, sol } = fresh();
+    hotspot(pub, "rug").effect = effect;
+    has(checkPuzzle(pub, sol), "hotspot rug has an unknown effect");
+  }
+});
+
+/** A crime-scene room built by the generator (fallback prose), and handles on its accusation. */
+function crimeScene() {
+  const spec = CRIME_SCENE_TEMPLATES[0];   // broken_alibi: find_timeline, find_key, open_lock, find_trace, accuse
+  const fit = assignRoles(spec, FAKE_OBJECTS)!;
+  const room = compileTemplate(spec, fit.assignment, [], { randomInt: seededRandomInt(5) });
+  const built = assembleDefinition(room, null, ["a", "b", "c"]);
+  const pub = structuredClone(built.publicDefinition) as Json;
+  const sol = structuredClone(built.solution) as Json;
+  const accuse = puzzle(pub, "accuse");
+  const secret = sol.puzzles.accuse;
+  const item = (id: string) => pub.items.find((i: Json) => i.id === id);
+  const right = (list: string, dimension: string) => accuse[list].find((o: Json) => o.id === secret.answer[dimension]);
+  const wrong = (list: string, dimension: string) => accuse[list].find((o: Json) => o.id !== secret.answer[dimension]);
+  return { pub, sol, accuse, secret, item, right, wrong };
+}
+
+Deno.test("accuse: a generated crime-scene room passes, with no hotspot on the accusation", () => {
+  const { pub, sol, accuse } = crimeScene();
+  assertEquals(checkPuzzle(pub, sol), []);
+  assertEquals(checkPuzzle(pub, sol, { photoIds: ["a", "b", "c"], generation: true }), []);
+  assertEquals(accuse.hotspot_id, undefined);
+  assertEquals(accuse.kind, "accuse");
+});
+
+Deno.test("accuse: deducibility waits for the evidence, like clue coverage", () => {
+  // The accusation listed first is still attemptable only once its requires are solved.
+  const { pub, sol } = crimeScene();
+  pub.puzzles = [puzzle(pub, "accuse"), ...pub.puzzles.filter((p: Json) => p.id !== "accuse")];
+  assertEquals(checkPuzzle(pub, sol), []);
+});
+
+Deno.test("negative: an accusation the evidence cannot settle", () => {
+  const cases: Array<[string, (c: ReturnType<typeof crimeScene>) => void]> = [
+    ["evidence omits the culprit", (c) => {
+      c.item(c.secret.evidence.suspect).description = "Pencilled times, one underlined.";
+    }],
+    ["evidence names two suspects", (c) => {
+      c.item(c.secret.evidence.suspect).description += ` ${c.wrong("suspects", "suspect").name} was seen too.`;
+    }],
+    ["evidence names a wrong motive instead", (c) => {
+      c.item(c.secret.evidence.motive).description = `It gives the reason: ${c.wrong("motives", "motive").name}.`;
+    }],
+    ["the answer is not what the evidence shows", (c) => {
+      c.secret.answer.method = c.wrong("methods", "method").id;
+    }],
+    ["the evidence is consumed before accusing", (c) => {
+      c.sol.puzzles.find_trace.rewards.consume_items = [c.secret.evidence.suspect];
+    }],
+    ["the evidence is never granted", (c) => {
+      c.sol.puzzles.open_lock.rewards.items = [];
+    }],
+  ];
+  for (const [name, mutate] of cases) {
+    const c = crimeScene();
+    mutate(c);
+    const errors = checkPuzzle(c.pub, c.sol);
+    has(errors, "accusation accuse cannot be worked out from the clues");
+    has(errors, "puzzle accuse can never be solved");
+    has(errors, "exit puzzle accuse is not reachable");
+    assert(errors.length >= 3, name);
+  }
+});
+
+Deno.test("negative: malformed accusation options and secrets", () => {
+  const cases: Array<[string, (c: ReturnType<typeof crimeScene>) => void]> = [
+    ["accuse puzzle accuse needs exactly 3 suspects", (c) => c.accuse.suspects.pop()],
+    ["accuse puzzle accuse needs exactly 3 methods", (c) => delete c.accuse.methods],
+    ["accuse puzzle accuse has an invalid option id: S Ivy", (c) => (c.accuse.suspects[0].id = "S Ivy")],
+    ["duplicate option id: ", (c) => (c.accuse.motives[0].id = c.pub.items[0].id)],
+    ["duplicate option id: ", (c) => (c.accuse.methods[1].id = c.accuse.suspects[0].id)],
+    ["needs a name of 1-60 characters", (c) => (c.accuse.motives[2].name = "")],
+    ["needs a name of 1-60 characters", (c) => (c.accuse.motives[2].name = "   ")],
+    ["needs a name of 1-60 characters", (c) => (c.accuse.suspects[1].name = "x".repeat(61))],
+    ["needs a name of 1-60 characters", (c) => (c.accuse.methods[0].name = 7)],
+    ["needs a role of 1-60 characters", (c) => delete c.accuse.suspects[0].role],
+    ["needs an alibi of 1-200 characters", (c) => (c.accuse.suspects[2].alibi = "y".repeat(201))],
+    ["accuse puzzle accuse: motive names must be distinct and none may contain another", (c) => {
+      c.accuse.motives[1].name = `${c.accuse.motives[0].name.slice(0, 6)}`;
+    }],
+    ["accuse puzzle accuse: suspect names must be distinct and none may contain another", (c) => {
+      c.accuse.suspects[1].name = c.accuse.suspects[0].name.toUpperCase();
+    }],
+    ["accuse puzzle accuse: answer.suspect must be one of its suspects", (c) => (c.secret.answer.suspect = "s_nobody")],
+    ["accuse puzzle accuse: answer.method must be one of its methods", (c) => delete c.secret.answer],
+    ["accuse puzzle accuse: evidence.motive references unknown item", (c) => (c.secret.evidence.motive = "nope")],
+    ["accuse puzzle accuse: evidence.suspect references unknown item", (c) => delete c.secret.evidence],
+  ];
+  for (const [fragment, mutate] of cases) {
+    const c = crimeScene();
+    mutate(c);
+    has(checkPuzzle(c.pub, c.sol), fragment);
+  }
+});
+
+Deno.test("negative: evidence is a solution-only key", () => {
+  const { pub, sol, secret } = crimeScene();
+  puzzle(pub, "accuse").evidence = secret.evidence;
+  has(checkPuzzle(pub, sol), "public definition contains solution-only keys (answer/rewards/inputs/solution/hints)");
+});
+
+Deno.test("generation contract: an accusation's answer stays in its evidence", () => {
+  const leaks: Array<[string, (c: ReturnType<typeof crimeScene>) => void]> = [
+    ["title", (c) => (c.pub.title = `The Case of ${c.right("suspects", "suspect").name}`)],
+    ["intro", (c) => (c.pub.intro = `It began with ${c.right("motives", "motive").name.toLowerCase()}.`)],
+    ["exit.message", (c) => (c.pub.exit.message = `${c.right("suspects", "suspect").name} did it.`)],
+    ["hotspot $h.description", (c) => (c.pub.hotspots[0].description = `It smells of ${c.right("methods", "method").name}.`)],
+    ["puzzle accuse.prompt", (c) => (c.accuse.prompt = `Was it ${c.right("suspects", "suspect").name}?`)],
+    ["item $i.name", (c) => (c.pub.items.find((i: Json) => !Object.values(c.secret.evidence).includes(i.id)).name =
+      `${c.right("suspects", "suspect").name}'s key`)],
+  ];
+  for (const [where, mutate] of leaks) {
+    const c = crimeScene();
+    mutate(c);
+    const plain = c.pub.items.find((i: Json) => !Object.values(c.secret.evidence).includes(i.id));
+    const at = where.replace("$h", c.pub.hotspots[0].id).replace("$i", plain.id);
+    has(checkPuzzle(c.pub, c.sol, { generation: true }), `accusation accuse answer appears in public text outside the evidence (${at})`);
+    assertEquals(checkPuzzle(c.pub, c.sol), [], "a generator rule, not the SQL validator's");
+  }
+
+  // A list of all three singles nobody out; the options, the evidence, solved messages and hints may name the answer.
+  const c = crimeScene();
+  c.pub.intro = `Three guests: ${c.accuse.suspects.map((o: Json) => o.name).join(", ")}.`;
+  c.secret.message = `${c.right("suspects", "suspect").name} is led away.`;
+  c.secret.hints[1] = `Think about ${c.right("methods", "method").name}.`;
+  assertEquals(checkPuzzle(c.pub, c.sol, { generation: true }), []);
+  delete c.secret.hints;
+  has(checkPuzzle(c.pub, c.sol, { generation: true }), "puzzle accuse needs exactly 3 hint strings");
+});
+
+Deno.test("generation contract: the evidence names no wrong option of any list", () => {
+  const c = crimeScene();
+  // The motive's evidence blames a wrong suspect: deducible per list (the SQL rule), but it contradicts the answer.
+  c.item(c.secret.evidence.motive).description += ` ${c.wrong("suspects", "suspect").name} wrote it.`;
+  c.item(c.secret.evidence.method).name = `${c.wrong("motives", "motive").name} papers`;
+  assertEquals(checkPuzzle(c.pub, c.sol), []);
+  const errors = checkPuzzle(c.pub, c.sol, { generation: true });
+  has(errors, `accusation accuse evidence names a wrong option (item ${c.secret.evidence.motive}.description)`);
+  has(errors, `accusation accuse evidence names a wrong option (item ${c.secret.evidence.method}.name)`);
+});
+
+Deno.test("namesDistinct and provesOption follow normalize_answer", () => {
+  assert(namesDistinct(["Ivy Marsh", "Tobias Reed", "Clara Finch"]));
+  assert(!namesDistinct(["Ivy Marsh", "ivy-marsh", "Clara Finch"]));
+  assert(!namesDistinct(["Ivy", "Ivy Marsh", "Clara Finch"]));
+  assert(!namesDistinct(["--", "Tobias Reed", "Clara Finch"]));
+  assert(provesOption("Seen at 9: IVY MARSH, not home.", "Ivy Marsh", ["Tobias Reed", "Clara Finch"]));
+  assert(!provesOption("Seen at 9: Ivy Marsh and Tobias Reed.", "Ivy Marsh", ["Tobias Reed", "Clara Finch"]));
+  assert(!provesOption("Nobody in particular.", "Ivy Marsh", ["Tobias Reed"]));
+  assert(!provesOption("Anything at all.", "", []));
+  assert(namesAny("Tobias-Reed's coat.", ["Ivy Marsh", "Tobias Reed"]));
+  assert(!namesAny("A coat.", ["Ivy Marsh", "", "Tobias Reed"]));
+  const suspects = { right: "Ivy Marsh", names: ["Ivy Marsh", "Tobias Reed", "Clara Finch"] };
+  assert(revealsAnswer("Everyone suspects IVY MARSH.", [suspects]));
+  assert(revealsAnswer("Ivy Marsh and Tobias Reed argued.", [suspects]));
+  assert(!revealsAnswer("Ivy Marsh, Tobias Reed and Clara Finch were here.", [suspects]));
+  assert(!revealsAnswer("Tobias Reed was here.", [suspects]), "a wrong option gives nothing away");
 });

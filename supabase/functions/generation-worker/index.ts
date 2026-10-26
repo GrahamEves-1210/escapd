@@ -8,7 +8,7 @@
 // publishing; this function only moves data between storage, the AI
 // provider and the database.
 import { admin, handler, json, requireCronSecret } from "../_shared/supabase.ts";
-import { DEADLINE_MS, GenerationError, generatePuzzle, NotImplementedError } from "../_shared/ai.ts";
+import { DEADLINE_MS, type Genre, GenerationError, generatePuzzle, NotImplementedError } from "../_shared/ai.ts";
 
 const LEASE_SECONDS = 300;
 const TIME_BUDGET_MS = 110_000;
@@ -20,6 +20,7 @@ type Job = {
   attempt_count: number;
   prompt_version: string;
   output_schema_version: number;
+  genre?: Genre | null;   // copied from rooms.genre when the job is requested; missing before that migration
   lease_token: string;
 };
 
@@ -79,6 +80,7 @@ async function processJob(job: Job): Promise<Record<string, unknown>> {
       attempt: job.attempt_count,
       promptVersion: job.prompt_version,
       outputSchemaVersion: job.output_schema_version,
+      genre: job.genre ?? "noir",
       photos: signed,
     });
 

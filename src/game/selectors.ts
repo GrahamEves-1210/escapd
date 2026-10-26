@@ -5,6 +5,10 @@
 // only state transition, and its returned `state` replaces ours wholesale.
 import type { Hotspot, Id, Puzzle, PuzzleDefinitionV1, SessionState } from "@/lib/puzzle-types";
 
+// "accuse" stays out until the player has its Suspects and Accuse screens, so a
+// crime-scene room (its finale is an accuse step) reports unknown_kind and shows
+// "This case can't be opened here" for now. Paranormal rooms use only these
+// kinds and play today; their hotspot effects are simply not drawn yet.
 const KNOWN_KINDS = new Set<Puzzle["kind"]>(["inspect", "code", "use_item", "combine"]);
 
 export const EMPTY_STATE: SessionState = { solved: [], inventory: [], revealed_hotspots: [] };
@@ -78,7 +82,7 @@ export function tapIntent(def: PuzzleDefinitionV1, state: SessionState, hotspotI
 
 export type QuietReason = "needs_item" | "locked" | "spent" | "plain";
 
-/** Every puzzle on this hotspot is already solved. Combine puzzles have no hotspot. */
+/** Every puzzle on this hotspot is already solved. Combine and accuse puzzles have no hotspot. */
 export function isHotspotSolved(def: PuzzleDefinitionV1, state: SessionState, hotspotId: Id) {
   const here = def.puzzles.filter((p) => p.hotspot_id === hotspotId && p.kind !== "combine");
   return here.length > 0 && here.every((p) => state.solved.includes(p.id));

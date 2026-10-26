@@ -3,7 +3,7 @@
 // server; these helpers only call RPCs and Storage with the user's session.
 import { supabase } from "./supabase";
 import type { Database } from "./database.types";
-import type { ActionResult, GameAction, MyAccess, PuzzleDefinitionV1 } from "./puzzle-types";
+import type { ActionResult, GameAction, Genre, MyAccess, PuzzleDefinitionV1 } from "./puzzle-types";
 import { newId } from "./uuid";
 
 const PHOTO_BUCKET = "room-photos";
@@ -81,8 +81,9 @@ export async function getMyAccess(): Promise<MyAccess> {
   return unwrap(await supabase.rpc("get_my_access")) as unknown as MyAccess;
 }
 
-export async function createRoom(title?: string) {
-  return unwrap(await supabase.rpc("create_room", { p_title: title ?? null }));
+/** A new draft room. Without a genre the server makes it noir. */
+export async function createRoom(title?: string, genre?: Genre) {
+  return unwrap(await supabase.rpc("create_room", { p_title: title ?? null, ...(genre ? { p_genre: genre } : {}) }));
 }
 
 /**
@@ -144,11 +145,14 @@ export async function signedPhotoUrl(storagePath: string) {
 /**
  * Starts (or returns) a generation job. Generate the idempotency key once per
  * user tap and reuse it on retries so a flaky network can't double-charge.
+ * Without a genre the job uses the room's. A genre first changes a draft or
+ * failed room's genre; a ready room keeps its own, so a different one is refused.
  */
-export async function requestGeneration(roomId: string, idempotencyKey: string) {
+export async function requestGeneration(roomId: string, idempotencyKey: string, genre?: Genre) {
   return unwrap(await supabase.rpc("request_room_generation", {
     p_room_id: roomId,
     p_idempotency_key: idempotencyKey,
+    ...(genre ? { p_genre: genre } : {}),
   }));
 }
 
@@ -190,6 +194,18 @@ export async function getLatestCustomRoom(): Promise<Room | null> {
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) throw new ApiError(error.message, error.code || undefined);
   return data;
+}
+
+/**
+ * The player's custom rooms that were sent to be built (queued, generating,
+ * ready or failed), newest first. Drafts are left out. Pass a genre for one mode.
+ */
+export async function listMyRooms(filter: { genre?: Genre } = {}): Promise<Room[]> {
+  let query = supabase.from("rooms").select("*").eq("kind", "custom").neq("status", "draft");
+  if (filter.genre) query = query.eq("genre", filter.genre);
+  const { data, error } = await query.order("created_at", { ascending: false });
+  if (error) throw new ApiError(error.message, error.code || undefined);
+  return data ?? [];
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJob> {

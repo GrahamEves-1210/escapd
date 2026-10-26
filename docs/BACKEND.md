@@ -30,11 +30,12 @@ pg_cron ──► storage-janitor  ──► Storage API (deletes queued files, 
 |---|---|---|
 | `profiles` | 1:1 with `auth.users`; display name, `tutorial_completed_at` (server-set) | read own; update `display_name` |
 | `user_settings` | Sound, music, haptics, hints, reduced motion, locale, opt-ins (privacy-off defaults) | read own; update prefs |
-| `rooms` | Escape room: owner, kind (`custom`/`tutorial`), title, status lifecycle, current version | read own + ready tutorial; rename/delete own |
+| `rooms` | Escape room: owner, kind (`custom`/`tutorial`), title, `genre`, status lifecycle, current version | read own + ready tutorial; rename/delete own |
 | `room_photos` | Reference photos with ordering (`position`), verified against Storage | read own; delete while draft/failed |
 | `puzzle_versions` | Immutable, versioned **public** puzzle graph (validated JSONB) | read published own + tutorial |
 | `game_sessions` | Persistent progress: solved puzzles, inventory, revealed hotspots, counters, completion, hint progress (`hint_progress`), wrong-code cooldown (`code_wrong_streak`, `code_locked_until`) | read own; delete (reset) own |
-| `generation_jobs` | Async generation: status, attempts, backoff, lease, errors, result version | read own |
+| `private.code_cooldowns` | The wrong-answer streak and lock per player and room, copied from `game_sessions` by a trigger, so a new session on the same room inherits them | none |
+| `generation_jobs` | Async generation: status, attempts, backoff, lease, errors, result version, `genre` (snapshot of the room's) | read own |
 | `entitlements` | Subscription access per provider (RevenueCat today; modular) | read own |
 | `private.puzzle_solutions` | Answers, item/combination requirements, rewards | none |
 | `private.billing_events` | Raw provider events (idempotency + audit; survives account deletion) | none |
@@ -72,24 +73,52 @@ Puzzle kinds:
 | `code` | enters an answer at a hotspot | `answer` (normalized: case, spaces, `-_.,:;'"` ignored) |
 | `use_item` | uses an inventory item on a hotspot | `item_id`, rewards |
 | `combine` | combines two items | `inputs` (2 items, any order), rewards |
+| `accuse` | names who, why and how (crime scene finale; no hotspot) | `answer {suspect, motive, method}`, `evidence {suspect, motive, method}` (item ids), rewards |
 
-Rewards: `items` (add), `consume_items` (remove), `reveal_hotspots` (unhide). `requires` encodes dependencies. `exit.requires` defines completion. Any secret entry may also carry `hints: [nudge, direction, reveal]`. The full annotated example is in `supabase/migrations/20261023000200_rooms_and_puzzles.sql` and the playable tutorial is in `supabase/seed.sql`. TypeScript types are in `src/lib/puzzle-types.ts`.
+Rewards: `items` (add), `consume_items` (remove), `reveal_hotspots` (unhide). `requires` encodes dependencies. `exit.requires` defines completion. Any secret entry may also carry `hints: [nudge, direction, reveal]`. The full annotated example is in `supabase/migrations/20261023000200_rooms_and_puzzles.sql` and the playable tutorial is in `supabase/seed.sql`. Genres, `accuse` and hotspot effects are in [Genres, accusations and effects](#genres-accusations-and-effects). TypeScript types are in `src/lib/puzzle-types.ts`.
+
+## Genres, accusations and effects
+
+Added by `20261026000100_genres_and_accuse.sql`. `schema_version` stays 1 and every new field is optional, so existing rooms and the tutorial keep working.
+
+- **Genre** is `noir`, `crime_scene` or `paranormal`. `rooms.genre` defaults to `noir`, which covers existing rooms and the tutorial. Clients can read it but not update it; they choose it with `create_room(p_title, p_genre)` or `request_room_generation(..., p_genre)`.
+  - A draft or failed room takes the requested genre. A ready room keeps its own, and asking for another raises `22023` ("a built case keeps its genre"). A replayed key or an active job of another genre also raises `22023`.
+  - The job row copies the room's genre, so `worker_claim_generation_job` hands it to the worker unchanged.
+  - The public definition carries an optional top-level `"genre"` (absent means noir). `worker_complete_generation_job` fails an attempt whose genre differs from the job's, as it does for any invalid output.
+- **Hotspot `effect`** (optional, public) is one of `flicker | apparition | moved | cold | whisper`. Templates set it and the client draws it. Any other value fails with `hotspot <id> has an unknown effect`.
+- **`accuse`:**
+  - **Public puzzle:** no `hotspot_id`. It has exactly 3 `suspects` (`id`, `name`, `role`, `alibi`), 3 `motives` and 3 `methods` (`id`, `name`).
+    - Option ids follow the id rule and are unique across the whole definition.
+    - Names are 1–60 characters, roles 1–60 and alibis 1–200.
+    - Within a dimension, no normalized name equals or contains another.
+  - **Secret:** `answer` picks one option per dimension and `evidence` names one item per dimension. `evidence` must never appear in the public JSON.
+  - **Deducibility:** the validator's simulation treats an accusation as attemptable once its `requires` are solved. It counts as solvable only when, in every dimension, the evidence item is held and its normalized description names the correct option and neither wrong one. For suspects, that means it breaks exactly the culprit's alibi. Otherwise it fails with `accusation <id> cannot be worked out from the clues`.
+  - An accusation may be the exit.
+- **Playing it:** send `submit_action(session, {type: "accuse", puzzle_id, suspect_id, motive_id, method_id})`.
+  - An id that is not one of that puzzle's options returns `invalid` with "Pick one of each.". This is decided from public data only.
+  - The generator keeps the answer inside the three evidence items: no other public text (title, intro, hotspots, other items, prompts) names a right option, and evidence never names a wrong option of any list. Those two rules are generator-only (`puzzle-check.ts` generation contract); the database checks deducibility per list.
+  - A wrong triple takes the wrong-code path: same streak, same lock, and always exactly `{outcome: "wrong", puzzle_id, message: "That doesn't add up."}`, plus `retry_after` when it starts the lock. Codes and accusations share one cooldown.
+  - A right triple solves like any puzzle and clears the streak.
+  - Every state write also stores `state.contradicted`: the accused suspect of each accusation whose suspect evidence the player holds. That is text they have already read. A new session has no `contradicted` until its first state change.
+- **Hints:** `use_hint` treats `accuse` like `combine`, so it is attemptable without a hotspot.
+
+The TypeScript preflight (`puzzle-check.ts`) and the trial engine (`scripts/trial/engine.js`) mirror these rules and messages. As everywhere, SQL wins if they disagree.
 
 ## Client RPCs
 
 | RPC | Notes |
 |---|---|
 | `get_my_access()` | Server-computed: guest?, tutorial done?, entitlement, `can_generate`, usage vs cap, photo limits |
-| `create_room(title)` | Full accounts only |
+| `create_room(title, genre)` | Full accounts only. `genre` defaults to `noir` |
 | `register_room_photo(room, path, position, w, h)` | Call after upload; verifies the object exists in the caller's folder; enforces max photos |
-| `request_room_generation(room, idempotency_key)` | Checks ownership, full account, **entitlement**, cap, and min photos. Idempotent per key; one active job per room |
+| `request_room_generation(room, idempotency_key, genre)` | Checks ownership, full account, **entitlement**, cap, and min photos. Idempotent per key; one active job per room. Optional `genre` (null keeps the room's; a ready room keeps its genre) |
 | `cancel_room_generation(job)` | Queued jobs only |
 | `start_or_resume_session(room)` | Returns the active session or creates one |
-| `submit_action(session, action)` | The puzzle engine. Validates against the secret solution under a row lock; writes only on state change. Wrong-code cooldown: see below |
+| `submit_action(session, action)` | The puzzle engine. Validates against the secret solution under a row lock; writes only on state change. Actions: `inspect`, `solve`, `use_item`, `combine`, `accuse`. Wrong-code cooldown: see below |
 | `use_hint(session, rung)` | Returns one rung of the hint ladder for the player's next step. Idempotent per rung; see below |
 | `abandon_session(session)` | |
 
-**Wrong-code cooldown.** The 8th consecutive wrong code in a session still returns `outcome: "wrong"`, and that result also carries `retry_after`. For the next 10 minutes every `solve` on that session, right or wrong, returns `{ "outcome": "invalid", "reason": "cooldown", "retry_after": "<timestamptz>", "message": "..." }` and writes nothing. `inspect`, `use_item`, and `combine` are never blocked and do not extend the lock. When the lock lapses the player gets a fresh 8 attempts. A correct code also resets the streak. Branch on `reason`, never on `message`. State lives in `game_sessions.code_locked_until` and `code_wrong_streak`. `wrong_answer_count` stays the cumulative total. Limits come from `private.app_config`.
+**Wrong-code cooldown.** Wrong accusations count exactly like wrong codes. The 8th consecutive wrong answer still returns `outcome: "wrong"`, and that result also carries `retry_after`. For the next 10 minutes every `solve` and `accuse` by that player on that room, right or wrong, returns `{ "outcome": "invalid", "reason": "cooldown", "retry_after": "<timestamptz>", "message": "..." }` and writes nothing. `inspect`, `use_item`, and `combine` are never blocked and do not extend the lock. When the lock lapses the player gets a fresh 8 attempts. A correct code also resets the streak. Branch on `reason`, never on `message`. State lives in `game_sessions.code_locked_until` and `code_wrong_streak`, and is kept per player and room in `private.code_cooldowns`: a new session on the same room starts with them, so abandoning or deleting a session does not lift the lock. `wrong_answer_count` stays the cumulative total. Limits come from `private.app_config`.
 
 **Hints.** `use_hint(p_session_id, p_rung)` reads `puzzles[<id>].hints` from the secret solution:
 
@@ -238,7 +267,7 @@ See `.env.example`.
 ## Testing
 
 ```bash
-scripts/test-db.sh                         # throwaway Postgres + Supabase stubs (no Docker): 173 assertions
+scripts/test-db.sh                         # throwaway Postgres + Supabase stubs (no Docker): 260 assertions
 PGBIN=/path/to/postgres/bin scripts/test-db.sh   # same, with server binaries outside /usr/lib/postgresql
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres scripts/test-db.sh   # against `supabase start` after `supabase db reset`
 (cd supabase/functions && deno check */index.ts && deno test --allow-read)   # Edge Functions + generation pipeline (stubbed providers, no network)
@@ -255,13 +284,21 @@ The suite covers:
 - **Validator extensions** (`02_clues_hints_cooldown.sql`): clue coverage (unclued codes, clues that only arrive after the code, array-order independence, normalization, no stitching across descriptions), hint shape, and the `hints` leak check. Also `worker_preview_puzzle`: errors returned, nothing inserted, service role only.
 - **Hints:** next-step targeting across inspect, use_item, combine, and code. Same rung twice charges once, no skipping, the target stays pinned, unshown rungs are never stored, and the reveal never appears in `public_definition`. Also covers hints disabled, no hints, and foreign or inactive sessions.
 - **Cooldown:** the 9th immediate code is blocked with `reason: "cooldown"`, and refusals write nothing. Inspect still works and does not extend the lock. After the lock there is a fresh allowance, and a correct code succeeds.
+- **Genres and accusations** (`03_genres_accuse.sql`):
+  - genre defaults and checks, and the client cannot update `genre`;
+  - old argument lists still resolve, with exactly one signature per RPC;
+  - genre rules on replay, active, draft, failed and ready rooms, and the worker's genre check;
+  - hotspot effects and validator deducibility, with each structural rule;
+  - accuse right, wrong and invalid; one identical reply for all 26 wrong triples;
+  - one cooldown shared by codes and accusations;
+  - `state.contradicted`, and `use_hint` targeting an accusation.
 - **Cleanup:** guest merge, room and account deletion cascades, the storage queue, and retention purges.
 
 ## Decisions for the next agent
 
 * **Never write gameplay or entitlement state from the client.** Add new mechanics to `submit_action` and the validator together, and bump `schema_version` when the format changes incompatibly. The CHECK constraints currently pin `schema_version = 1`.
 * **Hidden hotspots are in the public JSON** (flagged `hidden`). A determined user could see their positions. This trade keeps the client simple. If it matters, move hidden hotspots into the solution and return them in `revealed_hotspots` results.
-* **Wrong-code cooldown:** 8 consecutive wrong codes lock `solve` for 10 minutes per session, giving 8 attempts per 10 minutes, which makes walking a 4-digit code take days. It uses dedicated columns (`code_locked_until`, `code_wrong_streak`), not `wrong_answer_count` + `last_played_at`, because `last_played_at` moves on every action and a cumulative count would re-lock after one wrong answer. Tune it in `private.app_config`. Clients read `reason`/`retry_after`.
+* **Wrong-code cooldown:** 8 consecutive wrong codes lock `solve` and `accuse` for 10 minutes per player and room (it survives abandoning or deleting the session), giving 8 attempts per 10 minutes, which makes walking a 4-digit code take days. It uses dedicated columns (`code_locked_until`, `code_wrong_streak`), not `wrong_answer_count` + `last_played_at`, because `last_played_at` moves on every action and a cumulative count would re-lock after one wrong answer. Tune it in `private.app_config`. Clients read `reason`/`retry_after`.
 * **Generation output must reference `room_photos.id`** in `photos[].photo_id`, and the worker passes these ids to the model. `worker_complete_generation_job` re-validates everything and requeues invalid output (up to `max_attempts`).
 * **AI generation lives in `supabase/functions/_shared/`** (`generatePuzzle` in `ai.ts`). Throw `new GenerationError(message, code, retryable, usage)` (that argument order) and always pass the usage spent so far, so failed attempts are still costed. Keep `LEASE_SECONDS` (300) above the worst-case call; the pipeline stops itself at 100 s.
 * **Cap and limits live in `private.app_config`**, so you can change them without a migration.

@@ -9,8 +9,10 @@
 //   4  verify presence in one call                (perception.ts)
 //   5  fewer than 4 distinct verified objects -> too_few_objects (non-retryable)
 //   6  reconcile duplicates: one hotspot per real object, on its clearest photo
-//   7  pick a template whose roles fit; mint the code and item ids (templates.ts)
-//   8  one prose call; code inserts the code literal if the model left it out (prose.ts)
+//   7  pick a template of the room's genre whose roles fit; mint the code, the
+//      accusation answer and item ids (templates.ts)
+//   8  one prose call in the genre's voice; code inserts the code literal and the
+//      evidence sentences if the model left them out or got them wrong (prose.ts)
 //   9  assemble schema v1 public definition + secret solution (prose.ts, geometry.ts)
 //  10  preflight (puzzle-check.ts + worker_preview_puzzle RPC); at most one
 //      text-only repair call, then preflight again -> invalid_after_repair
@@ -19,7 +21,14 @@
 // Every GenerationError thrown from here carries the usage spent so far.
 export * from "./contract.ts";
 
-import { ErrorCode, type GenerationInput, type GenerationOutput, type GenerationPhoto, GenerationError } from "./contract.ts";
+import {
+  ErrorCode,
+  type GenerationInput,
+  type GenerationOutput,
+  type GenerationPhoto,
+  GenerationError,
+  isGenre,
+} from "./contract.ts";
 import { CostLedger, SPEND_CAP_USD } from "./cost.ts";
 import {
   collectCandidates,
@@ -35,7 +44,7 @@ import { GeminiProvider, type ModelProvider } from "./provider.ts";
 import { assembleDefinition, pickStoryFamily, repairProse, writeProse } from "./prose.ts";
 import { checkPuzzle } from "./puzzle-check.ts";
 import type { ProseText } from "./schemas.ts";
-import { cryptoInt, type RandomInt, selectAndCompile } from "./templates.ts";
+import { cryptoInt, type RandomInt, selectAndCompile, TEMPLATES_BY_GENRE } from "./templates.ts";
 
 export const DEFAULT_MODELS = {
   perception: "gemini-2.5-flash",
@@ -141,6 +150,8 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
     if (input.outputSchemaVersion !== 1) {
       throw fail(`unsupported output schema version ${input.outputSchemaVersion}`, ErrorCode.invalidInput, false);
     }
+    const genre = input.genre ?? "noir";
+    if (!isGenre(genre)) throw fail(`unknown genre ${JSON.stringify(String(genre).slice(0, 40))}`, ErrorCode.invalidInput, false);
     if (!input.photos.length) throw fail("the job has no photos", ErrorCode.invalidInput, false);
     const ordered = [...input.photos].sort((a, b) => a.position - b.position);
     const photoIds = ordered.map((p) => p.photoId);
@@ -182,13 +193,15 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
     stage("reconcile", { objects: objects.length });
     if (objects.length < MIN_VERIFIED_OBJECTS) throw tooFew(objects.length);
 
-    // 7. Template + minted answers/ids
-    const room = selectAndCompile(objects, { random: deps.random, randomInt: deps.randomInt });
+    // 7. Template + minted answers/ids (each genre's list has a universal template, so four objects always fit)
+    const room = selectAndCompile(objects, {
+      random: deps.random, randomInt: deps.randomInt, templates: TEMPLATES_BY_GENRE[genre], genre,
+    });
     if (!room) throw tooFew(objects.length);
-    stage("template", { template: room.template, hotspots: room.hotspots.length, puzzles: room.puzzles.length });
+    stage("template", { template: room.template, genre, hotspots: room.hotspots.length, puzzles: room.puzzles.length });
 
     // 8-9. Prose, enforcement, assembly
-    const family = pickStoryFamily(deps.random);
+    const family = pickStoryFamily(genre, deps.random);
     let prose: ProseText = await writeProse(ctx, room, photos, family);
     let assembled = assembleDefinition(room, prose, photoIds);
     stage("prose", { fixes: assembled.text.fixes });

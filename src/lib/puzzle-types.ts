@@ -3,16 +3,23 @@
 
 export type Id = string; // ^[a-z0-9][a-z0-9_-]{0,63}$
 
+/** The case's mode. Also rooms.genre and generation_jobs.genre. */
+export type Genre = "noir" | "crime_scene" | "paranormal";
+
 export interface PuzzleDefinitionV1 {
   schema_version: 1;
+  genre?: Genre;             // absent means "noir" (the seeded tutorial has none)
   title?: string;
   intro?: string;
-  photos: Array<{ photo_id: string } | { asset_key: string }>;
-  items: Array<{ id: Id; name: string; description?: string }>;
+  photos: ({ photo_id: string } | { asset_key: string })[];
+  items: { id: Id; name: string; description?: string }[];
   hotspots: Hotspot[];
   puzzles: Puzzle[];
   exit: { requires: Id[]; message?: string };
 }
+
+/** A visual overlay on a hotspot, chosen by the room template (never by the model). */
+export type HotspotEffect = "flicker" | "apparition" | "moved" | "cold" | "whisper";
 
 export interface Hotspot {
   id: Id;
@@ -21,32 +28,49 @@ export interface Hotspot {
   name?: string;
   description?: string;
   hidden?: boolean;          // revealed later by solving a puzzle
+  effect?: HotspotEffect;    // paranormal rooms; presentation only
   shape: { type: "rect"; x: number; y: number; w: number; h: number }; // normalized 0..1
 }
 
-export type PuzzleKind = "inspect" | "code" | "use_item" | "combine";
+export type PuzzleKind = "inspect" | "code" | "use_item" | "combine" | "accuse";
+
+/** One choice in an accusation. Suspects carry a role and a one-line alibi. */
+export interface AccuseOption {
+  id: Id;
+  name: string;
+  role?: string;
+  alibi?: string;
+}
 
 export interface Puzzle {
   id: Id;
   kind: PuzzleKind;
-  hotspot_id?: Id;           // required except for "combine"
+  hotspot_id?: Id;           // required except for "combine" and "accuse"
   requires?: Id[];           // dependency graph
   title?: string;
   prompt?: string;
   answer_format?: { kind: "digits" | "letters" | "text"; length?: number };
+  // "accuse" only: exactly 3 options each. Which triple is right is server-only.
+  suspects?: AccuseOption[];
+  motives?: AccuseOption[];
+  methods?: AccuseOption[];
 }
 
 export interface SessionState {
   solved: Id[];
   inventory: Id[];
   revealed_hotspots: Id[];
+  // Suspects whose alibi a held clue already breaks (crime scene). The server
+  // adds it on every state write, so an older session may lack it until its next action.
+  contradicted?: Id[];
 }
 
 export type GameAction =
   | { type: "inspect"; hotspot_id: Id }
   | { type: "solve"; puzzle_id: Id; answer: string }
   | { type: "use_item"; item_id: Id; hotspot_id: Id }
-  | { type: "combine"; item_ids: [Id, Id] };
+  | { type: "combine"; item_ids: [Id, Id] }
+  | { type: "accuse"; puzzle_id: Id; suspect_id: Id; motive_id: Id; method_id: Id };
 
 export type ActionOutcome = "solved" | "wrong" | "nothing" | "invalid";
 
@@ -60,10 +84,12 @@ export interface ActionResult {
   completed?: boolean;
   exit_message?: string | null;
   state?: SessionState;      // present when outcome === "solved"
-  // Wrong-code cooldown. A "solve" refused during the cooldown returns
-  // outcome "invalid" with reason "cooldown". retry_after (ISO timestamp) is
-  // when codes are accepted again; it is also set on the "wrong" result that
-  // starts the cooldown. Branch on `reason`, never on `message`.
+  // Wrong-code cooldown, shared by "solve" and "accuse". An attempt refused
+  // during the cooldown returns outcome "invalid" with reason "cooldown".
+  // retry_after (ISO timestamp) is when attempts are accepted again; it is also
+  // set on the "wrong" result that starts the cooldown. A wrong accusation is
+  // the same "wrong" result whichever parts were wrong. Branch on `reason`,
+  // never on `message`.
   reason?: "cooldown";
   retry_after?: string;
 }

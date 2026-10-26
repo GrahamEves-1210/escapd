@@ -105,6 +105,8 @@ function studyServer() {
         return action.answer === secret.puzzles.open_safe.answer
           ? solve("open_safe", {})
           : { outcome: "wrong", puzzle_id: "open_safe", message: "Nothing happens." };
+      case "accuse":
+        return { outcome: "invalid", message: "That puzzle is not available." };
     }
   };
 }

@@ -5,6 +5,7 @@
 // (JSON columns are typed as Json here; cast public_definition to
 // PuzzleDefinitionV1, state to SessionState, and hint_progress to HintProgress
 // from ./puzzle-types.)
+import type { Genre } from "./puzzle-types";
 
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -36,7 +37,7 @@ export interface Database {
         Row: {
           id: string; owner_id: string | null; kind: "custom" | "tutorial"; title: string; description: string | null;
           status: "draft" | "queued" | "generating" | "ready" | "failed"; current_version_id: string | null;
-          metadata: Json; last_activity_at: Timestamp; created_at: Timestamp; updated_at: Timestamp;
+          metadata: Json; last_activity_at: Timestamp; created_at: Timestamp; updated_at: Timestamp; genre: Genre;
         };
         Insert: never;
         Update: { title?: string; description?: string | null };
@@ -81,6 +82,7 @@ export interface Database {
           lease_token: string | null; leased_by: string | null; lease_expires_at: Timestamp | null;
           error_code: string | null; error_message: string | null; result_version_id: string | null;
           started_at: Timestamp | null; finished_at: Timestamp | null; created_at: Timestamp; updated_at: Timestamp;
+          genre: Genre; // the room's genre when the job was queued
         };
         Insert: never;
         Update: never;
@@ -102,13 +104,13 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
-      create_room: { Args: { p_title?: string | null }; Returns: Database["public"]["Tables"]["rooms"]["Row"] };
+      create_room: { Args: { p_title?: string | null; p_genre?: Genre }; Returns: Database["public"]["Tables"]["rooms"]["Row"] };
       register_room_photo: {
         Args: { p_room_id: string; p_storage_path: string; p_position: number; p_width?: number | null; p_height?: number | null };
         Returns: Database["public"]["Tables"]["room_photos"]["Row"];
       };
       request_room_generation: {
-        Args: { p_room_id: string; p_idempotency_key: string };
+        Args: { p_room_id: string; p_idempotency_key: string; p_genre?: Genre | null };
         Returns: Database["public"]["Tables"]["generation_jobs"]["Row"];
       };
       cancel_room_generation: { Args: { p_job_id: string }; Returns: Database["public"]["Tables"]["generation_jobs"]["Row"] };

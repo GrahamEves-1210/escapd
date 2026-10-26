@@ -7,6 +7,7 @@
 // used (type, enum, properties, required, additionalProperties, items,
 // minItems, maxItems, minimum, maximum, description). Gemini strips length
 // limits, so string lengths are clamped later in prose.ts instead.
+import { ACCUSE_DIMENSIONS, type Dimension, type Genre } from "./contract.ts";
 import type { Box1000 } from "./geometry.ts";
 
 type JsonType = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
@@ -99,12 +100,14 @@ export type PhotoQuality = typeof PHOTO_QUALITY[number];
 export const VERDICTS = ["visible", "implied", "occluded", "inside_closed_container", "not_present"] as const;
 export type Verdict = typeof VERDICTS[number];
 
-// Plan section 6, "Voice and narrative themes".
-export const STORY_FAMILIES = [
-  "lost_correspondence", "quiet_heist", "forgotten_inventor", "impossible_architecture",
-  "benign_secret_society", "time_anomaly", "disputed_museum_object", "unfinished_map",
-] as const;
-export type StoryFamily = typeof STORY_FAMILIES[number];
+// One list per genre (MODES_PROMPT.md, Part 1.2). Code picks the family; the
+// brief states it as fixed and the prose schema allows only that genre's list.
+export const STORY_FAMILIES = {
+  noir: ["missing_heiress", "forged_painting", "double_agent", "stolen_ledger"],
+  crime_scene: ["dinner_party_poisoning", "locked_room_death", "inheritance_dispute", "business_partner"],
+  paranormal: ["former_tenant", "cursed_heirloom", "seance_gone_wrong", "time_loop"],
+} as const satisfies Record<Genre, readonly string[]>;
+export type StoryFamily = typeof STORY_FAMILIES[Genre][number];
 
 export const MAX_OBJECTS_PER_PHOTO = 20;
 
@@ -207,12 +210,34 @@ export interface ProseIds {
   hotspotIds: string[];
   itemIds: string[];
   puzzleIds: string[];
+  /** story_family is limited to this genre's list. */
+  genre: Genre;
+  /** Minted option ids per dimension, when the room ends in an accusation. */
+  options?: Record<Dimension, string[]>;
 }
 
 export function proseSchema(ids: ProseIds): JsonSchema {
   const idEnum = (values: string[]): JsonSchema => ({ type: "string", enum: values.length ? values : ["none"] });
+  const three = (items: JsonSchema): JsonSchema => ({ type: "array", minItems: 3, maxItems: 3, items });
+  // Crime scene only: the model names the options; code minted their ids and picked the answer.
+  const accusation: Record<string, JsonSchema> = ids.options
+    ? {
+      suspects: three(closedObject({
+        id: idEnum(ids.options.suspect),
+        name: str("Fictional full name, at most 40 characters."),
+        role: str("Who they are in the story, at most 40 characters."),
+        alibi: str("One line, at most 160 characters."),
+      })),
+      motives: three(closedObject({ id: idEnum(ids.options.motive), name: str("At most 50 characters.") })),
+      methods: three(closedObject({ id: idEnum(ids.options.method), name: str("At most 50 characters.") })),
+      evidence: three(closedObject({
+        dimension: { type: "string", enum: [...ACCUSE_DIMENSIONS] },
+        sentence: str("One sentence naming the true option exactly as written, at most 200 characters."),
+      })),
+    }
+    : {};
   return closedObject({
-    story_family: { type: "string", enum: [...STORY_FAMILIES] },
+    story_family: { type: "string", enum: [...STORY_FAMILIES[ids.genre]] },
     title: str("Case title, at most 60 characters."),
     intro: str("Two or three sentences, at most 400 characters."),
     exit_message: str("Shown when the case is solved, at most 300 characters."),
@@ -234,7 +259,17 @@ export function proseSchema(ids: ProseIds): JsonSchema {
         hints: { type: "array", minItems: 3, maxItems: 3, items: str() },
       }),
     },
+    ...accusation,
   });
+}
+
+/** The model's accusation text. prose.ts checks it and falls back per dimension. */
+export interface AccusationText {
+  suspects: Map<string, { name: string; role: string; alibi: string }>;
+  motives: Map<string, { name: string }>;
+  methods: Map<string, { name: string }>;
+  /** First sentence written for each dimension. */
+  evidence: Map<Dimension, string>;
 }
 
 export interface ProseText {
@@ -245,6 +280,8 @@ export interface ProseText {
   hotspots: Map<string, { name: string; description: string }>;
   items: Map<string, { name: string; description: string }>;
   puzzles: Map<string, { title: string; prompt: string; message: string; hints: string[] }>;
+  /** Present when the schema asked for one (ids.options). */
+  accusation?: AccusationText;
 }
 
 /** Validates against the closed schema; duplicate ids keep the first entry. Missing ids are filled later. */
@@ -257,6 +294,10 @@ export function parseProse(value: unknown, ids: ProseIds): ProseText {
     hotspots: Array<{ id: string; name: string; description: string }>;
     items: Array<{ id: string; name: string; description: string }>;
     puzzles: Array<{ id: string; title: string; prompt: string; message: string; hints: string[] }>;
+    suspects?: Array<{ id: string; name: string; role: string; alibi: string }>;
+    motives?: Array<{ id: string; name: string }>;
+    methods?: Array<{ id: string; name: string }>;
+    evidence?: Array<{ dimension: Dimension; sentence: string }>;
   }>(proseSchema(ids), value);
   const byId = <T extends { id: string }>(rows: T[]): Map<string, T> => {
     const map = new Map<string, T>();
@@ -265,6 +306,8 @@ export function parseProse(value: unknown, ids: ProseIds): ProseText {
   };
   const strip = <T extends { id: string }>(m: Map<string, T>) =>
     new Map([...m].map(([id, { id: _id, ...rest }]) => [id, rest as Omit<T, "id">]));
+  const evidence = new Map<Dimension, string>();
+  for (const e of raw.evidence ?? []) if (!evidence.has(e.dimension)) evidence.set(e.dimension, e.sentence);
   return {
     storyFamily: raw.story_family,
     title: raw.title,
@@ -273,5 +316,15 @@ export function parseProse(value: unknown, ids: ProseIds): ProseText {
     hotspots: strip(byId(raw.hotspots)),
     items: strip(byId(raw.items)),
     puzzles: strip(byId(raw.puzzles)),
+    ...(ids.options
+      ? {
+        accusation: {
+          suspects: strip(byId(raw.suspects ?? [])),
+          motives: strip(byId(raw.motives ?? [])),
+          methods: strip(byId(raw.methods ?? [])),
+          evidence,
+        },
+      }
+      : {}),
   };
 }

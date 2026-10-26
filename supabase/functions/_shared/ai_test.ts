@@ -2,18 +2,25 @@
 // preview RPC. No network, no Supabase.
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
+  ACCUSE_DIMENSIONS,
   encodeBase64,
   type GenerationDeps,
   GenerationError,
   type GenerationInput,
   generatePuzzle,
+  type Genre,
+  GENRES,
+  HOTSPOT_EFFECTS,
   isMissingFunction,
   type PipelineConfig,
 } from "./ai.ts";
 import { GeminiProvider, ProviderError } from "./provider.ts";
-import { checkPuzzle } from "./puzzle-check.ts";
+import { checkPuzzle, OPTION_LISTS, provesOption } from "./puzzle-check.ts";
+import { STORY_FAMILIES } from "./schemas.ts";
+import { TEMPLATES_BY_GENRE } from "./templates.ts";
 import {
   FakeProvider,
+  FIXTURE_OPTIONS,
   perceptionHandler,
   photoBytes,
   proseHandler,
@@ -60,7 +67,7 @@ function deps(provider: FakeProvider | GeminiProvider, overrides: Partial<Genera
   };
 }
 
-function happyProvider(opts: { writeLiteral?: boolean } = {}) {
+function happyProvider(opts: { writeLiteral?: boolean; wrongEvidence?: boolean } = {}) {
   return new FakeProvider({
     perception: perceptionHandler(),
     verification: verificationHandler(),
@@ -109,6 +116,110 @@ Deno.test("happy path: a valid schema-v1 room with usage, hints and echoed photo
   assertEquals(provider.calls.find((c) => c.stage === "perception")!.maxOutputTokens, 2_000);
 });
 
+// ---------------------------------------------------------------------------
+// One happy path per genre: still exactly perception x N, verification, prose
+// ---------------------------------------------------------------------------
+type Option = { id: string; name: string };
+type PublicPuzzle = { id: string; kind: string; requires?: string[] } & Partial<Record<string, Option[]>>;
+
+for (const genre of GENRES) {
+  Deno.test(`happy path per genre: ${genre} costs the same calls and passes the preflight`, async () => {
+    const provider = happyProvider();
+    const out = await generatePuzzle({ ...INPUT, genre }, deps(provider));
+    const pub = out.publicDefinition;
+
+    assertEquals(provider.stages(), ["perception", "perception", "perception", "verification", "prose"]);
+    assertEquals(checkPuzzle(pub, out.solution, { photoIds: ORDERED_IDS, generation: true }), []);
+    assertEquals(pub.genre, genre);
+    assertEquals(pub.schema_version, 1);
+
+    // The genre reached the one prose call: its voice, its families, its brief.
+    const prose = provider.calls.find((c) => c.stage === "prose")!;
+    assert(prose.system.startsWith("You write the text"));
+    assertEquals(prose.schema.properties!.story_family.enum, [...STORY_FAMILIES[genre]]);
+    const brief = prose.parts.map((p) => ("text" in p ? p.text : "")).join("\n");
+    const family = brief.match(/Story family: ([a-z_]+)\. It is fixed/)?.[1];
+    assert(family && (STORY_FAMILIES[genre] as readonly string[]).includes(family), brief);
+    assert(brief.includes("What objects mean in this genre"));
+
+    const puzzles = pub.puzzles as PublicPuzzle[];
+    const template = TEMPLATES_BY_GENRE[genre].find((t) => puzzles.some((p) => p.id === t.exit));
+    assert(template, "the room comes from this genre's templates");
+    const solution = out.solution as { puzzles: Record<string, Json> };
+
+    // The desk rule reaches the real desk unless it is a red herring, or (crime scene) its step gives no alibi evidence.
+    const atDesk = puzzles.filter((p) => (p as { hotspot_id?: string }).hotspot_id === "writing_desk");
+    const accuseId = puzzles.find((p) => p.kind === "accuse")?.id;
+    const alibi = accuseId ? (solution.puzzles[accuseId] as { evidence: Record<string, string> }).evidence.suspect : "";
+    const fits = atDesk.some((p) => !p.id.startsWith("look_")) &&
+      (genre !== "crime_scene" || atDesk.some((p) => ((solution.puzzles[p.id].rewards as { items: string[] }).items).includes(alibi)));
+    assert(brief.includes('"writing_desk"'), "the real desk is a hotspot");
+    assertEquals(brief.includes('"writing_desk" (writing desk): a desk'), fits, "the desk rule only where it fits");
+    if (genre === "noir") {
+      assert(puzzles.some((p) => p.kind === "code"));
+      assert(prose.system.includes(`"trapped", "victim" or "survive"`), "noir rules unchanged");
+    }
+    if (genre === "crime_scene") {
+      const accusations = puzzles.filter((p) => p.kind === "accuse");
+      assertEquals(accusations.length, 1);
+      const accuse = accusations[0];
+      assertEquals((pub.exit as { requires: string[] }).requires, [accuse.id]);
+      assert(prose.schema.properties!.suspects && prose.schema.properties!.evidence);
+      const secret = solution.puzzles[accuse.id] as { answer: Record<string, string>; evidence: Record<string, string> };
+      for (const d of ACCUSE_DIMENSIONS) {
+        const list = OPTION_LISTS[d] as keyof typeof FIXTURE_OPTIONS;
+        const options = accuse[list]!;
+        // The model's names are kept, and its evidence sentence is what proves the answer.
+        assertEquals(options.map((o) => o.name), FIXTURE_OPTIONS[list].map((o) => o.name));
+        const right = options.find((o) => o.id === secret.answer[d])!;
+        const evidence = items(pub).find((i) => i.id === secret.evidence[d])!;
+        assert(provesOption(evidence.description, right.name, options.filter((o) => o !== right).map((o) => o.name)), d);
+      }
+    } else {
+      assert(!prose.schema.properties!.suspects, "no accusation fields outside crime scene");
+    }
+    if (genre === "paranormal") {
+      const effects = (pub.hotspots as Array<{ effect?: string }>).filter((h) => h.effect);
+      assert(effects.length >= 1 && effects.every((h) => (HOTSPOT_EFFECTS as readonly string[]).includes(h.effect!)));
+      assert(brief.includes("The banishing is"));
+      assert(brief.includes("Effect shown in the game"));
+      assert(puzzles.every((p) => p.kind !== "code" && p.kind !== "accuse"));
+    } else {
+      assert((pub.hotspots as Array<{ effect?: string }>).every((h) => !h.effect));
+    }
+  });
+}
+
+Deno.test("no genre on the input means noir", async () => {
+  const out = await generatePuzzle(INPUT, deps(happyProvider()));
+  assertEquals(out.publicDefinition.genre, "noir");
+});
+
+Deno.test("an unknown genre is invalid_input before any model call", async () => {
+  const provider = happyProvider();
+  const err = await assertRejects(
+    () => generatePuzzle({ ...INPUT, genre: "horror" as Genre }, deps(provider)),
+    GenerationError,
+  );
+  assertEquals(err.code, "invalid_input");
+  assertEquals(err.retryable, false);
+  assertEquals(provider.calls.length, 0);
+});
+
+Deno.test("crime scene: evidence that names the wrong option is rewritten by code, with no repair call", async () => {
+  const provider = happyProvider({ wrongEvidence: true });
+  const out = await generatePuzzle({ ...INPUT, genre: "crime_scene" }, deps(provider));
+  assertEquals(provider.stages(), ["perception", "perception", "perception", "verification", "prose"]);
+  assertEquals(checkPuzzle(out.publicDefinition, out.solution, { photoIds: ORDERED_IDS, generation: true }), []);
+  // The model's names stay; its misleading suspect sentence is replaced by the deterministic one.
+  const accuse = (out.publicDefinition.puzzles as PublicPuzzle[]).find((p) => p.kind === "accuse")!;
+  assertEquals(accuse.suspects!.map((o) => o.name), FIXTURE_OPTIONS.suspects.map((o) => o.name));
+  const secret = (out.solution as { puzzles: Record<string, { evidence: Record<string, string> }> }).puzzles[accuse.id];
+  const alibi = items(out.publicDefinition).find((i) => i.id === secret.evidence.suspect)!;
+  assert(alibi.description.includes("The times do not fit"), alibi.description);
+  assert(!alibi.description.includes("The stub is stamped"), alibi.description);
+});
+
 Deno.test("the code literal is inserted when the model leaves it out", async () => {
   const out = await generatePuzzle(INPUT, deps(happyProvider({ writeLiteral: false })));
   const solution = out.solution as { puzzles: Record<string, { answer?: string }> };
@@ -128,6 +239,45 @@ Deno.test("a code leaked into hotspot text is replaced, not published", async ()
   });
   const out = await generatePuzzle(INPUT, deps(provider));
   assertEquals(checkPuzzle(out.publicDefinition, out.solution, { photoIds: ORDERED_IDS, generation: true }), []);
+});
+
+Deno.test("crime scene: the answer leaked into public text is replaced, not published, with no repair call", async () => {
+  // A schema-valid response that spoils the case outside the evidence.
+  const honest = proseHandler();
+  const leaky = (call: Parameters<typeof honest>[0]) => {
+    const out = honest(call) as Json & Record<"suspects" | "motives" | "methods" | "hotspots" | "items" | "puzzles", Json[]>;
+    const brief = call.parts.map((p) => ("text" in p ? p.text : "")).join("\n");
+    const truth = (list: "suspects" | "motives" | "methods", label: string) => {
+      const id = brief.match(new RegExp(`The ${label} is "([a-z0-9_-]+)"`))![1];
+      return out[list].find((o) => o.id === id)!.name as string;
+    };
+    const [who, why, how] = [truth("suspects", "culprit"), truth("motives", "true motive"), truth("methods", "true method")];
+    out.exit_message = `${who} did it: ${why}, by ${how}.`;
+    out.intro = `Everyone suspects ${who}.`;
+    out.hotspots[0].description = `It smells faintly of ${how}.`;
+    out.items.find((i) => !String(i.id).startsWith("evidence_"))!.description = `Someone wrote: ${why}.`;
+    for (const p of out.puzzles) if (p.id === "accuse") p.prompt = `Was it ${who}?`;
+    return out;
+  };
+  const provider = new FakeProvider({ perception: perceptionHandler(), verification: verificationHandler(), prose: leaky });
+  const out = await generatePuzzle({ ...INPUT, genre: "crime_scene" }, deps(provider));
+  const pub = out.publicDefinition;
+  assertEquals(provider.stages(), ["perception", "perception", "perception", "verification", "prose"]);
+  assertEquals(checkPuzzle(pub, out.solution, { photoIds: ORDERED_IDS, generation: true }), []);
+
+  const accuse = (pub.puzzles as PublicPuzzle[]).find((p) => p.kind === "accuse")!;
+  const secret = (out.solution as { puzzles: Record<string, { answer: Record<string, string>; evidence: Record<string, string> }> })
+    .puzzles[accuse.id];
+  const answer = ACCUSE_DIMENSIONS.map((d) => accuse[OPTION_LISTS[d]]!.find((o) => o.id === secret.answer[d])!.name);
+  const evidence = new Set(Object.values(secret.evidence));
+  const story = [
+    pub.title, pub.intro, (pub.exit as { message: string }).message, accuse.prompt,
+    ...hotspots(pub).map((h) => h.description),
+    ...items(pub).filter((i) => !evidence.has(i.id)).map((i) => i.description),
+  ].map(String);
+  for (const name of answer) assert(!story.some((t) => t.includes(name)), name);
+  // The evidence still names it.
+  assert(items(pub).filter((i) => evidence.has(i.id)).every((i) => answer.some((name) => i.description.includes(name))));
 });
 
 Deno.test("person in a photo: non-retryable person_or_sensitive naming the position, usage kept", async () => {

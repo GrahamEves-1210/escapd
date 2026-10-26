@@ -406,7 +406,7 @@
   }
 
   function restart() {
-    session = createSession(def);
+    session = createSession(def, session);   // like the server, a new session keeps the cooldown
     selected = [];
     fresh = new Set();
     scene = 0;
