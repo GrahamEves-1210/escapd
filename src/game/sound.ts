@@ -41,13 +41,14 @@ const EFFECTS: Record<SoundName, { source: number; volume: number }> = {
   solved: { source: require("../../assets/audio/solved.m4a"), volume: 0.7 },
 };
 
+// Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).
 const TONES: Record<Genre, { source: number; volume: number }> = {
   // Rain on the office window, a radiator rumble, a faint mains hum.
-  noir: { source: require("../../assets/audio/room-noir.m4a"), volume: 0.3 },
+  noir: { source: require("../../assets/audio/room-noir.m4a"), volume: 0.12 },
   // A low, tense transformer hum.
-  crime_scene: { source: require("../../assets/audio/room-crime-scene.m4a"), volume: 0.26 },
+  crime_scene: { source: require("../../assets/audio/room-crime-scene.m4a"), volume: 0.1 },
   // A cold, airy drone: wind and a glassy, beating pad.
-  paranormal: { source: require("../../assets/audio/room-paranormal.m4a"), volume: 0.28 },
+  paranormal: { source: require("../../assets/audio/room-paranormal.m4a"), volume: 0.11 },
 };
 
 /** Room tone fades, in ms. */

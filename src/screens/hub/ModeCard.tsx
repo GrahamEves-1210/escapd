@@ -3,16 +3,16 @@
 // (HubScreen, deck.ts) so the next card lies over its foot. The mode's drawn
 // cover fills it (ModeCover), always: never a room photo. At its top, the part
 // no card covers: the mode's name in its display face and its tagline on a
-// plate of the mode's ground that fades down to clear, and, when the mode has
-// a case to go back to, a small "In progress" tag beside the tagline (a busy
-// indicator takes its place while the card's tap works). One signature touch
+// plate of the mode's ground that fades down to clear, with a small busy
+// capsule beside the tagline while the card's tap works. No status tag: the
+// continue prompt says when there's a case to go back to. One signature touch
 // each, decorative and static: noir's brass rule over the name and
 // paranormal's soft glow (crime scene's cover tapes off its own door). Every
 // value is ref.layout.hub.modes or the mode's theme (modeThemes).
 // The card is turned by its deck tilt about its centre, casts a soft shadow
 // up onto the card it covers, and catches a faint line of light along its top
 // edge (the hub divider's white), so each card reads as its own card. The whole card is one button ("Detective
-// Noir. Solve the case. In progress.") with the `press` haptic on press-in and
+// Noir. Solve the case.") with the `press` haptic on press-in and
 // the brass focus ring round it. Pressed it sinks to `pressScale` with the
 // kit's press-in squash (SquashPressable: eased in, sprung back); under
 // reduced motion it stays still. Dimmed while another card works: shaded,
@@ -25,16 +25,14 @@ import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { modeThemes, ref, type ModeTheme } from "@/theme/tokens";
 import { ModeCover } from "./art/ModeCover";
-import { IN_PROGRESS, modeCardLabel } from "./caseStatus";
+import { modeCardLabel } from "./caseStatus";
 
 const M = ref.layout.hub.modes;
 const EDGE = M.deck.edge;
 
 export interface ModeCardProps {
   genre: Genre;
-  /** The mode has a case to go back to: the "In progress" tag. */
-  inProgress: boolean;
-  /** This card's own action is running: taps are ignored, a small indicator shows in the tag's place. */
+  /** This card's own action is running: taps are ignored, a small busy capsule shows beside the tagline. */
   busy?: boolean;
   /** Another card is busy: shaded and disabled. */
   disabled?: boolean;
@@ -47,7 +45,7 @@ export interface ModeCardProps {
   ref?: Ref<HostInstance>;
 }
 
-export function ModeCard({ genre, inProgress, busy = false, disabled = false, onPress, onWordsLayout, style, ref: buttonRef }: ModeCardProps) {
+export function ModeCard({ genre, busy = false, disabled = false, onPress, onWordsLayout, style, ref: buttonRef }: ModeCardProps) {
   const theme = modeThemes[genre];
   const focus = useFocusRing();
   const feedback = useFeedback();
@@ -58,7 +56,7 @@ export function ModeCard({ genre, inProgress, busy = false, disabled = false, on
         ref={buttonRef}
         squash={busy ? false : M.pressScale}
         accessibilityRole="button"
-        accessibilityLabel={modeCardLabel(theme.name, theme.tagline, inProgress)}
+        accessibilityLabel={modeCardLabel(theme.name, theme.tagline)}
         accessibilityState={{ disabled: disabled || busy, busy }}
         disabled={disabled || busy}
         onPressIn={busy ? undefined : feedback.press}
@@ -81,13 +79,9 @@ export function ModeCard({ genre, inProgress, busy = false, disabled = false, on
             <Text style={[theme.display, { color: theme.ink }]}>{theme.name}</Text>
             <View style={styles.line}>
               <Text style={[M.type.tagline, styles.tagline, { color: theme.ink }]}>{theme.tagline}</Text>
-              {busy || inProgress ? (
+              {busy ? (
                 <View style={[styles.tag, { backgroundColor: theme.ground, borderColor: theme.rim }]} testID={`${testID}-tag`}>
-                  {busy ? (
-                    <ActivityIndicator size="small" color={theme.ink} testID={`${testID}-busy`} />
-                  ) : (
-                    <Text style={[M.type.tag, { color: theme.ink }]}>{IN_PROGRESS}</Text>
-                  )}
+                  <ActivityIndicator size="small" color={theme.ink} testID={`${testID}-busy`} />
                 </View>
               ) : null}
             </View>
@@ -179,7 +173,7 @@ const styles = StyleSheet.create({
   fade: { position: "absolute", left: 0, right: 0, bottom: -M.fade, height: M.fade },
   plate: { opacity: M.plate },
   rule: { width: M.rule.width, height: M.rule.height, marginBottom: M.rule.gap },
-  // The tagline and the tag share a line; at large text the tag wraps under it.
+  // The tagline and the busy capsule share a line; at large text the capsule wraps under it.
   line: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: M.tag.gap, rowGap: M.taglineGap, marginTop: M.taglineGap },
   tagline: { flexShrink: 1 },
   tag: {

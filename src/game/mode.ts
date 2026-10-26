@@ -12,7 +12,7 @@ import type { Genre, PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import { modeThemes, shellTheme, type ModeTheme } from "@/theme/tokens";
 
 /** Every mode, in home's order. */
-export const GENRES: readonly Genre[] = ["noir", "crime_scene", "paranormal"];
+export const GENRES: readonly Genre[] = ["noir", "paranormal", "crime_scene"];
 
 let mode: Genre | null = null;
 const listeners = new Set<() => void>();

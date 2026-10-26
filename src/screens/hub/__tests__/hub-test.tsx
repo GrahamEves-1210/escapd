@@ -73,7 +73,7 @@ const hidden = { includeHiddenElements: true } as const;
 const ROOT = path.join(__dirname, "../../../..");
 const H = ref.layout.hub;
 const M = H.modes;
-const GENRE_LIST = ["noir", "crime_scene", "paranormal"] as const;
+const GENRE_LIST = ["noir", "paranormal", "crime_scene"] as const;
 const NOIR = "Detective Noir. Solve the case.";
 const CRIME = "Crime Scene. Find the killer.";
 const GHOST = "Paranormal. Face the unknown.";
@@ -168,11 +168,11 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(screen.getByRole("header", { name: "ESCAPD" }).props.testID).toBe("hub-logo");
     expect(screen.queryByText("Choose a case")).toBeNull();
     expect(screen.queryByText(/THE STUDY|YOUR ROOM|YOUR CASE/, hidden)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, CRIME, GHOST]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, GHOST, CRIME]);
 
     // No stored session: no tags, never a guest just to label the cards, and no count anywhere.
     await act(async () => resolveSession(null));
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, CRIME, GHOST]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, GHOST, CRIME]);
     expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
     expect(screen.queryByText(/\d+ cases?|No cases yet/i, hidden)).toBeNull();
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe("01 · Home: the deck of mode cards", () => {
     // Later cards come later in the tree (on top), and each casts the soft shadow up onto the one it covers.
     const order = screen.container.queryAll((node) => typeof node.props.testID === "string" && /^hub-card-[a-z_]+$/.test(node.props.testID) && node.props.accessibilityRole === "button");
     expect(order.map((node) => node.props.testID)).toEqual(GENRE_LIST.map((g) => `hub-card-${g}`));
-    for (const genre of GENRE_LIST) expect(styleOf(card([NOIR, CRIME, GHOST][GENRE_LIST.indexOf(genre)]))).toMatchObject({ boxShadow: M.deck.shadow, borderRadius: M.radius });
+    for (const genre of GENRE_LIST) expect(styleOf(card([NOIR, GHOST, CRIME][GENRE_LIST.indexOf(genre)]))).toMatchObject({ boxShadow: M.deck.shadow, borderRadius: M.radius });
     // The slot passes touches through outside its card.
     expect(screen.getByTestId("hub-card-noir-slot").props.pointerEvents).toBe("box-none");
   });
@@ -220,7 +220,7 @@ describe("01 · Home: the deck of mode cards", () => {
     }
     // Every card shows at least its words plus the deck's peek above the next card, on every phone.
     for (const [available, words] of [
-      [554, 114], // iPhone SE 375 x 667 (safe 20 / 0), noir's words with its rule and an In progress tag
+      [554, 114], // iPhone SE 375 x 667 (safe 20 / 0), noir's words with its rule
       [666, 114], // 393 x 852
       [746, 114], // Pro Max 430 x 932
       [554, 300], // large text
@@ -314,28 +314,19 @@ describe("01 · Home: the deck of mode cards", () => {
     expectCovers();
   });
 
-  it("tags a card In progress when its mode has a case to go back to, and only then", async () => {
+  it("never tags a card, even when its mode has a case to go back to (the prompt says so instead)", async () => {
     player({
       tutorial: "completed",
-      rooms: [room("c2", "crime_scene", "failed"), room("n1", "noir"), room("p1", "paranormal", "generating"), room("c1", "crime_scene")],
+      rooms: [room("n1", "noir"), room("p1", "paranormal", "generating"), room("c1", "crime_scene")],
       sessions: { n1: "active", c1: "active" },
     });
     await renderHub();
-    // Noir: ready and in progress. Paranormal: still building. Crime scene: its newest failed (an older open one doesn't count).
-    expect(card(`${NOIR} In progress.`)).toBeTruthy();
-    expect(card(`${GHOST} In progress.`)).toBeTruthy();
+    // Every mode has a case to go back to; every card's label is still just its name and tagline.
+    expect(card(NOIR)).toBeTruthy();
     expect(card(CRIME)).toBeTruthy();
-    expect(screen.queryByTestId("hub-card-crime_scene-tag", hidden)).toBeNull();
-    const theme = modeThemes.noir;
-    expect(styleOf(screen.getByTestId("hub-card-noir-tag", hidden))).toMatchObject({ backgroundColor: theme.ground, borderColor: theme.rim, borderRadius: ref.radius.round });
-    expect(styleOf(screen.getAllByText("In progress", hidden)[0])).toMatchObject({ ...M.type.tag, color: theme.ink });
-    await screen.unmount();
-
-    // A completed newest case: no tag. A part-played Study with no case of the player's own: noir's tag.
-    player({ tutorial: "active", rooms: [room("p1", "paranormal")], sessions: { p1: "completed" } });
-    await renderHub();
-    expect(card(`${NOIR} In progress.`)).toBeTruthy();
     expect(card(GHOST)).toBeTruthy();
+    expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
+    expect(screen.queryByText("In progress", hidden)).toBeNull();
   });
 
   it("home is the shell: it clears the active mode when it gains focus", async () => {
@@ -437,7 +428,7 @@ describe("01 · Home: entering a mode", () => {
     await introsSeen();
     player({ tutorial: "completed", rooms: [room("c1", "crime_scene")], sessions: { c1: "active" } });
     await renderHub();
-    await fireEvent.press(card(`${CRIME} In progress.`));
+    await fireEvent.press(card(CRIME));
     await act(async () => {});
     expect(push).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
@@ -463,7 +454,7 @@ describe("01 · Home: entering a mode", () => {
     await introsSeen();
     player({ tutorial: "completed", rooms: [room("p1", "paranormal")], sessions: {} });
     await renderHub();
-    await fireEvent.press(card(`${GHOST} In progress.`));
+    await fireEvent.press(card(GHOST));
     await act(async () => {});
     expect(screen.getByText("Something is still waiting for you.")).toBeTruthy();
     await userEvent.setup().press(screen.getByRole("button", { name: "Continue" }));
@@ -475,7 +466,7 @@ describe("01 · Home: entering a mode", () => {
   it("Continue on a case still building opens the build wait, in the mode's look", async () => {
     player({ tutorial: "completed", rooms: [room("n1", "noir", "queued")] });
     await renderHub();
-    await fireEvent.press(card(`${NOIR} In progress.`));
+    await fireEvent.press(card(NOIR));
     await act(async () => {});
     expect(screen.getByText("Your next case is still coming together.")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
@@ -486,7 +477,7 @@ describe("01 · Home: entering a mode", () => {
   it("The Study part-played (and no case of the player's own): the prompt's Continue resumes The Study", async () => {
     player({ tutorial: "active" });
     await renderHub();
-    await fireEvent.press(card(`${NOIR} In progress.`));
+    await fireEvent.press(card(NOIR));
     await act(async () => {});
     expect(screen.getByText("The Study is still waiting for you.")).toBeTruthy();
     await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
@@ -497,7 +488,7 @@ describe("01 · Home: entering a mode", () => {
     await introsSeen();
     player({ tutorial: "completed", rooms: [room("c1", "crime_scene")] });
     await renderHub();
-    await fireEvent.press(card(`${CRIME} In progress.`));
+    await fireEvent.press(card(CRIME));
     await act(async () => {});
     let finish: () => void = () => {};
     capture.mockReturnValueOnce(new Promise((resolve) => (finish = () => resolve("pro"))));
@@ -508,16 +499,17 @@ describe("01 · Home: entering a mode", () => {
     // Continue waits meanwhile.
     expect(screen.getByRole("button", { name: "Continue" }).props.accessibilityState).toMatchObject({ disabled: true });
     await act(async () => finish());
-    expect(screen.queryByTestId("hub-resume")).toBeNull();
+    // The route opens, then the sheet slides away on its own close.
+    await waitFor(() => expect(screen.queryByTestId("hub-resume")).toBeNull());
     expect(push).not.toHaveBeenCalled();
 
-    await fireEvent.press(card(`${CRIME} In progress.`));
+    await fireEvent.press(card(CRIME));
     await act(async () => {});
     capture.mockRejectedValueOnce(new Error("Network request failed"));
     await fireEvent.press(screen.getByRole("button", { name: "Start a new case" }));
     await act(async () => {});
     expect(push).toHaveBeenCalledWith("/capture");
-    expect(screen.queryByTestId("hub-resume")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("hub-resume")).toBeNull());
   });
 
   it("closing the prompt (Close, Android back) leaves the player on home, focus back on the card", async () => {
@@ -532,7 +524,7 @@ describe("01 · Home: entering a mode", () => {
     player({ tutorial: "active" });
     await renderHub();
 
-    await fireEvent.press(card(`${NOIR} In progress.`));
+    await fireEvent.press(card(NOIR));
     await act(async () => {});
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByTestId("hub-resume")).toBeNull());
@@ -541,7 +533,7 @@ describe("01 · Home: entering a mode", () => {
       focus.mock.calls.filter(([target, type]) => (target as unknown as { props?: { testID?: string } }).props?.testID === "hub-card-noir" && type === "focus").length;
     expect(noirFocus()).toBe(1);
 
-    await fireEvent.press(card(`${NOIR} In progress.`));
+    await fireEvent.press(card(NOIR));
     await act(async () => {});
     let handled: boolean | null | undefined;
     await act(async () => {
@@ -698,7 +690,8 @@ describe("01 · Home: Settings", () => {
     await userEvent.setup().press(row);
     expect(mockFeedback.press).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith("/tutorial");
-    expect(screen.queryByTestId("hub-sheet")).toBeNull();
+    // The route opens, then the sheet slides away on its own close.
+    await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
   });
 
   it("Settings' account rows: Add your email for a guest, the email when signed in, and ESCAPD Pro", async () => {
@@ -707,7 +700,8 @@ describe("01 · Home: Settings", () => {
     await userEvent.setup().press(screen.getByRole("button", { name: "Add your email" }));
     expect(mockFeedback.press).toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith({ pathname: "/account", params: { next: "back" } });
-    expect(screen.queryByTestId("hub-sheet")).toBeNull();
+    // The route opens, then the sheet slides away on its own close.
+    await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
 
     await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
     await fireEvent.press(screen.getByRole("button", { name: "ESCAPD Pro" }));

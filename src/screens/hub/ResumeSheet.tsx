@@ -22,8 +22,10 @@ export interface ResumeSheetProps {
   target: CaseToContinue;
   /** Start a new case is checking access. */
   busy: boolean;
-  onContinue: () => void;
-  onStartNew: () => void;
+  /** Opens the case; true when it went (the sheet then slides away). */
+  onContinue: () => boolean;
+  /** Starts a new case; resolves true once its route has opened (the sheet then slides away). */
+  onStartNew: () => Promise<boolean>;
   /** Close and the scrim: called once the sheet has slid away. */
   onClose: () => void;
 }
@@ -46,12 +48,30 @@ export function ResumeSheet({ genre, target, busy, onContinue, onStartNew, onClo
         onClose={onClose}
         testID="hub-resume"
         closeTestID="hub-resume-close"
-        footer={
+        // Both slide the sheet away with its own close once their route opens, so it stays on top as it falls.
+        footer={(close) => (
           <>
-            <ModePill variant="ghost" label={RESUME_ACTIONS.resume} onPress={onContinue} disabled={busy} testID="hub-resume-continue" />
-            <OutlinePill label={RESUME_ACTIONS.fresh} onPress={onStartNew} busy={busy} testID="hub-resume-new" />
+            <ModePill
+              variant="ghost"
+              label={RESUME_ACTIONS.resume}
+              onPress={() => {
+                if (onContinue()) close();
+              }}
+              disabled={busy}
+              testID="hub-resume-continue"
+            />
+            <OutlinePill
+              label={RESUME_ACTIONS.fresh}
+              onPress={() => {
+                onStartNew().then((went) => {
+                  if (went) close();
+                });
+              }}
+              busy={busy}
+              testID="hub-resume-new"
+            />
           </>
-        }
+        )}
       >
         <Text style={[styles.line, { color: theme.inkMuted }]} testID="hub-resume-line">
           {resumeLine(genre, target)}

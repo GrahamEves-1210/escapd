@@ -71,12 +71,9 @@ export function continueHref(target: CaseToContinue): Href {
   }
 }
 
-/** The small tag on a card with a case to go back to. */
-export const IN_PROGRESS = "In progress";
-
-/** The card's one accessibility label: "Detective Noir. Solve the case." and, with a case to go back to, "In progress." */
-export function modeCardLabel(name: string, tagline: string, inProgress: boolean): string {
-  return inProgress ? `${name}. ${tagline}. ${IN_PROGRESS}.` : `${name}. ${tagline}.`;
+/** The card's one accessibility label: "Detective Noir. Solve the case." */
+export function modeCardLabel(name: string, tagline: string): string {
+  return `${name}. ${tagline}.`;
 }
 
 // A card's tap failing before it could choose (offline, or the server): plain words, as the old Study notice.

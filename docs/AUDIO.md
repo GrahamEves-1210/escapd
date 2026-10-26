@@ -15,7 +15,7 @@ The output is deterministic (seeded PRNG, bit-exact encode), so a rebuild change
 ## Format
 
 - Effects: mono AAC-LC in `.m4a`, 44.1 kHz, about 64 kbit/s, normalized to -1 dBFS peak (press to -3 dBFS). Playback volume per sound is set in `src/game/sound.ts`.
-- Room tones: mono AAC-LC in `.m4a`, 32 kHz, about 40 kbit/s, 16 s seamless loops normalized to -3 dBFS peak and played quietly (volume 0.26 to 0.3). Noise layers are generated 2 s long and the tail crossfaded over the head; tonal layers use whole cycles in 16 s; the final filters run circularly, so the last sample runs into the first.
+- Room tones: mono AAC-LC in `.m4a`, 32 kHz, about 40 kbit/s, 16 s seamless loops normalized to -3 dBFS peak and played quietly (volume 0.1 to 0.12). Noise layers are generated 2 s long and the tail crossfaded over the head; tonal layers use whole cycles in 16 s; the final filters run circularly, so the last sample runs into the first.
 
 ## Files
 

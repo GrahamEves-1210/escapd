@@ -605,10 +605,9 @@ export const ref = {
       // card covers) on a plate of the mode's ground at `plate` opacity that
       // fades down to clear over `fade` pt below them (`fadeStops`, shares of
       // the fade from the plate's edge, end on `plate`): enough for the mode's
-      // ink at 4.5:1 over a white picture (hub-test). A card with a case to go
-      // back to shows a small "In progress" tag beside its tagline: a capsule
-      // in the mode's ground with a `rim` pt edge, `tag` padding (its busy
-      // indicator takes the same place). A card dimmed while another works is
+      // ink at 4.5:1 over a white picture (hub-test). While its tap works, a
+      // card shows a small busy capsule beside its tagline: the mode's ground
+      // with a `rim` pt edge, `tag` padding. No status tag. A card dimmed while another works is
       // shaded with void at 1 - disabledOpacity.pill (never see-through, so
       // the card under it stays hidden). Pressed: `pressScale`, with the kit's
       // squash (ref.motion.juice.press).

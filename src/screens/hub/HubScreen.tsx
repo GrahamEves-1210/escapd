@@ -217,47 +217,65 @@ export function HubScreen() {
     setSheetKey((k) => k + 1);
     setSheetOpen(true);
   };
+  // Set while Settings slides away behind a route one of its rows opened: no focus to return then.
+  const sheetLeaving = useRef(false);
   const closeSheet = useCallback(
     (exited = false) => {
       setSheetOpen(false);
+      if (sheetLeaving.current) {
+        sheetLeaving.current = false;
+        return;
+      }
       returnFocus(() => helpRef.current, exited);
     },
     [returnFocus],
   );
-  // A Settings row that leaves home: the sheet closes (no focus return), then the route opens.
-  // Adding an email comes back here when done, as everywhere else that asks.
+  // A Settings row that leaves home: the route opens, and the sheet slides
+  // away on its own close (no focus return). Adding an email comes back here
+  // when done, as everywhere else that asks.
   const openRoute = (route: SettingsRoute) => {
     cancelFocusReturn();
-    setSheetOpen(false);
+    sheetLeaving.current = true;
     if (route === "/account") router.push({ pathname: "/account", params: { next: "back" } });
     else router.push(route);
   };
 
-  // The continue prompt.
+  // The continue prompt. Set while it slides away behind a route it opened: no focus to return then.
+  const leaving = useRef(false);
   const closePrompt = useCallback(
     (exited = false) => {
       if (!prompt) return;
       const { genre } = prompt;
       setPrompt(null);
+      if (leaving.current) {
+        leaving.current = false;
+        return;
+      }
       returnFocus(() => cardRefs.current[genre], exited);
     },
     [prompt, returnFocus],
   );
-  // Continue: the sheet goes as the route opens. The build wait takes the
-  // mode's look from the store (the player and The Study set their own).
+  // Continue: the route opens and the sheet slides away on its own (the
+  // sheet's close; it stays mounted, and on top, until it has gone). The
+  // build wait takes the mode's look from the store (the player and The
+  // Study set their own). Returns whether it went.
   const resume = (open: Prompt) => {
     cancelFocusReturn();
-    if (action.current) return;
+    if (action.current) return false;
     if (open.target.kind === "build") setMode(open.genre);
-    setPrompt(null);
+    leaving.current = true;
     router.push(continueHref(open.target));
+    return true;
   };
+  // Start a new case: once the new case's route has opened, the sheet slides away the same way.
   const resumeFresh = async (open: Prompt) => {
-    if (action.current) return;
+    if (action.current) return false;
     const signal = begin(open.genre);
     try {
       await startNew(open.genre, signal);
-      if (!signal.aborted) setPrompt(null);
+      if (signal.aborted) return false;
+      leaving.current = true;
+      return true;
     } finally {
       end(signal);
     }
@@ -339,7 +357,6 @@ export function HubScreen() {
                 cardRefs.current[genre] = node;
               }}
               genre={genre}
-              inProgress={!!hub.cases?.[genre]}
               busy={busy === genre}
               disabled={busy !== null && busy !== genre}
               onPress={() => {
@@ -379,9 +396,7 @@ export function HubScreen() {
           target={prompt.target}
           busy={busy === prompt.genre}
           onContinue={() => resume(prompt)}
-          onStartNew={() => {
-            resumeFresh(prompt);
-          }}
+          onStartNew={() => resumeFresh(prompt)}
           onClose={() => closePrompt(true)}
         />
       ) : null}

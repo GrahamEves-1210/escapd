@@ -58,9 +58,9 @@ describe("a case to go back to", () => {
     expect(studyEntry({ status: "completed" })).toBe("replay");
   });
 
-  it("a card's label: its name and tagline, and In progress when it has a case; never a count", () => {
-    expect(modeCardLabel("Detective Noir", "Solve the case", false)).toBe("Detective Noir. Solve the case.");
-    expect(modeCardLabel("Paranormal", "Face the unknown", true)).toBe("Paranormal. Face the unknown. In progress.");
+  it("a card's label: its name and tagline only; never a status or a count", () => {
+    expect(modeCardLabel("Detective Noir", "Solve the case")).toBe("Detective Noir. Solve the case.");
+    expect(modeCardLabel("Paranormal", "Face the unknown")).toBe("Paranormal. Face the unknown.");
   });
 });
 

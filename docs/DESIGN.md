@@ -180,7 +180,7 @@ Tokens: `ref` throughout (`ref.button.chip`, `ref.gradient.divider`, `ref.type`,
 | `minHeight` | 168 | no card is shorter |
 | `radius` / `rim` / `pad` | 20 / 1 / 18 | continuous corners, the rim in the mode's `rim`, the words' padding |
 | `plate` / `fade` / `fadeStops` | 0.72 / 56 / 0 → 0.38 → 0.72 | the mode's ground behind the words, fading down to clear under them |
-| `tag` | padX 10, padY 4, gap 8 | the "In progress" capsule beside the tagline |
+| `tag` | padX 10, padY 4, gap 8 | the busy capsule beside the tagline while a card's tap works |
 | `rule`, `glow` | | noir's brass rule over the name; paranormal's soft glow |
 | `type.tagline` / `type.tag` | 17/22 Medium / 13/16 Semibold | |
 | `pressScale` | 0.98 | the kit's squash |
@@ -198,7 +198,7 @@ Three case files dealt down a dark desk. Each card is solid and lit by its own c
 | Deck | a scroll view from the divider to the screen's foot; content `top` 16 under the divider, `edge` 16 from the sides, `foot` 12 + the safe bottom at the end | Three cards in reading order, later cards on top (tree order; no zIndex) |
 | Card size | card = column / (1 + 2 × (1 − cover)), at least the tallest card's words + `peek` divided by (1 − cover), at least 168. Each card after the first starts `overlap` = round(card × 0.36) above the previous card's foot | 375 × 667 (column 554): cards 242, overlap 87, 155 of each upper card showing; 393 × 852: 292 / 105 / 187; 430 × 932: 327 / 118 / 209. All three fit with no scrolling at the default text size |
 | Card face | the card's full size, turned `tilt` | the mode's drawn cover full bleed (`ModeCover`, baked at the card's real size); 1 pt rim in the mode's `rim`; corners 20, continuous; the `deck.shadow` and the top `deck.edge` |
-| Words | top of the card, padded 18 | noir's brass rule (28 × 2, 10 above the name); the mode's name in its display face (`theme.display`) in `ink`; the tagline (17/22) in `ink`; beside it, when the mode has a case to go back to, the "In progress" tag (a capsule in the mode's `ground`, 1 pt `rim`, 13/16 Semibold `ink`). A plate of the mode's ground at 72 % behind them, fading down to clear over 56 pt below them (the mode's ink stays 4.5:1 over even a white picture) |
+| Words | top of the card, padded 18 | noir's brass rule (28 × 2, 10 above the name); the mode's name in its display face (`theme.display`) in `ink`; the tagline (17/22) in `ink`; beside it, only while the card's tap works, a busy capsule (the mode's `ground`, 1 pt `rim`, a small spinner in `ink`). No status tag: the continue prompt says when there's a case to go back to. A plate of the mode's ground at 72 % behind them, fading down to clear over 56 pt below them (the mode's ink stays 4.5:1 over even a white picture) |
 | Notice | over the last card's foot, centred | the dark capsule (States: Error) |
 
 Large text: the words grow; the cards grow with them (the same share covered) so every name and tagline stays in the part no card covers, and the deck scrolls. The tag wraps under the tagline when they don't fit on one line.
@@ -245,7 +245,7 @@ Opened from the sliders chip; unchanged in round 6 except the new Replay The Stu
 | Element | Hit area | Action |
 |---|---|---|
 | Settings chip | the 48 box | opens Settings (`press`); disabled while a card is busy |
-| A mode card | the card's own visible face: where a card lies over another, the tap goes to the card on top, as it looks. Each card's centre is always on its own uncovered part (overlap < half a card) | Entering a mode. One button, "Detective Noir. Solve the case." plus "In progress." when it has a case to go back to. `press` on press-in; sinks to 0.98 (none under reduced motion) |
+| A mode card | the card's own visible face: where a card lies over another, the tap goes to the card on top, as it looks. Each card's centre is always on its own uncovered part (overlap < half a card) | Entering a mode. One button, "Detective Noir. Solve the case." (no status). `press` on press-in; sinks to 0.98 (none under reduced motion) |
 | Prompt: Continue, Start a new case, Close | 52 pills, the 48 chip | as above |
 | Settings rows | at least 52 tall | Show interactives, Case clock, Sound, Haptics; Replay The Study (once solved: closes the sheet, `/tutorial`); Reduce motion; Add your email or the email; ESCAPD Pro; the version |
 | Android back | | a busy card swallows it; the prompt or Settings closes; otherwise the system leaves the app |
@@ -254,7 +254,7 @@ Opened from the sliders chip; unchanged in round 6 except the new Replay The Stu
 ### States
 
 - **Loading:** the cards show at once, without tags.
-- **In progress:** the tag, as above. A building case shows the same tag.
+- **In progress:** no tag on the card (the user: "no in progress pill on cards"); the continue prompt is where it shows.
 - **Busy (a card's tap waiting on the network):** a small `ActivityIndicator` in the mode's ink takes the tag's place; the card ignores taps and reads busy. The other cards are shaded with black at 55 % (never made see-through, so the card beneath stays hidden) and disabled, and the chip is disabled.
 - **Error:** the notice capsule, "You're offline. Connect to begin." (WifiSlash) or "Couldn't start the case. Try again in a moment." (Warning). It fades in, is announced, and stays until the next tap or focus.
 - **Focus:** the brass ring round the focused card (turned with it).

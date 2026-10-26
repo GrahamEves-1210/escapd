@@ -30,7 +30,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
-import { DarkSheet, FocusRing, useFocusRing } from "@/components/noir";
+import { DarkSheet, FocusRing, useFocusRing, useSheetClose } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import { currentSession, ensureSession, isNetworkError } from "@/lib/escapd-api";
@@ -305,15 +305,20 @@ function SwitchRow({
 }
 
 /** A button row ending in a chevron. */
+/** A row that opens a route: the route opens, then the sheet slides away on its own close (on top as it falls). */
 function LinkRow({ label, detail, onPress, testID }: { label: string; detail?: string; onPress: () => void; testID: string }) {
   const focus = useFocusRing();
   const feedback = useFeedback();
+  const close = useSheetClose();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={detail}
-      onPress={onPress}
+      onPress={() => {
+        onPress();
+        close?.();
+      }}
       onPressIn={() => feedback.press()}
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
