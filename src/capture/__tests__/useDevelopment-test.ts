@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import * as api from "@/lib/escapd-api";
 import type { GenerationJob } from "@/lib/escapd-api";
-import { addPlate, clearPlates, currentTicket } from "../roll";
+import { addPlate, clearPlates, currentTicket, removePlate } from "../roll";
 import { POLL_MS, useDevelopment } from "../useDevelopment";
 
 jest.mock("expo-file-system", () => ({
@@ -90,6 +90,25 @@ describe("useDevelopment", () => {
     await act(async () => pushJob(job({ status: "succeeded" })));
     expect(result.current.stage).toEqual({ kind: "ready", roomId: "r1" });
     expect(unwatch).toHaveBeenCalled();
+  });
+
+  it("uploads each photo with its slot as its position, so a removed photo leaves a gap", async () => {
+    addPlate({ uri: "file://plate-3.jpg", width: 1200, height: 1600 });
+    removePlate(1);
+    const { result } = await renderHook(() => useDevelopment());
+    await waitFor(() => expect(result.current.stage.kind).toBe("waiting"));
+    expect(mocked.uploadRoomPhoto.mock.calls.map(([p]) => p.position)).toEqual([0, 2, 3]);
+  });
+
+  it("carries each flagged photo's reason from a newer server", async () => {
+    mocked.requestGeneration.mockResolvedValue(job({
+      status: "failed", error_code: "person_or_sensitive",
+      error_message: "Person or private text detected in photo position(s): 0, 2. Retake those photos. Reasons: 0=person; 2=private_text.",
+    }));
+    const { result } = await renderHook(() => useDevelopment());
+    await waitFor(() => expect(result.current.stage.kind).toBe("failed"));
+    const stage = result.current.stage as Extract<typeof result.current.stage, { kind: "failed" }>;
+    expect(stage.copy.flagged).toEqual([{ slot: 0, reason: "person" }, { slot: 2, reason: "private_text" }]);
   });
 
   it("falls back to polling when realtime stays quiet", async () => {

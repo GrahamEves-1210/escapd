@@ -1,4 +1,4 @@
-import { clampTransform, containBox, doubleTapTarget, hitSlopFor, maxTranslate, zoomAround } from "../geometry";
+import { clampTransform, containBox, doubleTapTarget, fillWidthFit, freeMargin, hitSlopFor, maxTranslate, zoomAround } from "../geometry";
 
 describe("containBox", () => {
   it("letterboxes a portrait photo top and bottom on a tall viewport", () => {
@@ -59,5 +59,47 @@ describe("hitSlopFor", () => {
   it("pads small hotspots up to the minimum target", () => {
     expect(hitSlopFor({ width: 20, height: 60 }, 48)).toEqual({ left: 14, right: 14, top: 0, bottom: 0 });
     expect(hitSlopFor({ width: 100, height: 100 }, 48)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+});
+
+describe("fillWidthFit (full bleed)", () => {
+  it("fills the width and letterboxes a short photo top and bottom", () => {
+    expect(fillWidthFit({ width: 393, height: 600 }, 3 / 4, 0.1)).toEqual({
+      image: { width: 393, height: 524 },
+      window: { width: 393, height: 524 },
+    });
+  });
+
+  it("crops a tall photo evenly into the window while each side stays within the allowed share", () => {
+    // 524 tall in 480: 22 a side, 4.2 % of the height.
+    const fit = fillWidthFit({ width: 393, height: 480 }, 3 / 4, 0.05);
+    expect(fit.image).toEqual({ width: 393, height: 524 });
+    expect(fit.window).toEqual({ width: 393, height: 480 });
+  });
+
+  it("contains instead of cutting past the allowed share", () => {
+    // 524 in 400: 62 a side, 11.8 %: more than 0.1.
+    const fit = fillWidthFit({ width: 393, height: 400 }, 3 / 4, 0.1);
+    expect(fit.image).toEqual({ width: 300, height: 400 });
+    expect(fit.window).toEqual(fit.image);
+  });
+
+  it("keeps a hotspot rect on the same image point when the photo is cropped", () => {
+    const { image, window } = fillWidthFit({ width: 393, height: 480 }, 3 / 4, 0.1);
+    const top = (window.height - image.height) / 2;
+    // The rug's foot (y 0.95) stays inside the window: 0.05 of the height is free.
+    expect(top + 0.95 * image.height).toBeLessThanOrEqual(window.height);
+  });
+
+  it("is empty before layout", () => {
+    expect(fillWidthFit({ width: 0, height: 0 }, 1, 0.1).window).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe("freeMargin", () => {
+  it("is the smallest gap between any hotspot and the photo's top or bottom", () => {
+    expect(freeMargin([{ y: 0.2, h: 0.45 }, { y: 0.7, h: 0.25 }])).toBeCloseTo(0.05);
+    expect(freeMargin([{ y: 0.05, h: 0.9 }])).toBeCloseTo(0.05);
+    expect(freeMargin([])).toBe(0.5);
   });
 });

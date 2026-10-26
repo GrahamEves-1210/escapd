@@ -1,10 +1,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { AccessibilityInfo, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, curve, motion, radius, space, z } from "@/theme/tokens";
+import { color, curve, motion, ref, space, z } from "@/theme/tokens";
 import { Grain } from "./Grain";
+import { sheetEntering, sheetExiting } from "./noir/motion";
 import { IconButton } from "./IconButton";
 import { ICON_SIZE, ICON_WEIGHT, XIcon } from "./icons";
 import { Text, type TextRef } from "./Text";
@@ -41,10 +42,8 @@ export function Sheet({ title, titleStyle = "narrative", eyebrow, onClose, child
     return () => clearTimeout(t);
   }, [reducedMotion]);
 
-  const entering = reducedMotion
-    ? FadeIn.duration(motion.reducedFade)
-    : SlideInDown.springify().damping(motion.sheetSpring.damping).stiffness(motion.sheetSpring.stiffness);
-  const exiting = reducedMotion ? FadeOut.duration(motion.reducedFade) : SlideOutDown.duration(200);
+  const entering = sheetEntering(reducedMotion);
+  const exiting = sheetExiting(reducedMotion);
 
   return (
     <View style={[StyleSheet.absoluteFill, { zIndex: z.sheet }]} pointerEvents="box-none">
@@ -94,8 +93,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: color.surface,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
+    borderTopLeftRadius: ref.radius.bottomSheet,
+    borderTopRightRadius: ref.radius.bottomSheet,
     ...curve,
     borderTopWidth: 1,
     borderColor: color.hairline,
@@ -107,8 +106,8 @@ const styles = StyleSheet.create({
     left: 4,
     right: 4,
     bottom: 0,
-    borderTopLeftRadius: radius.sheet - 4,
-    borderTopRightRadius: radius.sheet - 4,
+    borderTopLeftRadius: ref.radius.bottomSheet - 4,
+    borderTopRightRadius: ref.radius.bottomSheet - 4,
     ...curve,
     borderWidth: 1,
     borderBottomWidth: 0,

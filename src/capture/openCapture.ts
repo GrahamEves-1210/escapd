@@ -1,19 +1,20 @@
 // The one way into the camera (docs/DESIGN.md, 04 · Entry rule, as changed by
-// 05 · Entry rule). It checks access first, then the photo guide's seen flag.
-// Callers: 01's YOUR ROOM card (push), the guide replay's last step
-// ({ replace: true, skipGuide: true }), /pro after its test purchase
-// ({ replace: true }) and /tutorial/complete ({ replace: true }, not wired
-// yet). Every caller sits directly on the hub, so back from wherever this
-// lands returns to the hub.
+// 05 · Entry rule). It checks access first; with access it always opens the
+// photo guide, which shows before every new room and then continues to the
+// camera. Callers: 01's YOUR ROOM card (push), the guide's access-checked
+// continue when it was opened directly ({ replace: true, skipGuide: true }),
+// /pro after its test purchase ({ replace: true }) and /tutorial/complete
+// ({ replace: true }, not wired yet). Every caller sits directly on the hub,
+// so back from wherever this lands returns to the hub.
 import { router, type Href } from "expo-router";
 import { ensureSession, getMyAccess } from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
-import { hasSeenCaptureGuide } from "./guideSeen";
+import { resetCaptureGuide } from "./guideSeen";
 
 export interface OpenCaptureOptions {
   /** Navigate with router.replace instead of router.push, so the caller leaves the stack. */
   replace?: boolean;
-  /** Skip the seen-flag step and go straight to /capture once access is confirmed (the guide replay's last step). */
+  /** Go straight to /capture once access is confirmed: the guide's own continue, when it already showed for this room. */
   skipGuide?: boolean;
   /**
    * Drops the navigation. Abort it when the caller loses focus or unmounts:
@@ -28,8 +29,8 @@ export interface OpenCaptureOptions {
  * - "account": a guest, sent to /account?next=back (the server requires an email account);
  * - "pro": no custom_rooms entitlement, sent to /pro?cap=<generations_cap>;
  * - "develop": monthly cap reached, sent to /capture/develop?from=hub (develop's cap state);
- * - "guide": access, first time, sent to /capture/guide;
- * - "capture": access, sent to /capture.
+ * - "guide": access, sent to /capture/guide (every new room);
+ * - "capture": access with skipGuide, sent to /capture.
  */
 export type CaptureDestination = "account" | "pro" | "develop" | "guide" | "capture";
 
@@ -67,25 +68,26 @@ function hrefFor(destination: CaptureDestination, access: MyAccess): Href {
  * Opens the camera the way docs/DESIGN.md's entry rule says: ensureSession(),
  * then getMyAccess(), routing a guest to /account?next=back, a player without
  * the custom_rooms entitlement to /pro, and a player at the monthly cap to
- * /capture/develop?from=hub. With access it goes to /capture/guide the first
- * time (the seen flag: session flag, then AsyncStorage), otherwise /capture.
+ * /capture/develop?from=hub. With access it goes to /capture/guide, which
+ * continues to the camera; with skipGuide (the guide itself) to /capture.
+ * Unless skipGuide is set, a new room starts: the guide's flag for the room
+ * is cleared first, so /capture's backstop shows the guide even when the
+ * caller falls back to /capture without this check.
  *
  * Resolves with where it went, or null when `signal` was aborted first. When
  * the check can't run (offline, a server error) it rejects without
  * navigating, and the caller decides: 01 continues to /capture, whose
- * backstop still shows a first-timer the guide; the guide replay shows its
- * error line.
+ * backstop still shows the guide first; the guide shows its error line.
  */
 export async function openCapture(options: OpenCaptureOptions = {}): Promise<CaptureDestination | null> {
   const { replace = false, skipGuide = false, signal } = options;
   if (signal?.aborted) return null;
+  if (!skipGuide) resetCaptureGuide();
   await ensureSession();
   if (signal?.aborted) return null;
   const access = await getMyAccess();
   if (signal?.aborted) return null;
-  const destination: CaptureDestination = accessDestination(access)
-    ?? (skipGuide || (await hasSeenCaptureGuide()) ? "capture" : "guide");
-  if (signal?.aborted) return null;
+  const destination: CaptureDestination = accessDestination(access) ?? (skipGuide ? "capture" : "guide");
   const href = hrefFor(destination, access);
   if (replace) router.replace(href);
   else router.push(href);

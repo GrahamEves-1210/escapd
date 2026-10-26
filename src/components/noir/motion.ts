@@ -3,14 +3,18 @@
 import { useEffect } from "react";
 import {
   Easing,
+  FadeIn,
+  FadeOut,
   ReduceMotion,
+  SlideInDown,
+  SlideOutDown,
   interpolateColor,
   useSharedValue,
   withTiming,
   type SharedValue,
   type WithTimingConfig,
 } from "react-native-reanimated";
-import { ref } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 
 /** The easing names and bezier tuples used in ref.motion. */
 export type EasingToken = "linear" | "ease-out" | "ease-in-out" | readonly [number, number, number, number];
@@ -44,6 +48,23 @@ export function timingFor(token: { duration: number; easing: EasingToken }): Wit
 
 /** ref.motion.control: 120 ms ease-out. Every press and state colour change. */
 export const controlTiming = timingFor(ref.motion.control);
+
+/** ref.motion.sheetRise: a bottom sheet sliding up, a long ease-out with no overshoot. For sheets driven by a shared value. */
+export const sheetRiseTiming = timingFor(ref.motion.sheetRise);
+
+/** A bottom sheet's `entering`: it slides up on ref.motion.sheetRise; under reduced motion it fades in. */
+export function sheetEntering(reducedMotion: boolean) {
+  return reducedMotion
+    ? FadeIn.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never)
+    : SlideInDown.duration(ref.motion.sheetRise.duration).easing(toEasing(ref.motion.sheetRise.easing)).reduceMotion(ReduceMotion.Never);
+}
+
+/** A bottom sheet's `exiting`: it slides away on ref.motion.sheetFall; under reduced motion it fades out. */
+export function sheetExiting(reducedMotion: boolean) {
+  return reducedMotion
+    ? FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never)
+    : SlideOutDown.duration(ref.motion.sheetFall.duration).easing(toEasing(ref.motion.sheetFall.easing)).reduceMotion(ReduceMotion.Never);
+}
 
 /**
  * Press feedback shared by every Noir control: a 0 to 1 value that follows

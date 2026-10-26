@@ -14,10 +14,9 @@ import { PlusJakartaSans_600SemiBold } from "@expo-google-fonts/plus-jakarta-san
 import { PlusJakartaSans_700Bold } from "@expo-google-fonts/plus-jakarta-sans/700Bold";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono/500Medium";
 import { JetBrainsMono_600SemiBold } from "@expo-google-fonts/jetbrains-mono/600SemiBold";
-import { Geist_400Regular } from "@expo-google-fonts/geist/400Regular";
-import { Geist_500Medium } from "@expo-google-fonts/geist/500Medium";
-import { GeistMono_400Regular } from "@expo-google-fonts/geist-mono/400Regular";
-import { GeistMono_500Medium } from "@expo-google-fonts/geist-mono/500Medium";
+import { RobotoSerif_400Regular } from "@expo-google-fonts/roboto-serif/400Regular";
+import { CrimsonText_400Regular_Italic } from "@expo-google-fonts/crimson-text/400Regular_Italic";
+import { Archivo_800ExtraBold } from "@expo-google-fonts/archivo/800ExtraBold";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { color } from "@/theme/tokens";
@@ -36,11 +35,11 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
     JetBrainsMono_500Medium,
     JetBrainsMono_600SemiBold,
-    // Noir (ref.font in tokens.ts).
-    Geist_400Regular,
-    Geist_500Medium,
-    GeistMono_400Regular,
-    GeistMono_500Medium,
+    // The reference look's non-system faces (ref.font): the camera title and
+    // counter, and the 03/05 sheet titles. Other text is the system font.
+    RobotoSerif_400Regular,
+    CrimsonText_400Regular_Italic,
+    Archivo_800ExtraBold,
   });
 
   useEffect(() => {

@@ -1,27 +1,26 @@
-// THE STUDY's error notice (docs/DESIGN.md, 01 · States: Error). A panel as
-// the case-closed stat panels are drawn: color.surface, a 1 pt brass hairline,
-// radius.control, padding 12 x 16. Inside, as /play's failure banner: a
-// Phosphor glyph (WifiSlash offline, Warning otherwise) at 18 in
-// color.warning, centred on the first caption line, then space.sm and the
-// message in `caption`, tone primary. Never error-coloured text: on the dark
-// ground the error colour is under 3:1.
-// It fades in over the kit's control timing (an opacity change, so it stays
-// under reduced motion) and is announced: announceForAccessibility on iOS; on
-// Android through the polite live region on the always-mounted slot that holds
-// it (HubScreen), since Android speaks a live region when its content changes,
-// not when a new one mounts.
+// THE STUDY's error notice (docs/DESIGN.md, 01 · States: Error), in the
+// chips' material: a capsule in ref.color.ground (the chips' fill) with a 1 pt rim
+// (white 10 %), padding 8 x 16. Inside: a Phosphor glyph (WifiSlash offline,
+// Warning otherwise) at 16 in textPrimary, centred on the first meta line,
+// then sm 8 and the message in ref.type.meta, textPrimary. No colour: the
+// reference has none but its line art.
+// It fades in over motion.control (an opacity change, so it stays under
+// reduced motion) and is announced: announceForAccessibility on iOS; on
+// Android through the polite live region on the always-mounted slot that
+// holds it (HubScreen), since Android speaks a live region when its content
+// changes, not when a new one mounts.
 // Mount a new one per failure (key it), so a repeat failure fades in and is
 // announced again.
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from "react-native";
+import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { ICON_WEIGHT, WarningIcon, WifiSlashIcon } from "@/components/icons";
 import { controlTiming } from "@/components/noir";
-import { Text } from "@/components/Text";
-import { color, curve, radius, ref, space, type } from "@/theme/tokens";
+import { ref } from "@/theme/tokens";
 import { STUDY_FAILED, STUDY_OFFLINE } from "./caseStatus";
 
 const H = ref.layout.hub;
+const T = ref.type.meta;
 
 export function HubNotice({ offline }: { offline: boolean }) {
   const text = offline ? STUDY_OFFLINE : STUDY_FAILED;
@@ -51,35 +50,33 @@ export function HubNotice({ offline }: { offline: boolean }) {
       accessibilityLabel={text}
       style={[styles.panel, fadeStyle]}
     >
-      {/* One caption line tall at any text size, so the glyph stays centred on the first line. */}
+      {/* One meta line tall at any text size, so the glyph stays centred on the first line. */}
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.iconBox, { height: type.caption.lineHeight * fontScale }]}
+        style={[styles.iconBox, { height: T.lineHeight * fontScale }]}
       >
-        <Icon size={H.noticeIcon} color={color.warning} weight={ICON_WEIGHT} />
+        <Icon size={H.noticeIcon} color={ref.color.textPrimary} weight={ICON_WEIGHT} />
       </View>
-      <Text variant="caption" style={styles.text}>
-        {text}
-      </Text>
+      <Text style={[T, styles.text]}>{text}</Text>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   panel: {
+    alignSelf: "center",
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: space.sm,
-    paddingVertical: space.md,
-    paddingHorizontal: space.lg,
-    backgroundColor: color.surface,
+    gap: ref.space.sm,
+    paddingVertical: ref.space.sm,
+    paddingHorizontal: ref.space.lg,
+    backgroundColor: ref.color.ground,
     borderWidth: H.hairline,
-    borderColor: color.hairline,
-    borderRadius: radius.control,
-    ...curve,
+    borderColor: ref.color.rim,
+    borderRadius: ref.radius.round,
   },
   iconBox: { justifyContent: "center" },
   // The message wraps beside the icon; nothing shrinks.
-  text: { flexShrink: 1 },
+  text: { flexShrink: 1, color: ref.color.textPrimary },
 });

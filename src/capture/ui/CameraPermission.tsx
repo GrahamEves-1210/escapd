@@ -1,61 +1,50 @@
 // 03 · Camera permission (docs/DESIGN.md 03): every state of /capture before
-// camera access is granted, in the play screen's look. A single decision,
-// taken in the darkroom before the rangefinder opens: the route's flat
-// color.canvas and grain with only the back control (the live IconButton, on
-// 02's back centre), then, once Checking is over, a walnut sheet in the live
-// Sheet's look rising from below, with a warm line drawing of a phone on a
-// small film plate, a Playfair heading, a Jakarta paragraph, one brass button
-// and a quiet way out. No oxblood, no light pool.
+// camera access is granted, in pushr's look. A single decision, bright and
+// quiet: white paper with a soft grey haze behind the status bar, then, once
+// Checking is over, a white sheet rising from below with a light grey panel
+// holding a heavy black phone outline, a wide black lowercase title, a grey
+// paragraph, one black pill and a quiet grey way out. No back control, as in
+// the reference: leaving is the system's back (the iOS edge swipe, Android's
+// back, VoiceOver's escape gesture).
 //
-// States: Checking (ground and the back control; a thinking line only past ~1 s),
-// Default, Requesting, Denied (new copy, "Open Settings"), Library busy (a
-// thinking line with real progress; the buttons hold still), Library partial
-// and error, Request error, Roll ready (a second quiet button), Roll full and
-// Retake mode. On a grant the route shell swaps in the rangefinder: this
-// screen's back control crossfades into 02's and the sheet slides out
-// (exiting animations below).
+// States: Checking (the ground alone; a thinking line only past ~1 s),
+// Default, Requesting (the pill busy), Denied (new copy, "Open Settings"),
+// Library busy (a thinking line with real progress; the buttons hold still),
+// Library partial and error, Request error, Roll ready (a second quiet
+// button), Roll full and Retake mode. On a grant the route shell swaps in the
+// rangefinder: the sheet slides out and the ground fades out over it (exiting
+// animations in PermissionSheet and PermissionGround).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Linking, StyleSheet, View } from "react-native";
-import Animated, { FadeOut, ReduceMotion } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { getPlates } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
-import { Button } from "@/components/Button";
-import { IconButton } from "@/components/IconButton";
-import { ArrowLeftIcon, ICON_SIZE, ICON_WEIGHT } from "@/components/icons";
-import { useShowAfter } from "@/components/noir";
-import { useTheme } from "@/theme/ThemeProvider";
-import { color, hit, motion, ref, space } from "@/theme/tokens";
+import { PillButton, ThinkingStates, useShowAfter } from "@/components/noir";
+import { useFeedback } from "@/game/feedback";
+import { ref } from "@/theme/tokens";
 import { COPY, PERMISSION_COPY } from "./permission/copy";
+import { PermissionGround } from "./permission/PermissionGround";
 import { PermissionNotice } from "./permission/PermissionNotice";
 import { PermissionSheet, type SheetNotice } from "./permission/PermissionSheet";
-import { PermissionThinking } from "./permission/PermissionThinking";
-import { QuietAction } from "./permission/QuietAction";
 import type { CameraPermissionProps } from "./types";
 
 const P = ref.layout.permission;
-// The back control is the live IconButton, a 48 circle; its hitSlop of
-// space.xs takes the hit area to 56, so the wrapper is 56 and the slop stays
-// inside a parent that receives touches (native hit-testing drops the rest).
-const SLOP = space.xs;
-const BACK_BOX = hit.min + SLOP * 2;
-// Granted: the back control crossfades into 02's as the rangefinder fades in.
-const ARROW_OUT = FadeOut.duration(motion.sceneCrossfade).reduceMotion(ReduceMotion.Never);
-const ARROW_OUT_REDUCED = FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
-const CHECKING_LINES = [COPY.checking] as const;
+// The kit's pill labels and the drawn thinking lines take the screen's
+// lowercase as lowercased strings (neither takes a textTransform); screen
+// readers hear the sentence-case copy as their accessibility labels.
+const lower = (text: string) => text.toLowerCase();
+const CHECKING_LINES = [lower(COPY.checking)] as const;
 
 interface Notice {
-  /** "error": the Warning icon in color.warning, then the text. "progress": the text alone. Both in color.textSecondary. */
+  /** "error": the Warning icon, then the text. "progress": the text alone. Both in ref.color.inkMuted. */
   kind: "error" | "progress";
   text: string;
 }
 
 export function CameraPermission({ permission, checking, requestPermission, retakeIndex, plateCount, onClose }: CameraPermissionProps) {
-  const insets = useSafeAreaInsets();
-  const { reducedMotion } = useTheme();
   const library = useLibraryImport({ retakeIndex });
+  const feedback = useFeedback();
   const [requesting, setRequesting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   // The roll count the quiet buttons are drawn from while a library import
@@ -79,8 +68,9 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     }, []),
   );
 
-  // Android hardware back does what the back control does, in every state. Only
-  // while /capture is the focused route, so it never reaches the light table.
+  // Android's hardware back leaves the screen in every state (as the iOS edge
+  // swipe does). Only while /capture is the focused route, so it never
+  // reaches the light table.
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -110,7 +100,9 @@ export function CameraPermission({ permission, checking, requestPermission, reta
       // A grant reaches the route shell, which swaps in the rangefinder. A
       // final deny switches this sheet to Denied; a deny that can still ask
       // (Android's first) leaves it on Default.
-      await requestPermission();
+      const result = await requestPermission();
+      // Access granted: an outcome the camera fading in also shows.
+      if (result.granted) feedback.success();
     } catch {
       if (alive.current) setNotice({ kind: "error", text: COPY.requestError });
     } finally {
@@ -130,10 +122,10 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     choosing.current = true;
     setNotice(null);
     // Library busy keeps the quiet buttons' labels and the sheet's height (the
-    // thinking line's 26 is its only growth), yet addPlate grows the roll one
-    // photo at a time. So the buttons are drawn from the count as the import
-    // starts until it ends, or, after the push to the light table, until
-    // /capture is focused again, so nothing changes as the route fades out.
+    // thinking line is its only growth), yet addPlate grows the roll one photo
+    // at a time. So the buttons are drawn from the count as the import starts
+    // until it ends, or, after the push to the light table, until /capture is
+    // focused again, so nothing changes as the route fades out.
     setHeldCount(plateCount);
     try {
       const result = await library.pick();
@@ -171,10 +163,13 @@ export function CameraPermission({ permission, checking, requestPermission, reta
       key: "busy",
       fadeOut: false,
       node: (
-        <PermissionThinking
-          lines={[COPY.busyLine(current, thinking.total)]}
-          sizeTo={[COPY.busyLine(thinking.total, thinking.total)]}
-          label={COPY.busyLabel}
+        <ThinkingStates
+          ground="paper"
+          lines={[lower(COPY.busyLine(current, thinking.total))]}
+          sizeTo={[lower(COPY.busyLine(thinking.total, thinking.total))]}
+          accessibilityLabel={COPY.busyLabel}
+          announceOnMount
+          style={styles.startAligned}
           testID="permission-busy"
         />
       ),
@@ -187,52 +182,49 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     };
   }
 
-  // Checking past ~1 s: one non-rotating line at the screen's centre. Neither
-  // it nor its label exists before then, and it stops the moment Checking ends.
-  const checkingLate = useShowAfter(checking, P.thinkingDelay);
-  const checkingLine = checkingLate ? (
-    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
-      <PermissionThinking lines={CHECKING_LINES} label={COPY.checking} testID="permission-checking" />
-    </View>
-  ) : null;
-
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill} testID="camera-permission">
-      <Animated.View
-        exiting={reducedMotion ? ARROW_OUT_REDUCED : ARROW_OUT}
-        style={[styles.back, { top: insets.top + P.back.top - SLOP }]}
-      >
-        <IconButton
-          icon={<ArrowLeftIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
-          accessibilityLabel={retake ? COPY.cancelRetake : COPY.close}
-          onPress={onClose}
-          hitSlop={SLOP}
-          testID="permission-back"
-        />
-      </Animated.View>
+    // VoiceOver's escape gesture (a two-finger Z) leaves the screen from
+    // anywhere on it, as the system back does.
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onAccessibilityEscape={onClose} testID="camera-permission">
+      <PermissionGround />
 
-      {checking ? checkingLine : (
+      {checking ? (
+        // Checking past ~1 s: one line at the screen's centre. Neither it nor
+        // its label exists before then, and it stops the moment Checking ends.
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.centre]}>
+          <ThinkingStates
+            ground="paper"
+            lines={CHECKING_LINES}
+            accessibilityLabel={COPY.checking}
+            announceOnMount
+            showDelay={P.thinkingDelay}
+            testID="permission-checking"
+          />
+        </View>
+      ) : (
         <PermissionSheet copyKey={copyKey} title={copy.title} body={copy.body} notice={slot} testID="permission-sheet">
-          <Button
-            label={copy.action}
+          <PillButton
+            label={lower(copy.action)}
+            accessibilityLabel={copy.action}
             onPress={denied ? openSettings : request}
-            loading={requesting}
+            busy={requesting}
+            spinner
             disabled={busy}
             testID="permission-primary"
           />
           {full ? (
-            <QuietAction label={COPY.lightTable} onPress={toLightTable} disabled={requesting} busy={busy} testID="permission-light-table" />
+            <QuietPill label={COPY.lightTable} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
           ) : (
-            <QuietAction
+            <QuietPill
               label={retake ? COPY.choosePhoto : COPY.choosePhotos}
               onPress={choose}
-              disabled={requesting}
+              requesting={requesting}
               busy={busy}
               testID="permission-library"
             />
           )}
           {rollReady ? (
-            <QuietAction label={COPY.lightTable} onPress={toLightTable} disabled={requesting} busy={busy} testID="permission-light-table" />
+            <QuietPill label={COPY.lightTable} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
           ) : null}
         </PermissionSheet>
       )}
@@ -240,15 +232,38 @@ export function CameraPermission({ permission, checking, requestPermission, reta
   );
 }
 
+interface QuietPillProps {
+  label: string;
+  onPress: () => void;
+  requesting: boolean;
+  busy: boolean;
+  testID: string;
+}
+
+/**
+ * The kit's quiet pill on paper (ref.button.quiet.paper: the reference's grey,
+ * darkening when pressed), lowercase like the rest of the screen. Requesting:
+ * disabled. Library busy: disabled and busy, so dimmed, inert and
+ * { disabled, busy }, its label kept and still focusable (the button that
+ * started an import keeps focus; the thinking line carries the progress).
+ */
+function QuietPill({ label, onPress, requesting, busy, testID }: QuietPillProps) {
+  return (
+    <PillButton
+      variant="quiet"
+      ground="paper"
+      label={lower(label)}
+      accessibilityLabel={label}
+      onPress={onPress}
+      disabled={requesting || busy}
+      busy={busy}
+      testID={testID}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  // The 48 box at x 19-67, top = safe top + 6 (centre 43, 89 on 393 x 852), plus the slop all round.
-  back: {
-    position: "absolute",
-    left: P.back.left - SLOP,
-    width: BACK_BOX,
-    height: BACK_BOX,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   centre: { justifyContent: "center" },
+  // The thinking line starts at the column's left edge, under the body.
+  startAligned: { alignItems: "flex-start" },
 });

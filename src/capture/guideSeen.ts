@@ -1,50 +1,45 @@
-// The first-time photo guide's seen flag (docs/DESIGN.md, 04 · Entry rule and
-// States, Error). Two layers: a module-level session flag, checked first, and
-// a per-device AsyncStorage key. Storage errors are silent, as in
-// preferences.tsx: a failed read shows the guide once this session, and a
-// failed write shows it again on the next launch. Neither can loop, because
-// the guide sets the session flag before it leaves (Close or "Open the
-// camera"), and every check reads the session flag first.
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// The photo guide's flag for the room being photographed (docs/DESIGN.md 04,
+// Entry rule). The guide now shows before every new room, not only the first
+// time, so there is no stored "seen" key any more: one session flag says the
+// guide has been shown for the current room.
+// - openCapture() clears it whenever a new room starts (and then always opens
+//   the guide).
+// - The guide sets it as it leaves for the camera (its last step, its X).
+// - /capture's backstop (useGuideBackstop) reads it: any way into /capture
+//   that skipped the guide for this room shows the guide first. Coming back
+//   to the camera for the same room ("Add a photo", a retake) does not.
+// Neither can loop: the guide sets the flag before it navigates, and nothing
+// but a new room clears it. The old per-device key is no longer read.
 
-/** Per-device key. It holds "1" once the guide has been closed or finished. */
+/** The retired per-device key ("1" once the guide had been seen). Kept for reference; nothing reads it. */
 export const CAPTURE_GUIDE_KEY = "escapd:onboarding:capture-guide";
 
-const SEEN = "1";
+/** Set once the guide has been shown for the current room. */
+let shownForThisRoom = false;
 
-/** The session flag. Set by the guide, or by a stored "1". Never cleared, so a replay never un-sees the guide. */
-let captureGuideSeen = false;
-
-/**
- * The session flag alone, with no storage read. True once the guide was
- * closed or finished this session, or a stored "1" was read.
- */
+/** Whether the guide has been shown for the current room. Synchronous. */
 export function captureGuideSeenThisSession(): boolean {
-  return captureGuideSeen;
+  return shownForThisRoom;
 }
 
 /**
- * Whether the player has seen the guide: the session flag first, then the
- * stored key. A stored "1" also sets the session flag. Any other value, or a
- * failed read, resolves false (show the guide). Never rejects.
+ * The same flag as a promise, for callers written against the old stored
+ * check (the backstop). Never rejects.
  */
 export async function hasSeenCaptureGuide(): Promise<boolean> {
-  if (captureGuideSeen) return true;
-  try {
-    if ((await AsyncStorage.getItem(CAPTURE_GUIDE_KEY)) === SEEN) captureGuideSeen = true;
-  } catch {
-    // A failed read counts as unseen.
-  }
-  // Re-read the flag: the guide may have been marked while the read ran.
-  return captureGuideSeen;
+  return shownForThisRoom;
 }
 
 /**
- * Marks the guide seen: sets the session flag at once, then starts the
- * storage write. Callers don't wait for it before navigating. The returned
- * promise settles when the write does and never rejects.
+ * Marks the guide shown for the current room, at once. The guide calls it
+ * before it leaves for the camera. The returned promise is already settled.
  */
 export function markCaptureGuideSeen(): Promise<void> {
-  captureGuideSeen = true;
-  return AsyncStorage.setItem(CAPTURE_GUIDE_KEY, SEEN).catch(() => {});
+  shownForThisRoom = true;
+  return Promise.resolve();
+}
+
+/** A new room starts (openCapture): the guide shows again before its camera. */
+export function resetCaptureGuide(): void {
+  shownForThisRoom = false;
 }

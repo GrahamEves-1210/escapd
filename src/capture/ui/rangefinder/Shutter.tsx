@@ -1,28 +1,38 @@
-// The shutter, the screen's primary action and its brightest object: the
-// brass rangefinder shutter. A 3 pt brass ring (color.accent, the loupe's
-// ring on /play) with a 5 pt gap of ground inside it, then a 60 manila core
-// (color.manila) carrying Phosphor MagnifyingGlass in color.ink (the user's
-// note: "the photo button has a magnifier glass icon on it").
-// - Pressed: the core eases manila to color.accentPressed and scales to 0.96
-//   over ref.motion.shutterPress; the ring stays still. Reduced motion: the
-//   colour change only.
+// The shutter, Once's (ref.button.shutter): a 75 near-black ring
+// (ref.color.well, 4 thick) around a 67 disk filled with
+// ref.gradient.shutterDisk (210 deg, darker at the top right, lighter at the
+// bottom left), a 1 pt bevel along the disk's top edge (ref.color.bevel,
+// fading down the sides), and the screen's only light: a soft white glow
+// biased upward (ref.effect.shutterGlow). The user's note puts a magnifying
+// glass on it: Phosphor MagnifyingGlass, regular, in the reference's white
+// (textPrimary), on the disk's centre, nudged so its lens reads as centred
+// (ref.layout.camera.shutter.glassNudge). Its centre sits ref.layout.camera
+// .shutter.drop below the bottom row's, as measured: the component is that
+// much taller above the ring, so its whole 75 target stays inside the row.
+// - Pressed: the disk (with the glass) scales to 0.94 and its gradient steps
+//   one notch darker (ref.gradient.shutterDiskPressed) over
+//   ref.motion.shutterPress; the ring and glow stay still. Reduced motion: the
+//   gradient change only.
 // - Disabled (camera not ready or failed, roll full): the whole control at
-//   ref.button.disabledOpacity, eased over ref.motion.control.
-// - Busy: taps are ignored and it stays a static full-opacity manila core,
-//   with accessibilityState.busy. No spinner.
-// - Focus: the kit's brass ring, an 84 circle measured from the 76 box's outer
-//   edge.
+//   0.4, eased over ref.motion.control.
+// - Busy: taps are ignored; it stays still at full opacity, with
+//   accessibilityState.busy.
+// - Focus: the kit's brass ring, a circle 4 outside the ring.
 import { Pressable, StyleSheet, View } from "react-native";
-import Animated, { interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { FocusRing, timingFor, useFocusRing } from "@/components/noir";
+import Animated, { interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
+import { FocusRing, gradientLine, gradientStops, timingFor, useFocusRing } from "@/components/noir";
 import { ICON_WEIGHT, MagnifyingGlassIcon } from "@/components/icons";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, curve, radius, ref } from "@/theme/tokens";
+import { curve, ref } from "@/theme/tokens";
 import { Dimmable } from "./Dimmable";
 
+const B = ref.button.shutter;
 const S = ref.layout.camera.shutter;
-const PRESS = ref.motion.shutterPress;
-const PRESS_TIMING = timingFor(PRESS);
+const PRESS_TIMING = timingFor(ref.motion.shutterPress);
+const R = B.disk / 2;
+const DISK_LINE = gradientLine(ref.gradient.shutterDisk.angle, B.disk, B.disk);
+const PRESSED_LINE = gradientLine(ref.gradient.shutterDiskPressed.angle, B.disk, B.disk);
 
 export interface ShutterProps {
   accessibilityLabel: string;
@@ -38,16 +48,13 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
   const focus = useFocusRing();
   const inert = disabled || busy;
 
-  const coreStyle = useAnimatedStyle(() => {
-    const p = press.get();
-    return {
-      backgroundColor: interpolateColor(p, [0, 1], [color.manila, color.accentPressed]),
-      transform: [{ scale: reducedMotion ? 1 : interpolate(p, [0, 1], [1, PRESS.scale]) }],
-    };
-  });
+  const diskStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: reducedMotion ? 1 : interpolate(press.get(), [0, 1], [1, ref.motion.shutterPress.scale]) }],
+  }));
+  const pressedStyle = useAnimatedStyle(() => ({ opacity: press.get() }));
 
   return (
-    <Dimmable dimmed={disabled}>
+    <Dimmable dimmed={disabled} style={styles.drop}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -63,9 +70,34 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
         testID={testID}
         style={styles.box}
       >
-        <View pointerEvents="none" style={styles.ring} />
-        <Animated.View style={[styles.core, coreStyle]} testID={testID ? `${testID}-core` : undefined}>
-          <MagnifyingGlassIcon size={S.icon} color={color.ink} weight={ICON_WEIGHT} />
+        <View pointerEvents="none" style={styles.ring} testID={testID ? `${testID}-ring` : undefined} />
+        <Animated.View pointerEvents="none" style={[styles.disk, diskStyle]} testID={testID ? `${testID}-disk` : undefined}>
+          <Svg width={B.disk} height={B.disk} style={StyleSheet.absoluteFill}>
+            <Defs>
+              <LinearGradient id="shutterDisk" gradientUnits="userSpaceOnUse" {...DISK_LINE}>
+                {gradientStops(ref.gradient.shutterDisk.stops)}
+              </LinearGradient>
+              <LinearGradient id="shutterBevel" {...S.bevelLine}>
+                {gradientStops(S.bevel)}
+              </LinearGradient>
+            </Defs>
+            <Circle cx={R} cy={R} r={R} fill="url(#shutterDisk)" />
+            <Circle cx={R} cy={R} r={R - S.bevelWidth / 2} fill="none" stroke="url(#shutterBevel)" strokeWidth={S.bevelWidth} />
+          </Svg>
+          <Animated.View style={[StyleSheet.absoluteFill, pressedStyle]}>
+            <Svg width={B.disk} height={B.disk}>
+              <Defs>
+                <LinearGradient id="shutterDiskPressed" gradientUnits="userSpaceOnUse" {...PRESSED_LINE}>
+                  {gradientStops(ref.gradient.shutterDiskPressed.stops)}
+                </LinearGradient>
+              </Defs>
+              <Circle cx={R} cy={R} r={R} fill="url(#shutterDiskPressed)" />
+            </Svg>
+          </Animated.View>
+          {/* In a View, so it stacks above the absolute layers on the web too. */}
+          <View style={styles.glass}>
+            <MagnifyingGlassIcon size={B.iconFallback} color={ref.color.textPrimary} weight={ICON_WEIGHT} testID={testID ? `${testID}-glass` : undefined} />
+          </View>
         </Animated.View>
         <FocusRing visible={focus.focused} shape="pill" />
       </Pressable>
@@ -74,25 +106,33 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
 }
 
 const styles = StyleSheet.create({
-  // The 76 box carries no border: Yoga places absolute children inside a
-  // parent's border, so a bordered box would pull the focus ring's -4 inset in
-  // by the ring width (an 82 circle on the shutter's own ring, not 84 with a 2 gap).
-  box: { width: S.size, height: S.size, alignItems: "center", justifyContent: "center" },
-  // The 3 pt brass ring, drawn as the box's first child. It never scales.
+  // Room above the ring for its drop, so its centre sits `drop` below the row's.
+  drop: { paddingTop: S.drop * 2 },
+  // The 75 box carries no border: Yoga places absolute children inside a
+  // parent's border, which would pull the focus ring in.
+  box: { width: B.ring, height: B.ring, alignItems: "center", justifyContent: "center" },
+  // The ring is the box's own circle under the disk, glowing upward.
   ring: {
     ...StyleSheet.absoluteFill,
-    borderRadius: radius.round,
-    borderWidth: S.ringWidth,
-    borderColor: color.accent,
+    borderRadius: ref.radius.round,
+    backgroundColor: B.ringFill,
+    boxShadow: ref.effect.shutterGlow,
     ...curve,
   },
-  // Inside the 70 ring opening, the 60 core leaves the 5 pt gap.
-  core: {
-    width: S.core,
-    height: S.core,
-    borderRadius: radius.round,
+  disk: {
+    width: B.disk,
+    height: B.disk,
+    borderRadius: ref.radius.round,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     ...curve,
+  },
+  // Nudged so the lens, not the glyph's box, reads as centred.
+  glass: {
+    ...StyleSheet.absoluteFill,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateX: S.glassNudge.x }, { translateY: S.glassNudge.y }],
   },
 });

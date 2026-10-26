@@ -1,16 +1,16 @@
 /// <reference types="node" />
 import fs from "fs";
 import path from "path";
-import { AccessibilityInfo, BackHandler, Dimensions, Platform, StyleSheet } from "react-native";
+import { AccessibilityInfo, BackHandler, Platform, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
-import { addPlate, clearPlates, getPlates } from "@/capture/roll";
+import { addPlate, clearPlates, getPlates, getSlots, removePlate } from "@/capture/roll";
 import { MAX_PLATES, PLATE_PROMPTS } from "@/capture/slots";
-import { color, hit, motion, radius, ref, space, type as typeScale } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 import { Rangefinder } from "../../Rangefinder";
-import { COPY, libraryError, plateLabel, thinkingCopy } from "../copy";
+import { COPY, counterCopy, libraryError, thinkingCopy } from "../copy";
 import { ULTRA_WIDE_LENS } from "../useLenses";
 import { viewfinderLayout } from "../Viewfinder";
 
@@ -43,10 +43,9 @@ jest.mock("expo-router", () => {
 });
 jest.mock("expo-image-picker", () => ({ launchImageLibraryAsync: jest.fn() }));
 jest.mock("@/capture/process-photo", () => ({ processPhoto: jest.fn() }));
-const mockTap = jest.fn();
-jest.mock("@/game/feedback", () => ({
-  useFeedback: () => ({ tap: () => mockTap(), success: () => {}, warning: () => {} }),
-}));
+// Stable spies in the full shape, so a test can see which haptic a moment gave.
+const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
+jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 const camera = jest.requireMock<{ mockCamera: { takePictureAsync: jest.Mock; getAvailableLensesAsync: jest.Mock } }>("expo-camera").mockCamera;
 const launch = jest.mocked(ImagePicker.launchImageLibraryAsync);
@@ -73,8 +72,8 @@ function holdProcessing() {
   return pending;
 }
 
-// The viewfinder area on 393 x 852 (safe 59 / 34): x 14-379, y 129-638.
-const AREA = { width: 365, height: 509 };
+// The viewfinder area on 393 x 852 (safe 59 / 34): x 14-379, y 140-626.7.
+const AREA = { width: 365, height: 486.7 };
 
 async function renderCamera(retakeIndex: number | null = null) {
   const onClose = jest.fn();
@@ -106,17 +105,16 @@ describe("Rangefinder: camera starting", () => {
   it("opens on plate I with the controls that need the camera dimmed, and back and library live", async () => {
     await renderCamera();
     expect(prompt()).toBe("From the doorway. Wide. Include the floor and two walls.");
-    expect(counter()).toBe("Next: plate I. 0 of 6 plates taken.");
-    expect(screen.getByText("PLATE")).toBeTruthy();
-    expect(screen.getByText("I")).toBeTruthy();
+    expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
+    expect(screen.getByText("1", hidden)).toBeTruthy();
     expect(screen.getByText(COPY.privacy)).toBeTruthy();
-    expect(stateOf(screen.getByRole("button", { name: "Take plate I, From the doorway" }))).toMatchObject({ disabled: true });
+    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, From the doorway" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: true, checked: false });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: true, checked: false });
     expect(stateOf(screen.getByRole("button", { name: "Close the camera" })).disabled).toBeFalsy();
     expect(stateOf(screen.getByRole("button", { name: "Choose photos from your library" }))).toMatchObject({ disabled: false });
     // The empty well before plate I: disabled, never a target.
-    expect(stateOf(screen.getByRole("button", { name: "Open the light table, 0 plates" }))).toMatchObject({ disabled: true });
+    expect(stateOf(screen.getByRole("button", { name: "Review your photos, 0 photos taken" }))).toMatchObject({ disabled: true });
     expect(screen.queryByRole("radio")).toBeNull();
   });
 
@@ -145,7 +143,7 @@ describe("Rangefinder: ready", () => {
   it("brings the shutter, flash and grid live", async () => {
     await renderCamera();
     await cameraReady();
-    expect(stateOf(screen.getByRole("button", { name: "Take plate I, From the doorway" }))).toMatchObject({ disabled: false, busy: false });
+    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, From the doorway" }))).toMatchObject({ disabled: false, busy: false });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: false });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: false });
   });
@@ -160,6 +158,8 @@ describe("Rangefinder: ready", () => {
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ checked: true });
     await fireEvent.press(screen.getByRole("switch", { name: "Flash" }));
     expect(cameraProps().flash).toBe("off");
+    // Each toggle is a light tick.
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(3);
   });
 
   it("offers 0.5x only when the lens list reports an ultra-wide, defaulting to 1x", async () => {
@@ -173,11 +173,17 @@ describe("Rangefinder: ready", () => {
     expect(screen.getByTestId("lens").props).toMatchObject({ accessibilityRole: "radiogroup", accessibilityLabel: "Lens" });
     expect(stateOf(screen.getByRole("radio", { name: "Main lens" }))).toMatchObject({ selected: true });
     expect(stateOf(screen.getByRole("radio", { name: "Ultra-wide lens" }))).toMatchObject({ selected: false });
-    expect(screen.getByText("0.5×")).toBeTruthy();
+    expect(screen.getByText("0.5")).toBeTruthy();
+    expect(screen.getByText("1.0")).toBeTruthy();
     await fireEvent.press(screen.getByRole("radio", { name: "Ultra-wide lens" }));
     expect(cameraProps().selectedLens).toBe(ULTRA_WIDE_LENS);
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    // The lens already chosen: nothing moves, so no tick.
+    await fireEvent.press(screen.getByRole("radio", { name: "Ultra-wide lens" }));
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("radio", { name: "Main lens" }));
     expect(cameraProps().selectedLens).toBeUndefined();
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the centre slot empty without an ultra-wide lens", async () => {
@@ -192,20 +198,23 @@ describe("Rangefinder: capture", () => {
   it("takes, re-encodes and keeps the plate, then advances the prompt, counter and thumbnail", async () => {
     await renderCamera();
     await cameraReady();
-    await fireEvent.press(screen.getByRole("button", { name: "Take plate I, From the doorway" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Take photo 1, From the doorway" }));
     await flush();
     expect(camera.takePictureAsync).toHaveBeenCalledWith({ quality: 0.92, exif: false });
-    expect(mockTap).toHaveBeenCalledTimes(1);
+    // The shutter firing: one thud, nothing stacked on it.
+    expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.tick).not.toHaveBeenCalled();
+    expect(mockFeedback.success).not.toHaveBeenCalled();
     expect(develop).toHaveBeenCalledWith(raw("shot"));
     expect(getPlates().map((p) => p.uri)).toEqual(["file://plate-shot.jpg"]);
-    expect(prompt()).toBe("Opposite corner. Overlap the first plate.");
-    expect(counter()).toBe("Next: plate II. 1 of 6 plates taken.");
-    expect(screen.getByRole("button", { name: "Take plate II, Opposite corner" })).toBeTruthy();
+    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(counter()).toBe("Next: photo 2. 1 of 6 photos taken.");
+    expect(screen.getByRole("button", { name: "Take photo 2, Opposite corner" })).toBeTruthy();
     expect(thumbnailUri()).toBe("file://plate-shot.jpg");
     // The privacy note is only for plate I.
     expect(screen.queryByText(COPY.privacy)).toBeNull();
     // Jest runs as iOS, which has no live regions: the new prompt is announced.
-    expect(announce).toHaveBeenCalledWith("Opposite corner. Overlap the first plate.");
+    expect(announce).toHaveBeenCalledWith("Opposite corner. Overlap the first photo.");
   });
 
   it("is busy while the plate develops: taps ignored, library, flash and thumbnail dimmed, back and grid live", async () => {
@@ -214,18 +223,18 @@ describe("Rangefinder: capture", () => {
     await renderCamera();
     await cameraReady();
     const user = userEvent.setup();
-    await user.press(screen.getByRole("button", { name: "Take plate II, Opposite corner" }));
+    await user.press(screen.getByRole("button", { name: "Take photo 2, Opposite corner" }));
     await flush();
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: true });
     await user.press(screen.getByTestId("shutter"));
     expect(camera.takePictureAsync).toHaveBeenCalledTimes(1);
     expect(stateOf(screen.getByRole("button", { name: "Choose photos from your library" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: true });
-    expect(stateOf(screen.getByRole("button", { name: "Open the light table, 1 plate" }))).toMatchObject({ disabled: true });
+    expect(stateOf(screen.getByRole("button", { name: "Review your photos, 1 photo taken" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: false });
     expect(stateOf(screen.getByRole("button", { name: "Close the camera" })).disabled).toBeFalsy();
     // The prompt holds the plate being developed.
-    expect(prompt()).toBe("Opposite corner. Overlap the first plate.");
+    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
     await act(async () => pending[0].finish());
     expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: false, disabled: false });
@@ -243,11 +252,11 @@ describe("Rangefinder: capture", () => {
       await act(async () => {
         jest.advanceTimersByTime(ref.layout.camera.thinkingDelay);
       });
-      expect(prompt()).toBe("From the doorway. Preparing plate I");
+      expect(prompt()).toBe("From the doorway. Preparing photo 1");
       expect(screen.getByTestId("thinking", hidden)).toBeTruthy();
       await act(async () => pending[0].finish());
       expect(screen.queryByTestId("thinking", hidden)).toBeNull();
-      expect(prompt()).toBe("Opposite corner. Overlap the first plate.");
+      expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
     } finally {
       jest.useRealTimers();
     }
@@ -261,10 +270,13 @@ describe("Rangefinder: capture", () => {
     await flush();
     expect(prompt()).toBe(`From the doorway. ${COPY.captureError}`);
     expect(screen.getByText(COPY.captureError, hidden)).toBeTruthy();
+    // A failed shot: the error haptic, and no shutter thud (nothing was taken).
+    expect(mockFeedback.error).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.thud).not.toHaveBeenCalled();
     expect(getPlates()).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(prompt()).toBe("Opposite corner. Overlap the first plate.");
+    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
   });
 
   it("says when the camera didn't start, keeps the shutter, flash and grid dimmed and never offers a lens", async () => {
@@ -280,33 +292,57 @@ describe("Rangefinder: capture", () => {
   });
 });
 
-describe("Rangefinder: the roll", () => {
-  it("names the light table, then marks it as the way on from 3 plates", async () => {
+describe("Rangefinder: the photos taken", () => {
+  it("names the review screen, then says the case is ready to build from 3 photos", async () => {
     seedRoll(2);
     await renderCamera();
-    expect(screen.getByRole("button", { name: "Open the light table, 2 plates" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review your photos, 2 photos taken" })).toBeTruthy();
     await act(async () => {
       addPlate({ uri: "file://third.jpg", width: 1200, height: 1600 });
     });
-    const thumbnail = screen.getByRole("button", { name: "Continue to the light table, 3 plates" });
+    const thumbnail = screen.getByRole("button", { name: "Review your photos, 3 photos taken. Ready to build." });
     expect(stateOf(thumbnail)).toMatchObject({ disabled: false });
     expect(thumbnailUri()).toBe("file://third.jpg");
     await fireEvent.press(thumbnail);
     expect(push).toHaveBeenCalledWith("/capture/review");
   });
 
-  it("holds a full roll: full-roll prompt, FULL over VI, shutter and library off, flash and grid live", async () => {
+  it("gives the success haptic when the 6th photo fills the set, and only then", async () => {
+    seedRoll(MAX_PLATES - 2);
+    await renderCamera();
+    await cameraReady();
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(getPlates()).toHaveLength(MAX_PLATES - 1);
+    expect(mockFeedback.success).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(getPlates()).toHaveLength(MAX_PLATES);
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.thud).toHaveBeenCalledTimes(2);
+  });
+
+  it("presses lightly on the square header buttons and the last-photo thumbnail", async () => {
+    seedRoll(1);
+    await renderCamera();
+    await cameraReady();
+    const user = userEvent.setup();
+    await user.press(screen.getByTestId("back"));
+    await user.press(screen.getByTestId("last-plate"));
+    expect(mockFeedback.press).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds 6 photos: the most-a-case-takes prompt, 6 on the counter, shutter and library off, flash and grid live", async () => {
     seedRoll(MAX_PLATES);
     await renderCamera();
     await cameraReady();
     expect(prompt()).toBe(`${COPY.fullTitle}. ${COPY.fullDetail}`);
-    expect(counter()).toBe("Roll full. 6 of 6 plates taken.");
-    expect(screen.getByText("FULL")).toBeTruthy();
-    expect(screen.getByText("VI")).toBeTruthy();
+    expect(counter()).toBe("6 of 6 photos taken. That's the most a case takes.");
+    expect(counterCopy({ index: MAX_PLATES, retake: false })).toMatchObject({ current: MAX_PLATES - 1, numeral: "6", solo: false });
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("button", { name: "Choose photos from your library" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: false });
-    expect(stateOf(screen.getByRole("button", { name: "Continue to the light table, 6 plates" }))).toMatchObject({ disabled: false });
+    expect(stateOf(screen.getByRole("button", { name: "Review your photos, 6 photos taken. Ready to build." }))).toMatchObject({ disabled: false });
   });
 
   it("imports library picks one by one and counts the failures in the error line", async () => {
@@ -342,11 +378,11 @@ describe("Rangefinder: the roll", () => {
       await act(async () => pending[0].finish());
       expect(getPlates()).toHaveLength(1);
       expect(prompt()).toBe("From the doorway. Preparing 2 photos");
-      expect(counter()).toBe("Next: plate I. 0 of 6 plates taken.");
+      expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
       expect(screen.getByText("Preparing photo 2 of 2", hidden)).toBeTruthy();
       await act(async () => pending[1].finish());
       expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
-      expect(counter()).toBe("Next: plate III. 2 of 6 plates taken.");
+      expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
       expect(screen.queryByTestId("thinking", hidden)).toBeNull();
     } finally {
       jest.useRealTimers();
@@ -354,14 +390,50 @@ describe("Rangefinder: the roll", () => {
   });
 });
 
+describe("Rangefinder: photos keep their slots", () => {
+  it("aims the next shot at the first open slot: its prompt, its numeral, and the count of photos filled", async () => {
+    seedRoll(4);
+    removePlate(1);
+    await renderCamera();
+    await cameraReady();
+    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(counter()).toBe("Next: photo 2. 3 of 6 photos taken.");
+    expect(screen.getByRole("button", { name: "Take photo 2, Opposite corner" })).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    // The shot fills slot 2; the others never moved.
+    expect(getSlots().map((p) => p?.uri)).toEqual(["file://old-0.jpg", "file://plate-shot.jpg", "file://old-2.jpg", "file://old-3.jpg"]);
+    expect(counter()).toBe("Next: photo 5. 4 of 6 photos taken.");
+  });
+
+  it("takes an open slot from the review screen as a first take, not a retake, then returns", async () => {
+    seedRoll(4);
+    removePlate(2);
+    const { onClose } = await renderCamera(2);
+    await cameraReady();
+    expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
+    expect(counter()).toBe("Taking photo 3.");
+    expect(screen.getByRole("button", { name: "Take photo 3, The busiest wall" })).toBeTruthy();
+    expect(screen.getByTestId("back").props.accessibilityLabel).toBe(COPY.cancelFill);
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(getSlots()[2]?.uri).toBe("file://plate-shot.jpg");
+    expect(getPlates()).toHaveLength(4);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
 describe("Rangefinder: retake mode", () => {
-  it("retakes the plate's prompt with RETAKE on the counter, no privacy note and cancel labels", async () => {
+  it("retakes the plate's prompt with its numeral alone on the counter, no privacy note and cancel labels", async () => {
     seedRoll(3);
     const { onClose } = await renderCamera(1);
-    expect(prompt()).toBe("Opposite corner. Overlap the first plate.");
-    expect(counter()).toBe("Retaking plate II.");
-    expect(screen.getByText("RETAKE")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retake plate II, Opposite corner" })).toBeTruthy();
+    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(counter()).toBe("Retaking photo 2.");
+    // The retaken plate's numeral shows alone: its neighbours are hidden.
+    expect(flat(screen.getByText("2", hidden)).opacity).toBeUndefined();
+    for (const neighbour of ["1", "3"]) expect(flat(screen.getByText(neighbour, hidden))).toMatchObject({ opacity: 0 });
+    expect(screen.getByRole("button", { name: "Retake photo 2, Opposite corner" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Choose a photo instead" })).toBeTruthy();
     expect(screen.queryByText(COPY.privacy)).toBeNull();
     // The thumbnail shows the plate being replaced, with no ring, and cancels.
@@ -373,7 +445,7 @@ describe("Rangefinder: retake mode", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("replaces the plate and returns to the light table; back is ignored until it settles", async () => {
+  it("replaces the photo and returns to the review screen; back is ignored until it settles", async () => {
     seedRoll(3);
     const pending = holdProcessing();
     const backPress = jest.spyOn(BackHandler, "addEventListener");
@@ -407,210 +479,254 @@ describe("Rangefinder: back", () => {
 });
 
 describe("Rangefinder: hit areas and focus outlines", () => {
-  // The live IconButton's hitSlop, and the kit focus ring's inset.
-  const SLOP = space.xs;
+  // The kit focus ring's inset: its offset plus its own width.
   const RING_INSET = -(ref.focus.offset + ref.focus.width);
-  const slopOf = (node: { props: Record<string, unknown> }) => {
-    const slop = node.props.hitSlop as number | { top: number } | undefined;
-    return typeof slop === "number" ? slop : slop?.top;
-  };
+  const ringsIn = (node: ReturnType<typeof screen.getByTestId>) =>
+    node.queryAll((n) => flat(n).borderWidth === ref.focus.width && flat(n).borderColor === ref.focus.color);
 
-  it("draws back, library, flash and grid as live 48 IconButtons whose 56 hit areas lie inside their rows", async () => {
+  it("draws back and library as Once's 44 squares with 48 hit areas inside the header row", async () => {
     await renderCamera();
-    await cameraReady();
-    for (const id of ["back", "library", "flash", "grid"]) {
+    const slop = (ref.button.square.hit - ref.button.square.size) / 2;
+    expect(ref.button.square.hit).toBeGreaterThanOrEqual(ref.hit.min);
+    // Native hit-testing drops touches outside a parent, so the row carries the slop.
+    expect(flat(screen.getByTestId("prompt").parent!)).toMatchObject({ paddingVertical: slop, paddingHorizontal: ref.layout.camera.edge });
+    for (const id of ["back", "library"]) {
       const control = screen.getByTestId(id);
-      expect(flat(control)).toMatchObject({ width: hit.min, height: hit.min, borderRadius: radius.round });
-      expect(slopOf(control)).toBe(SLOP);
-      // Native hit-testing drops touches outside a parent, so the row itself
-      // carries the slop above and below, and its side padding is wider still.
-      const row = flat(control.parent!);
-      expect(row).toMatchObject({ paddingVertical: SLOP, paddingHorizontal: ref.layout.camera.buttons.edge });
-      expect(ref.layout.camera.buttons.edge).toBeGreaterThanOrEqual(SLOP);
+      expect(flat(control)).toMatchObject({
+        width: ref.button.square.size,
+        height: ref.button.square.size,
+        borderRadius: ref.button.square.radius,
+        backgroundColor: ref.button.square.fill,
+        borderWidth: ref.button.square.borderWidth,
+        borderColor: ref.layout.camera.squareRim,
+      });
+      expect(control.props.hitSlop).toBe(slop);
+      // The ring follows the rounded square, 2 outside its 1 pt rim.
+      await fireEvent(control, "focus");
+      const rings = ringsIn(control);
+      expect(rings).toHaveLength(1);
+      expect(flat(rings[0])).toMatchObject({
+        top: RING_INSET - ref.button.square.borderWidth,
+        borderRadius: ref.button.square.radius - RING_INSET + ref.button.square.borderWidth,
+      });
     }
   });
 
-  it("makes each lens half a 50 x 48 target that offers the large-content viewer, ringed in brass as one track", async () => {
+  it("makes flash and the grid bare 48 targets with a round ring, centred on Once's glyph columns", async () => {
+    await renderCamera();
+    await cameraReady();
+    const { left, right } = ref.layout.camera.controlColumns;
+    expect(flat(screen.getByTestId("flash").parent!.parent!)).toMatchObject({
+      paddingLeft: left - ref.button.bare.hit / 2,
+      paddingRight: right - ref.button.bare.hit / 2,
+    });
+    for (const id of ["flash", "grid"]) {
+      const control = screen.getByTestId(id);
+      expect(flat(control)).toMatchObject({ width: ref.button.bare.hit, height: ref.button.bare.hit });
+      expect(control.props.hitSlop).toBeUndefined();
+      await fireEvent(control, "focus");
+      const rings = ringsIn(control);
+      expect(rings).toHaveLength(1);
+      expect(flat(rings[0])).toMatchObject({ top: RING_INSET, borderRadius: ref.radius.round });
+    }
+  });
+
+  it("makes each lens half a 50 x 48 target that offers the large-content viewer, ringed as one track", async () => {
     camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
     await renderCamera();
     await cameraReady();
     const halves = [
-      { half: screen.getByRole("radio", { name: COPY.ultraWide }), label: COPY.ultraWideLabel },
-      { half: screen.getByRole("radio", { name: COPY.mainLens }), label: COPY.mainLensLabel },
+      { half: screen.getByRole("radio", { name: COPY.ultraWide }), label: COPY.ultraWideLabel, title: COPY.ultraWideLabel },
+      { half: screen.getByRole("radio", { name: COPY.mainLens }), label: COPY.mainLensLabel, title: `${COPY.mainLensLabel}${COPY.lensMark}` },
     ];
-    for (const { half, label } of halves) {
-      expect(flat(half)).toMatchObject({ width: ref.layout.camera.lensOptionWidth, height: hit.min });
-      expect(slopOf(half)).toBeUndefined();
-      expect(half.props).toMatchObject({ accessibilityShowsLargeContentViewer: true, accessibilityLargeContentTitle: label });
+    for (const { half, label, title } of halves) {
+      expect(flat(half)).toMatchObject({ width: ref.button.segment.width / 2, height: ref.hit.comfortable });
+      expect(half.props).toMatchObject({ accessibilityShowsLargeContentViewer: true, accessibilityLargeContentTitle: title });
       expect(screen.getByText(label).props.maxFontSizeMultiplier).toBe(ref.layout.camera.lensMaxFontScale);
     }
     const lens = screen.getByTestId("lens");
-    expect(flat(lens)).toMatchObject({ height: hit.min });
-    // Either half focused draws one ring around the whole 36 track, concentric with its 8 pt corners.
+    expect(flat(lens)).toMatchObject({ width: ref.button.segment.width, height: ref.hit.comfortable });
+    // Either half focused draws one ring around the whole track, concentric with its 16 corners.
     await fireEvent(halves[1].half, "focus");
-    const rings = lens.queryAll((node) => flat(node).top === RING_INSET && flat(node).borderWidth === ref.focus.width);
+    const rings = ringsIn(lens);
     expect(rings).toHaveLength(1);
-    expect(flat(rings[0])).toMatchObject({ borderColor: color.accent, borderRadius: radius.control - RING_INSET });
-    expect(flat(rings[0].parent!)).toMatchObject({ width: ref.layout.camera.lensOptionWidth * 2, height: ref.layout.camera.lensTrack });
-    expect(flat(rings[0].parent!).borderWidth).toBeUndefined();
+    expect(flat(rings[0])).toMatchObject({ top: RING_INSET, borderRadius: ref.button.segment.radius - RING_INSET });
+    expect(rings[0].parent?.props.testID).toBe("lens-track");
   });
 
-  it("measures the shutter's brass focus ring from its 76 outer edge: an 84 circle clear of its ring", async () => {
+  it("rings the 75 shutter as a circle, measured from its unbordered box", async () => {
     await renderCamera();
     await cameraReady();
     const shutter = screen.getByTestId("shutter");
-    expect(flat(shutter)).toMatchObject({ width: ref.layout.camera.shutter.size, height: ref.layout.camera.shutter.size });
-    // Yoga places absolute children inside a parent's border, so the box has none.
+    expect(flat(shutter)).toMatchObject({ width: ref.button.shutter.ring, height: ref.button.shutter.ring });
     expect(flat(shutter).borderWidth).toBeUndefined();
     await fireEvent(shutter, "focus");
-    const rings = shutter.queryAll((node) => flat(node).top === RING_INSET && flat(node).borderWidth === ref.focus.width);
+    const rings = ringsIn(shutter);
     expect(rings).toHaveLength(1);
     expect(rings[0].parent?.props.testID).toBe("shutter");
-    expect(flat(rings[0])).toMatchObject({ borderColor: color.accent, borderRadius: radius.round });
+    expect(flat(rings[0])).toMatchObject({ top: RING_INSET, borderRadius: ref.radius.round });
   });
 
-  it("rings the thumbnail 2 outside its 72 mount, concentric with radius.thumbRing", async () => {
+  it("rings the thumbnail 2 outside its 72 frame, concentric with its 24 corners", async () => {
     seedRoll(1);
     await renderCamera();
     const thumbnail = screen.getByTestId("last-plate");
-    expect(flat(thumbnail)).toMatchObject({ width: ref.layout.camera.plateBox, height: ref.layout.camera.plateBox });
+    expect(flat(thumbnail)).toMatchObject({ width: ref.button.thumbnail.size, height: ref.button.thumbnail.size });
     expect(flat(thumbnail).borderWidth).toBeUndefined();
     await fireEvent(thumbnail, "focus");
-    const rings = thumbnail.queryAll((node) => flat(node).top === RING_INSET && flat(node).borderWidth === ref.focus.width);
+    const rings = ringsIn(thumbnail);
     expect(rings).toHaveLength(1);
-    expect(flat(rings[0])).toMatchObject({ borderColor: color.accent, borderRadius: radius.thumbRing - RING_INSET });
+    expect(flat(rings[0])).toMatchObject({ top: RING_INSET, borderRadius: ref.button.thumbnail.radius - RING_INSET });
     await fireEvent(thumbnail, "blur");
-    expect(thumbnail.queryAll((node) => flat(node).top === RING_INSET)).toHaveLength(0);
+    expect(ringsIn(thumbnail)).toHaveLength(0);
   });
 
-  it("caps the counter's lines at 1.25 and lets them measure against the whole 72 window, so III never breaks", async () => {
+  it("caps the counter's numerals at 1.25 and lays them on one wide strip, so none wraps", async () => {
     seedRoll(2);
     await renderCamera();
-    const window = screen.getByTestId("plate-counter");
-    expect(flat(window)).toMatchObject({ width: ref.layout.camera.plateBox, height: ref.layout.camera.plateBox });
-    for (const text of ["PLATE", "III"]) {
-      const line = screen.getByText(text);
-      expect(line.props.maxFontSizeMultiplier).toBe(ref.layout.camera.counterMaxFontScale);
-      expect(line.props.numberOfLines).toBeUndefined();
-      // Text, then its fade wrapper, then the 72 window itself: never the 64 plate.
-      expect(line.parent?.parent?.props.testID).toBe("plate-counter");
+    const C = ref.layout.camera.counter;
+    expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ width: C.width, height: C.height, overflow: "hidden" });
+    const strip = screen.getByTestId("plate-counter-strip", hidden);
+    expect(flat(strip)).toMatchObject({ flexDirection: "row", gap: C.gap, width: C.width * PLATE_PROMPTS.length });
+    for (const { numeral } of PLATE_PROMPTS) {
+      const text = screen.getByText(numeral, hidden);
+      expect(text.props.maxFontSizeMultiplier).toBe(C.maxFontScale);
+      expect(text.parent?.props.testID).toBe("plate-counter-strip");
     }
   });
 });
 
-describe("Rangefinder: the play screen's look", () => {
+describe("Rangefinder: Once's look", () => {
   const L = ref.layout.camera;
 
-  it("lays the soot ground under the live grain, with no silk", async () => {
+  it("lays Once's flat ground with nothing under the chrome", async () => {
     await renderCamera();
     const root = screen.getByTestId("viewfinder").parent!;
-    expect(flat(root)).toMatchObject({ backgroundColor: color.canvas });
-    // The grain is the root's first child, under every control and the opaque mount.
-    expect(root.children[0]).toMatchObject({ props: expect.objectContaining({ resizeMode: "repeat", pointerEvents: "none" }) });
+    expect(flat(root)).toMatchObject({ backgroundColor: ref.color.ground });
+    // No grain or glow: the header row is the first child.
+    expect(root.children[0]).toBe(screen.getByTestId("prompt").parent);
   });
 
-  it("mounts the feed on a 3:4 plate in a walnut mount, fitted and centred in the area", async () => {
+  it("fits the viewfinder as one 3:4 void well at radius 40, centred in the area", async () => {
     await renderCamera();
-    // 365 x 509: the plate takes the full 351 width (365 less 2 x 7), 468 tall; the mount adds 34 below for the label.
-    expect(viewfinderLayout(AREA, 1)).toEqual({
-      mount: { x: 0, y: 3.5, width: 365, height: 502 },
-      plate: { width: 351, height: 468 },
-      label: typeScale.stamp.lineHeight,
-    });
-    // As rendered at the test window's text size (the label line follows it, capped).
-    const { mount, plate } = viewfinderLayout(AREA, Dimensions.get("window").fontScale);
-    expect(flat(screen.getByTestId("viewfinder-mount"))).toMatchObject({
-      left: mount.x,
-      top: mount.y,
-      width: mount.width,
-      height: mount.height,
-      padding: L.mount.pad,
-      backgroundColor: color.surface,
-      borderWidth: L.hairline,
-      borderColor: color.hairline,
-      borderRadius: radius.mount,
-    });
-    expect(flat(screen.getByTestId("viewfinder-plate"))).toMatchObject({
-      width: plate.width,
-      height: plate.height,
-      backgroundColor: color.canvas,
-      borderRadius: radius.image,
+    const box = viewfinderLayout(AREA);
+    expect(box.width).toBe(AREA.width);
+    expect(box.width / box.height).toBeCloseTo(L.frameAspect);
+    expect(box.y).toBeCloseTo((AREA.height - box.height) / 2);
+    const well = flat(screen.getByTestId("viewfinder-well"));
+    expect(well).toMatchObject({
+      left: box.x,
+      top: box.y,
+      width: box.width,
+      height: box.height,
+      backgroundColor: ref.color.void,
+      borderRadius: ref.radius.viewfinder,
       overflow: "hidden",
     });
-    // The camera lives on the plate; the brackets over it are brass.
-    expect(screen.getByTestId("camera", hidden).parent?.parent?.props.testID).toBe("viewfinder-plate");
-    for (const corner of ["tl", "tr", "bl", "br"]) {
-      expect(flat(screen.getByTestId(`bracket-${corner}`, hidden))).toMatchObject({ borderColor: color.accent, width: L.bracketArm });
-    }
+    expect(well.borderWidth).toBeUndefined();
+    expect(screen.getByTestId("camera", hidden).parent?.parent?.props.testID).toBe("viewfinder-well");
+    // A short screen shrinks the well and keeps it 3:4, centred.
+    const short = viewfinderLayout({ width: AREA.width, height: AREA.height / 2 });
+    expect(short.width / short.height).toBeCloseTo(L.frameAspect);
+    expect(short.x).toBeGreaterThan(0);
   });
 
-  it("caps the plate label's line, so large text shrinks the plate rather than wrapping the label", () => {
-    const large = viewfinderLayout(AREA, 2);
-    expect(large.label).toBe(typeScale.stamp.lineHeight * L.labelMaxFontScale);
-    expect(large.plate.width / large.plate.height).toBeCloseTo(L.frameAspect);
-    expect(large.mount.height).toBeLessThanOrEqual(AREA.height);
-  });
-
-  it("stamps the brass plate label under the plate and keeps it in step with the roll", async () => {
+  it("sets the prompt in the serif over the grey system meta line", async () => {
     await renderCamera();
-    const label = () => screen.getByTestId("plate-label", hidden);
-    const text = (value: string) => screen.getByText(value, hidden);
-    expect(label().props).toMatchObject({ accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" });
-    expect(text("ESCAPD 400  ·  PLATE I")).toBeTruthy();
-    expect(flat(text("ESCAPD 400  ·  PLATE I"))).toMatchObject({ ...typeScale.stamp, color: color.accent });
-    expect(text("ESCAPD 400  ·  PLATE I").props.maxFontSizeMultiplier).toBe(L.labelMaxFontScale);
-    await cameraReady();
-    await fireEvent.press(screen.getByTestId("shutter"));
-    await flush();
-    expect(text("ESCAPD 400  ·  PLATE II")).toBeTruthy();
-    expect(plateLabel({ index: MAX_PLATES, retake: false })).toBe("ESCAPD 400  ·  ROLL FULL");
-    expect(plateLabel({ index: 1, retake: true })).toBe("ESCAPD 400  ·  PLATE II");
+    expect(flat(screen.getByText("From the doorway"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
+    const meta = flat(screen.getByText("Wide. Include the floor and two walls."));
+    expect(meta).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
+    expect(meta.fontFamily).toBeUndefined();
+    // One line each fills the square buttons' 44.
+    expect(L.promptTop + ref.type.serifTitle.lineHeight + L.metaGap + ref.type.meta.lineHeight).toBe(ref.button.square.size);
+    expect(flat(screen.getByText("Wide. Include the floor and two walls.").parent!).marginTop ?? flat(screen.getByText("Wide. Include the floor and two walls.")).marginTop).toBe(L.metaGap);
   });
 
-  it("sets the prompt in Playfair over a Jakarta detail, one line each the buttons' 48", async () => {
-    await renderCamera();
-    expect(flat(screen.getByText("From the doorway"))).toMatchObject({ ...typeScale.narrativeTitle, color: color.text });
-    expect(flat(screen.getByText("Wide. Include the floor and two walls."))).toMatchObject({ ...typeScale.caption, color: color.textSecondary });
-    expect(typeScale.narrativeTitle.lineHeight + typeScale.caption.lineHeight).toBe(hit.min);
-  });
-
-  it("writes errors in secondary text beside a warning glyph, never in the error red", async () => {
+  it("writes errors in white beside a white warning glyph: no amber, no oxblood", async () => {
     camera.takePictureAsync.mockRejectedValueOnce(new Error("busy"));
     await renderCamera();
     await cameraReady();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(flat(screen.getByText(COPY.captureError, hidden))).toMatchObject({ ...typeScale.caption, color: color.textSecondary });
+    expect(flat(screen.getByText(COPY.captureError, hidden))).toMatchObject({ ...ref.type.meta, color: ref.color.textPrimary });
     const glyph = screen.getByTestId("notice-icon", hidden).children[0] as { props: Record<string, unknown> };
-    expect(glyph.props).toMatchObject({ color: color.warning, width: L.noticeIcon });
+    expect(glyph.props).toMatchObject({ color: ref.color.textPrimary, width: L.noticeIcon });
   });
 
-  it("draws the privacy note as a walnut notice panel on the plate", async () => {
+  it("draws the privacy note as a see-through black pill in white meta text", async () => {
     await renderCamera();
     expect(flat(screen.getByTestId("privacy-note"))).toMatchObject({
-      backgroundColor: color.surface,
-      borderColor: color.hairline,
-      borderRadius: radius.control,
-      maxWidth: 351 - (space.lg + L.bracketArm + space.sm) * 2,
+      borderRadius: ref.radius.round,
+      paddingHorizontal: L.note.padX,
+      maxWidth: AREA.width - L.note.inset * 2,
     });
-    expect(flat(screen.getByText(COPY.privacy))).toMatchObject({ ...typeScale.caption, color: color.textSecondary });
+    expect(flat(screen.getByTestId("privacy-note-fill"))).toMatchObject({ backgroundColor: ref.color.void, opacity: L.note.fillOpacity });
+    expect(flat(screen.getByText(COPY.privacy))).toMatchObject({ ...ref.type.meta, color: ref.color.textPrimary });
   });
 
-  it("builds the counter and the thumbnail as small walnut mounts, the counter in brass mono", async () => {
-    seedRoll(3);
+  it("draws flash as Once's filled white bolt and the grid as an outline that fills when on", async () => {
     await renderCamera();
-    expect(flat(screen.getByText("PLATE"))).toMatchObject({ ...typeScale.stamp, color: color.accent });
-    expect(flat(screen.getByText("IV"))).toMatchObject({ ...typeScale.code, color: color.accent });
-    expect(flat(screen.getByTestId("last-plate-mount", hidden))).toMatchObject({ borderWidth: L.hairline, borderRadius: radius.thumbRing });
-    // From 3 plates the continue cue is a 2 pt brass ring over the mount's edge.
-    expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: L.ringWidth, borderRadius: radius.thumbRing });
+    await cameraReady();
+    expect(screen.getByTestId("phosphor-react-native-lightning-slash-fill", hidden).props.color).toBe(ref.button.bare.glyph);
+    expect(screen.getByTestId("phosphor-react-native-grid-nine-regular", hidden)).toBeTruthy();
+    await fireEvent.press(screen.getByRole("switch", { name: "Flash" }));
+    await fireEvent.press(screen.getByRole("switch", { name: "Framing grid" }));
+    expect(screen.getByTestId("phosphor-react-native-lightning-fill", hidden)).toBeTruthy();
+    expect(screen.getByTestId("phosphor-react-native-grid-nine-fill", hidden)).toBeTruthy();
   });
 
-  it("rings the shutter in brass around its manila core and ink magnifier", async () => {
+  it("draws the segment as a void track with a raised thumb; the chosen label is followed by the xmark", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
     await renderCamera();
-    const shutter = screen.getByTestId("shutter");
-    expect(flat(shutter.children[0] as never)).toMatchObject({ borderWidth: L.shutter.ringWidth, borderColor: color.accent });
-    expect(flat(screen.getByTestId("shutter-core"))).toMatchObject({ width: L.shutter.core, height: L.shutter.core });
+    await cameraReady();
+    const G = ref.button.segment;
+    expect(flat(screen.getByTestId("lens-track", hidden))).toMatchObject({ width: G.width, height: G.height, borderRadius: G.radius, backgroundColor: G.fill });
+    expect(flat(screen.getByTestId("lens-thumb", hidden))).toMatchObject({
+      width: G.thumbWidth,
+      height: G.thumbHeight,
+      borderRadius: G.thumbRadius,
+      backgroundColor: G.thumbFill,
+      top: G.inset,
+    });
+    expect(flat(screen.getByText("1.0"))).toMatchObject({ ...ref.type.label });
+    const mark = () => screen.getAllByTestId("lens-mark", hidden);
+    expect(mark()).toHaveLength(1);
+    expect(mark()[0].props.color).toBe(G.active);
+    // The mark sits beside the chosen label, in its thumb's box.
+    expect(screen.getByText("1.0").parent?.props).toEqual(mark()[0].parent?.parent?.props);
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.ultraWide }));
+    expect(mark()).toHaveLength(1);
+    expect(screen.getByText("0.5").parent?.props).toEqual(mark()[0].parent?.parent?.props);
+  });
+
+  it("sets the counter in the italic numerals on a void pill", async () => {
+    seedRoll(2);
+    await renderCamera();
+    expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: ref.color.void, borderRadius: ref.radius.nested });
+    expect(flat(screen.getByText("3", hidden))).toMatchObject({ ...ref.type.counter });
+    expect(counterCopy({ index: 2, retake: false })).toMatchObject({ current: 2, numeral: "3", solo: false });
+  });
+
+  it("builds the shutter: a shade ring glowing upward around the gradient disk and its white magnifier", async () => {
+    await renderCamera();
+    expect(flat(screen.getByTestId("shutter-ring", hidden))).toMatchObject({
+      backgroundColor: ref.button.shutter.ringFill,
+      borderRadius: ref.radius.round,
+      boxShadow: ref.effect.shutterGlow,
+    });
+    expect(flat(screen.getByTestId("shutter-disk", hidden))).toMatchObject({ width: ref.button.shutter.disk, height: ref.button.shutter.disk });
+    expect(screen.getByTestId("shutter-glass", hidden).props.color).toBe(ref.color.textPrimary);
+    // Its centre sits `drop` below the bottom row's: the room is above it.
+    expect(flat(screen.getByTestId("shutter").parent!)).toMatchObject({ paddingTop: L.shutter.drop * 2 });
+  });
+
+  it("frames the last plate in shade around a void well, and rings it in grey from 3 plates", async () => {
+    seedRoll(2);
+    await renderCamera();
+    const T = ref.button.thumbnail;
+    expect(flat(screen.getByTestId("last-plate"))).toMatchObject({ backgroundColor: T.frameFill, borderRadius: T.radius });
+    expect(flat(screen.getByTestId("last-plate-image", hidden))).toMatchObject({ top: T.frameWidth, backgroundColor: ref.color.void, borderRadius: T.imageRadius });
+    expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: L.cue.width, borderColor: L.cue.color, borderRadius: T.radius });
   });
 });
 
@@ -640,11 +756,11 @@ describe.each([
       accessible,
       screenReaderFocusable: true,
       accessibilityRole: "text",
-      accessibilityLabel: "Next: plate I. 0 of 6 plates taken.",
+      accessibilityLabel: "Next: photo 1. 0 of 6 photos taken.",
     });
     // Their texts stay out of Android's accessibility tree: each element is read once, by its label.
-    for (const text of ["From the doorway", "Wide. Include the floor and two walls.", "PLATE", "I"]) {
-      expect(screen.getByText(text).props.importantForAccessibility).toBe("no");
+    for (const text of ["From the doorway", "Wide. Include the floor and two walls.", "1"]) {
+      expect(screen.getByText(text, hidden).props.importantForAccessibility).toBe("no");
     }
     // The error line inside the prompt is not a stop either.
     await cameraReady();
@@ -657,16 +773,16 @@ describe.each([
 
 describe("copy", () => {
   it("counts library imports as real progress, sized to the longest line", () => {
-    expect(thinkingCopy({ done: 1, total: 4 }, "II")).toEqual({
+    expect(thinkingCopy({ done: 1, total: 4 }, "2")).toEqual({
       line: "Preparing photo 2 of 4",
       accessibilityLabel: "Preparing 4 photos",
       sizeTo: ["Preparing photo 4 of 4"],
     });
-    expect(thinkingCopy({ done: 0, total: 1 }, "III")).toEqual({ line: "Preparing plate III", accessibilityLabel: "Preparing plate III" });
-    expect(thinkingCopy(null, "III").line).toBe("Preparing plate III");
+    expect(thinkingCopy({ done: 0, total: 1 }, "3")).toEqual({ line: "Preparing photo 3", accessibilityLabel: "Preparing photo 3" });
+    expect(thinkingCopy(null, "3").line).toBe("Preparing photo 3");
   });
 
-  it("uses the one-line plate V detail", () => {
+  it("uses the one-line detail for photo 5", () => {
     expect(PLATE_PROMPTS[4].detail).toBe("Optional. Anything still unseen.");
   });
 });

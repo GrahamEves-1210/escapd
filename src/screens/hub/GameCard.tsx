@@ -1,45 +1,47 @@
-// A case file (docs/DESIGN.md, 01 · Game mode: Layout "Cards"; Tappable
-// elements; States). A small film plate on a walnut mount, as /play mounts its
-// photographs: the mount is color.surface with a 1 pt brass hairline
-// (color.hairline) at radius.thumbRing; 4 in (thumbRing - thumb, so the
-// corners are concentric) the plate is color.canvas with a 1 pt color.rim edge
-// at radius.thumb, holding the warm line art. Under the plate, as under /play's
-// plate, a brass `stamp` plate label (the tag) and the status note.
+// A game card (docs/DESIGN.md, 01 · Game mode: Layout "Cards"; Tappable
+// elements; States), in Opal's card style: dark glass (CardGlass) with a
+// fading 1 pt rim, a label pill near the top, ESCAPD's state line under it,
+// and the hero line icon in the mint-to-aqua gradient a little below the
+// middle. YOUR CASE, once solved, carries a SOLVED pill below its icon.
 // The whole card is one button; its children are not separately focusable.
-// Pressed: the mount's fill eases to color.raised and its hairline to
-// color.accent over the kit's control timing, with a selection haptic on
-// press-in. No scale and no opacity change on press.
+// Pressed: white glassFill eases in over the card and it settles to 0.97
+// (no scale under reduced motion), over motion.control, with the `press`
+// haptic (a light impact) on press-in.
 import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from "react-native";
-import Animated, { interpolateColor, useAnimatedStyle } from "react-native-reanimated";
+import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { useFocusRing, usePressProgress } from "@/components/noir";
-import { Text } from "@/components/Text";
 import { useFeedback } from "@/game/feedback";
-import { color, curve, radius, ref, space, type } from "@/theme/tokens";
+import { useTheme } from "@/theme/ThemeProvider";
+import { ref } from "@/theme/tokens";
 import { CardArt } from "./CardArt";
+import { CardGlass } from "./CardGlass";
 import { CardNote } from "./CardNote";
 import type { CardId } from "./caseStatus";
+import { CARD_RADIUS, TAG_TOP, coveredWidth } from "./layout";
+import { TagPill } from "./TagPill";
 
 const H = ref.layout.hub;
 const C = H.card;
+const ICON = C.icon;
+// The middles of a fan card's three blocks (card-local y): the tag pill with
+// its state line, the icon, and the SOLVED pill.
+const HEAD_MID = TAG_TOP + (ref.button.gameCard.tagHeight + C.noteGap + ref.type.meta.lineHeight) / 2;
+const ICON_MID = C.height * C.iconCentre;
+const SOLVED_MID = C.height * C.solvedCentre;
 
-/** The mount's ring around the plate: 18 - 14 = 4, so mount and plate corners are concentric. */
-export const MOUNT_PAD = radius.thumbRing - radius.thumb;
-/** A stacked card's plate: square at the card's minimum height (96 - 2 x 4 = 88), at its right end. */
-const STACK_PLATE = H.stackedMinHeight - 2 * MOUNT_PAD;
-
-/** "fan": the 122 x 209 card in the three-card fan. "stack": the upright full-width card (large text, narrow screens). */
+/** "fan": the 122 x 209 card in the three-card fan. "stack": the upright full-width card (large text, narrow screens, short screens). */
 export type CardLayout = "fan" | "stack";
 
 /** The side of a fan card that lies under the centre card. */
 export type CoveredSide = "left" | "right";
 
 /**
- * The kit's focus ring (ref.focus: 2 pt at a 2 pt offset) as RN outline props,
- * so it follows the mount's radius.thumbRing corners with no new radius.
+ * The kit's focus ring (ref.focus: 2 pt brass at a 2 pt offset) as RN outline
+ * props, so it follows the card's own continuous corners.
  */
 export const cardRing: ViewStyle = {
-  borderRadius: radius.thumbRing,
-  ...curve,
+  borderRadius: CARD_RADIUS,
+  ...ref.curve,
   outlineStyle: "solid",
   outlineWidth: ref.focus.width,
   outlineOffset: ref.focus.offset,
@@ -53,25 +55,25 @@ export interface GameCardProps {
   /** Null while YOUR CASE loads (the line stays blank). */
   note: string | null;
   developing?: boolean;
-  /** YOUR CASE solved: the SOLVED stamp. */
+  /** YOUR CASE solved: the SOLVED pill. */
   solved?: boolean;
   accessibilityLabel: string;
   accessibilityHint?: string;
   /**
    * Its own state disables it (YOUR CASE: none yet, offline, try later): the
-   * mount, plate, line art and plate label drop to 0.4 as one layer; the note
+   * glass, the pills and the icon drop to 0.45 as one layer; the state line
    * explains why, so it stays at full strength.
    */
   unavailable?: boolean;
-  /** Another card is busy: the whole card at 0.4, disabled. */
+  /** Another card is busy: the whole card at 0.45, disabled. */
   dimmed?: boolean;
-  /** Its own action is running: a small brass indicator on the plate, taps ignored, focus kept. */
+  /** Its own action is running: the state line becomes a small indicator, taps ignored, focus kept. */
   busy?: boolean;
   /** YOUR CASE before its first fetch resolves: taps ignored and busy for screen readers, but not dimmed and no indicator. */
   waiting?: boolean;
-  /** The fan's centre card lies over the side cards; dimmed, it keeps an opaque canvas under it so they don't show through. */
+  /** The fan's centre card lies over the side cards; dimmed, it keeps an opaque void under it so they don't show through. */
   covers?: boolean;
-  /** Fan side cards: the edge under the centre card. The labels, art and indicator centre on the face left exposed. */
+  /** Fan side cards: the edge under the centre card. Each block centres on the face left exposed at its own height. */
   covered?: CoveredSide;
   onPress: () => void;
   /** Fan cards report focus so the deck draws the ring above the stack instead. */
@@ -103,6 +105,7 @@ export function GameCard({
 }: GameCardProps) {
   const feedback = useFeedback();
   const press = usePressProgress();
+  const { reducedMotion } = useTheme();
   const { fontScale } = useWindowDimensions();
   const focus = useFocusRing({
     onFocus: () => onFocusChange?.(true),
@@ -112,9 +115,8 @@ export function GameCard({
   const ignoring = busy || waiting;
   const live = !disabled && !ignoring;
 
-  const mountStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(press.progress.get(), [0, 1], [color.surface, color.raised]),
-    borderColor: interpolateColor(press.progress.get(), [0, 1], [color.hairline, color.accent]),
+  const pressStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: reducedMotion ? 1 : interpolate(press.progress.get(), [0, 1], [1, C.pressScale]) }],
   }));
 
   const pressableProps = {
@@ -130,7 +132,7 @@ export function GameCard({
     onPressIn: live
       ? () => {
           press.onPressIn();
-          feedback.tap();
+          feedback.press();
         }
       : undefined,
     onPressOut: press.onPressOut,
@@ -138,68 +140,65 @@ export function GameCard({
     onBlur: focus.onBlur,
   } as const;
 
-  // The live short-wait pattern: a small native indicator in brass.
-  const indicator = busy ? (
-    <ActivityIndicator size="small" color={color.accent} testID={testID ? `${testID}-busy` : undefined} />
-  ) : null;
+  // A block's box, inset on the covered side by the strip the centre card hides at the block's middle.
+  const exposed = (v: number): ViewStyle | null =>
+    covered === "left" ? { left: coveredWidth(v) } : covered === "right" ? { right: coveredWidth(v) } : null;
+
+  // The state line, or while the card's own action runs, a small native indicator in its place.
+  const noteLine = { height: ref.type.meta.lineHeight * fontScale };
+  const state = (align: "center" | "left") =>
+    busy ? (
+      <View style={[noteLine, styles.indicator, align === "left" && styles.start]}>
+        <ActivityIndicator size="small" color={ref.color.textLabel} testID={testID ? `${testID}-busy` : undefined} />
+      </View>
+    ) : (
+      <CardNote text={note} developing={developing} align={align} />
+    );
 
   if (layout === "fan") {
-    // Bottom up: mount ring + sm, the note's caption line, xxs, the tag's stamp
-    // line, sm, then the plate fills the rest (114 x 151 at the default size).
-    const noteBottom = MOUNT_PAD + space.sm;
-    const noteLine = type.caption.lineHeight * fontScale;
-    const tagBottom = noteBottom + noteLine + space.xxs;
-    const plateBottom = tagBottom + type.stamp.lineHeight * fontScale + space.sm;
-    // The content column: 4 in from the mount's edge, or fan.cover in on the
-    // side under the centre card, so it centres on the exposed face (x 4-94 or 28-118).
-    const column = {
-      left: covered === "left" ? H.fan.cover : MOUNT_PAD,
-      right: covered === "right" ? H.fan.cover : MOUNT_PAD,
-    };
     return (
       <Pressable {...pressableProps} style={[styles.fanCard, style]}>
         {covers && dimmed ? <View style={styles.underlay} /> : null}
-        <View style={[styles.fill, dimmed && styles.dim]} needsOffscreenAlphaCompositing={dimmed}>
-          {/* The 0.4 layer for a card its own state disables: mount, plate, line art and plate label together. */}
-          <View style={[styles.fill, unavailable && styles.dim]} needsOffscreenAlphaCompositing={unavailable}>
-            <Animated.View style={[styles.mount, mountStyle]} />
-            <View style={[styles.plate, styles.fanPlate, { bottom: plateBottom }]} />
-            <View style={[styles.fanArt, column, { bottom: plateBottom }]}>
-              <CardArt id={id} />
+        <Animated.View style={[styles.fill, pressStyle]}>
+          <View style={[styles.fill, dimmed && styles.dim]} needsOffscreenAlphaCompositing={dimmed}>
+            {/* The 0.45 layer for a card its own state disables: glass, pills and icon together. */}
+            <View style={[styles.fill, unavailable && styles.dim]} needsOffscreenAlphaCompositing={unavailable}>
+              <CardGlass radius={CARD_RADIUS} pressed={press.progress} covers={covers} covered={covered} />
+              <View style={[styles.fanIcon, exposed(ICON_MID)]}>
+                <CardArt id={id} size={ICON} />
+              </View>
+              {solved ? (
+                <View style={[styles.fanSolved, exposed(SOLVED_MID)]}>
+                  <TagPill label="SOLVED" />
+                </View>
+              ) : null}
             </View>
-            <Text variant="stamp" tone="accent" align="center" style={[styles.fanLine, column, { bottom: tagBottom }]}>
-              {tag}
-            </Text>
+            {/* Tag pill, then the state line 6 below it. */}
+            <View style={[styles.fanHead, exposed(HEAD_MID)]}>
+              <TagPill label={tag} style={unavailable && styles.dim} />
+              <View style={styles.fanNote}>{state("center")}</View>
+            </View>
           </View>
-          <View style={[styles.fanLine, styles.noteSlot, column, { bottom: noteBottom, height: noteLine }]}>
-            <CardNote text={note} developing={developing} align="center" />
-          </View>
-          {/* Pressed on the plate's lower right corner, sm in from its edges. */}
-          {solved ? <SolvedStamp style={[styles.fanStamp, { bottom: plateBottom + space.sm }]} /> : null}
-          {indicator ? <View style={[styles.fanLine, styles.centred, column, { bottom: plateBottom + space.sm }]}>{indicator}</View> : null}
-        </View>
+        </Animated.View>
       </Pressable>
     );
   }
 
   return (
     <Pressable {...pressableProps} style={[styles.stackCard, dimmed && styles.dim, style]} needsOffscreenAlphaCompositing={dimmed}>
-      <View style={[styles.fill, unavailable && styles.dim]} needsOffscreenAlphaCompositing={unavailable}>
-        <Animated.View style={[styles.mount, mountStyle]} />
-        <View style={[styles.plate, styles.stackPlate]} testID={testID ? `${testID}-plate` : undefined}>
-          <CardArt id={id} />
+      <Animated.View style={[styles.stackBody, pressStyle]}>
+        <View style={[styles.fill, unavailable && styles.dim]} needsOffscreenAlphaCompositing={unavailable}>
+          <CardGlass radius={CARD_RADIUS} pressed={press.progress} />
         </View>
-      </View>
-      <View style={styles.stackText}>
-        <Text variant="stamp" tone="accent" style={unavailable && styles.dim}>
-          {tag}
-        </Text>
-        <View style={styles.stackNoteRow}>
-          <CardNote text={note} developing={developing} align="left" style={developing ? styles.grow : styles.shrink} />
-          {indicator}
+        <View style={styles.stackText}>
+          <TagPill label={tag} style={unavailable && styles.dim} />
+          <View style={styles.stackNote}>{state("left")}</View>
+          {solved ? <TagPill label="SOLVED" style={styles.stackSolved} /> : null}
         </View>
-        {solved ? <SolvedStamp style={styles.stackStamp} /> : null}
-      </View>
+        <View style={unavailable && styles.dim}>
+          <CardArt id={id} size={ref.icon.heroMin} />
+        </View>
+      </Animated.View>
       {focus.focused ? (
         <View
           pointerEvents="none"
@@ -213,76 +212,39 @@ export function GameCard({
   );
 }
 
-/** A brass case stamp: `stamp` text in accent inside a 1 pt accent border at radius.control. Never oxblood. */
-function SolvedStamp({ style }: { style?: StyleProp<ViewStyle> }) {
-  return (
-    <View style={[styles.stamp, style]}>
-      <Text variant="stamp" tone="accent">
-        SOLVED
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   fill: { ...StyleSheet.absoluteFill },
-  dim: { opacity: ref.button.disabledOpacity },
-  mount: {
-    ...StyleSheet.absoluteFill,
-    borderWidth: H.hairline,
-    borderRadius: radius.thumbRing,
-    ...curve,
-  },
-  plate: {
-    position: "absolute",
-    top: MOUNT_PAD,
-    right: MOUNT_PAD,
-    backgroundColor: color.canvas,
-    borderWidth: H.hairline,
-    borderColor: color.rim,
-    borderRadius: radius.thumb,
-    ...curve,
-  },
+  dim: { opacity: ref.button.disabledOpacity.pill },
   underlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: color.canvas,
-    borderRadius: radius.thumbRing,
-    ...curve,
+    backgroundColor: ref.color.void,
+    borderRadius: CARD_RADIUS,
+    ...ref.curve,
   },
-  stamp: {
-    borderWidth: H.hairline,
-    borderColor: color.accent,
-    borderRadius: radius.control,
-    ...curve,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.xs,
-  },
-  centred: { alignItems: "center" },
+  indicator: { alignItems: "center", justifyContent: "center" },
+  start: { alignItems: "flex-start" },
 
-  // Fan card, card-local at the default text size: plate x 4-118, y 4-155;
-  // tag line box y 163-177; note y 179-197; art 48 centred on the content
-  // column across the plate; stamp and indicator sm above the plate's foot.
+  // Fan card, card-local (140 x 320): tag pill y 24-50, state line 56-72, the
+  // 64 icon centred at 54 % of the height (y 172.8), SOLVED centred at 74 % (y 236.8).
+  // Each centred across the card, or on a side card across the exposed face.
   fanCard: { width: C.width, height: C.height },
-  fanPlate: { left: MOUNT_PAD },
-  fanArt: { position: "absolute", top: MOUNT_PAD, alignItems: "center", justifyContent: "center" },
-  fanLine: { position: "absolute" },
-  noteSlot: { justifyContent: "center" },
-  fanStamp: { position: "absolute", right: MOUNT_PAD + space.sm },
-
-  // Stacked card: the walnut mount with the plate at its right end (88 wide,
-  // 4 in, full height); the text column takes the rest with padding 16: plate
-  // label, xxs, the note (with the indicator beside it), then the stamp sm
-  // below, vertically centred. Height hugs the content, minimum 96.
-  stackCard: {
-    alignSelf: "stretch",
-    flexDirection: "row",
-    minHeight: H.stackedMinHeight,
-    paddingRight: STACK_PLATE + MOUNT_PAD,
+  fanHead: { position: "absolute", top: TAG_TOP, left: 0, right: 0, alignItems: "center" },
+  fanNote: { alignSelf: "stretch", marginTop: C.noteGap },
+  fanIcon: { position: "absolute", left: 0, right: 0, top: C.height * C.iconCentre - ICON / 2, alignItems: "center" },
+  fanSolved: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: C.height * C.solvedCentre - ref.button.gameCard.tagHeight / 2,
+    alignItems: "center",
   },
-  stackPlate: { bottom: MOUNT_PAD, width: STACK_PLATE, alignItems: "center", justifyContent: "center" },
-  stackText: { flex: 1, justifyContent: "center", padding: space.lg },
-  stackNoteRow: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.xxs },
-  grow: { flex: 1 },
-  shrink: { flexShrink: 1 },
-  stackStamp: { alignSelf: "flex-start", marginTop: space.sm },
+
+  // Stacked card: Opal's glass at its own height, the tag pill and the state
+  // line left-aligned at lg 16, the icon right-aligned at lg 16 and centred;
+  // lg 16 below the last line. Height hugs the content, minimum 96. No tilt.
+  stackCard: { alignSelf: "stretch", minHeight: H.stackedMinHeight },
+  stackBody: { flex: 1, flexDirection: "row", alignItems: "center", padding: ref.space.lg, gap: ref.space.lg },
+  stackText: { flex: 1, alignItems: "flex-start" },
+  stackNote: { alignSelf: "stretch", marginTop: C.noteGap },
+  stackSolved: { marginTop: ref.space.sm },
 });

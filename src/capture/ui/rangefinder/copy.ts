@@ -1,92 +1,94 @@
-// 02 · Camera: the words on the rangefinder and its accessibility labels
-// (docs/DESIGN.md 02). Pure functions of the roll, so the screen and its tests
-// share one source. Plate prompts themselves live in src/capture/slots.ts.
+// 02 · Camera: the words on the camera and its accessibility labels
+// (docs/DESIGN.md 02), in plain language: photos, Arabic numerals, "Review
+// your photos"; no film or darkroom words. Pure functions of the photos taken,
+// so the screen and its tests share one source. The photo prompts themselves
+// live in src/capture/slots.ts.
 import { MAX_PLATES, MIN_PLATES, promptFor } from "@/capture/slots";
 import type { LibraryImportProgress } from "@/capture/useLibraryImport";
 
 export const COPY = {
   close: "Close the camera",
   cancelRetake: "Cancel retake",
+  // Taking a photo the player removed (an open slot on the review screen).
+  cancelFill: "Back to your photos",
   library: "Choose photos from your library",
   libraryRetake: "Choose a photo instead",
-  fullTitle: "Six plates is a full roll",
-  fullDetail: "Continue to the light table.",
-  privacy: "Keep people, mail, and lit screens out of frame.",
-  captureError: "That plate didn't take. Try again.",
+  fullTitle: "6 photos is the most a case takes",
+  fullDetail: "Review your photos.",
+  privacy: "Keep people, mail, and screens out of the shot.",
+  captureError: "That photo didn't take. Try again.",
   mountError: "The camera didn't start.",
   flash: "Flash",
   grid: "Framing grid",
   lens: "Lens",
   ultraWide: "Ultra-wide lens",
   mainLens: "Main lens",
-  // The "×" (U+00D7) always shows, so nothing reflows when the lens changes.
-  ultraWideLabel: "0.5×",
-  mainLensLabel: "1×",
-  // A disabled shutter on a full roll: it names the action without claiming a plate.
-  shutterFull: "Take a plate",
-  counterPlate: "PLATE",
-  counterFull: "FULL",
-  counterRetake: "RETAKE",
-  // The plate label's film stock, as /play stamps its mounts.
-  filmStock: "ESCAPD 400",
-  rollFull: "ROLL FULL",
+  // Once's segment: "0.5" and "1.0", the chosen one followed by an xmark
+  // (drawn); the iOS large-content viewer names it with " ×" (U+00D7).
+  ultraWideLabel: "0.5",
+  mainLensLabel: "1.0",
+  lensMark: " ×",
+  // A disabled shutter at 6 photos: it names the action without claiming a photo.
+  shutterFull: "Take a photo",
 } as const;
 
 /**
- * `index` is the plate about to be taken (zero-based): the plate count outside
- * retake mode (MAX_PLATES when the roll is full), the retaken plate in it.
+ * `index` is the slot about to be taken (zero-based): the first open slot
+ * outside retake mode (MAX_PLATES once all 6 are filled), the retaken slot in
+ * it. `filling`: retake mode on a slot the player emptied (a first take).
+ * `taken`: photos filled now (defaults to `index`, as with no open slots).
  */
 export interface RollPosition {
   index: number;
   retake: boolean;
+  filling?: boolean;
+  taken?: number;
 }
 
 const isFull = ({ index, retake }: RollPosition) => !retake && index >= MAX_PLATES;
+const takenOf = (at: RollPosition) => at.taken ?? Math.min(at.index, MAX_PLATES);
 
-/** Header title and subtitle: the plate prompt, or the full-roll lines. No "Retake." prefix: the counter carries it. */
+/** Header title and subtitle: the photo's prompt, or the lines once 6 are taken. No "Retake." prefix: the counter carries it. */
 export function promptCopy(at: RollPosition): { title: string; detail: string } {
   if (isFull(at)) return { title: COPY.fullTitle, detail: COPY.fullDetail };
   const { title, detail } = promptFor(at.index);
   return { title, detail };
 }
 
-/** The 72 counter window: a mono label over the Roman numeral, plus the full sentence for screen readers. */
-export function counterCopy(at: RollPosition): { label: string; numeral: string; accessibilityLabel: string } {
-  const { numeral } = promptFor(at.index);
-  if (at.retake) return { label: COPY.counterRetake, numeral, accessibilityLabel: `Retaking plate ${numeral}.` };
-  if (isFull(at)) return { label: COPY.counterFull, numeral, accessibilityLabel: `Roll full. ${at.index} of ${MAX_PLATES} plates taken.` };
-  return { label: COPY.counterPlate, numeral, accessibilityLabel: `Next: plate ${numeral}. ${at.index} of ${MAX_PLATES} plates taken.` };
-}
-
 /**
- * The brass plate label under the viewfinder, in the pattern of /play's
- * "ESCAPD 400  ·  PLATE I": the plate being exposed (the retaken plate in
- * retake mode; the counter says RETAKE), or ROLL FULL. Decorative: the
- * counter carries it for screen readers.
+ * The counter: which numeral is current (the photo about to be taken; 6 once
+ * 6 are taken; the retaken photo, alone, in retake mode), plus the full
+ * sentence for screen readers.
  */
-export function plateLabel(at: RollPosition): string {
-  if (isFull(at)) return `${COPY.filmStock}  ·  ${COPY.rollFull}`;
-  return `${COPY.filmStock}  ·  ${COPY.counterPlate} ${promptFor(at.index).numeral}`;
+export function counterCopy(at: RollPosition): { current: number; numeral: string; solo: boolean; accessibilityLabel: string } {
+  const current = Math.min(at.index, MAX_PLATES - 1);
+  const { numeral } = promptFor(current);
+  if (at.retake) return { current, numeral, solo: true, accessibilityLabel: `${at.filling ? "Taking" : "Retaking"} photo ${numeral}.` };
+  if (isFull(at)) return { current, numeral, solo: false, accessibilityLabel: `${takenOf(at)} of ${MAX_PLATES} photos taken. That's the most a case takes.` };
+  return { current, numeral, solo: false, accessibilityLabel: `Next: photo ${numeral}. ${takenOf(at)} of ${MAX_PLATES} photos taken.` };
 }
 
-/** "Take plate III, The busiest wall"; "Retake plate II, Opposite corner" in retake mode. */
+/** "Take photo 3, The busiest wall"; "Retake photo 2, Opposite corner" in retake mode. */
 export function shutterLabel(at: RollPosition): string {
   if (isFull(at)) return COPY.shutterFull;
   const { numeral, title } = promptFor(at.index);
-  return `${at.retake ? "Retake" : "Take"} plate ${numeral}, ${title}`;
+  return `${at.retake && !at.filling ? "Retake" : "Take"} photo ${numeral}, ${title}`;
 }
 
-const plates = (count: number) => `${count} ${count === 1 ? "plate" : "plates"}`;
+const photos = (count: number) => `${count} ${count === 1 ? "photo" : "photos"}`;
 
-/** The last-plate thumbnail: the light table, with the continue wording from MIN_PLATES; "Cancel retake" in retake mode. */
-export function lastPlateLabel(plateCount: number, retake: boolean): string {
-  if (retake) return COPY.cancelRetake;
+/**
+ * The last-photo thumbnail: the review screen ("Photos"). From MIN_PLATES it
+ * also says the case is ready to build; "Cancel retake" in retake mode.
+ */
+export function lastPlateLabel(plateCount: number, retake: boolean, filling = false): string {
+  if (retake) return filling ? COPY.cancelFill : COPY.cancelRetake;
   return plateCount >= MIN_PLATES
-    ? `Continue to the light table, ${plates(plateCount)}`
-    : `Open the light table, ${plates(plateCount)}`;
+    ? `Review your photos, ${photos(plateCount)} taken. Ready to build.`
+    : `Review your photos, ${photos(plateCount)} taken`;
 }
 
-/** The library error line follows the failure count; the photos that worked have joined the roll. */
+/** The library error line follows the failure count; the photos that worked have been added. */
 export function libraryError(failed: number): string {
   return failed === 1 ? "One photo couldn't be used." : `${failed} photos couldn't be used.`;
 }
@@ -102,7 +104,7 @@ export interface ThinkingCopy {
 
 /**
  * The busy wait's thinking line. A capture, a single library pick or any
- * retake: "Preparing plate III". Two or more picks: "Preparing photo 2 of 4",
+ * retake: "Preparing photo 3". Two or more picks: "Preparing photo 2 of 4",
  * counted from the import's real progress.
  */
 export function thinkingCopy(progress: LibraryImportProgress | null, numeral: string): ThinkingCopy {
@@ -115,6 +117,6 @@ export function thinkingCopy(progress: LibraryImportProgress | null, numeral: st
       sizeTo: [`Preparing photo ${total} of ${total}`],
     };
   }
-  const line = `Preparing plate ${numeral}`;
+  const line = `Preparing photo ${numeral}`;
   return { line, accessibilityLabel: line };
 }

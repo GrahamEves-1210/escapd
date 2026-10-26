@@ -1,4 +1,6 @@
-import { Image } from "react-native";
+import fs from "fs";
+import path from "path";
+import { Image, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -7,7 +9,14 @@ import type { ActionResult, GameAction, SessionState } from "@/lib/puzzle-types"
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
 import { tutorialCoach } from "@/tutorial/coach";
+import { ref } from "@/theme/tokens";
 import { Player } from "../Player";
+
+// Haptics with stable spies, so a test can check which one fired (the full shape, as jest/setup.js).
+const mockFeedback = {
+  tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn(),
+};
+jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 // Jest turns image requires into objects; the player needs numeric asset ids.
 jest.mock("@/tutorial/assets", () => ({
@@ -111,19 +120,35 @@ beforeEach(async () => {
   jest.spyOn(Image, "resolveAssetSource").mockReturnValue({ uri: "scene.jpg", width: 1200, height: 1600, scale: 1 });
 });
 
-/** Give the newest scene a size so its hotspots lay out. */
+const AREA = { x: 0, y: 0, width: 393, height: 540 };
+
+/** Give the pager and the view in view a size, so its hotspots lay out. */
 async function layoutScene() {
+  await fireEvent(await screen.findByTestId("scene-pager"), "layout", { nativeEvent: { layout: AREA } });
   const scenes = await screen.findAllByTestId("scene-view");
-  await fireEvent(scenes[scenes.length - 1], "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 390, height: 520 } } });
+  for (const scene of scenes) await fireEvent(scene, "layout", { nativeEvent: { layout: AREA } });
+}
+
+const action = (actionName: string) => ({ nativeEvent: { actionName } });
+
+/** Step the pager (the page dots are its adjustable control) to view `n` (zero-based). */
+async function goToView(n: number) {
+  const dots = await screen.findByTestId("view-dots");
+  const now = Number(/^(\d+)/.exec(dots.props.accessibilityValue.text)![1]) - 1;
+  for (let i = now; i < n; i++) await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("increment"));
+  for (let i = now; i > n; i--) await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("decrement"));
+  await layoutScene();
 }
 
 const press = async (testID: string) => fireEvent.press(await screen.findByTestId(testID));
 const lastAction = () => mocked.submitAction.mock.calls[mocked.submitAction.mock.calls.length - 1][1];
 
-/** Fixed-length tumblers start at 0000. Each `up` steps that wheel by one. */
+/** Fixed-length tumblers start at 0000. Each increment (the wheel is adjustable) rolls that wheel by one. */
 async function dial(code: string) {
   for (let i = 0; i < code.length; i++) {
-    for (let step = 0; step < Number(code[i]); step++) await press(`tumbler-${i}-up`);
+    for (let step = 0; step < Number(code[i]); step++) {
+      await fireEvent(await screen.findByTestId(`tumbler-${i}`), "accessibilityAction", action("increment"));
+    }
   }
   await press("code-submit");
 }
@@ -156,8 +181,7 @@ describe("Player: The Study", () => {
     await press("result-continue");
 
     // Scene switching is local; the hidden safe is absent visually and accessibly.
-    await press("scene-1");
-    await layoutScene();
+    await goToView(1);
     expect(screen.queryByTestId("hotspot-safe")).toBeNull();
     expect(screen.queryByLabelText(/Wall safe/)).toBeNull();
 
@@ -190,6 +214,8 @@ describe("Player: The Study", () => {
     await screen.findByTestId("code-sheet");
     await dial("1234");
     expect(await screen.findByText("Nothing happens.")).toBeTruthy();
+    // 02's error line: white words, no amber or oxblood.
+    expect(flat(screen.getByText("Nothing happens."))).toMatchObject({ color: ref.color.textPrimary });
     expect(screen.getByTestId("code-sheet")).toBeTruthy();
     await dial("0427");
     expect(lastAction()).toEqual({ type: "solve", puzzle_id: "open_safe", answer: "0427" });
@@ -197,20 +223,19 @@ describe("Player: The Study", () => {
     await press("result-continue");
 
     // Completion comes from the server's `completed`, then hands off.
-    await press("scene-2");
-    await layoutScene();
+    await goToView(2);
     await press("hotspot-door");
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith({
       message: secret.puzzles.escape.message,
       exitMessage: def.exit.message,
     }), { timeout: 3000 });
-  });
+    // Plays the whole tutorial with real timers: slow when every suite runs at once.
+  }, 30_000);
 
   it("says the door does not open yet, and shows invalid as a toast", async () => {
     mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
     await renderStudy();
-    await press("scene-2");
-    await layoutScene();
+    await goToView(2);
     await press("hotspot-door");
     expect(await screen.findByText("This does not open yet.")).toBeTruthy();
     await press("result-continue");
@@ -231,5 +256,220 @@ describe("Player: The Study", () => {
     await screen.findByTestId("result-sheet");
     expect(mocked.submitAction).toHaveBeenCalledTimes(2);
     expect(lastAction()).toEqual({ type: "inspect", hotspot_id: "desk_drawer" });
+  });
+});
+
+const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
+const P = ref.layout.play;
+
+describe("Player: the reference look", () => {
+  it("frames the photo as 02 does: flat ground, Once's squares, the serif title over the view meta", async () => {
+    mocked.submitAction.mockImplementation(async (_s, action) => studyServer()(action));
+    await renderStudy();
+    expect(flat(screen.getByTestId("scene-view"))).toMatchObject({ backgroundColor: ref.color.ground });
+    for (const id of ["player-back", "player-options"]) {
+      expect(flat(screen.getByTestId(id))).toMatchObject({
+        width: ref.button.square.size,
+        height: ref.button.square.size,
+        borderRadius: ref.button.square.radius,
+        backgroundColor: ref.button.square.fill,
+        borderColor: P.squareRim,
+      });
+    }
+    // Explore as list is gone; every object is a button on the photo instead.
+    expect(screen.queryByLabelText("Explore as list")).toBeNull();
+    expect(screen.getByLabelText("Back")).toBeTruthy();
+    expect(screen.getByLabelText("Case options")).toBeTruthy();
+    expect(flat(screen.getByText("The Study"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
+    expect(flat(screen.getByText("View 1 of 3", { includeHiddenElements: true }))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
+    // The coach mark is a 07 card with white text.
+    expect(flat(screen.getByTestId("coach-card"))).toMatchObject({ backgroundColor: ref.color.raised, borderRadius: P.card.radius });
+    // No strip of thumbnails: page dots, the view in view white.
+    expect(screen.queryByTestId("scene-0")).toBeNull();
+    expect(flat(screen.getByTestId("view-dot-0-current"))).toMatchObject({ backgroundColor: ref.color.textPrimary });
+    expect(flat(screen.getByTestId("view-dot-1"))).toMatchObject({ backgroundColor: ref.color.textSecondary });
+  });
+
+  it("lays the photo full bleed: the screen's width, square edges, cropped only into hotspot-free margins", async () => {
+    await renderStudy();
+    const win = flat(screen.getByTestId("scene-window"));
+    // 3:4 on 393 is 524 tall; the 540 area holds it whole, so nothing is cropped.
+    expect(win).toMatchObject({ width: AREA.width, height: AREA.width / 0.75, overflow: "hidden" });
+    expect(win.borderRadius).toBeUndefined();
+    // Shorter than the photo: cropped evenly top and bottom while no hotspot is cut ...
+    await fireEvent(screen.getByTestId("scene-view"), "layout", { nativeEvent: { layout: { ...AREA, height: 480 } } });
+    expect(flat(screen.getByTestId("scene-window"))).toMatchObject({ width: AREA.width, height: 480 });
+    // ... and contained (narrower, uncropped) when the crop would cut one or pass maxCrop.
+    await fireEvent(screen.getByTestId("scene-view"), "layout", { nativeEvent: { layout: { ...AREA, height: 400 } } });
+    expect(flat(screen.getByTestId("scene-window"))).toMatchObject({ width: 400 * 0.75, height: 400 });
+  });
+
+  it("offers the views as an adjustable control on the page dots, with a tick as each page settles", async () => {
+    await renderStudy();
+    const dots = screen.getByTestId("view-dots");
+    expect(dots.props.accessibilityRole).toBe("adjustable");
+    expect(dots.props.accessibilityLabel).toBe("View");
+    expect(dots.props.accessibilityValue.text).toBe("1 of 3");
+    mockFeedback.tick.mockClear();
+    await goToView(1);
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    // The coach's target (the drawer, on view 1) is marked as something new once it's off screen.
+    expect(screen.getByTestId("view-dots").props.accessibilityValue.text).toBe("2 of 3. Something new on view 1");
+    expect(screen.getByTestId("view-dot-0-new")).toBeTruthy();
+    expect(screen.getByText("View 2 of 3", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByLabelText("View 2 of 3")).toBeTruthy();
+    // Past the last view, nothing happens.
+    await goToView(2);
+    await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("increment"));
+    expect(screen.getByTestId("view-dots").props.accessibilityValue.text).toMatch(/^3 of 3/);
+  });
+
+  it("reads hotspots in reading order while drawing the largest first", async () => {
+    await renderStudy();
+    await goToView(1);
+    const layer = screen.getByTestId("hotspot-layer");
+    // Drawn largest first (rug, cabinet); read top to bottom (cabinet at y 0.20, then the rug at 0.70).
+    expect(layer.props.experimental_accessibilityOrder).toEqual(["hotspot-cabinet", "hotspot-rug"]);
+    expect(screen.getByTestId("hotspot-cabinet").props.nativeID).toBe("hotspot-cabinet");
+  });
+
+  it("rings the chosen item and the photo in white in Use mode, with a card that says how to use it", async () => {
+    const respond = studyServer();
+    mocked.submitAction.mockImplementation(async (_s, action) => respond(action));
+    await renderStudy();
+    await press("hotspot-desk_drawer");
+    const bar = await screen.findByTestId("result-continue");
+    // 07's white bar on the kit's dark sheet; finding an item is a success haptic.
+    expect(mockFeedback.success).toHaveBeenCalled();
+    expect(flat(bar)).toMatchObject({ backgroundColor: P.bar.fill, borderRadius: P.bar.radius });
+    expect(flat(screen.getByTestId("result-sheet"))).toMatchObject({ backgroundColor: ref.color.ground, borderTopLeftRadius: ref.radius.bottomSheet });
+    await press("result-continue");
+
+    expect(screen.queryByTestId("scene-armed")).toBeNull();
+    mockFeedback.tick.mockClear();
+    await press("item-brass_key");
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    expect(flat(screen.getByTestId("item-brass_key-selected"))).toMatchObject({ borderColor: ref.color.textPrimary, borderWidth: P.tray.selectedRing });
+    expect(flat(screen.getByTestId("scene-armed"))).toMatchObject({ borderColor: ref.color.textPrimary, borderWidth: P.photo.armed });
+    expect(screen.getByTestId("use-card")).toBeTruthy();
+    expect(screen.getByText("Select an object in the room to use this artifact.")).toBeTruthy();
+    // The use card takes the coach's place.
+    expect(screen.queryByTestId("coach-card")).toBeNull();
+    // Using it where it doesn't work: a warning haptic and a toast.
+    mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
+    await press("hotspot-bookshelf");
+    expect(await screen.findByText("That doesn't work here.")).toBeTruthy();
+    expect(mockFeedback.warning).toHaveBeenCalled();
+    // Cancel leaves Use mode.
+    await fireEvent.press(screen.getByLabelText("Cancel"));
+    expect(screen.queryByTestId("scene-armed")).toBeNull();
+  });
+
+  it("presses a hotspot after a short delay, so a swipe that starts on one doesn't buzz", async () => {
+    await renderStudy();
+    const drawer = screen.getByTestId("hotspot-desk_drawer");
+    expect(drawer.props.unstable_pressDelay ?? P.hotspotPressDelay).toBe(P.hotspotPressDelay);
+    mockFeedback.press.mockClear();
+    await fireEvent(drawer, "pressIn");
+    expect(mockFeedback.press).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Case options on the kit's dark sheet, with no Explore as list and a tick on the switch", async () => {
+    await renderStudy();
+    await press("player-options");
+    expect(flat(await screen.findByTestId("case-options"))).toMatchObject({ backgroundColor: ref.color.ground });
+    expect(screen.queryByText("Explore as list")).toBeNull();
+    mockFeedback.tick.mockClear();
+    await fireEvent(screen.getByLabelText("Show interactives"), "valueChange", true);
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a failed request as 02's error line on a card, with Try again and Dismiss", async () => {
+    mocked.submitAction.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await renderStudy();
+    await press("hotspot-desk_drawer");
+    const banner = await screen.findByTestId("failure-banner");
+    expect(flat(banner)).toMatchObject({ backgroundColor: ref.color.raised });
+    expect(flat(screen.getByText("No connection. Your progress is safe."))).toMatchObject({ color: ref.color.textPrimary });
+    await fireEvent.press(screen.getByLabelText("Dismiss"));
+    expect(screen.queryByTestId("failure-banner")).toBeNull();
+  });
+});
+
+describe("code wheels", () => {
+  async function openSafe() {
+    const respond = studyServer();
+    mocked.submitAction.mockImplementation(async (_s, action) => respond(action));
+    await renderStudy();
+    // Straight to the safe: the key opens the cabinet on view 2.
+    await press("hotspot-desk_drawer");
+    await press("result-continue");
+    await goToView(1);
+    await press("item-brass_key");
+    await press("hotspot-cabinet");
+    await press("result-continue");
+    await press("hotspot-safe");
+    await screen.findByTestId("code-sheet");
+  }
+
+  it("makes each wheel one adjustable element that rolls with a tick per digit, wrapping 9 to 0", async () => {
+    await openSafe();
+    const wheel = screen.getByTestId("tumbler-0");
+    expect(wheel.props.accessibilityRole).toBe("adjustable");
+    expect(wheel.props.accessibilityLabel).toBe("Digit 1");
+    expect(wheel.props.accessibilityValue).toEqual({ text: "0" });
+    mockFeedback.tick.mockClear();
+    await fireEvent(wheel, "accessibilityAction", action("decrement"));
+    expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "9" });
+    await fireEvent(screen.getByTestId("tumbler-0"), "accessibilityAction", action("increment"));
+    await fireEvent(screen.getByTestId("tumbler-0"), "accessibilityAction", action("increment"));
+    expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "1" });
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(3);
+    // The neighbours are tap targets too: the one below is one more, the one above one less.
+    await fireEvent.press(screen.getByTestId("tumbler-0-next", { includeHiddenElements: true }));
+    expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "2" });
+    await fireEvent.press(screen.getByTestId("tumbler-0-prev", { includeHiddenElements: true }));
+    expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "1" });
+    // No caret steppers any more.
+    expect(screen.queryByLabelText(/Increase digit/)).toBeNull();
+  });
+
+  it("answers a wrong code with an error haptic and the white error line, and resets the wheels", async () => {
+    await openSafe();
+    mockFeedback.error.mockClear();
+    mockFeedback.success.mockClear();
+    await dial("1234");
+    expect(await screen.findByText("Nothing happens.")).toBeTruthy();
+    expect(mockFeedback.error).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "0" });
+    // The right code: the lock opens with one success haptic, no press before it.
+    mockFeedback.press.mockClear();
+    await dial("0427");
+    await screen.findByTestId("result-sheet");
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.press).not.toHaveBeenCalled();
+  });
+});
+
+describe("tokens only", () => {
+  const ROOT = path.join(__dirname, "..");
+  const APP = path.join(__dirname, "../../../app");
+  const files = [
+    ...fs.readdirSync(ROOT).filter((f) => /\.tsx?$/.test(f)).map((f) => path.join(ROOT, f)),
+    path.join(APP, "tutorial/index.tsx"),
+    path.join(APP, "tutorial/complete.tsx"),
+    path.join(APP, "play/[roomId].tsx"),
+    path.join(__dirname, "../../components/noir/DarkSheet.tsx"),
+  ];
+
+  it.each(files.map((f) => [path.relative(path.join(__dirname, "../../.."), f), f]))("%s uses ref and the kit only", (_name, file) => {
+    const source = fs.readFileSync(file, "utf8");
+    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|fontFamily\s*[:=]/);
+    // No live components, grain or materials.
+    expect(source).not.toMatch(/@\/components\/(Button|IconButton|Sheet|Text|Grain|Wordmark)"|@\/theme\/materials/);
+    // From the live tokens only motion, z and hit.
+    const imported = source.match(/import \{([^}]*)\} from "@\/theme\/tokens"/)?.[1] ?? "";
+    const names = imported.split(",").map((n) => n.trim()).filter(Boolean);
+    expect(names.filter((n) => !["motion", "ref", "z", "hit"].includes(n))).toEqual([]);
   });
 });

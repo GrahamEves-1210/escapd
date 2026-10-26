@@ -16,5 +16,5 @@ export function useOverflowScroll() {
   const onContentSizeChange = useCallback((_width: number, height: number) => setContentHeight(height), []);
   // Compared in whole device pixels, so float noise never makes a fitting block scrollable.
   const scrollEnabled = PixelRatio.roundToNearestPixel(contentHeight) > PixelRatio.roundToNearestPixel(frameHeight);
-  return { scrollEnabled, onLayout, onContentSizeChange };
+  return { scrollEnabled, contentHeight, onLayout, onContentSizeChange };
 }

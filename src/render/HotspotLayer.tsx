@@ -4,12 +4,21 @@ import Animated, {
   Easing, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming,
 } from "react-native-reanimated";
 import Svg, { Line, Path } from "react-native-svg";
+import { CheckIcon } from "@/components/icons";
+import { FocusRing, useFocusRing } from "@/components/noir";
 import type { Hotspot, Id } from "@/lib/puzzle-types";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, hit, motion } from "@/theme/tokens";
+import { hit, motion, ref } from "@/theme/tokens";
 import { hitSlopFor, type Size } from "./geometry";
 
-const SUBTLE = 0.42;
+// White and grey, as 02's cue ring: open brackets white, solved ones grey with
+// a check, a just-revealed one heavier. A void halo keeps them legible on a
+// bright wall (02's privacy-note black).
+const B = ref.layout.play.brackets;
+const SEAL = ref.layout.play.seal;
+const TRACE = ref.layout.play.trace;
+const THREAD = ref.layout.play.thread;
+const SUBTLE = B.subtle;
 
 export type HotspotRef = ComponentRef<typeof View>;
 
@@ -31,40 +40,66 @@ export interface HotspotLayerProps {
   highlightId?: Id;
   /** Draw the solved trace on this hotspot once per key. */
   flash?: { id: Id; key: number };
-  /** Hotspots whose puzzles are already solved: pewter brackets and a verdigris seal. */
+  /** Hotspots whose puzzles are already solved: grey brackets and a check seal. */
   solvedIds?: ReadonlySet<Id>;
-  /** A hotspot that just appeared. Its brackets open in crimson. */
+  /** A hotspot that just appeared. Its brackets open heavier, in white. */
   irisId?: Id;
-  /** Crimson thread from the object that revealed something, in image fractions. */
+  /** A dashed white thread from the object that revealed something, in image fractions. */
   thread?: Thread;
   labelFor: (hotspot: Hotspot) => string;
   onPress: (hotspot: Hotspot) => void;
+  /** A finger came down on a hotspot (after the press delay, so a swipe doesn't count). */
+  onPressIn?: () => void;
   registerRef?: (id: Id, node: HotspotRef | null) => void;
 }
 
+const nativeIdFor = (id: Id) => `hotspot-${id}`;
+
+/**
+ * Screen-reader order: reading order on the photo (top to bottom, then left
+ * to right, by each target's top-left corner). Drawing order stays largest
+ * first, so a small object inside a large one is on top for touch.
+ */
+export function readingOrder(hotspots: readonly Hotspot[]): Id[] {
+  return [...hotspots]
+    .sort((a, b) => a.shape.y - b.shape.y || a.shape.x - b.shape.x)
+    .map((h) => h.id);
+}
+
 export function HotspotLayer({
-  hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, registerRef,
+  hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, onPressIn, registerRef,
 }: HotspotLayerProps) {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="box-none"
+      experimental_accessibilityOrder={readingOrder(hotspots).map(nativeIdFor)}
+      testID="hotspot-layer"
+    >
       {thread ? (
-        <Svg
-          width={stage.width}
-          height={stage.height}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Line
-            x1={thread.x1 * stage.width}
-            y1={thread.y1 * stage.height}
-            x2={thread.x2 * stage.width}
-            y2={thread.y2 * stage.height}
-            stroke={color.wax}
-            strokeWidth={1.5}
-          />
-        </Svg>
+        <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Svg width={stage.width} height={stage.height}>
+            <Line
+              x1={thread.x1 * stage.width}
+              y1={thread.y1 * stage.height}
+              x2={thread.x2 * stage.width}
+              y2={thread.y2 * stage.height}
+              stroke={ref.color.void}
+              strokeOpacity={THREAD.haloOpacity}
+              strokeWidth={THREAD.halo}
+              strokeLinecap="round"
+            />
+            <Line
+              x1={thread.x1 * stage.width}
+              y1={thread.y1 * stage.height}
+              x2={thread.x2 * stage.width}
+              y2={thread.y2 * stage.height}
+              stroke={ref.color.textPrimary}
+              strokeWidth={THREAD.width}
+              strokeDasharray={[THREAD.dash, THREAD.dash]}
+            />
+          </Svg>
+        </View>
       ) : null}
       {hotspots.map((h) => (
         <HotspotTarget
@@ -77,6 +112,7 @@ export function HotspotLayer({
           flashKey={flash?.id === h.id ? flash.key : undefined}
           label={labelFor(h)}
           onPress={onPress}
+          onPressIn={onPressIn}
           registerRef={registerRef}
         />
       ))}
@@ -84,7 +120,7 @@ export function HotspotLayer({
   );
 }
 
-const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solved, iris, flashKey, label, onPress, registerRef }: {
+const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solved, iris, flashKey, label, onPress, onPressIn, registerRef }: {
   hotspot: Hotspot;
   stage: Size;
   bright: boolean;
@@ -93,9 +129,11 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
   flashKey?: number;
   label: string;
   onPress: (hotspot: Hotspot) => void;
+  onPressIn?: () => void;
   registerRef?: (id: Id, node: HotspotRef | null) => void;
 }) {
   const { reducedMotion } = useTheme();
+  const focus = useFocusRing();
   const rect = {
     left: hotspot.shape.x * stage.width,
     top: hotspot.shape.y * stage.height,
@@ -145,25 +183,36 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
       ref={(node) => registerRef?.(hotspot.id, node)}
       accessibilityRole="button"
       accessibilityLabel={label}
+      nativeID={nativeIdFor(hotspot.id)}
       hitSlop={hitSlopFor(rect, hit.min)}
+      unstable_pressDelay={ref.layout.play.hotspotPressDelay}
+      onPressIn={onPressIn}
       onPress={() => onPress(hotspot)}
+      onFocus={focus.onFocus}
+      onBlur={focus.onBlur}
       testID={`hotspot-${hotspot.id}`}
       style={[styles.target, rect]}
     >
       <Animated.View style={[StyleSheet.absoluteFill, bracketStyle]} pointerEvents="none">
         <Brackets width={rect.width} height={rect.height} tone={iris ? "iris" : solved ? "spent" : "open"} />
       </Animated.View>
-      {solved ? <View pointerEvents="none" style={styles.seal} /> : null}
+      {solved ? (
+        <View pointerEvents="none" style={styles.seal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={styles.sealFill} />
+          <CheckIcon size={SEAL.icon} weight="bold" color={ref.color.textPrimary} />
+        </View>
+      ) : null}
       <Animated.View style={[StyleSheet.absoluteFill, styles.trace, traceStyle]} pointerEvents="none" />
+      <FocusRing visible={focus.focused} shape="panel" radius={TRACE.radius} />
     </Pressable>
   );
 });
 
-/** Four 10 pt corner brackets, with a tick at the middle of each side. */
+/** Four 10 pt corner brackets, with a tick at the middle of each side, on a void halo. */
 function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "iris" }) {
-  const len = 10;
-  const i = 1.5;
-  const tick = 4;
+  const len = B.arm;
+  const i = B.inset;
+  const tick = B.tick;
   const mx = width / 2;
   const my = height / 2;
   const d = [
@@ -176,27 +225,31 @@ function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "ir
     `M${mx} ${height - i}V${height - i - tick}`,
     `M${i} ${my}H${i + tick}`,
   ].join("");
-  const stroke = tone === "iris" ? color.wax : tone === "spent" ? color.textSecondary : color.accent;
+  const stroke = tone === "spent" ? ref.color.textSecondary : ref.color.textPrimary;
+  const weight = tone === "iris" ? B.iris : B.stroke;
   return (
-    <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Path d={d} stroke={color.bracketShadow} strokeWidth={4} fill="none" />
-      <Path d={d} stroke={stroke} strokeWidth={1.5} fill="none" />
-    </Svg>
+    <View style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width={width} height={height}>
+        <Path d={d} stroke={ref.color.void} strokeOpacity={B.haloOpacity} strokeWidth={B.halo + weight - B.stroke} fill="none" />
+        <Path d={d} stroke={stroke} strokeWidth={weight} fill="none" />
+      </Svg>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   target: { position: "absolute" },
-  trace: { borderWidth: 2, borderColor: color.verdigris, borderRadius: 4 },
+  // The solve flash: a white outline round the target.
+  trace: { borderWidth: TRACE.width, borderColor: ref.color.textPrimary, borderRadius: TRACE.radius },
+  // Solved: a white check in a see-through void disc at the top right.
   seal: {
     position: "absolute",
-    top: 2,
-    right: 2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: color.verdigris,
-    borderWidth: 1,
-    borderColor: color.canvas,
+    top: SEAL.inset,
+    right: SEAL.inset,
+    width: SEAL.size,
+    height: SEAL.size,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  sealFill: { ...StyleSheet.absoluteFill, borderRadius: ref.radius.round, backgroundColor: ref.color.void, opacity: SEAL.fillOpacity },
 });

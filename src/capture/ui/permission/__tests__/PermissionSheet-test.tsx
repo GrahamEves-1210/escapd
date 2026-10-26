@@ -1,12 +1,11 @@
-// The permission sheet's own rules (docs/DESIGN.md 03): the live Sheet's look,
-// bottom padding, the cap below the back control, and the large-text steps
-// (drop the zone, then scroll the text while the controls stay pinned).
+// The permission sheet's own rules (docs/DESIGN.md 03): pushr's white sheet,
+// its type, bottom padding, the cap below the safe top, and the large-text
+// steps (drop the panel, then scroll the text while the controls stay pinned).
 import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { color, hit, radius, ref, space, type } from "@/theme/tokens";
-import { MOUNT_HEIGHT, ZONE_HEIGHT } from "../IllustrationZone";
+import { ref } from "@/theme/tokens";
 import { CAP_BELOW_SAFE_TOP, PermissionSheet } from "../PermissionSheet";
 
 const hidden = { includeHiddenElements: true } as const;
@@ -33,68 +32,72 @@ async function layout(testID: string, height: number) {
 }
 
 describe("PermissionSheet", () => {
-  it("takes the live Sheet's look: walnut, radius.sheet top corners, a brass top hairline and the inner brass rule, no handle", async () => {
+  it("is pushr's sheet: white, 40 pt continuous top corners (the camera's), no edge, rule or shadow", async () => {
     await renderSheet();
-    expect(styleOf(screen.getByTestId("permission-sheet", hidden))).toMatchObject({
-      backgroundColor: color.surface,
-      borderTopLeftRadius: radius.sheet,
-      borderTopRightRadius: radius.sheet,
-      borderTopWidth: ref.layout.permission.hairline,
-      borderColor: color.hairline,
+    const sheet = styleOf(screen.getByTestId("permission-sheet", hidden));
+    expect(sheet).toMatchObject({
+      backgroundColor: ref.color.paper,
+      borderTopLeftRadius: ref.radius.bottomSheet,
+      borderTopRightRadius: ref.radius.bottomSheet,
+      borderCurve: "continuous",
       overflow: "hidden",
     });
-    expect(styleOf(screen.getByTestId("permission-sheet-rule", hidden))).toMatchObject({
-      top: space.xs,
-      left: space.xs,
-      right: space.xs,
-      borderTopLeftRadius: radius.sheet - space.xs,
-      borderColor: color.brassRule,
-      borderBottomWidth: 0,
+    expect(sheet.borderWidth ?? 0).toBe(0);
+    expect(sheet.borderTopWidth ?? 0).toBe(0);
+    expect(sheet.shadowOpacity ?? 0).toBe(0);
+    expect(screen.queryByTestId("permission-sheet-rule", hidden)).toBeNull();
+    // The panel first, full-bleed; the text in the 24 gutter, 24 below it.
+    expect(styleOf(screen.getByTestId("permission-illustration", hidden))).toMatchObject({ height: ref.layout.permission.panel });
+    expect(styleOf(screen.getByTestId("permission-text", hidden))).toMatchObject({ paddingHorizontal: ref.space.xl, paddingTop: ref.space.xl });
+    // Title in Archivo Black, lowercase; body in the system font, grey, lowercase, titleToBody 14 below.
+    expect(styleOf(screen.getByRole("header", { name: "Let ESCAPD use the camera" }))).toMatchObject({
+      ...ref.type.display,
+      color: ref.color.inkDisplay,
     });
-    // Title in Playfair, body in Jakarta.
-    expect(styleOf(screen.getByRole("header", { name: "Let ESCAPD use the camera" }))).toMatchObject({ ...type.narrativeTitle, color: color.text });
-    expect(styleOf(screen.getByText("Body"))).toMatchObject({ ...type.body, color: color.textSecondary });
-    // The zone: space.xl of walnut, then the 136 mount (a 128 plate, 4 in).
-    expect(MOUNT_HEIGHT).toBe(136);
-    expect(ZONE_HEIGHT).toBe(space.xl + MOUNT_HEIGHT);
+    expect(styleOf(screen.getByText("Body"))).toMatchObject({ ...ref.type.body, color: ref.color.inkMuted, textTransform: "lowercase" });
+    expect(styleOf(screen.getByText("Body").parent as never).marginTop).toBe(ref.layout.permission.titleToBody);
+    // The controls: 28 below the body, 8 apart, in the gutter.
+    expect(styleOf(screen.getByTestId("permission-controls", hidden))).toMatchObject({
+      paddingTop: ref.space.band,
+      gap: ref.space.sm,
+      paddingHorizontal: ref.space.xl,
+    });
   });
 
-  it("caps the sheet space.sm below the back control's 48 box", async () => {
+  it("caps the sheet ref.space.lg below the safe top", async () => {
     await renderSheet();
-    expect(CAP_BELOW_SAFE_TOP).toBe(ref.layout.permission.back.top + hit.min + space.sm);
-    expect(styleOf(screen.getByTestId("permission-sheet-host", hidden)).paddingTop).toBe(BASE.insets.top + CAP_BELOW_SAFE_TOP);
-    // y 121 on the base device.
-    expect(BASE.insets.top + CAP_BELOW_SAFE_TOP).toBe(121);
+    expect(CAP_BELOW_SAFE_TOP).toBe(ref.space.lg);
+    expect(styleOf(screen.getByTestId("permission-sheet-host", hidden)).paddingTop).toBe(BASE.insets.top + ref.space.lg);
   });
 
-  it("ends the last button space.xs above the home indicator, or space.lg above a 0 inset", async () => {
+  it("ends the last button ref.space.ctaBottom above the home indicator, or ref.space.lg above a 0 inset", async () => {
     await renderSheet();
-    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(BASE.insets.bottom + space.xs);
+    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(BASE.insets.bottom + ref.space.ctaBottom);
     await renderSheet(SHORT);
-    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(space.lg);
+    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(ref.space.lg);
   });
 
-  it("keeps the illustration while the sheet fits under the cap", async () => {
+  it("keeps the panel while the sheet fits under the cap", async () => {
     await renderSheet();
     await layout("permission-sheet-host", BASE.frame.height);
-    await layout("permission-text", 228);
+    await layout("permission-text", 260);
     await layout("permission-controls", 170);
     expect(screen.getByTestId("permission-illustration", hidden)).toBeTruthy();
     expect(screen.queryByTestId("permission-scroll", hidden)).toBeNull();
   });
 
-  it("large text: drops the zone first, then scrolls the text with the controls pinned", async () => {
+  it("large text: drops the panel first, then scrolls the text with the controls pinned", async () => {
     await renderSheet();
     await layout("permission-sheet-host", BASE.frame.height);
     await layout("permission-controls", 170);
 
-    // 1 + 450 + 170 = 621 fits under the cap (731 tall), but not with the 160 zone.
-    await layout("permission-text", 450);
+    // The room under the cap is 852 - 75 = 777: 500 + 170 fits, but not with the 150 panel.
+    await layout("permission-text", 500);
     expect(screen.queryByTestId("permission-illustration", hidden)).toBeNull();
     expect(screen.queryByTestId("permission-scroll", hidden)).toBeNull();
 
-    // 1 + 600 + 170 = 771 doesn't fit at all: the text scrolls.
-    await layout("permission-text", 600);
+    // 650 + 170 = 820 doesn't fit at all: the text scrolls.
+    await layout("permission-text", 650);
     expect(screen.queryByTestId("permission-illustration", hidden)).toBeNull();
     expect(screen.getByTestId("permission-scroll", hidden)).toBeTruthy();
     // The controls stay outside the scroll view, pinned at the bottom.

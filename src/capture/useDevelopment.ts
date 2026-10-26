@@ -12,7 +12,7 @@ import {
   type GenerationJob,
 } from "@/lib/escapd-api";
 import { describeFailure, type FailureCopy } from "./failure";
-import { getPlates } from "./roll";
+import { getPlates, getSlots } from "./roll";
 import { developPlates, redevelop } from "./send";
 import { MIN_PLATES } from "./slots";
 
@@ -43,8 +43,8 @@ export function errorStage(error: unknown): DevStage {
   return {
     kind: "error",
     message: isNetworkError(error)
-      ? "You're offline. Your plates are safe. Connect and try again."
-      : "Couldn't reach the darkroom. Your plates are safe. Try again.",
+      ? "You're offline. Your photos are safe. Connect and try again."
+      : "Couldn't connect to ESCAPD. Your photos are safe. Try again.",
   };
 }
 
@@ -98,7 +98,7 @@ export function useDevelopment(resumeRoomId?: string) {
           const job = await getLatestGenerationJob(resumeRoomId);
           if (cancelled) return;
           if (job) follow(resumeRoomId, job);
-          else setStage({ kind: "error", message: "This case was never sent. Photograph the room again." });
+          else setStage({ kind: "error", message: "This case was never sent. Take the photos again." });
           return;
         }
         const access = await getMyAccess();
@@ -108,9 +108,9 @@ export function useDevelopment(resumeRoomId?: string) {
         if (!access.can_generate) return setStage({ kind: "access", reason: "cap" });
         // Plates live in memory: an app restart on this screen loses them.
         if (getPlates().length < MIN_PLATES) {
-          return setStage({ kind: "error", message: "Your plates were cleared when the app closed. Photograph the room again." });
+          return setStage({ kind: "error", message: "Your photos were cleared when the app closed. Take them again." });
         }
-        const { roomId, job } = await developPlates(getPlates(), (sent, total) => {
+        const { roomId, job } = await developPlates(getSlots(), (sent, total) => {
           if (!cancelled) setStage({ kind: "sending", sent, total });
         });
         if (!cancelled) follow(roomId, job);

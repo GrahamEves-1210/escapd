@@ -17,15 +17,15 @@ export type CaseState =
   | { kind: "developing"; roomId: string }
   | { kind: "failed"; roomId: string };
 
-/** The brass plate labels (live `stamp`, written in capitals). */
+/** The tag pills' labels (ref.type.tag, uppercase). */
 export const TAGS: Record<CardId, string> = {
   study: "THE STUDY",
   room: "YOUR ROOM",
   case: "YOUR CASE",
 };
 
-// Status notes are live `caption` (UI text), so sentence case. DEVELOPING alone
-// is a `stamp` line (the warm Thinking state's note type), so it stays in capitals.
+// State lines are ref.type.meta (UI text), so sentence case, the building
+// thinking line included.
 const STUDY_NOTE: Record<StudyEntry, string> = { unseal: "Unseal", continue: "Continue", replay: "Replay" };
 // Today's title-screen labels, prefixed with the card's name.
 const STUDY_LABEL: Record<StudyEntry, string> = {
@@ -74,7 +74,7 @@ export function caseForRoom(
   }
 }
 
-/** The status note under the plate label. Null while loading: the line stays blank. */
+/** The state line under the tag pill. Null while loading: the line stays blank. */
 export function caseNote(state: CaseState): string | null {
   switch (state.kind) {
     case "loading":
@@ -88,7 +88,7 @@ export function caseNote(state: CaseState): string | null {
     case "ready":
       return state.progress === "continue" ? "Continue" : state.progress === "replay" ? "Replay" : "Open";
     case "developing":
-      return "DEVELOPING";
+      return "Building";
     case "failed":
       return "See why";
   }
@@ -109,9 +109,9 @@ export function caseLabel(state: CaseState): string {
       if (state.progress === "replay") return "Your case. Solved. Replay the case.";
       return state.progress === "continue" ? "Your case. Continue the case." : "Your case. Open the case.";
     case "developing":
-      return "Your case. Developing.";
+      return "Your case. Building.";
     case "failed":
-      return "Your case. It didn't develop. See why.";
+      return "Your case. It didn't build. See why.";
   }
 }
 
@@ -119,14 +119,14 @@ export function caseHint(state: CaseState): string | undefined {
   return state.kind === "none" ? "Photograph a room first." : undefined;
 }
 
-/** The SOLVED stamp shows only when the latest session on the newest own case is completed. */
+/** The SOLVED pill shows only when the latest session on the newest own case is completed. */
 export function caseSolved(state: CaseState): boolean {
   return state.kind === "ready" && state.progress === "replay";
 }
 
 /**
- * None yet, Offline and Try later: disabled at 0.4. The note explains why, so
- * it is information, not part of the control, and stays at full strength.
+ * None yet, Offline and Try later: disabled at 0.45. The state line explains
+ * why, so it is information, not part of the control, and stays at full strength.
  */
 export function caseDisabled(state: CaseState): boolean {
   return state.kind === "none" || state.kind === "offline" || state.kind === "tryLater";
@@ -134,7 +134,7 @@ export function caseDisabled(state: CaseState): boolean {
 
 // Announced only when a flip is seen while the hub is open (never on the first fetch).
 export const READY_ANNOUNCEMENT = "Your case is ready.";
-export const FAILED_ANNOUNCEMENT = "Your case didn't develop. Open it to see why.";
+export const FAILED_ANNOUNCEMENT = "Your case didn't build. Open it to see why.";
 
 // THE STUDY's error notice (today's inline-error copy).
 export const STUDY_OFFLINE = "You're offline. Connect to begin.";

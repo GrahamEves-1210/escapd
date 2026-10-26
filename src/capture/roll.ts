@@ -1,5 +1,10 @@
-// The film roll for this test. Plates live in memory for the session so the
-// rangefinder and the light table can share them. Nothing here is uploaded.
+// The photos for this room, by slot. Each photo keeps its slot (its index in
+// PLATE_PROMPTS, so "2 · Opposite corner" always holds the opposite corner)
+// for life: removing one leaves its slot open instead of sliding the others
+// down, a retake replaces in place, and the camera's next shot fills the first
+// open slot. Photos live in memory for the session so the camera and the
+// review screen can share them. Nothing here is uploaded; send.ts uploads each
+// photo with position = its slot.
 import { useSyncExternalStore } from "react";
 import { newId } from "@/lib/uuid";
 import { MAX_PLATES } from "./slots";
@@ -10,27 +15,43 @@ export interface Plate {
   height: number;
 }
 
+/** A slot: its photo, or null while it is open. */
+export type Slot = Plate | null;
+
 /**
- * One development attempt for the current plates: the draft room they are
- * being sent to and the idempotency key for the generation request. Reused on
+ * One build attempt for the current photos: the draft room they are being
+ * sent to and the idempotency key for the generation request. Reused on
  * retries so a flaky network never creates a second room or a second charge;
- * dropped whenever the plates change, because a sent room's photos are fixed.
+ * dropped whenever any slot changes, because a sent room's photos are fixed.
  */
 export interface Ticket {
   key: string;
   roomId: string | null;
 }
 
-let plates: Plate[] = [];
+// Slots up to the last filled one: no trailing open slots, so an open slot
+// in here is a hole the player made by removing a photo.
+let slots: readonly Slot[] = [];
+// The filled photos in slot order, kept with `slots` (a stable snapshot).
+let plates: readonly Plate[] = [];
 let ticket: Ticket | null = null;
 const listeners = new Set<() => void>();
 
-function emit() {
+function commit(next: Slot[]) {
+  while (next.length && next[next.length - 1] === null) next.pop();
+  slots = next;
+  plates = next.filter((slot): slot is Plate => slot !== null);
   ticket = null;
   for (const listener of listeners) listener();
 }
 
-export function getPlates() {
+/** The slots up to the last filled one; an open slot inside them is null. */
+export function getSlots(): readonly Slot[] {
+  return slots;
+}
+
+/** The filled photos in slot order (their count is what the rules count). */
+export function getPlates(): readonly Plate[] {
   return plates;
 }
 
@@ -41,34 +62,58 @@ export function subscribePlates(listener: () => void) {
   };
 }
 
+export function useSlots() {
+  return useSyncExternalStore(subscribePlates, getSlots, getSlots);
+}
+
 export function usePlates() {
   return useSyncExternalStore(subscribePlates, getPlates, getPlates);
 }
 
+/**
+ * The slot the camera's next shot fills: the first open one (a hole), else the
+ * one after the last; null once every slot up to MAX_PLATES is filled.
+ */
+export function firstOpenSlot(current: readonly Slot[] = slots): number | null {
+  const hole = current.indexOf(null);
+  if (hole >= 0) return hole;
+  return current.length < MAX_PLATES ? current.length : null;
+}
+
+/** Fills the first open slot. False when all MAX_PLATES are filled. */
 export function addPlate(plate: Plate) {
-  if (plates.length >= MAX_PLATES) return false;
-  plates = [...plates, plate];
-  emit();
+  const slot = firstOpenSlot();
+  if (slot === null) return false;
+  const next = [...slots];
+  next[slot] = plate;
+  commit(next);
   return true;
 }
 
-export function replacePlate(index: number, plate: Plate) {
-  if (index < 0 || index >= plates.length) return false;
-  plates = plates.map((current, i) => (i === index ? plate : current));
-  emit();
+/**
+ * Puts a photo in this slot: a retake replaces in place, and an open slot
+ * (one the review screen offers) is filled. Only slots up to the one after
+ * the last filled, so no slot is skipped by accident.
+ */
+export function replacePlate(slot: number, plate: Plate) {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_PLATES || slot > slots.length) return false;
+  const next = [...slots];
+  next[slot] = plate;
+  commit(next);
   return true;
 }
 
-export function removePlate(index: number) {
-  if (index < 0 || index >= plates.length) return false;
-  plates = plates.filter((_, i) => i !== index);
-  emit();
+/** Empties this slot; the others keep theirs. */
+export function removePlate(slot: number) {
+  if (slot < 0 || slot >= slots.length || slots[slot] === null) return false;
+  const next = [...slots];
+  next[slot] = null;
+  commit(next);
   return true;
 }
 
 export function clearPlates() {
-  plates = [];
-  emit();
+  commit([]);
 }
 
 export function currentTicket(): Ticket {

@@ -1,45 +1,53 @@
-// The guide's line art as data (docs/DESIGN.md 04, Inner plate and Steps).
-// One renderer (StepArt) draws every scene, so the stroke, tones, fills,
-// fades, phone, screen clip and brackets come from tokens in one place.
-// Coordinates are the art box's own units (ref.layout.guide.art, 240 x 266):
-// the whole drawing scales with the plate when large text shrinks it.
+// The guide's line art as data (docs/DESIGN.md 04, Layout: Illustration;
+// Steps). One renderer (StepArt) draws every scene, so the strokes, fills and
+// fades come from tokens in one place. Coordinates are the art box's own
+// units (ref.layout.guide.art, 240 x 266): the whole drawing scales evenly
+// when large text shrinks the box.
 
-/** Depth comes only from stroke brightness (ref.layout.guide.line). */
-export type Tone = "hero" | "mid" | "back" | "context";
+/**
+ * Stroke inks, brightest first. Depth comes from brightness alone: `hero`
+ * (textPrimary) in front, then `mid` (lineMid), `back` (lineBack) and
+ * `context` (lineContext). A subject's outline takes its depth's ink; detail
+ * inside it is dimmer (back, ridge or print). `bezel` is the thin lineBack
+ * shoulder just inside the hero phone's outline; `screen` its inner screen
+ * edge (thin, darkening downward); `text` and `textDim` are print on a lit
+ * panel; `ridge` is thin detail inside a dark shape.
+ */
+export type Ink = "hero" | "mid" | "back" | "context" | "bezel" | "screen" | "text" | "textDim" | "ridge";
+
+/**
+ * Fills. Every fill is opaque, so a shape hides whatever was drawn before it.
+ * void: flat black. device: the top-lit gradient inside a device outline
+ * (ref.gradient.deviceFill). panel: the lit panel, light at the top right.
+ * tag: the small top-to-bottom gradient of a label or picture.
+ */
+export type Fill = "void" | "device" | "panel" | "tag";
+
+/**
+ * "down": the stroke fades toward the art box's bottom (a hand running off
+ * the drawing). "end": it fades over its own last stretch, along its final
+ * direction (step 2's view rays, step 3's desk edges).
+ */
+export type Fade = "down" | "end";
 
 export type Point = readonly [number, number];
 
 /**
- * One stroked shape. Path data uses only M, L, H, V, C and Z, so every number
- * in it is a coordinate (the ink-width test reads them as a conservative
- * bound: a curve stays inside its control points).
+ * One shape. Path data is absolute M, L, H, V, C and Z only, so every number
+ * in it is a coordinate and its control points bound it (the gradients and
+ * the ink tests rely on that).
  */
 export interface Mark {
   d: string;
-  tone: Tone;
-  /**
-   * Fades linearly to transparent over its last ref.layout.guide.line.fade,
-   * along the path's final direction, reaching nothing at its last point
-   * (context lines: the hand and the view wedges; also step 3's desk edges).
-   */
-  fade?: boolean;
-  /** Opaque fill in a live colour that hides the marks drawn before it (device bodies). */
-  fill?: "surface" | "canvas";
+  /** Stroke ink; none for a fill-only shape. */
+  ink?: Ink;
+  fill?: Fill;
+  /** The fill gradient's CSS angle when the shape is turned (step 2's plan phones). Default: the fill's own. */
+  fillAngle?: number;
+  fade?: Fade;
 }
 
-/** The hero phone (steps 1, 3 and 4): ref.layout.guide.phone, drawn face-on. */
-export interface HeroPhone {
-  /** Top-left corner of the body. */
-  x: number;
-  y: number;
-  /** The framed subject, redrawn inside the inner screen and clipped to its radius-6 corners. */
-  screen: readonly Mark[];
-}
-
+/** One step's drawing: marks in paint order, back to front. */
 export interface Scene {
-  /** Drawn first, back to front. The phone body hides what it covers. */
-  behind: readonly Mark[];
-  phone?: HeroPhone;
-  /** Drawn over the phone. */
-  front?: readonly Mark[];
+  marks: readonly Mark[];
 }

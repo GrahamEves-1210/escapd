@@ -1,51 +1,45 @@
 // 03 · Camera permission: the sheet that holds the screen's one decision
-// (docs/DESIGN.md 03, Hosting, Layout and States). A custom bottom-anchored
-// view in the live Sheet's look (src/components/Sheet.tsx): walnut
-// color.surface with the live Grain, radius.sheet top corners, a 1 pt
-// color.hairline top edge and the inner 1 pt color.brassRule inset space.xs.
-// No brass handle, scrim, eyebrow or X: it is the route's own state, not a
-// modal, so nothing suggests it can be dragged or tapped away. It reuses the
-// live Sheet's enter motion (motion.sheetSpring; a motion.reducedFade fade
-// under reduced motion) and its move-focus-to-title behaviour.
+// (docs/DESIGN.md 03, Hosting, Layout and States). pushr's sheet: full-bleed
+// ref.color.paper rising from below, top corners ref.radius.bottomSheet
+// (continuous), square at the foot, no shadow, scrim, grabber, hairline or
+// grain. It is the route's own state, not a modal: nothing suggests it can be
+// dragged or tapped away. It slides up on ref.motion.sheetRise (a
+// motion.reducedFade fade under reduced motion) and moves accessibility focus
+// to the title.
 //
-// Top to bottom: the illustration zone (the film-plate mount), the title and
-// body (and the notice slot), then the pinned controls. Content-sized and
-// bottom-anchored: when its content changes height, its top moves with
-// motion.sheetSpring and its bottom stays fixed, the buttons with it. With
-// large text it grows up to a cap space.sm below the back control; past that
-// the zone is dropped, then the text scrolls while the controls stay pinned.
+// Top to bottom: the illustration panel, the title and body (and the notice
+// slot) in the ref.space.xl gutter, then the pinned controls. Content-sized
+// and bottom-anchored: when its content changes height, its top moves with
+// ref.motion.sheetRise and its bottom stays fixed, the buttons with it. With
+// large text it grows up to ref.space.lg below the safe top; past that the
+// panel is dropped, then the text scrolls while the controls stay pinned.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { AccessibilityInfo, ScrollView, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
   LayoutAnimationConfig,
   LinearTransition,
   ReduceMotion,
-  SlideInDown,
-  SlideOutDown,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Grain } from "@/components/Grain";
-import { Text, type TextRef } from "@/components/Text";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, curve, hit, motion, radius, ref, space } from "@/theme/tokens";
-import { IllustrationZone, ZONE_HEIGHT } from "./IllustrationZone";
+import { motion, ref } from "@/theme/tokens";
+import { sheetEntering, sheetExiting, toEasing } from "@/components/noir";
+import { IllustrationPanel } from "./IllustrationPanel";
 
 const P = ref.layout.permission;
-const SPRING = motion.sheetSpring;
-const EDGE = P.hairline;
-
-const RISE = SlideInDown.springify().damping(SPRING.damping).stiffness(SPRING.stiffness).mass(SPRING.mass).reduceMotion(ReduceMotion.Never);
-const FALL = SlideOutDown.springify().damping(SPRING.damping).stiffness(SPRING.stiffness).mass(SPRING.mass).reduceMotion(ReduceMotion.Never);
-const RESIZE = LinearTransition.springify().damping(SPRING.damping).stiffness(SPRING.stiffness).mass(SPRING.mass).reduceMotion(ReduceMotion.Never);
+const RISE = sheetEntering(false);
+const FALL = sheetExiting(false);
+// A height change moves the sheet's top on the same no-overshoot curve as its rise.
+const RESIZE = LinearTransition.duration(ref.motion.sheetRise.duration).easing(toEasing(ref.motion.sheetRise.easing)).reduceMotion(ReduceMotion.Never);
 // motion.reducedFade: the text crossfade (Denied copy, notice in or out) in
 // every mode, and the sheet's enter and exit under reduced motion.
 const FADE_IN = FadeIn.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 const FADE_OUT = FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 
-/** The sheet's top never rises above the back control's 48 box plus space.sm: y 121 under a 59 safe area (6 + 48 + 8 below it). */
-export const CAP_BELOW_SAFE_TOP = P.back.top + hit.min + space.sm;
+/** The sheet's top never rises above this far below the safe top. */
+export const CAP_BELOW_SAFE_TOP = ref.space.lg;
 
 export interface SheetNotice {
   /** The slot's identity: a new key crossfades it. */
@@ -60,9 +54,9 @@ export interface PermissionSheetProps {
   copyKey: string;
   title: string;
   body: string;
-  /** The inline notice or thinking line, space.sm below the body; null when unset. */
+  /** The inline notice or thinking line, ref.space.sm below the body; null when unset. */
   notice: SheetNotice | null;
-  /** The pinned controls: the primary button, then the quiet button(s). */
+  /** The pinned controls: the pill, then the quiet button(s). */
   children: ReactNode;
   testID?: string;
 }
@@ -70,24 +64,24 @@ export interface PermissionSheetProps {
 export function PermissionSheet({ copyKey, title, body, notice, children, testID }: PermissionSheetProps) {
   const insets = useSafeAreaInsets();
   const { reducedMotion } = useTheme();
-  const titleRef = useRef<TextRef>(null);
+  const titleRef = useRef<HostInstance>(null);
   const [hostHeight, setHostHeight] = useState(0);
   const [textHeight, setTextHeight] = useState(0);
   const [controlsHeight, setControlsHeight] = useState(0);
 
-  // The last button's bottom edge sits space.xs above the home indicator; with
-  // no bottom inset, a 4 pt edge is too tight, so it's space.lg.
-  const bottomPad = insets.bottom > 0 ? insets.bottom + space.xs : space.lg;
+  // The last button's bottom edge sits ref.space.ctaBottom above the home
+  // indicator; with no bottom inset, that is too tight, so it's ref.space.lg.
+  const bottomPad = insets.bottom > 0 ? insets.bottom + ref.space.ctaBottom : ref.space.lg;
   const capTop = insets.top + CAP_BELOW_SAFE_TOP;
 
-  // Large text: drop the decorative zone once the sheet would pass the cap,
+  // Large text: drop the decorative panel once the sheet would pass the cap,
   // then let the text scroll. Text and controls heights don't depend on either
   // choice, so the decision is stable.
   const measured = hostHeight > 0 && textHeight > 0 && controlsHeight > 0;
   const room = hostHeight - capTop;
-  const content = EDGE + textHeight + controlsHeight;
+  const content = textHeight + controlsHeight;
   const scroll = measured && content > room;
-  const zone = !measured || content + ZONE_HEIGHT <= room;
+  const panel = !measured || content + P.panel <= room;
 
   // Accessibility focus moves to the title when the sheet enters and after
   // any switch to or from Denied (the title is keyed by copyKey).
@@ -112,14 +106,12 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
     <LayoutAnimationConfig skipEntering skipExiting>
       <View style={styles.text} onLayout={onText} testID="permission-text">
         <Animated.View key={`title-${copyKey}`} entering={FADE_IN} exiting={FADE_OUT}>
-          <Text ref={titleRef} variant="narrativeTitle" accessibilityRole="header">
+          <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
             {title}
           </Text>
         </Animated.View>
         <Animated.View key={`body-${copyKey}`} entering={FADE_IN} exiting={FADE_OUT} style={styles.body}>
-          <Text variant="body" tone="secondary">
-            {body}
-          </Text>
+          <Text style={styles.bodyText}>{body}</Text>
         </Animated.View>
         {notice ? (
           <Animated.View key={notice.key} entering={FADE_IN} exiting={notice.fadeOut ? FADE_OUT : undefined} style={styles.notice}>
@@ -149,9 +141,7 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
         layout={resize}
         style={styles.sheet}
       >
-        <Grain />
-        <View pointerEvents="none" style={styles.rule} testID="permission-sheet-rule" />
-        {zone ? <IllustrationZone /> : null}
+        {panel ? <IllustrationPanel /> : null}
         {scroll ? (
           <ScrollView style={styles.scroll} bounces={false} alwaysBounceVertical={false} testID="permission-scroll">
             {text}
@@ -174,39 +164,26 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
 
 const styles = StyleSheet.create({
   host: { justifyContent: "flex-end" },
-  // The live Sheet's frame: walnut, radius.sheet top corners with continuous
-  // curves, the 1 pt brass hairline along the top edge and round its corners,
-  // square bottom corners at the screen edge. Opaque, no shadow.
+  // pushr's sheet: white, full-bleed, ref.radius.bottomSheet continuous top corners,
+  // square at the screen's foot, clipping the panel. Opaque, no shadow.
   sheet: {
     flexShrink: 1,
-    backgroundColor: color.surface,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
-    ...curve,
-    borderTopWidth: EDGE,
-    borderColor: color.hairline,
+    backgroundColor: ref.color.paper,
+    borderTopLeftRadius: ref.radius.bottomSheet,
+    borderTopRightRadius: ref.radius.bottomSheet,
+    ...ref.curve,
     overflow: "hidden",
   },
-  // The live Sheet's inner rule: 1 pt color.brassRule, space.xs inside the
-  // top and sides, concentric with the corners, open at the bottom.
-  rule: {
-    position: "absolute",
-    top: space.xs,
-    left: space.xs,
-    right: space.xs,
-    bottom: 0,
-    borderTopLeftRadius: radius.sheet - space.xs,
-    borderTopRightRadius: radius.sheet - space.xs,
-    ...curve,
-    borderWidth: EDGE,
-    borderBottomWidth: 0,
-    borderColor: color.brassRule,
-  },
   scroll: { flexGrow: 0, flexShrink: 1 },
-  // Title box space.xl below the mount (or below the top hairline when the zone is dropped).
-  text: { paddingHorizontal: space.gutter, paddingTop: space.xl },
-  body: { marginTop: space.sm },
-  notice: { marginTop: space.sm },
-  // The primary button sits space.xl below the body (or notice); the quiet buttons space.sm apart.
-  controls: { paddingHorizontal: space.gutter, paddingTop: space.xl, gap: space.sm },
+  // Title box ref.space.xl below the panel (or the sheet's top when the panel is dropped).
+  text: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.xl },
+  // pushr's title: Archivo Black 30/36, lowercase (ref.type.display), black, left-aligned.
+  title: { ...ref.type.display, color: ref.color.inkDisplay },
+  // The body: the system font 17/22, the reference's grey, lowercase, ragged right; its box
+  // titleToBody 14 below the title's (title baseline to first body baseline 39, as measured).
+  body: { marginTop: P.titleToBody },
+  bodyText: { ...ref.type.body, color: ref.color.inkMuted, textTransform: "lowercase" },
+  notice: { marginTop: ref.space.sm },
+  // The pill sits ref.space.band below the body's box (or the notice); the quiet buttons ref.space.sm below it, and apart.
+  controls: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.band, gap: ref.space.sm },
 });

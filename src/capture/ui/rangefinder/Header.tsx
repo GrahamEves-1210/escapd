@@ -1,12 +1,13 @@
-// The header row: back, the plate prompt, library. Back and library are the
-// live IconButton (48 round, plain, glyph in color.text at ICON_SIZE), as on
-// /play and the light table. The prompt is a Playfair title (narrativeTitle
-// 24/30) over a Jakarta detail (caption 13/18, secondary): one line each is
-// exactly the buttons' 48, so the block is centred on their centre line; a
-// second line grows it downward and the viewfinder shrinks to match. The
-// detail slot holds the plate detail, an error line, or (during a wait over
-// ~1 s) the warm thinking line. Title and detail are one screen-reader
-// element, role header, announced politely when they change.
+// The header row, Once's: two 44 square buttons (back, library) 21 from the
+// screen edges, and between them the plate prompt: the serif title
+// (ref.type.serifTitle, Roboto Serif 17/22, textPrimary) over the grey meta
+// line (ref.type.meta, system 13/16, textSecondary), both centred. The title's
+// line box starts promptTop below the buttons' top and the meta line metaGap
+// under it, so one line each fills the buttons' 44 exactly (baselines y 87 and
+// 108 on 852). A second line grows the header downward and the viewfinder
+// shrinks to match. The meta slot holds the plate detail, an error line, or
+// (during a wait over ~1 s) the thinking line. Title and meta are one
+// screen-reader element, role header, announced politely when they change.
 //
 // Keyboard and switch focus reaches controls only. On Android `accessible`
 // makes a View keyboard-focusable (and focusable={false} can't undo it), so
@@ -15,25 +16,13 @@
 // tree, so on Android 7-8.1, where screenReaderFocusable does nothing,
 // TalkBack still reads the prompt once, by its label.
 import type { Ref } from "react";
-import {
-  Platform,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-  type HostInstance,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
-import { IconButton } from "@/components/IconButton";
-import { ArrowLeftIcon, ICON_SIZE, ICON_WEIGHT, ImagesIcon, WarningIcon } from "@/components/icons";
+import { Platform, StyleSheet, Text, View, useWindowDimensions, type HostInstance, type StyleProp, type ViewStyle } from "react-native";
+import { ArrowLeftIcon, ICON_WEIGHT, ImagesIcon, WarningIcon } from "@/components/icons";
 import { ThinkingStates } from "@/components/noir";
-import { Text } from "@/components/Text";
-import { color, hit, ref, space, type as typeScale } from "@/theme/tokens";
+import { ref } from "@/theme/tokens";
+import { SquareButton } from "./SquareButton";
 
 const L = ref.layout.camera;
-
-// 48 - (30 + 18) = 0 above and below a one-line title and detail.
-const PROMPT_PAD = Math.max(0, (hit.min - typeScale.narrativeTitle.lineHeight - typeScale.caption.lineHeight) / 2);
 
 export type PromptSubtitle =
   | { kind: "detail"; text: string }
@@ -48,7 +37,7 @@ export interface HeaderProps {
   libraryDisabled: boolean;
   title: string;
   subtitle: PromptSubtitle;
-  /** The prompt's screen-reader text: the title, then what the detail slot says. */
+  /** The prompt's screen-reader text: the title, then what the meta slot says. */
   promptLabel: string;
   promptRef?: Ref<HostInstance>;
   style?: StyleProp<ViewStyle>;
@@ -68,12 +57,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <View style={[styles.row, style]}>
-      <IconButton
-        icon={<ArrowLeftIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
-        accessibilityLabel={backLabel}
-        onPress={onBack}
-        testID="back"
-      />
+      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} testID="back" />
       <View
         ref={promptRef}
         accessible={Platform.OS === "ios"}
@@ -84,13 +68,13 @@ export function Header({
         style={styles.prompt}
         testID="prompt"
       >
-        <Text variant="narrativeTitle" align="center" importantForAccessibility="no">
+        <Text style={styles.title} importantForAccessibility="no">
           {title}
         </Text>
         <Subtitle subtitle={subtitle} />
       </View>
-      <IconButton
-        icon={<ImagesIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
+      <SquareButton
+        icon={ImagesIcon}
         accessibilityLabel={libraryLabel}
         onPress={onLibrary}
         disabled={libraryDisabled}
@@ -104,17 +88,17 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
   switch (subtitle.kind) {
     case "thinking":
       // The prompt's own label carries the status, so the line itself is hidden.
-      return <ThinkingStates decorative tone="warm" lines={[subtitle.line]} sizeTo={subtitle.sizeTo} testID="thinking" />;
+      return <ThinkingStates decorative variant="meta" ground="dark" lines={[subtitle.line]} sizeTo={subtitle.sizeTo} testID="thinking" style={styles.meta} />;
     case "notice":
       // The prompt element speaks and announces it, so the line stays silent here.
       return (
-        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.meta}>
           <ErrorLine text={subtitle.text} />
         </View>
       );
     case "detail":
       return (
-        <Text variant="caption" tone="secondary" align="center" importantForAccessibility="no">
+        <Text style={[styles.meta, styles.detail]} importantForAccessibility="no">
           {subtitle.text}
         </Text>
       );
@@ -122,34 +106,34 @@ function Subtitle({ subtitle }: { subtitle: PromptSubtitle }) {
 }
 
 /**
- * The error line: Phosphor Warning (16, regular) in color.warning, centred on
- * the first caption line, a space.sm gap, then the words in caption /
- * secondary (the error red is 2.3:1 on the dark ground, so it is never the
- * text). The group is centred and its lines wrap centred. Drawn here rather
- * than with the kit's NoticeLine, which is always `accessible` and so a
- * keyboard stop on Android.
+ * The error line, in the reference's own value steps: where the detail is
+ * grey, an error is white (textPrimary), led by Phosphor Warning (regular, 14)
+ * centred on the first meta line, space.xs before the words. The group is
+ * centred and its lines wrap centred. No amber, no oxblood.
  */
 function ErrorLine({ text }: { text: string }) {
   const { fontScale } = useWindowDimensions();
-  // The glyph stays 16 at every text size; its box follows the first line.
-  const firstLine = typeScale.caption.lineHeight * fontScale;
+  // The glyph stays 14 at every text size; its box follows the first line.
+  const firstLine = ref.type.meta.lineHeight * fontScale;
   return (
     <View style={styles.errorLine} testID="notice">
       <View style={[styles.errorIcon, { height: firstLine }]} testID="notice-icon">
-        <WarningIcon size={L.noticeIcon} color={color.warning} weight={ICON_WEIGHT} />
+        <WarningIcon size={L.noticeIcon} color={ref.color.textPrimary} weight={ICON_WEIGHT} />
       </View>
-      <Text variant="caption" tone="secondary" align="center" style={styles.errorText}>
-        {text}
-      </Text>
+      <Text style={[styles.error, styles.errorText]}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: L.buttons.edge },
-  // Between the buttons, space.sm clear of each: 243 wide on a 393 screen.
-  prompt: { flex: 1, marginHorizontal: space.sm, paddingVertical: PROMPT_PAD },
-  errorLine: { flexDirection: "row", alignItems: "flex-start", alignSelf: "center", justifyContent: "center", gap: space.sm },
+  row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: L.edge },
+  // Between the buttons, space.sm clear of each: 247 wide on a 393 screen.
+  prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: L.promptTop, alignItems: "center" },
+  title: { ...ref.type.serifTitle, color: ref.color.textPrimary, textAlign: "center" },
+  meta: { marginTop: L.metaGap },
+  detail: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
+  error: { ...ref.type.meta, color: ref.color.textPrimary, textAlign: "center" },
+  errorLine: { flexDirection: "row", alignItems: "flex-start", justifyContent: "center", gap: ref.space.xs },
   errorIcon: { justifyContent: "center" },
   errorText: { flexShrink: 1 },
 });

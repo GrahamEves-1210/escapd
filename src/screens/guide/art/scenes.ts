@@ -1,55 +1,114 @@
-// The four guide scenes (docs/DESIGN.md 04, Steps), drawn as warm line art in
-// the art box's own units (ref.layout.guide.art, 240 x 266, centre 120, 133).
-// The numbers in the path data are the drawings themselves; the measured parts
-// of the spec (stroke, tones, fade length, phone, inner screen, brackets,
-// plan-phone size, radius, ink limit) come from tokens through geometry.ts,
-// draw.ts and StepArt. Every scene's ink stays within ref.layout.guide.art.inkMax.
+// The four guide scenes (04, Steps), drawn in the reference's line-art style
+// in the art box's own units (ref.layout.guide.art, 240 x 266). The numbers in
+// the path data are the drawings themselves; the measured parts (strokes,
+// inks, fills, fades, the hero phone and its screen) come from tokens through
+// draw.ts. As in the reference, a mid object stands at the upper left with a
+// back object behind it to the right, and the hero phone is held in front at
+// the lower right; depth comes from brightness alone.
 import { ref } from "@/theme/tokens";
-import { circle, planPhoneTip, polar, roundedRect, segment } from "./geometry";
+import { circle, polar, polyline, roundedRect, turnedRect } from "./geometry";
 import type { Mark, Point, Scene } from "./types";
 
+const PHONE = ref.layout.guide.phone;
 const PLAN = ref.layout.guide.planPhone;
 
-// Step 1 · Start at the doorway. A doorway frame (mid) with a room corner
-// beyond it (back). A hand (context, fading toward the wrist) holds the hero
-// phone in front; the screen redraws the corner between the brackets.
-const doorway: Scene = {
-  behind: [
-    { d: "M46 212V8H150V212", tone: "mid" },
-    { d: "M54 212V16H142V212", tone: "mid" },
-    { d: "M46 212H54M142 212H150", tone: "mid" },
-    // The corner: the wall junction, and the floor line along both walls.
-    { d: "M88 16V142", tone: "back" },
-    { d: "M54 164L88 142L142 166", tone: "back" },
-    // The hand, behind the phone: the palm's edge, the fingertips round the
-    // right edge, and the wrist, which fades out at the bottom.
-    { d: "M112 168C102 172 98 188 100 206C101 224 98 244 95 264", tone: "context", fade: true },
-    { d: "M182 166C189 165 193 169 193 174C193 179 189 183 182 182", tone: "context" },
-    { d: "M182 186C190 185 194 189 194 195C194 200 190 204 182 203", tone: "context" },
-    { d: "M182 207C189 206 193 210 193 215C193 220 189 224 182 223", tone: "context" },
-    { d: "M182 227C187 226 190 229 190 233C190 237 187 240 182 239", tone: "context" },
-    { d: "M176 253C177 257 179 261 180 264", tone: "context", fade: true },
-  ],
-  phone: {
-    x: 112,
-    y: 116,
-    screen: [
-      { d: "M147 130V190", tone: "back" },
-      { d: "M121 208L147 190L173 204", tone: "back" },
-    ],
+/** Where the hero phone is held in steps 1, 3 and 4: the reference's place (its top-left corner). */
+const HELD: Point = [95, 108];
+
+/** The hero phone: a hero outline over the device fill, the thin bezel just inside it, and its inner screen. */
+function heroPhone(at: Point): Mark[] {
+  const [x, y] = at;
+  const s = PHONE.screen;
+  const b = PHONE.bezel;
+  return [
+    { d: roundedRect({ x, y, width: PHONE.width, height: PHONE.height }, PHONE.radius), ink: "hero", fill: "device" },
+    { d: roundedRect({ x: x + b.inset, y: y + b.inset, width: PHONE.width - b.inset * 2, height: PHONE.height - b.inset * 2 }, b.radius), ink: "bezel" },
+    {
+      d: roundedRect(
+        { x: x + s.insetX, y: y + s.insetTop, width: PHONE.width - s.insetX * 2, height: PHONE.height - s.insetTop - s.insetBottom },
+        s.radius,
+      ),
+      ink: "screen",
+    },
+  ];
+}
+
+// The hand holding the phone at HELD (context, fading toward the bottom).
+// Behind the phone: the thumb's pad and the palm's edge on the left, the
+// index finger hooked round the top of the right edge, and the wrist under
+// the phone. In front: three fingertips over the right edge, rounded lobes
+// wide at the top right and tapering down, each tucked under the one above
+// (so drawn bottom first). Together they hide the phone's edge from y 181 to
+// 242.
+const HAND_BEHIND: Mark[] = [
+  { d: "M97 160.5C92.5 157.8 88.4 157 85.2 157.4C83.6 157.7 83 159 83 161.4C82.6 170 80.2 180 77.2 190C73.6 202 70.6 214 70.1 228C69.7 240 71 253 72.6 266", ink: "context", fade: "down" },
+  { d: "M163 154.4C168.8 155.8 174.8 158.8 178.4 162.4C175.6 166.6 170.4 169.8 163 171.2", ink: "context" },
+  { d: "M148.5 243C145.4 250.5 141.8 258.4 138.6 266", ink: "context", fade: "down" },
+];
+const HAND_FRONT: Mark[] = [
+  {
+    d: "M164.6 219.4C168.4 217.4 174.6 217.8 177.6 221.4C180.2 224.4 179.4 229.4 177 233.4C174.6 237.4 171 241.6 168 243C165.6 244 163.4 242.8 163.2 240C162.8 235 163 226.8 163.6 222.4C163.8 220.8 164 220 164.6 219.4Z",
+    ink: "context",
+    fill: "void",
   },
+  {
+    d: "M162.4 204.2C165.6 202.6 171 202.8 174 205.6C176.4 208 175.8 212.4 174 216C171.8 220.4 169 225.8 166.8 228.2C164.8 230 162.2 229.2 161.6 226.4C160.8 221.6 160.8 212 161.4 207.4C161.6 205.8 161.8 204.8 162.4 204.2Z",
+    ink: "context",
+    fill: "void",
+  },
+  {
+    d: "M162.6 181.2C166.5 179.6 172.6 179.8 176.4 183C179.6 185.8 179.2 190.6 177 194.6C174.4 199.4 170.6 205 167.6 207.6C165.4 209.4 162.6 208.4 162 205.4C161.2 200.6 161.4 191 161.8 185.4C161.9 183.4 162 182 162.6 181.2Z",
+    ink: "context",
+    fill: "void",
+  },
+];
+
+function heldPhone(): Mark[] {
+  return [...HAND_BEHIND, ...heroPhone(HELD), ...HAND_FRONT];
+}
+
+// Step 1 · Start at the doorway. A door casing (mid) seen a little from the
+// left: its head and right jamb show their depth (back detail), and the door
+// stands open inward, a lit sliver at the left of the opening. Beyond it the
+// room's far corner (back): the wall join and the floor along both walls. A
+// framed picture hangs on the wall to the right (back), tucked behind the
+// casing as the reference's box is behind its bottle. The phone is held in
+// front.
+const doorway: Scene = {
+  marks: [
+    // The near wall's foot, behind everything.
+    { d: "M48 142H128", ink: "back" },
+    { d: roundedRect({ x: 116, y: 26, width: 40, height: 46 }, 2), ink: "back", fill: "void" },
+    { d: roundedRect({ x: 122, y: 32, width: 28, height: 34 }, 1.5), fill: "tag" },
+    { d: "M129 59L135.5 50.5L140 55.5L143 52.5L147 59", ink: "ridge" },
+    // Casing: the front face, then the depth of the head and the right jamb.
+    { d: "M48 142V7C48 5.3 49.3 4 51 4H121C122.7 4 124 5.3 124 7V142", ink: "mid", fill: "void" },
+    { d: "M58 14H114V142H107V19H58Z", fill: "tag" },
+    // The far corner through the opening.
+    { d: "M90 19V102", ink: "back" },
+    { d: "M58 112L90 102L107 107.4", ink: "back" },
+    // The open door, hinged out of sight behind the left jamb.
+    { d: "M58 21L72 27V128L58 134Z", ink: "mid", fill: "panel" },
+    { d: circle([68.4, 78], 1.8), ink: "back" },
+    { d: "M58 19H107V142M107 19L114 14", ink: "back" },
+    { d: "M58 142V14H114V142", ink: "back" },
+    ...heldPhone(),
+  ],
 };
 
-// Step 2 · Work around the room. A plan of the room (back) with three phone
-// plan symbols: at the doorway (plate I, taken), at the far corner (plate II,
-// current: phone and wedge in hero) and at the busiest wall (plate III). The
-// mid phones' wedges are context, fading over their last 40. The doorway and
-// far-corner wedges overlap.
-const ROOM = { left: 40, top: 26, right: 200, bottom: 238 };
-// Half the view wedge's angle, in degrees.
-const HALF_VIEW = 28;
+// Step 2 · Work around the room. A plan of the room (back): walls with their
+// thickness, fading toward the near wall (no hard bottom edge, as in the
+// other steps), the doorway a gap in it, and a shelf along the busiest wall
+// (right). Three phones seen from above: plate I just inside the doorway and
+// plate III aimed at the busiest wall (back), and plate II aimed at the far
+// corner (hero, now: its view a lit wedge). Every view's rays are context
+// and fade before the walls; plate I's view overlaps both of the others.
+const ROOM = { left: 52, top: 18, right: 180, bottom: 246 };
+const WALL = 5;
+const DOOR_GAP = { left: 62, right: 94 };
+const HALF_VIEW = 27;
 
-/** Distance from `from` along `deg` to the room's outline. */
+/** Distance from `from` along `deg` to the room's inner wall. */
 function toWall(from: Point, deg: number): number {
   const probe = polar([0, 0], deg, 1);
   const hits = [
@@ -59,103 +118,135 @@ function toWall(from: Point, deg: number): number {
   return Math.min(...hits);
 }
 
-function planPhone(centre: Point, deg: number, tone: Mark["tone"]): Mark {
-  return { d: roundedRect(centre, PLAN.width, PLAN.height, deg), tone, fill: "surface" };
+/** The bearing of `to` from `from`, clockwise from straight up, in [0, 360). */
+function bearing(from: Point, to: Point): number {
+  const deg = (Math.atan2(to[0] - from[0], from[1] - to[1]) * 180) / Math.PI;
+  return (deg + 360) % 360;
 }
 
-/** The two rays of a view wedge, from the phone's far edge to the walls. */
-function wedge(centre: Point, deg: number, tone: Mark["tone"]): Mark[] {
-  const tip = planPhoneTip(centre, deg);
-  return [deg - HALF_VIEW, deg + HALF_VIEW].map((rayDeg) => {
-    const end = polar(tip, rayDeg, toWall(tip, rayDeg));
-    return { d: segment(tip, end), tone, fade: tone === "context" };
-  });
+interface PlanShot {
+  centre: Point;
+  deg: number;
 }
 
-const DOOR_PHONE: Point = [78, 220];
-const DOOR_DEG = 34;
-const CORNER_PHONE: Point = [134, 128];
-const CORNER_DEG = 33;
-const WALL_PHONE: Point = [160, 180];
-const WALL_DEG = -90;
+/** The middle of a plan phone's far edge, where its view starts. */
+const tipOf = (shot: PlanShot) => polar(shot.centre, shot.deg, PLAN.height / 2);
+
+function rays(shot: PlanShot, ink: Mark["ink"]): Mark[] {
+  const tip = tipOf(shot);
+  return [shot.deg - HALF_VIEW, shot.deg + HALF_VIEW].map((deg) => ({ d: polyline([tip, polar(tip, deg, toWall(tip, deg))]), ink, fade: "end" }));
+}
+
+/** The lit view: from the tip out to the walls, room corners included. */
+function beam(shot: PlanShot): Mark {
+  const tip = tipOf(shot);
+  const from = shot.deg - HALF_VIEW;
+  const within = (deg: number) => ((deg - from + 360) % 360) < HALF_VIEW * 2;
+  const corners: Point[] = [
+    [ROOM.left, ROOM.top],
+    [ROOM.right, ROOM.top],
+    [ROOM.right, ROOM.bottom],
+    [ROOM.left, ROOM.bottom],
+  ];
+  const inside = corners
+    .filter((c) => within(bearing(tip, c)))
+    .sort((p, q) => ((bearing(tip, p) - from + 360) % 360) - ((bearing(tip, q) - from + 360) % 360));
+  const edge = (deg: number) => polar(tip, deg, toWall(tip, deg));
+  return { d: polyline([tip, edge(from), ...inside, edge(shot.deg + HALF_VIEW)], true), fill: "device", fillAngle: shot.deg };
+}
+
+function planPhone(shot: PlanShot, ink: Mark["ink"]): Mark {
+  return { d: turnedRect(shot.centre, PLAN.width, PLAN.height, PLAN.radius, shot.deg), ink, fill: "device", fillAngle: shot.deg + 180 };
+}
+
+const DOOR: PlanShot = { centre: [70, 224], deg: 25 };
+const CORNER: PlanShot = { centre: [100, 150], deg: 31 };
+const SHELF: PlanShot = { centre: [108, 196], deg: 90 };
 
 const plan: Scene = {
-  behind: [
-    // The outline, with the doorway as a gap in the near wall.
-    { d: `M60 ${ROOM.bottom}H${ROOM.left}V${ROOM.top}H${ROOM.right}V${ROOM.bottom}H96`, tone: "back" },
-    ...wedge(DOOR_PHONE, DOOR_DEG, "context"),
-    ...wedge(WALL_PHONE, WALL_DEG, "context"),
-    ...wedge(CORNER_PHONE, CORNER_DEG, "hero"),
-    planPhone(DOOR_PHONE, DOOR_DEG, "mid"),
-    planPhone(WALL_PHONE, WALL_DEG, "mid"),
-    planPhone(CORNER_PHONE, CORNER_DEG, "hero"),
+  marks: [
+    beam(CORNER),
+    ...rays(DOOR, "context"),
+    ...rays(SHELF, "context"),
+    ...rays(CORNER, "context"),
+    // Walls, with the doorway as a gap in the near wall.
+    {
+      d: `M${DOOR_GAP.left} ${ROOM.bottom + WALL}H${ROOM.left - WALL}V${ROOM.top - WALL}H${ROOM.right + WALL}V${ROOM.bottom + WALL}H${DOOR_GAP.right}`,
+      ink: "back",
+      fade: "down",
+    },
+    { d: `M${DOOR_GAP.left} ${ROOM.bottom}H${ROOM.left}V${ROOM.top}H${ROOM.right}V${ROOM.bottom}H${DOOR_GAP.right}`, ink: "back", fade: "down" },
+    { d: `M${DOOR_GAP.left} ${ROOM.bottom}V${ROOM.bottom + WALL}M${DOOR_GAP.right} ${ROOM.bottom}V${ROOM.bottom + WALL}`, ink: "back", fade: "down" },
+    // The shelf on the busiest wall, its books end on.
+    { d: roundedRect({ x: 166, y: 158, width: 14, height: 76 }, 1.5), ink: "back", fill: "tag" },
+    { d: "M169 166H177M169 173H176M169 180H177M169 190H175M169 197H177M169 207H176M169 214H177M169 224H175", ink: "ridge" },
+    planPhone(DOOR, "back"),
+    planPhone(SHELF, "back"),
+    planPhone(CORNER, "hero"),
   ],
 };
 
-// Step 3 · Get one close view. Top-down onto a desktop corner (mid, its two
-// edges fading). An open notebook and a key lie under the hero phone (back),
-// the notebook's outer pages showing either side. The screen shows the key
-// and the page between the brackets, 4 in from their lines and clear of their
-// arms, so the four L-shapes stay separate. No hand.
+// Step 3 · Get one close view. Top down onto a desk corner (back, both edges
+// fading). An open notebook (mid) lies on it, its right page lit, a heading
+// and lines of writing on both pages; a key (back) lies beside it. The phone
+// is held flat and close above, at the same place as in steps 1 and 4.
 const desk: Scene = {
-  behind: [
-    { d: "M50 222H206", tone: "mid", fade: true },
-    { d: "M38 210V30", tone: "mid", fade: true },
-    { d: "M38 210C38 217 43 222 50 222", tone: "mid" },
-    { d: "M122 92C104 88 76 88 58 92V176C76 172 104 172 122 176", tone: "back" },
-    { d: "M122 92C140 88 168 88 186 92V176C168 172 140 172 122 176", tone: "back" },
-    { d: "M122 92V176", tone: "back" },
-    { d: "M64 108H80M64 118H82M64 128H78M64 138H82M64 148H76", tone: "back" },
-    { d: "M164 108H180M164 118H178M164 128H180M164 138H174", tone: "back" },
-    { d: circle([166, 156], 6), tone: "back" },
-    { d: "M160 154L128 142", tone: "back" },
+  marks: [
+    // The desk's edges, the near one 11 below the phone.
+    { d: "M54 256C46.3 256 40 249.7 40 242V12", ink: "back", fade: "end" },
+    { d: "M54 256H198", ink: "back", fade: "end" },
+    // Notebook: left page, right page (lit), spine and writing.
+    { d: "M48 10C60 7.6 76 8.4 88 13.6V104C76 99.2 60 98.4 48 100.4Z", ink: "mid", fill: "void" },
+    { d: "M88 13.6C100 8.4 116 7.6 128 10V100.4C116 98.4 100 99.2 88 104Z", ink: "mid", fill: "panel" },
+    { d: "M56 26H80", ink: "text" },
+    { d: "M56 35H77M56 43H80M56 51H73M56 67H78M56 75H75", ink: "textDim" },
+    { d: "M96 26H120", ink: "text" },
+    { d: "M96 35H116M96 43H120M96 51H112", ink: "textDim" },
+    // Key: bow, hole, shaft and two teeth.
+    { d: circle([164, 32], 9), ink: "back", fill: "tag" },
+    { d: circle([164, 32], 2.6), ink: "ridge" },
+    { d: "M157.6 38.6L136.6 62.6M161 41.6L140 65.6M136.6 62.6C135.6 63.7 136 65.2 137.5 66.4C138.6 67.3 139.6 66.9 140 65.6", ink: "back" },
+    { d: "M144 59.2L148.4 63.1L151.2 59.9M149.8 52.9L153.6 56.2", ink: "back" },
+    ...heroPhone(HELD),
   ],
-  phone: {
-    x: 87,
-    y: 64,
-    screen: [
-      { d: "M108 106H136M108 115H133M108 124H136M108 133H130", tone: "back" },
-      { d: circle([130, 153], 6), tone: "back" },
-      { d: "M124 150L108 142M112 144L110 148M117 146.5L115 150.5", tone: "back" },
-    ],
-  },
 };
 
-// Step 4 · Keep the case private. The hero phone frames a bookshelf and a lit
-// lamp (mid, three ray ticks fanning up from the shade's top edge, clear of
-// the stem); its screen redraws them. An envelope and an open laptop with
-// three lit screen lines sit below, outside the brackets (back, no fade).
+// Step 4 · Keep the case private. A bookcase (its silhouette and right side
+// mid; the inner frame, shelves and books back) with books on three shelves,
+// and behind it to the right a lit lamp (back), tucked behind the case's
+// side. An envelope (context) lies outside the shot at the lower left. The
+// phone is held in front.
 const privacy: Scene = {
-  behind: [
-    // Bookshelf: case, two shelves, books.
-    { d: "M40 150V22H106V150Z", tone: "mid" },
-    { d: "M40 64H106M40 108H106", tone: "mid" },
-    { d: "M48 64V36H54V64M58 64V40H63V64M67 64V34H73V64", tone: "mid" },
-    { d: "M48 108V82H54V108M58 108V78H64V108M70 108L78 84L84 86L76 108", tone: "mid" },
-    // Lamp: shade, stem, base and three ray ticks.
-    { d: "M166 36H190L197 60H159Z", tone: "mid" },
-    { d: "M178 60V142M166 142H190", tone: "mid" },
-    { d: "M163 30L159 24M178 29V21M193 30L197 24", tone: "mid" },
-    // Envelope and laptop, below the frame.
-    { d: "M44 196H92V228H44ZM44 196L68 214L92 196", tone: "back" },
-    { d: "M124 190H190V226H124Z", tone: "back" },
-    { d: "M134 202H154M134 210H162M134 218H150", tone: "back" },
-    { d: "M116 226H198L192 236H122Z", tone: "back" },
+  marks: [
+    // Lamp: rays, shade (lit) and stem.
+    { d: "M130.6 17L128.8 11.4M140 15V8.8M149.4 17L152.2 11.6", ink: "back" },
+    { d: "M140 46V106", ink: "back" },
+    { d: "M129 24H151L159 46H121Z", ink: "back", fill: "panel" },
+    // Case: right side, front, shelves.
+    { d: "M118 5L126 10.4V150H118", ink: "mid", fill: "void" },
+    { d: roundedRect({ x: 46, y: 4, width: 72, height: 146 }, 2), ink: "mid", fill: "void" },
+    { d: "M51 9H113V145H51Z", ink: "back" },
+    { d: "M51 52H113M51 56H113M51 98H113M51 102H113", ink: "back" },
+    // Top shelf: four books and one leaning.
+    { d: roundedRect({ x: 55, y: 22, width: 8, height: 30 }, 1), ink: "back", fill: "tag" },
+    { d: roundedRect({ x: 63, y: 17, width: 7, height: 35 }, 1), ink: "back", fill: "panel" },
+    { d: roundedRect({ x: 70, y: 24, width: 9, height: 28 }, 1), ink: "back", fill: "tag" },
+    { d: "M80 52L92 21.6L98.6 24.2L86.6 52", ink: "back", fill: "void" },
+    { d: "M57.5 30H60.5M65.5 26H67.5", ink: "textDim" },
+    // Middle shelf: books and a box.
+    { d: roundedRect({ x: 55, y: 66, width: 6, height: 32 }, 1), ink: "back", fill: "panel" },
+    { d: roundedRect({ x: 61, y: 62, width: 8, height: 36 }, 1), ink: "back", fill: "tag" },
+    { d: roundedRect({ x: 69, y: 70, width: 7, height: 28 }, 1), ink: "back", fill: "void" },
+    { d: roundedRect({ x: 88, y: 80, width: 21, height: 18 }, 1.5), ink: "back", fill: "tag" },
+    // Bottom shelf (the phone hides its right half).
+    { d: roundedRect({ x: 55, y: 110, width: 8, height: 35 }, 1), ink: "back", fill: "tag" },
+    { d: roundedRect({ x: 63, y: 115, width: 7, height: 30 }, 1), ink: "back", fill: "panel" },
+    { d: roundedRect({ x: 70, y: 112, width: 8, height: 33 }, 1), ink: "back", fill: "void" },
+    // Envelope.
+    { d: roundedRect({ x: 40, y: 200, width: 29, height: 21 }, 2), ink: "context", fill: "void" },
+    { d: "M41 201.5L54.5 212L68 201.5", ink: "context" },
+    ...heldPhone(),
   ],
-  phone: {
-    x: 82,
-    y: 30,
-    screen: [
-      { d: "M102 118V70H118V118ZM102 94H118", tone: "mid" },
-      { d: "M105.5 94V79M109 94V76M112.5 94V80M105.5 118V103M109 118V100M112.5 118V105", tone: "mid" },
-      // Lamp: shade, stem and base, then the three ticks fanning up from the
-      // shade's top edge, a stroke's width clear of the shade, the shelf and
-      // the top-right bracket.
-      { d: "M123 76H131L133.5 85H120.5Z", tone: "mid" },
-      { d: "M127 85V116M122.5 116H131.5", tone: "mid" },
-      { d: "M123.5 72.5L122 69.5M127 72.5V68.5M130.5 72.5L132 69.5", tone: "mid" },
-    ],
-  },
 };
 
 /** Steps 1 to 4, in order. */

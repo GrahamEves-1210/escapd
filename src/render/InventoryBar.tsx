@@ -1,14 +1,19 @@
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, LinearTransition, withTiming } from "react-native-reanimated";
+import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
 import type { Id } from "@/lib/puzzle-types";
 import type { InventoryItem } from "@/game/selectors";
+import { FocusRing, PillButton, useFocusRing } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, curve, hit, motion, radius, space } from "@/theme/tokens";
-import { Button } from "@/components/Button";
-import { Text } from "@/components/Text";
+import { motion, ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
+import { Card, WhiteBar } from "./parts";
 
-/** Item acquired: the chip arrives from above, toward the tray. */
+const P = ref.layout.play;
+const T = P.tray;
+const SQ = ref.button.square;
+
+/** Item acquired: the tile arrives from above, toward the tray. */
 function acquired() {
   "worklet";
   return {
@@ -32,79 +37,73 @@ export interface InventoryBarProps {
   busy: boolean;
 }
 
-const SLOT_COUNT = 4;
-
 /**
- * Leather satchel along the bottom. One selected item enters Use mode (tap a
- * hotspot to use it). Two items open the worktable; Close clasp sends combine.
- * Descriptions are shown only for items the server placed in the inventory.
+ * The tray along the bottom: four tiles across, each 02's square button (a
+ * white glyph over the item's name); empty places are void wells. One chosen
+ * item enters Use mode (tap a hotspot to use it): its tile is ringed in white
+ * and its glyph fills, and a card says what it is. Two open the worktable;
+ * Close clasp sends combine. Descriptions are shown only for items the server
+ * placed in the inventory.
  */
 export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, busy }: InventoryBarProps) {
   const { reducedMotion } = useTheme();
+  const { width } = useWindowDimensions();
   const picked = selected.map((id) => items.find((i) => i.id === id)).filter((i): i is InventoryItem => !!i);
-  const slots = Math.max(SLOT_COUNT, items.length);
+  const slots = Math.max(T.columns, items.length);
+  const tile = Math.max(T.minTile, (width - ref.space.edge * 2 - T.gap * (T.columns - 1)) / T.columns);
 
   return (
     <View style={styles.root}>
       {picked.length === 1 ? (
-        <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.card} accessibilityLiveRegion="polite">
-          <View style={styles.cardText}>
-            <Text variant="stamp" tone="ink">ARTIFACT</Text>
-            <Text variant="control" tone="ink">{picked[0].name}</Text>
-            {picked[0].description ? <Text variant="slip" tone="ink">{picked[0].description}</Text> : null}
-            <Text variant="caption" tone="ink">Select an object in the room to use this artifact.</Text>
-          </View>
-          <Button label="Cancel" variant="quiet" labelTone="ink" onPress={onCancel} />
+        <Animated.View entering={FadeIn.duration(motion.reducedFade)} accessibilityLiveRegion="polite" style={styles.edge}>
+          <Card style={styles.useCard} testID="use-card">
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>{picked[0].name}</Text>
+              {picked[0].description ? <Text style={styles.detail}>{picked[0].description}</Text> : null}
+              <Text style={styles.instruction}>Select an object in the room to use this artifact.</Text>
+            </View>
+            <PillButton variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
+          </Card>
         </Animated.View>
       ) : null}
       {picked.length === 2 ? (
-        <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.mat} accessibilityLiveRegion="polite">
-          <Text variant="stamp" tone="accent">WORKTABLE</Text>
-          <View style={styles.sockets}>
-            <Socket label="A" item={picked[0]} />
-            <View style={styles.clasp} />
-            <Socket label="B" item={picked[1]} />
-          </View>
-          <View style={styles.matActions}>
-            <Button label="Cancel" variant="quiet" onPress={onCancel} />
-            <Button label="Close clasp" onPress={onCombine} loading={busy} />
-          </View>
+        <Animated.View entering={FadeIn.duration(motion.reducedFade)} accessibilityLiveRegion="polite" style={styles.edge}>
+          <Card style={styles.mat} testID="worktable">
+            <View style={styles.sockets}>
+              <Socket label="A" item={picked[0]} />
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                <PlusIcon size={P.card.icon} weight="regular" color={ref.color.textSecondary} />
+              </View>
+              <Socket label="B" item={picked[1]} />
+            </View>
+            <View style={styles.matActions}>
+              <PillButton variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
+              <View style={styles.flex}>
+                <WhiteBar label="Close clasp" onPress={onCombine} busy={busy} haptic={false} testID="combine" />
+              </View>
+            </View>
+          </Card>
         </Animated.View>
       ) : null}
 
       {items.length === 0 ? (
-        <Text variant="caption" tone="secondary" style={styles.empty}>Items you find appear here.</Text>
+        <View style={[styles.edge, styles.emptyTray]}>
+          <Text style={styles.emptyText}>Items you find appear here.</Text>
+        </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.slots}>
           {Array.from({ length: slots }, (_, index) => {
             const item = items[index];
             if (!item) {
-              return (
-                <View key={`empty-${index}`} style={styles.emptySlot}>
-                  <Text variant="stamp" tone="secondary">{String(index + 1).padStart(2, "0")}</Text>
-                </View>
-              );
+              return <View key={`empty-${index}`} style={[styles.emptySlot, { width: tile }]} testID="empty-slot" />;
             }
-            const isSelected = selected.includes(item.id);
             return (
               <Animated.View
                 key={item.id}
                 entering={reducedMotion ? FadeIn.duration(motion.reducedFade) : acquired}
                 layout={reducedMotion ? undefined : LinearTransition.duration(200)}
               >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={item.name}
-                  accessibilityHint={isSelected ? "Selected. Tap to deselect." : "Select to use or combine."}
-                  onPress={() => onToggle(item.id)}
-                  testID={`item-${item.id}`}
-                  style={({ pressed }) => [styles.slot, isSelected && styles.slotSelected, pressed && styles.pressed]}
-                >
-                  <Text variant="stamp" tone={isSelected ? "accent" : "secondary"}>{String(index + 1).padStart(2, "0")}</Text>
-                  <ItemIcon name={item.name} tint={isSelected ? color.accent : color.text} />
-                  <Text variant="caption" numberOfLines={2} style={styles.slotLabel}>{item.name}</Text>
-                </Pressable>
+                <Tile item={item} width={tile} selected={selected.includes(item.id)} onToggle={onToggle} />
               </Animated.View>
             );
           })}
@@ -114,77 +113,111 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
   );
 }
 
+function Tile({ item, width, selected, onToggle }: { item: InventoryItem; width: number; selected: boolean; onToggle: (id: Id) => void }) {
+  const focus = useFocusRing();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={item.name}
+      accessibilityHint={selected ? "Selected. Tap to deselect." : "Select to use or combine."}
+      onPress={() => onToggle(item.id)}
+      onFocus={focus.onFocus}
+      onBlur={focus.onBlur}
+      testID={`item-${item.id}`}
+      style={({ pressed }) => [styles.slot, { width }, pressed && styles.pressed]}
+    >
+      <ItemIcon name={item.name} size={T.icon} filled={selected} />
+      <Text numberOfLines={2} style={styles.slotLabel}>{item.name}</Text>
+      {selected ? <View pointerEvents="none" style={styles.selectedRing} testID={`item-${item.id}-selected`} /> : null}
+      <FocusRing visible={focus.focused} shape="panel" edge={SQ.borderWidth} radius={SQ.radius} />
+    </Pressable>
+  );
+}
+
 function Socket({ label, item }: { label: string; item: InventoryItem }) {
   return (
     <View style={styles.socket} accessible accessibilityLabel={`Slot ${label}, ${item.name}`}>
-      <Text variant="stamp" tone="accent">SLOT {label}</Text>
-      <ItemIcon name={item.name} tint={color.accent} />
-      <Text variant="caption" numberOfLines={2} align="center">{item.name}</Text>
+      <ItemIcon name={item.name} size={T.icon} />
+      <View style={styles.socketText}>
+        <Text style={styles.socketLabel}>Slot {label}</Text>
+        <Text numberOfLines={2} style={styles.socketName}>{item.name}</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { gap: space.sm },
-  card: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: space.sm,
-    marginHorizontal: space.gutter,
-    padding: space.md,
-    borderRadius: radius.slip,
-    ...curve,
-    backgroundColor: color.manila,
-  },
-  cardText: { flex: 1, gap: space.xs },
-  mat: {
-    gap: space.sm,
-    marginHorizontal: space.gutter,
-    padding: space.md,
-    borderRadius: radius.slip,
-    backgroundColor: "#1A2822",
-    borderWidth: 1,
-    borderColor: color.hairline,
-  },
-  sockets: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  root: { gap: ref.space.sm },
+  edge: { marginHorizontal: ref.space.edge },
+  flex: { flex: 1 },
+  // The tile carries the glyph; the card says what the item is and how to use it.
+  useCard: { flexDirection: "row", alignItems: "center", gap: ref.space.sm, paddingVertical: P.card.padY, paddingRight: ref.space.xs },
+  cardText: { flex: 1, gap: ref.space.xs },
+  cardTitle: { ...P.type.card, color: ref.color.textPrimary },
+  detail: { ...P.type.hint, color: ref.color.textSecondary },
+  instruction: { ...ref.type.meta, color: ref.color.textSecondary },
+  mat: { gap: P.card.gap, paddingVertical: P.card.padY },
+  sockets: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
+  // A socket: a void well, the glyph beside its slot letter and the item's name.
   socket: {
     flex: 1,
-    minHeight: 88,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: ref.space.sm,
+    minHeight: ref.button.ghost.height,
+    paddingHorizontal: P.tray.padY,
+    paddingVertical: ref.space.xs,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: ref.color.void,
+  },
+  socketText: { flex: 1 },
+  socketLabel: { ...ref.type.meta, color: ref.color.textSecondary },
+  socketName: { ...ref.type.meta, color: ref.color.textPrimary },
+  matActions: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
+  emptyTray: {
+    minHeight: T.height,
     alignItems: "center",
     justifyContent: "center",
-    gap: space.xs,
-    padding: space.sm,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.accent,
+    paddingHorizontal: ref.space.lg,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: ref.color.void,
   },
-  clasp: { width: 18, height: 8, borderRadius: 2, backgroundColor: color.accent },
-  matActions: { flexDirection: "row", justifyContent: "flex-end", gap: space.xs },
-  empty: { paddingHorizontal: space.gutter, paddingVertical: space.md, textAlign: "center" },
-  slots: { paddingHorizontal: space.gutter, gap: space.sm },
+  emptyText: { ...P.type.hint, color: ref.color.textSecondary, textAlign: "center" },
+  slots: { paddingHorizontal: ref.space.edge, gap: T.gap },
   slot: {
-    width: 92,
-    minHeight: hit.min + 28,
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingVertical: space.sm,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.hairline,
+    minHeight: T.height,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ref.space.xs,
+    paddingHorizontal: T.padX,
+    paddingVertical: T.padY,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: SQ.fill,
+    borderWidth: SQ.borderWidth,
+    borderColor: P.squareRim,
   },
   emptySlot: {
-    width: 92,
-    minHeight: hit.min + 28,
-    borderRadius: radius.control,
-    borderWidth: 1,
-    borderColor: color.hairline,
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: 0.55,
+    minHeight: T.height,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: ref.color.void,
   },
-  slotSelected: { borderColor: color.accent, backgroundColor: color.accentMuted },
-  slotLabel: { color: color.text },
-  pressed: { opacity: 0.8 },
+  // Chosen: a white ring on the tile's outer edge, over its rim.
+  selectedRing: {
+    position: "absolute",
+    top: -SQ.borderWidth,
+    left: -SQ.borderWidth,
+    right: -SQ.borderWidth,
+    bottom: -SQ.borderWidth,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    borderWidth: T.selectedRing,
+    borderColor: ref.color.textPrimary,
+  },
+  slotLabel: { ...ref.type.meta, color: ref.color.textPrimary, textAlign: "center" },
+  pressed: { opacity: P.pressedOpacity },
 });

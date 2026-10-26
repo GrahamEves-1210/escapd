@@ -1,22 +1,30 @@
 // The /capture route shell (app/capture/index.tsx): Checking until the
 // permission read and the guide backstop resolve, the guide for a first-timer,
-// the rangefinder once access is granted, the Settings re-check, and the one
-// flat ground under both states.
+// the rangefinder once access is granted, the Settings re-check, the camera's
+// flat ground under both states, the status bar and the iOS edge swipe.
 import { AppState, StyleSheet, type AppStateStatus } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 import { useCameraPermissions, type PermissionResponse } from "expo-camera";
-import { router, useLocalSearchParams } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
+import { setStatusBarStyle } from "expo-status-bar";
 import { captureGuideSeenThisSession, hasSeenCaptureGuide } from "@/capture/guideSeen";
-import { addPlate, clearPlates } from "@/capture/roll";
+import { addPlate, clearPlates, removePlate } from "@/capture/roll";
 import type { CameraPermissionProps } from "@/capture/ui/types";
-import { color } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 import CaptureScreen from "../../../../../app/capture/index";
 
 jest.mock("expo-camera", () => ({ useCameraPermissions: jest.fn() }));
-jest.mock("expo-router", () => ({
-  router: { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
-  useLocalSearchParams: jest.fn(() => ({})),
-}));
+jest.mock("expo-router", () => {
+  const { useEffect } = jest.requireActual<typeof import("react")>("react");
+  return {
+    router: { push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
+    useLocalSearchParams: jest.fn(() => ({})),
+    // Focus effects run as effects: the screen is focused from mount until unmount.
+    useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, [effect]),
+    Stack: { Screen: jest.fn(() => null) },
+  };
+});
+jest.mock("expo-status-bar", () => ({ setStatusBarStyle: jest.fn() }));
 jest.mock("@/capture/guideSeen", () => ({
   captureGuideSeenThisSession: jest.fn(() => false),
   hasSeenCaptureGuide: jest.fn(),
@@ -72,13 +80,41 @@ describe("/capture", () => {
     expect(screen.queryByTestId("rangefinder")).toBeNull();
   });
 
-  it("lays both states on one flat color.canvas with the live grain beneath them, and no silk", async () => {
+  it("lays the camera's flat ground under both states, with no grain or silk", async () => {
     withPermission(response(false));
     await render(<CaptureScreen />);
     const root = screen.getByTestId("permission").parent as unknown as { props: { style?: unknown }; children: { type: unknown }[] };
-    expect(StyleSheet.flatten(root.props.style as never)).toMatchObject({ flex: 1, backgroundColor: color.canvas });
-    // The grain is the first layer (an Image), drawn before either state; nothing else sits under them.
-    expect(root.children.map((child) => child.type)).toEqual(["Image", "Text"]);
+    expect(StyleSheet.flatten(root.props.style as never)).toMatchObject({ flex: 1, backgroundColor: ref.color.ground });
+    // Nothing else sits under the state (03 draws its own white ground over this).
+    expect(root.children.map((child) => child.type)).toEqual(["Text"]);
+  });
+
+  it("keeps the iOS edge swipe on: there is no back control on 03", async () => {
+    withPermission(response(false));
+    await render(<CaptureScreen />);
+    expect(jest.mocked(Stack.Screen).mock.calls.at(-1)?.[0]).toMatchObject({ options: { gestureEnabled: true } });
+  });
+
+  it("sets dark status-bar glyphs on 03's white, and light ones once the camera has faded in or /capture is left", async () => {
+    jest.useFakeTimers();
+    try {
+      sessionSeen.mockReturnValue(true);
+      withPermission(response(false));
+      await render(<CaptureScreen />);
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      withPermission(response(true));
+      await screen.rerender(<CaptureScreen />);
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      await act(() => jest.advanceTimersByTime(motion.sceneCrossfade));
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
+      withPermission(response(false));
+      await screen.rerender(<CaptureScreen />);
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      await screen.unmount();
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("stays on Checking until the guide flag is read, then shows the sheet when access isn't granted", async () => {
@@ -116,6 +152,23 @@ describe("/capture", () => {
     expect(seen).not.toHaveBeenCalled();
     expect(screen.getByTestId("permission").props.children).toBe("sheet");
     expect(permissionProps.at(-1)?.retakeIndex).toBe(0);
+  });
+
+  it("takes ?retake as a slot: a filled one, or an open one inside the photos, never one past them", async () => {
+    for (let i = 0; i < 4; i++) addPlate({ uri: `file://plate-${i}.jpg`, width: 1200, height: 1600 });
+    removePlate(1);
+    withPermission(response(false));
+    params.mockReturnValue({ retake: "1" });
+    await render(<CaptureScreen />);
+    expect(permissionProps.at(-1)?.retakeIndex).toBe(1);
+    // Three photos are filled, but slot 3 still names the fourth.
+    params.mockReturnValue({ retake: "3" });
+    await render(<CaptureScreen />);
+    expect(permissionProps.at(-1)?.retakeIndex).toBe(3);
+    expect(permissionProps.at(-1)?.plateCount).toBe(3);
+    params.mockReturnValue({ retake: "4" });
+    await render(<CaptureScreen />);
+    expect(permissionProps.at(-1)?.retakeIndex).toBeNull();
   });
 
   it("re-reads the permission when the app comes back from Settings", async () => {

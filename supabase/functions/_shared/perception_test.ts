@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
-import { collectCandidates, flaggedPositions, isDeniedLabel, type PhotoPayload, reconcile, sanitizeLabel, type VerifiedCandidate } from "./perception.ts";
+import { collectCandidates, flaggedPositions, flaggedReasons, isDeniedLabel, type PhotoPayload, reconcile, sanitizeLabel, type VerifiedCandidate } from "./perception.ts";
 import { parsePerception, parseVerification, SchemaViolation } from "./schemas.ts";
 
 Deno.test("labels are sanitized to short generic nouns", () => {
@@ -80,4 +80,15 @@ Deno.test("flaggedPositions reports room_photos positions", () => {
   const photos = [0, 2, 5].map((position, index) => ({ index, position }) as PhotoPayload);
   const clean = { personPresent: false, sensitiveText: false, quality: "good" as const, objects: [] };
   assertEquals(flaggedPositions([clean, { ...clean, sensitiveText: true }, { ...clean, personPresent: true }], photos), [2, 5]);
+});
+
+Deno.test("flaggedReasons names what each flagged position shows", () => {
+  const photos = [0, 2, 5].map((position, index) => ({ index, position }) as PhotoPayload);
+  const clean = { personPresent: false, sensitiveText: false, quality: "good" as const, objects: [] };
+  assertEquals(
+    flaggedReasons([{ ...clean, personPresent: true }, clean, { ...clean, personPresent: true, sensitiveText: true }], photos),
+    "0=person; 5=person+private_text",
+  );
+  assertEquals(flaggedReasons([clean, { ...clean, sensitiveText: true }, clean], photos), "2=private_text");
+  assertEquals(flaggedReasons([clean, clean, clean], photos), "");
 });

@@ -3,40 +3,43 @@
 // It renders schema v1, sends GameActions, and trusts ActionResults. It never
 // computes progress: usePlayer replaces state only from a solved result.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Alert, StyleSheet, Switch, View } from "react-native";
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { AccessibilityInfo, Alert, StyleSheet, Switch, Text, View } from "react-native";
+import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ActionResult, GameAction, Hotspot, Id, Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import {
-  QUIET_COPY, exploreEntries, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
-  inventoryItems, isHotspotSolved, itemName, quietReason, scenesWithHotspots, tapIntent, type ExploreEntry,
+  QUIET_COPY, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
+  inventoryItems, isHotspotSolved, itemName, quietReason, scenesWithHotspots, tapIntent,
 } from "@/game/selectors";
 import { usePlayer, type LoadError, type Player as PlayerModel } from "@/game/usePlayer";
 import { useSceneSources } from "@/game/useSceneSources";
 import { useUiMemory } from "@/game/useUiMemory";
 import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, font, motion, space, z } from "@/theme/tokens";
-import { Button } from "@/components/Button";
-import { Grain } from "@/components/Grain";
-import { IconButton } from "@/components/IconButton";
-import { Sheet } from "@/components/Sheet";
+import { motion, ref, z } from "@/theme/tokens";
+import { DarkSheet, PillButton } from "@/components/noir";
 import { StateScreen } from "@/components/StateScreen";
-import { Text } from "@/components/Text";
 import {
-  ArrowLeftIcon, DotsThreeIcon, ICON_SIZE, ICON_WEIGHT, ListBulletsIcon, WarningIcon, WifiSlashIcon,
+  ArrowLeftIcon, DotsThreeIcon, ICON_WEIGHT, WarningIcon, WifiSlashIcon,
 } from "@/components/icons";
 import { CodePad, type CodeOutcome } from "./CodePad";
 import { CoachCard } from "./CoachCard";
-import { ExploreList, type ExploreAction } from "./ExploreList";
 import { HotspotLayer, type HotspotRef, type Thread } from "./HotspotLayer";
 import { InventoryBar } from "./InventoryBar";
 import { ResultSheet, type ResultContent } from "./ResultSheet";
-import { SceneStrip } from "./SceneStrip";
+import { ScenePager } from "./ScenePager";
 import { SceneView, type SceneSource } from "./SceneView";
 import { Toast } from "./Toast";
+import { Card, NoticeLine, OutlinePill, SquareButton } from "./parts";
+
+const P = ref.layout.play;
+const SQ = ref.button.square;
+// The squares' 2 pt of slop each side, carried inside the header row.
+const SLOP = (SQ.hit - SQ.size) / 2;
+// A state screen's glyph: grey, as 02's and 03's, with words; no amber.
+const STATE_ICON = P.stateIcon;
 
 export interface CompletionSummary {
   message?: string;
@@ -64,7 +67,7 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
       <StateScreen
         title="This case needs an update"
         body="Update ESCAPD to open it."
-        icon={<WarningIcon size={32} weight={ICON_WEIGHT} color={color.warning} />}
+        icon={<WarningIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
         primary={{ label: "Back", onPress: onExit }}
       />
     ) : (
@@ -93,7 +96,7 @@ function LoadErrorScreen({ error, onRetry, onExit }: { error: LoadError; onRetry
         <StateScreen
           title="You're offline"
           body="Your progress is saved. Connect to continue the case."
-          icon={<WifiSlashIcon size={32} weight={ICON_WEIGHT} color={color.textSecondary} />}
+          icon={<WifiSlashIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
           primary={{ label: "Try again", onPress: onRetry }}
           secondary={{ label: "Back", onPress: onExit }}
         />
@@ -103,7 +106,7 @@ function LoadErrorScreen({ error, onRetry, onExit }: { error: LoadError; onRetry
         <StateScreen
           title="This case can't be opened here"
           body="It was made for a newer version of ESCAPD. Update the app to play it."
-          icon={<WarningIcon size={32} weight={ICON_WEIGHT} color={color.warning} />}
+          icon={<WarningIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
           primary={{ label: "Back", onPress: onExit }}
         />
       );
@@ -121,7 +124,7 @@ function LoadErrorScreen({ error, onRetry, onExit }: { error: LoadError; onRetry
         <StateScreen
           title="The case didn't open"
           body="Something went wrong on our side. Your progress is safe."
-          icon={<WarningIcon size={32} weight={ICON_WEIGHT} color={color.warning} />}
+          icon={<WarningIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
           primary={{ label: "Try again", onPress: onRetry }}
           secondary={{ label: "Back", onPress: onExit }}
         />
@@ -138,25 +141,10 @@ type Attempt =
 type SheetState =
   | { kind: "result"; content: ResultContent; returnTo?: Id }
   | { kind: "code"; puzzle: Puzzle; hotspotId: Id }
-  | { kind: "explore" }
   | { kind: "menu" }
   | null;
 
 const uniq = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
-
-function sceneEntering(direction: number, reduced: boolean) {
-  if (reduced) return FadeIn.duration(motion.reducedFade);
-  return () => {
-    "worklet";
-    return {
-      initialValues: { opacity: 0, transform: [{ translateX: direction * motion.sceneDrift }] },
-      animations: {
-        opacity: withTiming(1, { duration: motion.sceneCrossfade }),
-        transform: [{ translateX: withTiming(0, { duration: motion.sceneCrossfade }) }],
-      },
-    };
-  };
-}
 
 function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   player: PlayerModel;
@@ -175,7 +163,6 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
 
   const sceneCount = def.photos.length;
   const sceneIndex = Math.min(Math.max(ui.memory.sceneIndex, 0), sceneCount - 1);
-  const [direction, setDirection] = useState(1);
   const [picked, setPicked] = useState<Id[]>([]);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [toast, setToast] = useState<{ text: string; key: number } | null>(null);
@@ -185,7 +172,11 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   const [fresh, setFresh] = useState<number[]>([]);
   const [chromeHidden, setChromeHidden] = useState(false);
   const [completing, setCompleting] = useState(false);
+  // A finger on a code wheel: the code sheet holds its scroll.
+  const [wheelDrag, setWheelDrag] = useState(false);
   const hotspotRefs = useRef(new Map<Id, HotspotRef>());
+  // False while the view in view is zoomed, so a pan moves the photo, not the pager.
+  const pageable = useSharedValue(true);
   const lastAttempt = useRef<Attempt | null>(null);
 
   // The server may consume a selected item; a selection only ever shows items still held.
@@ -193,6 +184,11 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
 
   const items = useMemo(() => inventoryItems(def, state), [def, state]);
   const sceneHotspots = useMemo(() => hotspotsForScene(def, state, sceneIndex), [def, state, sceneIndex]);
+  // Every view's visible hotspot rects: the loupe's detents and the crop's limit.
+  const targetsByScene = useMemo(
+    () => def.photos.map((_, i) => hotspotsForScene(def, state, i).map((hotspot) => hotspot.shape)),
+    [def, state],
+  );
   const solvedIds = useMemo(() => {
     const ids = new Set<Id>();
     for (const hotspot of sceneHotspots) {
@@ -228,7 +224,6 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
 
   const goToScene = useCallback((index: number) => {
     if (index === sceneIndex) return;
-    setDirection(index > sceneIndex ? 1 : -1);
     setThread(null);
     setIrisId(null);
     ui.update({ sceneIndex: index, visited: uniq([...ui.memory.visited, index]) });
@@ -342,12 +337,14 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
       }
     } else if (result.outcome === "nothing") {
       // Stay in Use mode so the player can try somewhere else.
+      feedback.warning();
       showToast("That doesn't work here.");
     } else {
       setPicked([]);
+      feedback.warning();
       showToast(result.message ?? "You can't do that.");
     }
-  }, [act, afterSolved, showToast]);
+  }, [act, afterSolved, feedback, showToast]);
 
   const combineItems = useCallback(async (items: [Id, Id]) => {
     const result = await act({ type: "combine", item_ids: items }, { kind: "combine", items });
@@ -358,11 +355,13 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
       const title = def.puzzles.find((p) => p.id === result.puzzle_id)?.title ?? "Combined";
       if (after) setSheet({ kind: "result", content: { title, objectLabel: "note", message: result.message, ...after } });
     } else if (result.outcome === "nothing") {
+      feedback.warning();
       showToast("These don't fit together.");
     } else {
+      feedback.warning();
       showToast(result.message ?? "You can't combine those.");
     }
-  }, [act, afterSolved, def, showToast]);
+  }, [act, afterSolved, def, feedback, showToast]);
 
   const combine = useCallback(() => {
     if (selected.length === 2) combineItems([selected[0], selected[1]]);
@@ -377,8 +376,8 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   }, [inspect, applyItem, combineItems]);
 
   const onHotspotPress = useCallback((hotspot: Hotspot) => {
+    // The press haptic came on press-in (HotspotLayer's onPressIn).
     if (player.pending || completing) return;
-    feedback.tap();
     if (selected.length === 1) {
       applyItem(selected[0], hotspot);
       return;
@@ -393,7 +392,7 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
       return;
     }
     inspect(hotspot);
-  }, [player.pending, completing, feedback, selected, applyItem, showToast, def, state, inspect]);
+  }, [player.pending, completing, selected, applyItem, showToast, def, state, inspect]);
 
   const submitCode = useCallback(async (answer: string): Promise<CodeOutcome> => {
     if (sheet?.kind !== "code") return { kind: "invalid", message: "That puzzle is not available." };
@@ -410,7 +409,7 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
     }
     const result = outcome.result;
     if (result.outcome === "wrong") {
-      feedback.warning();
+      feedback.error();
       return { kind: "wrong", message: result.message ?? "Nothing happens." };
     }
     if (result.outcome === "solved") {
@@ -429,24 +428,13 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   }, [sheet, player, feedback, def, afterSolved]);
 
   const toggleItem = useCallback((id: Id) => {
-    feedback.tap();
+    feedback.tick();
     setPicked((raw) => {
       const sel = raw.filter((x) => state.inventory.includes(x));
       if (sel.includes(id)) return sel.filter((x) => x !== id);
       return sel.length >= 2 ? [sel[1], id] : [...sel, id];
     });
   }, [feedback, state.inventory]);
-
-  const onExploreAction = useCallback((entry: ExploreEntry, action: ExploreAction) => {
-    setSheet(null);
-    goToScene(entry.photoIndex);
-    setTimeout(() => {
-      if (action === "use" && selected.length === 1) applyItem(selected[0], entry.hotspot);
-      else if (action === "code" && entry.intent.kind === "code") {
-        setSheet({ kind: "code", puzzle: entry.intent.puzzle, hotspotId: entry.hotspot.id });
-      } else inspect(entry.hotspot);
-    }, reducedMotion ? 60 : 260);
-  }, [goToScene, selected, applyItem, inspect, reducedMotion]);
 
   const confirmRestart = useCallback(() => {
     Alert.alert("Restart this case?", "Your progress in this case will be cleared. You can replay it any time.", [
@@ -473,81 +461,80 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   return (
     <View style={styles.root}>
       <Animated.View
-        style={[styles.topBar, { paddingTop: insets.top + space.xs }, chromeStyle]}
+        style={[styles.topBar, { paddingTop: insets.top + P.top }, chromeStyle]}
         importantForAccessibility={modal ? "no-hide-descendants" : "auto"}
       >
-        <IconButton
-          accessibilityLabel="Back"
-          onPress={onExit}
-          icon={<ArrowLeftIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
-        />
-        <Text variant="sectionTitle" numberOfLines={1} accessibilityRole="header" style={styles.title}>
-          {def.title ?? "Untitled case"}
-        </Text>
-        <IconButton
-          accessibilityLabel="Explore as list"
-          onPress={() => setSheet({ kind: "explore" })}
-          icon={<ListBulletsIcon size={ICON_SIZE} weight={ICON_WEIGHT} color={color.text} />}
-        />
-        <IconButton
-          accessibilityLabel="Case options"
-          onPress={() => setSheet({ kind: "menu" })}
-          icon={<DotsThreeIcon size={ICON_SIZE} weight="bold" color={color.text} />}
-        />
+        <SquareButton icon={ArrowLeftIcon} accessibilityLabel="Back" onPress={onExit} testID="player-back" />
+        <View style={styles.prompt}>
+          <Text numberOfLines={1} accessibilityRole="header" style={styles.title}>
+            {def.title ?? "Untitled case"}
+          </Text>
+          {/* The photo's own label and the page dots say which view this is. */}
+          <Text numberOfLines={1} style={styles.meta} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            {`View ${sceneIndex + 1} of ${sceneCount}`}
+          </Text>
+        </View>
+        <SquareButton icon={DotsThreeIcon} accessibilityLabel="Case options" onPress={() => setSheet({ kind: "menu" })} testID="player-options" />
       </Animated.View>
 
       <View style={styles.scene} importantForAccessibility={modal ? "no-hide-descendants" : "auto"}>
-        <Animated.View
-          key={sceneIndex}
-          entering={sceneEntering(direction, reducedMotion)}
-          exiting={FadeOut.duration(reducedMotion ? motion.reducedFade : motion.sceneCrossfade)}
-          style={StyleSheet.absoluteFill}
-        >
-          <SceneView
-            source={sources[sceneIndex]}
-            accessibilityLabel={`Plate ${sceneIndex + 1} of ${sceneCount}`}
-            plateIndex={sceneIndex}
-            plateCount={sceneCount}
-            armed={selected.length === 1}
-            loupeTargets={sceneHotspots.map((hotspot) => hotspot.shape)}
-            onInteractionChange={setChromeHidden}
-            pulledBack={completing}
-          >
-            {(stage) => (
-              <HotspotLayer
-                hotspots={sceneHotspots}
-                stage={stage}
-                persistent={prefs.hotspotAssist || selected.length === 1}
-                highlightId={coachHighlight}
-                flash={flash}
-                solvedIds={solvedIds}
-                irisId={irisId ?? undefined}
-                thread={thread ?? undefined}
-                labelFor={labelFor}
-                onPress={onHotspotPress}
-                registerRef={registerRef}
-              />
-            )}
-          </SceneView>
-        </Animated.View>
-        {toast ? <Toast key={toast.key} text={toast.text} onHide={hideToast} /> : null}
+        <ScenePager
+          count={sceneCount}
+          index={sceneIndex}
+          onIndexChange={goToScene}
+          marked={markedScenes}
+          pageable={pageable}
+          disabled={completing}
+          overlay={toast ? <Toast key={toast.key} text={toast.text} onHide={hideToast} /> : null}
+          renderPage={(i, active, onWindow, pager) => (
+            <SceneView
+              source={sources[i]}
+              accessibilityLabel={`View ${i + 1} of ${sceneCount}`}
+              active={active}
+              armed={active && selected.length === 1}
+              loupeTargets={targetsByScene[i]}
+              onInteractionChange={setChromeHidden}
+              pulledBack={active && completing}
+              pageable={pageable}
+              onWindow={onWindow}
+              pagerGesture={pager}
+            >
+              {(stage) => (
+                <HotspotLayer
+                  hotspots={sceneHotspots}
+                  stage={stage}
+                  persistent={prefs.hotspotAssist || selected.length === 1}
+                  highlightId={coachHighlight}
+                  flash={flash}
+                  solvedIds={solvedIds}
+                  irisId={irisId ?? undefined}
+                  thread={thread ?? undefined}
+                  labelFor={labelFor}
+                  onPress={onHotspotPress}
+                  onPressIn={feedback.press}
+                  registerRef={registerRef}
+                />
+              )}
+            </SceneView>
+          )}
+        />
       </View>
 
       <Animated.View
-        style={[styles.bottom, { paddingBottom: insets.bottom + space.sm }, bottomStyle]}
+        style={[styles.bottom, { paddingBottom: insets.bottom + P.band.foot }, bottomStyle]}
         importantForAccessibility={modal ? "no-hide-descendants" : "auto"}
       >
-        <Grain />
         {player.failed ? (
           <FailureBanner
             offline={player.failed.offline}
             onRetry={retryLastAttempt}
             onDismiss={player.dismissFailure}
           />
-        ) : coachStep ? (
+        ) : coachStep && selected.length === 0 ? (
+          // The use card or the worktable takes the coach's place while an item is chosen,
+          // so the photo keeps its height; the coach's target stays highlighted on the photo.
           <CoachCard text={coachStep.text} />
         ) : null}
-        <SceneStrip sources={sources} index={sceneIndex} marked={markedScenes} onSelect={goToScene} />
         <InventoryBar
           items={items}
           selected={selected}
@@ -560,30 +547,25 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
 
       {sheet?.kind === "result" ? <ResultSheet content={sheet.content} onClose={closeSheet} /> : null}
       {sheet?.kind === "code" ? (
-        <Sheet
+        <DarkSheet
           title={sheet.puzzle.title ?? (codeHotspot ? hotspotName(codeHotspot) : "Enter the code")}
-          eyebrow={codeHotspot ? hotspotName(codeHotspot) : undefined}
+          titleStyle="serif"
+          meta={codeHotspot ? hotspotName(codeHotspot) : undefined}
           onClose={closeSheet}
           maxHeight="90%"
           testID="code-sheet"
+          scrollEnabled={!wheelDrag}
         >
-          <CodePad puzzle={sheet.puzzle} items={items} onSubmit={submitCode} />
-        </Sheet>
-      ) : null}
-      {sheet?.kind === "explore" ? (
-        <ExploreList
-          entries={exploreEntries(def, state)}
-          sceneCount={sceneCount}
-          useItemName={useItemName}
-          onAction={onExploreAction}
-          onClose={() => setSheet(null)}
-        />
+          <CodePad puzzle={sheet.puzzle} items={items} onSubmit={submitCode} onWheelDrag={setWheelDrag} />
+        </DarkSheet>
       ) : null}
       {sheet?.kind === "menu" ? (
         <CaseOptions
           hotspotAssist={prefs.hotspotAssist}
-          onHotspotAssist={prefs.setHotspotAssist}
-          onExplore={() => setSheet({ kind: "explore" })}
+          onHotspotAssist={(on) => {
+            feedback.tick();
+            prefs.setHotspotAssist(on);
+          }}
           onRestart={confirmRestart}
           onClose={() => setSheet(null)}
         />
@@ -592,82 +574,82 @@ function PlayerStage({ player, sources, ui, coach, onExit, onComplete }: {
   );
 }
 
+/** 02's error line on 07's card, with 07's outlined pill to retry and a quiet Dismiss. */
 function FailureBanner({ offline, onRetry, onDismiss }: { offline: boolean; onRetry: () => void; onDismiss: () => void }) {
   return (
-    <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.banner} accessibilityLiveRegion="polite">
-      <WifiSlashIcon size={18} weight={ICON_WEIGHT} color={color.warning} />
-      <Text variant="caption" style={styles.bannerText}>
-        {offline ? "No connection. Your progress is safe." : "That didn't go through. Your progress is safe."}
-      </Text>
-      <Button label="Try again" variant="secondary" onPress={onRetry} />
-      <Button label="Dismiss" variant="quiet" onPress={onDismiss} />
+    <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.edge} accessibilityLiveRegion="polite">
+      <Card style={styles.banner} testID="failure-banner">
+        <NoticeLine
+          icon={offline ? WifiSlashIcon : WarningIcon}
+          text={offline ? "No connection. Your progress is safe." : "That didn't go through. Your progress is safe."}
+        />
+        <View style={styles.bannerActions}>
+          <OutlinePill label="Try again" onPress={onRetry} testID="failure-retry" />
+          <PillButton variant="quiet" ground="dark" label="Dismiss" onPress={onDismiss} padX={ref.space.sm} />
+        </View>
+      </Card>
     </Animated.View>
   );
 }
 
-function CaseOptions({ hotspotAssist, onHotspotAssist, onExplore, onRestart, onClose }: {
+/** The kit's dark sheet: Show interactives (the hub sheet's switch) and Restart (quiet). */
+function CaseOptions({ hotspotAssist, onHotspotAssist, onRestart, onClose }: {
   hotspotAssist: boolean;
   onHotspotAssist: (on: boolean) => void;
-  onExplore: () => void;
   onRestart: () => void;
   onClose: () => void;
 }) {
+  const sw = ref.layout.hub.sheet.switch;
   return (
-    <Sheet title="Case options" titleStyle="utility" onClose={onClose} testID="case-options">
+    <DarkSheet title="Case options" onClose={onClose} testID="case-options">
       <View style={styles.optionRow}>
         <View style={styles.optionText}>
-          <Text variant="control">Show interactives</Text>
-          <Text variant="caption" tone="secondary">Keep the marks on objects you can use visible.</Text>
+          {/* The switch carries this label, so screen readers don't hear it twice. */}
+          <Text accessibilityElementsHidden importantForAccessibility="no" style={styles.optionLabel}>Show interactives</Text>
+          <Text style={styles.optionDetail}>Keep the marks on objects you can use visible.</Text>
         </View>
         <Switch
           value={hotspotAssist}
           onValueChange={onHotspotAssist}
           accessibilityLabel="Show interactives"
-          trackColor={{ true: color.accent, false: color.hairline }}
-          thumbColor={color.text}
+          trackColor={{ true: sw.on, false: sw.off }}
+          thumbColor={sw.thumb}
+          ios_backgroundColor={sw.off}
+          testID="options-show-interactives"
         />
       </View>
-      <Button label="Explore as list" variant="secondary" onPress={onExplore} />
-      <Button label="Restart this case" variant="destructive" onPress={onRestart} />
-    </Sheet>
+      <PillButton variant="quiet" ground="dark" label="Restart this case" onPress={onRestart} testID="options-restart" />
+    </DarkSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.canvas },
+  root: { flex: 1, backgroundColor: ref.color.ground },
+  // 02's header row: squares `edge` from the screen edges, their slop inside the row.
   topBar: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingBottom: space.xs,
+    alignItems: "flex-start",
+    paddingHorizontal: P.edge,
+    paddingBottom: SLOP,
     zIndex: z.chrome,
-    backgroundColor: color.canvas,
+    backgroundColor: ref.color.ground,
   },
-  title: { flex: 1, textAlign: "center", fontFamily: font.display },
-  scene: { flex: 1 },
+  prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: P.promptTop, alignItems: "center", gap: P.metaGap },
+  title: { ...ref.type.serifTitle, color: ref.color.textPrimary, textAlign: "center" },
+  meta: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
+  // The photo area: full width, from band.photo under the squares.
+  scene: { flex: 1, marginTop: P.band.photo - SLOP },
   bottom: {
-    gap: space.md,
-    paddingTop: space.md,
-    backgroundColor: "#100E0C",
-    borderTopWidth: 1,
-    borderTopColor: color.hairline,
+    gap: P.band.row,
+    paddingTop: P.band.tray,
+    backgroundColor: ref.color.ground,
     zIndex: z.tray,
   },
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: space.sm,
-    marginHorizontal: space.gutter,
-    paddingHorizontal: space.md,
-    paddingVertical: space.xs,
-    borderRadius: 10,
-    backgroundColor: color.raised,
-    borderLeftWidth: 2,
-    borderLeftColor: color.warning,
-  },
-  bannerText: { flex: 1, minWidth: 140, color: color.text },
-  optionRow: { flexDirection: "row", alignItems: "center", gap: space.md },
-  optionText: { flex: 1, gap: space.xxs },
+  edge: { marginHorizontal: ref.space.edge },
+  banner: { gap: ref.space.sm, paddingVertical: P.card.padY },
+  bannerActions: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
+  optionRow: { flexDirection: "row", alignItems: "center", gap: ref.space.lg },
+  optionText: { flex: 1, gap: ref.space.xs },
+  optionLabel: { ...ref.type.body, color: ref.color.textPrimary },
+  optionDetail: { ...ref.type.meta, color: ref.color.textSecondary },
 });

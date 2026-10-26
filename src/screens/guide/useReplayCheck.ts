@@ -1,10 +1,12 @@
-// Replay's one real wait (docs/DESIGN.md 04, Tappable elements: Open the
-// camera; States: Replay wait and Replay error). Step 4 in replay marks the
-// guide seen, then runs the same access check as 01's YOUR ROOM through
-// openCapture({ replace: true, skipGuide: true }), which navigates on its own:
-// the camera, or the account, Pro or darkroom-cap screen. The guide leaves the
-// stack either way. A failed check shows the error line; the button stays live
-// for a retry, which clears the line and waits again.
+// The guide's one real wait when it was opened directly (?replay=1), with no
+// access check behind it (docs/DESIGN.md 04, Tappable elements: Open the
+// camera; States: Check wait and Check error). The continue (step 4 or the X)
+// marks the guide shown for this room, then runs the same access check as
+// 01's YOUR ROOM through openCapture({ replace: true, skipGuide: true }), which
+// navigates on its own: the camera, or the account, Pro or monthly-limit
+// screen. The guide leaves the stack either way. A failed check shows the
+// error line; the button stays live for a retry, which clears the line and
+// waits again.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
 import { openCapture } from "@/capture/openCapture";
@@ -36,7 +38,7 @@ export function useReplayCheck(onLeave: () => void) {
 
   const start = useCallback(() => {
     if (pending.current) return;
-    // In order: the session flag and the storage write (not awaited), then the check.
+    // In order: the room's guide flag, then the check.
     void markCaptureGuideSeen();
     const controller = new AbortController();
     pending.current = controller;

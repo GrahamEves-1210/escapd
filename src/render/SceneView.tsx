@@ -1,17 +1,17 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Image as RNImage, StyleSheet, View } from "react-native";
 import { Image } from "expo-image";
 import {
-  GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures, useTapGesture,
+  GestureDetector, usePanGesture, usePinchGesture, useSimultaneousGestures, useTapGesture, type PanGesture,
 } from "react-native-gesture-handler";
-import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { plateNumeral } from "@/game/format";
 import { useFeedback } from "@/game/feedback";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, curve, motion, radius, space } from "@/theme/tokens";
-import { Text } from "@/components/Text";
-import { MIN_ZOOM, clampTransform, containBox, doubleTapTarget, zoomAround, type Size, type Transform } from "./geometry";
+import { motion, ref } from "@/theme/tokens";
+import {
+  MIN_ZOOM, clampTransform, doubleTapTarget, fillWidthFit, freeMargin, zoomAround, type Size, type Transform,
+} from "./geometry";
 
 /** A bundled asset (require) or a signed photo URL. */
 export type SceneSource = number | { uri: string };
@@ -26,64 +26,74 @@ export interface LoupeTarget {
 export interface SceneViewProps {
   source: SceneSource;
   accessibilityLabel: string;
-  /** Rendered inside the image box, so children position in image fractions. */
+  /** Rendered inside the image box, so children position in image fractions. Only on the page in view. */
   children: (stage: Size) => ReactNode;
   /** True while the player pinches, pans, or holds the loupe (chrome fades). */
   onInteractionChange?: (active: boolean) => void;
-  /** Completion: the photo pulls back slightly inside the plate. */
+  /** Completion: the photo pulls back slightly. */
   pulledBack?: boolean;
-  /** Zero-based plate index, stamped on the mount. */
-  plateIndex?: number;
-  plateCount?: number;
-  /** Use-item mode: the mount lights in brass. */
+  /** Use-item mode: a white ring inside the photo's edge. */
   armed?: boolean;
-  /** Revealed hotspot rects. The loupe ticks when it crosses one. */
+  /** This scene's visible hotspot rects. The loupe ticks when it crosses one; the crop never cuts one. */
   loupeTargets?: LoupeTarget[];
+  /** The page in view: hotspots, gestures and the photo's accessibility. Default true. */
+  active?: boolean;
+  /** Set to false while this page is zoomed, so the pager doesn't swipe away from it. */
+  pageable?: SharedValue<boolean>;
+  /** The photo's width / height, once known. */
+  onAspect?: (aspect: number) => void;
+  /** The visible window, once laid out (the pager sets its dots on its foot). */
+  onWindow?: (window: Size) => void;
+  /**
+   * The pager's swipe. The loupe blocks it: a swipe waits for the press-and-
+   * hold to fail (it fails as soon as the finger moves), and a held loupe is
+   * never swiped away.
+   */
+  pagerGesture?: PanGesture;
 }
 
 const SETTLE_MS = 220;
-const MOUNT_PAD = 6;
-const LABEL_BLOCK = 22;
+const P = ref.layout.play;
 
-function bundledAspect(source: SceneSource): number | null {
+export function bundledAspect(source: SceneSource): number | null {
   if (typeof source !== "number") return null;
   const resolved = RNImage.resolveAssetSource(source);
   return resolved?.width && resolved?.height ? resolved.width / resolved.height : null;
 }
 
 /**
- * One room photo on a Kodachrome mount. The image is clipped to a continuous
- * 24 pt squircle; the mount is 30 pt with 6 pt of walnut around it. Pinch,
- * pan, and the loupe all happen inside that clip, so hotspot fractions stay
- * locked to the photograph.
+ * One room photo, full bleed: it fills the page's width with square edges,
+ * in full colour on the flat ground; a short page crops it evenly top and
+ * bottom, but only into margins no hotspot reaches (else it is contained).
+ * No mount, rim or label. Use mode draws a white ring inside its edge.
+ * Pinch, pan and the loupe all happen inside the visible window, so hotspot
+ * fractions stay locked to the photograph.
  */
 export function SceneView({
   source, accessibilityLabel, children, onInteractionChange, pulledBack,
-  plateIndex = 0, plateCount = 1, armed = false, loupeTargets = [],
+  armed = false, loupeTargets = [], active = true, pageable, onAspect, onWindow, pagerGesture,
 }: SceneViewProps) {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(() => bundledAspect(source));
 
-  // Gutters, the mount's padding, and the stamped plate label sit outside the photograph.
-  const photo = aspect
-    ? containBox({
-      width: Math.max(0, viewport.width - space.plate * 2 - MOUNT_PAD * 2),
-      height: Math.max(0, viewport.height - LABEL_BLOCK - space.sm - MOUNT_PAD * 2),
-    }, aspect)
-    : null;
-  const photoWidth = photo?.width ?? 0;
-  const photoHeight = photo?.height ?? 0;
+  const free = useMemo(() => freeMargin(loupeTargets), [loupeTargets]);
+  const fit = aspect ? fillWidthFit(viewport, aspect, Math.min(free, P.photo.maxCrop)) : null;
+  const imageWidth = fit?.image.width ?? 0;
+  const imageHeight = fit?.image.height ?? 0;
+  const windowWidth = fit?.window.width ?? 0;
+  const windowHeight = fit?.window.height ?? 0;
 
   const vp = useSharedValue<Size>({ width: 0, height: 0 });
   const img = useSharedValue<Size>({ width: 0, height: 0 });
   const reduced = useSharedValue(reducedMotion);
+  const isActive = useSharedValue(active);
   const scale = useSharedValue(1);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const zoomed = useSharedValue(false);
-  const loupeOn = useSharedValue(!reducedMotion);
+  const loupeOn = useSharedValue(active && !reducedMotion);
   const pinchStart = useSharedValue({ scale: 1, tx: 0, ty: 0, fx: 0, fy: 0 });
   const panStart = useSharedValue({ tx: 0, ty: 0 });
   const pull = useSharedValue(1);
@@ -96,24 +106,43 @@ export function SceneView({
   const targets = useSharedValue<LoupeTarget[]>(loupeTargets);
 
   useEffect(() => {
-    const size = { width: photoWidth, height: photoHeight };
-    vp.set(size);
-    img.set(size);
-  }, [photoWidth, photoHeight, vp, img]);
+    vp.set({ width: windowWidth, height: windowHeight });
+    img.set({ width: imageWidth, height: imageHeight });
+    if (windowWidth > 0 && windowHeight > 0) onWindow?.({ width: windowWidth, height: windowHeight });
+    // onWindow is a callback prop; only the sizes matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowWidth, windowHeight, imageWidth, imageHeight, vp, img]);
+
+  useEffect(() => {
+    if (aspect) onAspect?.(aspect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aspect]);
 
   useEffect(() => {
     reduced.set(reducedMotion);
   }, [reducedMotion, reduced]);
 
   useEffect(() => {
+    isActive.set(active);
+  }, [active, isActive]);
+
+  useEffect(() => {
     targets.set(loupeTargets);
   }, [loupeTargets, targets]);
 
   useAnimatedReaction(
-    () => zoomed.get() || reduced.get(),
+    () => zoomed.get() || reduced.get() || !isActive.get(),
     (blocked) => {
       loupeOn.set(!blocked);
       if (blocked) showLoupe.set(0);
+    },
+  );
+
+  // Only the page in view tells the pager whether it may swipe.
+  useAnimatedReaction(
+    () => (isActive.get() ? !zoomed.get() : null),
+    (canPage) => {
+      if (canPage !== null && pageable) pageable.set(canPage);
     },
   );
 
@@ -126,8 +155,8 @@ export function SceneView({
     }
   }, [pulledBack, reducedMotion, pull, scale, tx, ty]);
 
-  const notify = (active: boolean) => onInteractionChange?.(active);
-  const detent = () => feedback.tap();
+  const notify = (on: boolean) => onInteractionChange?.(on);
+  const detent = () => feedback.tick();
 
   const animateTo = (t: Transform) => {
     "worklet";
@@ -149,21 +178,24 @@ export function SceneView({
     animateTo(c.scale < MIN_ZOOM + 0.02 ? { scale: MIN_ZOOM, tx: 0, ty: 0 } : c);
   };
 
+  // x, y are in the window; the image shares its centre (it may be taller, cropped).
   const placeLoupe = (x: number, y: number) => {
     "worklet";
     const w = img.get().width;
     const h = img.get().height;
+    const vw = vp.get().width;
+    const vh = vp.get().height;
     if (w <= 0 || h <= 0) return;
     const s = scale.get();
-    const ix = (x - w / 2 - tx.get()) / s + w / 2;
-    const iy = (y - h / 2 - ty.get()) / s + h / 2;
+    const ix = (x - vw / 2 - tx.get()) / s + w / 2;
+    const iy = (y - vh / 2 - ty.get()) / s + h / 2;
     const mag = motion.loupeMagnification * s;
     const size = motion.loupeSize;
     let lx = x - size / 2;
     let ly = y - size - 16;
     if (ly < 4) ly = y + 28;
-    lx = Math.min(Math.max(lx, 4), Math.max(4, w - size - 4));
-    ly = Math.min(Math.max(ly, 4), Math.max(4, h - size - 4));
+    lx = Math.min(Math.max(lx, 4), Math.max(4, vw - size - 4));
+    ly = Math.min(Math.max(ly, 4), Math.max(4, vh - size - 4));
     loupeX.set(lx);
     loupeY.set(ly);
     loupeImgX.set(size / 2 - ix * mag);
@@ -181,6 +213,7 @@ export function SceneView({
   };
 
   const pinch = usePinchGesture({
+    enabled: isActive,
     onActivate: (e) => {
       "worklet";
       pinchStart.set({ scale: scale.get(), tx: tx.get(), ty: ty.get(), fx: e.focalX, fy: e.focalY });
@@ -227,7 +260,8 @@ export function SceneView({
 
   const loupePan = usePanGesture({
     enabled: loupeOn,
-    minDistance: 0,
+    block: pagerGesture,
+    // Activates only by the hold (no distance), and fails once the finger moves.
     activateAfterLongPress: 280,
     maxPointers: 1,
     onActivate: (e) => {
@@ -248,6 +282,7 @@ export function SceneView({
   });
 
   const doubleTap = useTapGesture({
+    enabled: isActive,
     numberOfTaps: 2,
     maxDelay: 250,
     onActivate: (e) => {
@@ -274,41 +309,49 @@ export function SceneView({
     };
   });
 
-  const stamp = `ESCAPD 400  ·  PLATE ${plateNumeral(plateIndex)}${plateCount > 1 ? `  /  ${plateNumeral(plateCount - 1)}` : ""}`;
-
+  const laidOut = fit && windowWidth > 0 && windowHeight > 0;
   return (
-    <View style={styles.root} onLayout={(e) => setViewport(e.nativeEvent.layout)} testID="scene-view">
-      {photo && photoWidth > 0 && photoHeight > 0 ? (
-        <View style={[styles.mount, armed && styles.mountArmed, { width: photoWidth + MOUNT_PAD * 2 }]}>
-          <GestureDetector gesture={gesture}>
-            <View style={[styles.plate, { width: photoWidth, height: photoHeight }]}>
-              <Animated.View style={[StyleSheet.absoluteFill, stageStyle]}>
-                <Image
-                  source={source}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="fill"
-                  transition={0}
-                  accessible
-                  accessibilityRole="image"
-                  accessibilityLabel={accessibilityLabel}
-                  accessibilityHint={reducedMotion ? undefined : "Pinch to look closer. Press and hold for the loupe."}
-                  onLoad={(e) => setAspect(e.source.width / e.source.height)}
-                />
-                {children({ width: photoWidth, height: photoHeight })}
-              </Animated.View>
-              <View pointerEvents="none" style={styles.rim} />
-              <RegistrationMarks />
-              <Animated.View pointerEvents="none" style={[styles.loupe, loupeFrame]}>
-                <View style={styles.loupeLens}>
-                  <Animated.View style={[styles.loupeImage, loupeImageStyle]}>
-                    <Image source={source} style={StyleSheet.absoluteFill} contentFit="fill" />
-                  </Animated.View>
-                </View>
-              </Animated.View>
-            </View>
-          </GestureDetector>
-          <Text variant="stamp" tone="accent" align="center" style={styles.plateLabel}>{stamp}</Text>
-        </View>
+    <View
+      style={styles.root}
+      onLayout={(e) => setViewport(e.nativeEvent.layout)}
+      accessibilityElementsHidden={!active}
+      importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+      testID="scene-view"
+    >
+      {laidOut ? (
+        <GestureDetector gesture={gesture}>
+          <View style={[styles.window, { width: windowWidth, height: windowHeight }]} testID={active ? "scene-window" : undefined}>
+            <Animated.View
+              style={[
+                styles.stage,
+                { width: imageWidth, height: imageHeight, left: (windowWidth - imageWidth) / 2, top: (windowHeight - imageHeight) / 2 },
+                stageStyle,
+              ]}
+            >
+              <Image
+                source={source}
+                style={StyleSheet.absoluteFill}
+                contentFit="fill"
+                transition={0}
+                accessible={active}
+                accessibilityRole="image"
+                accessibilityLabel={accessibilityLabel}
+                accessibilityHint={reducedMotion ? undefined : "Pinch to look closer. Press and hold for the loupe."}
+                onLoad={(e) => setAspect(e.source.width / e.source.height)}
+              />
+              {active ? children({ width: imageWidth, height: imageHeight }) : null}
+            </Animated.View>
+            {armed && active ? <View pointerEvents="none" style={styles.armed} testID="scene-armed" /> : null}
+            <Animated.View pointerEvents="none" style={[styles.loupe, loupeFrame]}>
+              <View style={styles.loupeLens}>
+                <Animated.View style={[styles.loupeImage, loupeImageStyle]}>
+                  <Image source={source} style={StyleSheet.absoluteFill} contentFit="fill" />
+                </Animated.View>
+                <View style={styles.loupeRim} />
+              </View>
+            </Animated.View>
+          </View>
+        </GestureDetector>
       ) : (
         <Image
           source={source}
@@ -322,66 +365,39 @@ export function SceneView({
   );
 }
 
-function RegistrationMarks() {
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={[styles.mark, styles.markTL]} />
-      <View style={[styles.mark, styles.markTR]} />
-      <View style={[styles.mark, styles.markBL]} />
-      <View style={[styles.mark, styles.markBR]} />
-    </View>
-  );
-}
+const LOUPE = motion.loupeSize;
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: color.canvas,
+    backgroundColor: ref.color.ground,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: space.plate,
   },
-  mount: {
-    padding: MOUNT_PAD,
-    borderRadius: radius.mount,
-    ...curve,
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.hairline,
-  },
-  mountArmed: { borderColor: color.accent },
-  plate: {
-    borderRadius: radius.image,
-    ...curve,
-    overflow: "hidden",
-    backgroundColor: color.canvas,
-  },
-  rim: {
+  // The visible photo: square edges, clipped; a void ground until the photo draws.
+  window: { overflow: "hidden", backgroundColor: ref.color.void },
+  stage: { position: "absolute" },
+  // Use mode: a white ring inside the photo's edge.
+  armed: {
     ...StyleSheet.absoluteFill,
-    borderRadius: radius.image,
-    ...curve,
-    borderWidth: 1,
-    borderColor: color.rim,
+    borderWidth: P.photo.armed,
+    borderColor: ref.color.textPrimary,
   },
-  plateLabel: { marginTop: 6 },
-  mark: { position: "absolute", width: 12, height: 12, borderColor: color.accent },
-  markTL: { top: 8, left: 8, borderTopWidth: 1.5, borderLeftWidth: 1.5 },
-  markTR: { top: 8, right: 8, borderTopWidth: 1.5, borderRightWidth: 1.5 },
-  markBL: { bottom: 8, left: 8, borderBottomWidth: 1.5, borderLeftWidth: 1.5 },
-  markBR: { bottom: 8, right: 8, borderBottomWidth: 1.5, borderRightWidth: 1.5 },
+  // 02's last-plate frame as a circle: a well ring, the image clipped inside it with a faint rim.
   loupe: {
     position: "absolute",
     top: 0,
     left: 0,
-    width: motion.loupeSize,
-    height: motion.loupeSize,
-    borderRadius: motion.loupeSize / 2,
-    borderWidth: 3,
-    borderColor: color.accent,
-    backgroundColor: color.canvas,
+    width: LOUPE,
+    height: LOUPE,
+    borderRadius: LOUPE / 2,
+    borderWidth: P.loupe.ring,
+    borderColor: ref.color.well,
+    backgroundColor: ref.color.void,
   },
-  loupeLens: { flex: 1, borderRadius: motion.loupeSize / 2, overflow: "hidden" },
+  loupeLens: { flex: 1, borderRadius: LOUPE / 2, overflow: "hidden" },
   loupeImage: { position: "absolute", left: 0, top: 0 },
+  loupeRim: { ...StyleSheet.absoluteFill, borderRadius: LOUPE / 2, borderWidth: P.loupe.rim, borderColor: ref.color.rimFaint },
   measure: { width: 1, height: 1, opacity: 0 },
 });

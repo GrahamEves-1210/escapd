@@ -136,6 +136,9 @@ Deno.test("person in a photo: non-retryable person_or_sensitive naming the posit
   assertEquals(err.code, "person_or_sensitive");
   assertEquals(err.retryable, false);
   assert(err.message.includes("position(s): 2"), err.message);   // photo 2 of 3 = position 2
+  // Older clients parse the prefix up to the first full stop; newer ones read the reasons tail.
+  assert(/photo position\(s\): 2\. /.test(err.message), err.message);
+  assert(err.message.endsWith("Reasons: 2=person."), err.message);
   assertEquals(err.usage!.input_tokens, 3_000);
   assert(err.usage!.cost_usd! > 0);
   assertEquals(provider.stages(), ["perception", "perception", "perception"]);
@@ -146,6 +149,7 @@ Deno.test("legible private text also fails as person_or_sensitive", async () => 
   const err = await assertRejects(() => generatePuzzle(INPUT, deps(provider)), GenerationError);
   assertEquals(err.code, "person_or_sensitive");
   assert(err.message.includes("position(s): 5"), err.message);
+  assert(err.message.endsWith("Reasons: 5=private_text."), err.message);
 });
 
 Deno.test("too few verified objects: non-retryable too_few_objects with usage", async () => {

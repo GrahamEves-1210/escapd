@@ -1,9 +1,10 @@
-// Thinking states (DESIGN.md, Global tokens): the status line for a real wait,
-// with the user's shimmer as its glyph layer. Lines hold, then the outgoing
-// line rises 8 and fades as the next rises in from 8 below, 50 ms behind it.
-// A highlight band 0.8 x the line's width sweeps the glyphs left to right.
-// No blur (Noir has none). Reduced motion, or a line that wraps at the
-// player's text size: plain Text in read, swapped with a 140 ms cross-fade.
+// Thinking states: the status line for a real wait, with the user's shimmer as
+// its glyph layer. Lines hold, then the outgoing line rises 8 and fades as the
+// next rises in from 8 below, 50 ms behind it. A highlight band 0.8 x the
+// line's width sweeps the glyphs left to right, in the reference greys
+// (ref.motion.thinking). System font, as the references' UI text. No blur.
+// Reduced motion, or a line that wraps at the player's text size: plain Text
+// in the still grey, swapped with a 140 ms cross-fade.
 import { useEffect, useId, useRef, useState, type Ref } from "react";
 import {
   AccessibilityInfo,
@@ -14,6 +15,7 @@ import {
   useWindowDimensions,
   type StyleProp,
   type HostInstance,
+  type LayoutChangeEvent,
   type TextLayoutEvent,
   type TextStyle,
   type ViewStyle,
@@ -33,27 +35,43 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref, type as liveType } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 import { timingFor, toEasing } from "./motion";
 
 const T = ref.motion.thinking;
 const SHIMMER = T.shimmer;
 
-// "noir" (Geist, meta to bright) or "warm": the play screen's own type and warm
-// text colours, for the screens that follow its look (hub, guide, Pro).
-export type ThinkingTone = "noir" | "warm";
-const TONES = {
-  noir: { base: SHIMMER.base, highlight: SHIMMER.highlight, still: ref.color.read },
-  warm: { base: T.shimmerWarm.base, highlight: T.shimmerWarm.highlight, still: T.shimmerWarm.still },
-} as const;
-type ToneColors = (typeof TONES)[ThinkingTone];
-const WARM_TYPE = { meta: liveType.caption, body: liveType.body, note: liveType.stamp } as const;
+/** The ground the line sits on: "dark" (textSecondary to textPrimary) or "paper" (inkMuted to inkDisplay). */
+export type ThinkingGround = "dark" | "paper";
+interface GroundColors {
+  base: string;
+  highlight: string;
+  still: string;
+}
+const GROUNDS: Record<ThinkingGround, GroundColors> = {
+  dark: { base: SHIMMER.base, highlight: SHIMMER.highlight, still: SHIMMER.still },
+  paper: T.shimmerPaper,
+};
+
+/** "meta" (13/16 Regular), "body" (17/22 Regular) or "tag" (13/16 Semibold, uppercase, tracked: a card's note). */
+export type ThinkingVariant = "meta" | "body" | "tag";
+// System-font styles: the SVG glyphs take the same weight as the hidden sizer.
+interface LineStyle extends Omit<TextStyle, "fontWeight" | "fontFamily"> {
+  fontSize: number;
+  lineHeight: number;
+  fontWeight: "400" | "500" | "600" | "700";
+}
+const TYPE: Record<ThinkingVariant, LineStyle> = { meta: ref.type.meta, body: ref.type.body, tag: ref.type.tag };
 // Swap to swap: the incoming line starts 50 ms in, settles at 200, holds 2000.
 const PERIOD = T.gap + T.swap + T.hold;
 const SWEEP = timingFor({ duration: SHIMMER.duration, easing: SHIMMER.easing });
 // The band is SHIMMER.band x the line's width, peaking in its middle.
 const HALF_BAND = SHIMMER.band / 2;
 const PEAK = 1 / 2;
+// Web measuring (see layoutFor): half a cap height (about 0.35 em) and the
+// height ratio above which a sizer has more than one line.
+const WEB_CAP_HALF = 0.35;
+const WEB_WRAP_RATIO = 1.5;
 
 const ENTER = new Keyframe({
   from: { opacity: 0, transform: [{ translateY: T.distance }] },
@@ -73,8 +91,6 @@ const FADE_OUT = FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 
-export type ThinkingVariant = "meta" | "body" | "note";
-
 interface Measure {
   width: number;
   baseline: number;
@@ -88,10 +104,10 @@ interface BaseProps {
    * changes (a new count), it swaps with the same transition.
    */
   lines: readonly string[];
-  /** "meta" (default, Geist 13/18), "body" (Geist 17/24) or "note" (Geist Mono 13/18, uppercase: 01's DEVELOPING). */
+  /** Default "meta". A ref.type style: "meta", "body" or "tag" (uppercase, for a card's note). */
   variant?: ThinkingVariant;
-  /** Default "noir". "warm" sets meta / body / note in the live caption / body / stamp styles and warm text colours. */
-  tone?: ThinkingTone;
+  /** Default "dark". "paper" for a line on 03's light sheet. */
+  ground?: ThinkingGround;
   /**
    * Extra strings measured for the box width, e.g. the longest count line
    * "Preparing photo 4 of 4", so the box never resizes when the count changes.
@@ -146,13 +162,13 @@ export function ThinkingStates(props: ThinkingStatesProps) {
 }
 
 function ThinkingLine(props: ThinkingStatesProps) {
-  const { lines, variant = "meta", tone = "noir", sizeTo, announceOnMount = false, testID, style } = props;
+  const { lines, variant = "meta", ground = "dark", sizeTo, announceOnMount = false, testID, style } = props;
   const decorative = props.decorative === true;
   const label = props.accessibilityLabel;
   const { reducedMotion } = useTheme();
   const { fontScale } = useWindowDimensions();
-  const typeStyle: TextStyle = tone === "warm" ? WARM_TYPE[variant] : ref.type[variant];
-  const colors = TONES[tone];
+  const typeStyle = TYPE[variant];
+  const colors = GROUNDS[ground];
   const [measures, setMeasures] = useState<Record<string, Measure>>({});
   const [tick, setTick] = useState(0);
 
@@ -195,6 +211,26 @@ function ThinkingLine(props: ThinkingStatesProps) {
     });
   };
 
+  // react-native-web never fires onTextLayout. There the sizers hug their text
+  // (sizersWeb), so onLayout gives the line's width, and a box taller than one
+  // line means it wrapped; the baseline sits a cap's half below the box's middle.
+  const layoutFor = (s: string) => (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (width === 0) return;
+    const lineHeight = typeStyle.lineHeight * fontScale;
+    const next: Measure = {
+      width,
+      baseline: lineHeight / 2 + typeStyle.fontSize * fontScale * WEB_CAP_HALF,
+      wrapped: height > lineHeight * WEB_WRAP_RATIO,
+    };
+    setMeasures((prev) => {
+      const old = prev[s];
+      if (old && old.width === next.width && old.baseline === next.baseline && old.wrapped === next.wrapped) return prev;
+      return { ...prev, [s]: next };
+    });
+  };
+  const web = Platform.OS === "web";
+
   if (count === 0) return null;
 
   const index = rotating ? tick % count : 0;
@@ -206,7 +242,7 @@ function ThinkingLine(props: ThinkingStatesProps) {
   const current = measures[text];
   // SVG text doesn't follow the system text size by itself, so the box and
   // the glyphs are scaled by fontScale to match the hidden sizer.
-  const lineBox = (typeStyle.lineHeight ?? 0) * fontScale;
+  const lineBox = typeStyle.lineHeight * fontScale;
   const mode = reducedMotion || wrapped ? "static" : current ? "shimmer" : "pending";
 
   // The status is one element on iOS. On Android `accessible` would also make
@@ -227,7 +263,7 @@ function ThinkingLine(props: ThinkingStatesProps) {
     <View testID={testID} {...a11y} style={[styles.outer, style]}>
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.sizers}>
         {strings.map((s) => (
-          <Text key={s} style={typeStyle} onTextLayout={measureFor(s)}>
+          <Text key={s} style={[typeStyle, web && styles.sizerWeb]} onTextLayout={measureFor(s)} onLayout={web ? layoutFor(s) : undefined}>
             {s}
           </Text>
         ))}
@@ -274,8 +310,8 @@ function ShimmerCopy({
 }: {
   ref?: Ref<HostInstance>;
   text: string;
-  typeStyle: TextStyle;
-  colors: ToneColors;
+  typeStyle: LineStyle;
+  colors: GroundColors;
   fontScale: number;
   lineWidth: number;
   boxWidth: number;
@@ -323,8 +359,9 @@ function ShimmerCopy({
           x={boxWidth / 2}
           y={baseline}
           textAnchor="middle"
-          fontFamily={typeStyle.fontFamily}
-          fontSize={(typeStyle.fontSize ?? 0) * fontScale}
+          fontFamily={Platform.OS === "web" ? ref.webSystemFont : undefined}
+          fontWeight={typeStyle.fontWeight}
+          fontSize={typeStyle.fontSize * fontScale}
           letterSpacing={tracking}
           fill={`url(#${id})`}
         >
@@ -346,6 +383,7 @@ function StaticCopy({ ref: textRef, text, typeStyle, color }: { ref?: Ref<HostIn
 const styles = StyleSheet.create({
   outer: { alignSelf: "stretch", alignItems: "center" },
   sizers: { position: "absolute", top: 0, left: 0, right: 0, opacity: 0 },
+  sizerWeb: { alignSelf: "flex-start" },
   copy: { position: "absolute", top: 0, left: 0 },
   staticLine: { textAlign: "center" },
 });

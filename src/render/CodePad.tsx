@@ -1,14 +1,18 @@
-import { useRef, useState, type ComponentRef } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
+import { AccessibilityInfo, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import type { Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
 import { codeKind, codeLength, type InventoryItem } from "@/game/selectors";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, font, motion, radius, space, type as typeScale } from "@/theme/tokens";
-import { Button } from "@/components/Button";
-import { Text } from "@/components/Text";
-import { BackspaceIcon, ICON_WEIGHT } from "@/components/icons";
+import { motion, ref } from "@/theme/tokens";
+import { BackspaceIcon, ICON_WEIGHT, WarningIcon } from "@/components/icons";
+import { CodeWheel } from "./CodeWheel";
+import { Card, NoticeLine, QuietToggle, RingPressable, WhiteBar } from "./parts";
+
+const P = ref.layout.play;
+const K = P.code;
+const SQ = ref.button.square;
 
 export type CodeOutcome =
   | { kind: "solved" }
@@ -20,15 +24,20 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"]
 const MAX_FREE_LENGTH = 12;
 
 /**
- * Code entry for `kind: "code"`. A fixed run of digits is a brass tumbler:
- * every wheel always shows a numeral, so a leading zero is sent as "0".
- * Wrong answers keep the lock open, reset the wheels, and stay on screen.
+ * Code entry for `kind: "code"`. A fixed run of digits is a tumbler: every
+ * wheel is a vertical picker (CodeWheel) that always shows a numeral in 02's
+ * italic, so a leading zero is sent as "0". Other codes use void slots or a
+ * void field, and digits a keypad of 02's square buttons. Wrong answers keep
+ * the lock open, reset the wheels, shake them, and show 02's error line
+ * (white glyph and words).
  */
-export function CodePad({ puzzle, items, onSubmit }: {
+export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   puzzle: Puzzle;
   /** The player's current items, so a clue never has to be memorised. */
   items: InventoryItem[];
   onSubmit: (answer: string) => Promise<CodeOutcome>;
+  /** A finger is on a wheel (the sheet holds its scroll meanwhile). */
+  onWheelDrag?: (dragging: boolean) => void;
 }) {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
@@ -49,11 +58,15 @@ export function CodePad({ puzzle, items, onSubmit }: {
   const answer = tumbler ? digits.join("") : value;
   const complete = tumbler ? true : length ? value.length === length : value.length > 0;
 
-  const stepWheel = (index: number, delta: number) => {
+  // The wheel gives its own tick per digit.
+  const setDigit = useCallback((index: number, digit: number) => {
     setMessage(null);
-    feedback.tap();
-    setDigits((current) => current.map((digit, i) => (i === index ? (digit + delta + 10) % 10 : digit)));
-  };
+    setDigits((current) => current.map((d, i) => (i === index ? digit : d)));
+  }, []);
+  const onDigit = useMemo(
+    () => Array.from({ length: length ?? 0 }, (_, i) => (digit: number) => setDigit(i, digit)),
+    [length, setDigit],
+  );
 
   const press = (key: (typeof KEYS)[number]) => {
     setMessage(null);
@@ -92,31 +105,11 @@ export function CodePad({ puzzle, items, onSubmit }: {
   const wheels = (
     <Animated.View
       ref={displayRef}
-      style={[styles.wheels, shakeStyle, message?.tone === "warning" && styles.wheelsWrong]}
+      style={[styles.wheels, shakeStyle]}
       accessibilityLabel={answer.length ? `Code: ${answer.split("").join(" ")}` : "Code: empty"}
     >
       {digits.map((digit, index) => (
-        <View key={index} style={styles.wheel}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Increase digit ${index + 1}, currently ${digit}`}
-            onPress={() => stepWheel(index, 1)}
-            testID={`tumbler-${index}-up`}
-            style={styles.wheelStep}
-          >
-            <Text variant="caption" tone="accent">+</Text>
-          </Pressable>
-          <Text variant="code">{digit}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Decrease digit ${index + 1}, currently ${digit}`}
-            onPress={() => stepWheel(index, -1)}
-            testID={`tumbler-${index}-down`}
-            style={styles.wheelStep}
-          >
-            <Text variant="caption" tone="secondary">−</Text>
-          </Pressable>
-        </View>
+        <CodeWheel key={index} index={index} value={digit} onChange={onDigit[index]} onDragChange={onWheelDrag} />
       ))}
     </Animated.View>
   );
@@ -131,11 +124,12 @@ export function CodePad({ puzzle, items, onSubmit }: {
     >
       {length
         ? Array.from({ length }, (_, i) => (
-          <View key={i} style={[styles.slot, i === value.length && styles.slotActive]}>
-            <Text variant="code">{value[i] ?? ""}</Text>
+          <View key={i} style={styles.slot}>
+            <Text style={styles.digit}>{value[i] ?? ""}</Text>
+            {i === value.length ? <View pointerEvents="none" style={styles.slotActive} /> : null}
           </View>
         ))
-        : <Text variant="code" tone={value ? "primary" : "secondary"}>{value || "—"}</Text>}
+        : <Text style={[styles.digit, !value && styles.secondary]}>{value || "—"}</Text>}
     </Animated.View>
   ) : (
     <Animated.View style={shakeStyle}>
@@ -152,7 +146,7 @@ export function CodePad({ puzzle, items, onSubmit }: {
         onSubmitEditing={submit}
         accessibilityLabel="Code"
         placeholder="Enter the code"
-        placeholderTextColor={color.textSecondary}
+        placeholderTextColor={ref.color.textSecondary}
         style={styles.input}
       />
     </Animated.View>
@@ -160,18 +154,21 @@ export function CodePad({ puzzle, items, onSubmit }: {
 
   return (
     <View style={styles.root}>
-      {puzzle.prompt ? <Text tone="secondary">{puzzle.prompt}</Text> : null}
-      <View style={styles.guide} />
+      {puzzle.prompt ? <Text style={styles.prompt}>{puzzle.prompt}</Text> : null}
       {tumbler ? wheels : keypad}
-      <View style={styles.messageRow} accessibilityLiveRegion="polite">
-        {message ? <Text variant="control" tone={message.tone}>{message.text}</Text> : null}
+      <View style={styles.messageRow} accessibilityLiveRegion="polite" testID="code-message">
+        {message ? <NoticeLine icon={WarningIcon} text={message.text} /> : null}
       </View>
 
       {!tumbler && kind === "digits" ? (
         <View style={styles.pad}>
           {KEYS.map((key) => (
-            <Pressable
+            <RingPressable
               key={key}
+              ring="panel"
+              radius={SQ.radius}
+              edge={SQ.borderWidth}
+              onPressIn={feedback.press}
               onPress={() => press(key)}
               accessibilityRole="button"
               accessibilityLabel={key === "back" ? "Delete" : key === "clear" ? "Clear" : key}
@@ -179,36 +176,38 @@ export function CodePad({ puzzle, items, onSubmit }: {
               style={({ pressed }) => [styles.key, pressed && styles.keyPressed]}
             >
               {key === "back"
-                ? <BackspaceIcon size={24} weight={ICON_WEIGHT} color={color.text} />
-                : <Text variant={key === "clear" ? "control" : "code"} tone={key === "clear" ? "secondary" : "primary"}>
+                ? <BackspaceIcon size={P.tray.icon} weight={ICON_WEIGHT} color={ref.color.textPrimary} />
+                : <Text style={key === "clear" ? styles.clear : styles.keyLabel}>
                   {key === "clear" ? "Clear" : key}
                 </Text>}
-            </Pressable>
+            </RingPressable>
           ))}
         </View>
       ) : null}
 
-      <Button
+      <WhiteBar
         label={tumbler ? "Test combination" : "Try code"}
         onPress={submit}
         disabled={!complete}
-        loading={busy}
+        busy={busy}
+        // The outcome (the lock opening, or a wrong code) gives the haptic.
+        haptic={false}
         testID="code-submit"
       />
 
       {items.length > 0 ? (
         <View style={styles.items}>
-          <Button
+          <QuietToggle
             label={showItems ? "Hide your items" : "Check your items"}
-            variant="quiet"
             onPress={() => setShowItems((s) => !s)}
-            accessibilityState={{ expanded: showItems }}
+            expanded={showItems}
+            testID="code-items"
           />
           {showItems ? items.map((item) => (
-            <View key={item.id} style={styles.item}>
-              <Text variant="control" tone="ink">{item.name}</Text>
-              {item.description ? <Text variant="slip" tone="ink">{item.description}</Text> : null}
-            </View>
+            <Card key={item.id} style={styles.item}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              {item.description ? <Text style={styles.itemDetail}>{item.description}</Text> : null}
+            </Card>
           )) : null}
         </View>
       ) : null}
@@ -217,62 +216,57 @@ export function CodePad({ puzzle, items, onSubmit }: {
 }
 
 const styles = StyleSheet.create({
-  root: { gap: space.lg },
-  guide: { alignSelf: "center", width: 72, height: 3, borderRadius: 2, backgroundColor: color.accent },
-  wheels: { flexDirection: "row", justifyContent: "center", gap: space.sm },
-  wheelsWrong: { borderWidth: 1, borderColor: color.wax, borderRadius: radius.control, padding: 4 },
-  wheel: {
-    width: 56,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.hairline,
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  wheelStep: { width: "100%", minHeight: 36, alignItems: "center", justifyContent: "center" },
-  slots: { flexDirection: "row", justifyContent: "center", gap: space.sm },
+  root: { gap: ref.space.lg },
+  prompt: { ...P.type.hint, color: ref.color.textSecondary },
+  digit: { ...P.type.digit, color: ref.color.textPrimary, textAlign: "center" },
+  secondary: { color: ref.color.textSecondary },
+  wheels: { flexDirection: "row", justifyContent: "center", gap: ref.space.sm },
+  slots: { flexDirection: "row", justifyContent: "center", gap: ref.space.sm },
   slot: {
-    width: 52,
-    height: 64,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.hairline,
+    width: K.slot.width,
+    height: K.slot.height,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: ref.color.void,
     alignItems: "center",
     justifyContent: "center",
   },
-  slotActive: { borderColor: color.accent },
-  messageRow: { minHeight: 20, alignItems: "center" },
-  pad: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: space.sm },
+  // The next slot to fill: 02's cue ring, in white.
+  slotActive: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    borderWidth: P.cueRing,
+    borderColor: ref.color.textPrimary,
+  },
+  messageRow: { minHeight: K.messageMin, alignItems: "center" },
+  pad: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: ref.space.sm },
+  // A key: 02's square button, stretched to a third of the row.
   key: {
-    width: "31.5%",
-    minHeight: 56,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.hairline,
+    width: K.keyWidth,
+    minHeight: K.key,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: SQ.fill,
+    borderWidth: SQ.borderWidth,
+    borderColor: P.squareRim,
     alignItems: "center",
     justifyContent: "center",
   },
-  keyPressed: { backgroundColor: color.accentMuted },
+  keyPressed: { opacity: P.pressedOpacity },
+  keyLabel: { ...P.type.key, color: ref.color.textPrimary },
+  clear: { ...P.type.action, color: ref.color.textSecondary },
   input: {
-    ...typeScale.code,
-    fontFamily: font.monoBold,
-    color: color.text,
+    ...P.type.digit,
+    color: ref.color.textPrimary,
     textAlign: "center",
-    letterSpacing: 4,
-    minHeight: 64,
-    borderRadius: radius.control,
-    backgroundColor: color.raised,
-    borderWidth: 1,
-    borderColor: color.hairline,
+    minHeight: K.input,
+    borderRadius: SQ.radius,
+    ...ref.curve,
+    backgroundColor: ref.color.void,
   },
-  items: { gap: space.sm },
-  item: {
-    gap: space.xs,
-    padding: space.md,
-    borderRadius: radius.slip,
-    backgroundColor: color.manila,
-  },
+  items: { gap: ref.space.sm },
+  item: { gap: ref.space.xs, paddingVertical: P.card.padY },
+  itemName: { ...P.type.card, color: ref.color.textPrimary },
+  itemDetail: { ...P.type.hint, color: ref.color.textSecondary },
 });

@@ -1,5 +1,9 @@
-// 03 · Camera permission copy, exactly as docs/DESIGN.md writes it. Sentence
-// case throughout; every control label starts with a verb.
+// 03 · Camera permission copy, in plain language (photos, "build the case";
+// no film or darkroom words, nothing alarming). Written
+// in sentence case, which is what screen readers hear; the screen sets every
+// visible line in lowercase, as the reference does (textTransform for text,
+// lowercased strings for the drawn thinking lines). Every control label starts
+// with a verb.
 
 /** The sheet's two copy sets. A switch between them crossfades the text. */
 export type PermissionCopyKey = "default" | "denied";
@@ -7,10 +11,10 @@ export type PermissionCopyKey = "default" | "denied";
 export const PERMISSION_COPY: Record<PermissionCopyKey, { title: string; body: string; action: string }> = {
   default: {
     // The space in "the camera" is a non-breaking space (U+00A0), so the
-    // title sets as "Let ESCAPD use / the camera" and never strands "camera".
+    // title sets as "let escapd use / the camera" and never strands "camera".
     title: "Let ESCAPD use the camera",
     body:
-      "You'll photograph three to six views of one room. Each photo is re-encoded on your phone first, so its location never leaves it. Nothing is sent until you develop the case.",
+      "You'll take 3 to 6 photos of one room. Each photo's location is removed on your phone first, and nothing is sent until you build the case.",
     action: "Allow the camera",
   },
   denied: {
@@ -21,20 +25,17 @@ export const PERMISSION_COPY: Record<PermissionCopyKey, { title: string; body: s
 };
 
 export const COPY = {
-  /** The back arrow's accessibility labels (02's labels). */
-  close: "Close the camera",
-  cancelRetake: "Cancel retake",
   /** Quiet buttons. */
   choosePhotos: "Choose photos instead",
   choosePhoto: "Choose a photo instead",
-  lightTable: "Go to the light table",
+  lightTable: "Review your photos",
   /** Checking past ~1 s: the line and its accessibility label. */
-  checking: "Opening the rangefinder",
+  checking: "Opening the camera",
   /** Library busy: the container's fixed label, and the real progress line. */
-  busyLabel: "Re-encoding your photos",
-  busyLine: (current: number, total: number) => `Re-encoding photo ${current} of ${total}`,
-  /** Library partial (fewer than 3 plates on the roll). */
-  partial: (plates: number) => `${plates} ${plates === 1 ? "plate" : "plates"} on the roll. A case needs at least three.`,
+  busyLabel: "Preparing your photos",
+  busyLine: (current: number, total: number) => `Preparing photo ${current} of ${total}`,
+  /** Library partial (fewer than 3 photos taken). */
+  partial: (photos: number) => `${photos} ${photos === 1 ? "photo" : "photos"} taken. A case needs at least 3.`,
   libraryError: "One of those photos couldn't be used. Try another.",
   requestError: "The camera didn't answer. Try again.",
 } as const;

@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import * as api from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
-import { hasSeenCaptureGuide } from "../guideSeen";
+import { resetCaptureGuide } from "../guideSeen";
 import { openCapture } from "../openCapture";
 
 jest.mock("expo-router", () => ({
@@ -14,13 +14,13 @@ jest.mock("@/lib/escapd-api", () => ({
 }));
 
 jest.mock("../guideSeen", () => ({
-  hasSeenCaptureGuide: jest.fn(),
+  resetCaptureGuide: jest.fn(),
 }));
 
 const mocked = api as jest.Mocked<typeof api>;
 const push = jest.mocked(router.push);
 const replace = jest.mocked(router.replace);
-const seen = jest.mocked(hasSeenCaptureGuide);
+const reset = jest.mocked(resetCaptureGuide);
 
 const access = (overrides: Partial<MyAccess> = {}): MyAccess => ({
   user_id: "u1", is_anonymous: false, tutorial_completed: true, has_custom_rooms_entitlement: true,
@@ -32,7 +32,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   mocked.ensureSession.mockResolvedValue({} as Awaited<ReturnType<typeof api.ensureSession>>);
   mocked.getMyAccess.mockResolvedValue(access());
-  seen.mockResolvedValue(true);
 });
 
 describe("openCapture", () => {
@@ -54,40 +53,40 @@ describe("openCapture", () => {
     mocked.getMyAccess.mockResolvedValue(access({ is_anonymous: true, has_custom_rooms_entitlement: false, can_generate: false }));
     await expect(openCapture()).resolves.toBe("account");
     expect(push).toHaveBeenCalledWith({ pathname: "/account", params: { next: "back" } });
-    expect(seen).not.toHaveBeenCalled();
   });
 
   it("sends a player without the custom_rooms entitlement to /pro with the cap", async () => {
     mocked.getMyAccess.mockResolvedValue(access({ has_custom_rooms_entitlement: false, can_generate: false, generations_cap: 12 }));
     await expect(openCapture()).resolves.toBe("pro");
     expect(push).toHaveBeenCalledWith({ pathname: "/pro", params: { cap: "12" } });
-    expect(seen).not.toHaveBeenCalled();
   });
 
   it("sends an entitled player at the monthly cap to develop's cap state", async () => {
     mocked.getMyAccess.mockResolvedValue(access({ can_generate: false }));
     await expect(openCapture()).resolves.toBe("develop");
     expect(push).toHaveBeenCalledWith({ pathname: "/capture/develop", params: { from: "hub" } });
-    expect(seen).not.toHaveBeenCalled();
   });
 
-  it("shows the photo guide the first time", async () => {
-    seen.mockResolvedValue(false);
+  it("shows the photo guide before every new room, starting the room's guide flag afresh first", async () => {
     await expect(openCapture()).resolves.toBe("guide");
     expect(push).toHaveBeenCalledWith("/capture/guide");
+    await expect(openCapture()).resolves.toBe("guide");
+    expect(push).toHaveBeenLastCalledWith("/capture/guide");
+    expect(reset).toHaveBeenCalledTimes(2);
+    // Cleared before the check runs, so a caller that falls back to /capture offline still meets the guide.
+    expect(reset.mock.invocationCallOrder[0]).toBeLessThan(mocked.ensureSession.mock.invocationCallOrder[0]);
   });
 
-  it("opens the camera once the guide has been seen", async () => {
-    await expect(openCapture()).resolves.toBe("capture");
-    expect(push).toHaveBeenCalledWith("/capture");
-    expect(replace).not.toHaveBeenCalled();
+  it("clears the room's guide flag even when the check then fails", async () => {
+    mocked.ensureSession.mockRejectedValue(new Error("Network request failed"));
+    await expect(openCapture()).rejects.toThrow("Network request failed");
+    expect(reset).toHaveBeenCalledTimes(1);
   });
 
-  it("goes straight to the camera with skipGuide, without reading the flag", async () => {
-    seen.mockResolvedValue(false);
+  it("goes straight to the camera with skipGuide (the guide's own continue), keeping the room's flag", async () => {
     await expect(openCapture({ skipGuide: true })).resolves.toBe("capture");
     expect(push).toHaveBeenCalledWith("/capture");
-    expect(seen).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
   });
 
   it("still applies the access rules with skipGuide", async () => {
@@ -97,7 +96,6 @@ describe("openCapture", () => {
   });
 
   it("replaces instead of pushing when asked", async () => {
-    seen.mockResolvedValue(false);
     await expect(openCapture({ replace: true })).resolves.toBe("guide");
     expect(replace).toHaveBeenCalledWith("/capture/guide");
     expect(push).not.toHaveBeenCalled();

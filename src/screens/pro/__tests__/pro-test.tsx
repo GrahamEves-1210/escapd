@@ -1,12 +1,15 @@
-import { AccessibilityInfo, AppState, BackHandler, Dimensions, Platform, StyleSheet } from "react-native";
+import { AccessibilityInfo, AppState, BackHandler, Dimensions, Platform, StyleSheet, processColor } from "react-native";
 import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { setStatusBarStyle } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { openCapture } from "@/capture/openCapture";
 import { grantTestEntitlement, testPurchasesEnabled, TestPurchaseError, TestPurchaseUnavailableError } from "@/capture/testPurchase";
 import { WifiSlashIcon } from "@/components/icons";
 import * as api from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
-import { color, hit, radius, ref, space, type } from "@/theme/tokens";
+import { ThemeProvider } from "@/theme/ThemeProvider";
+import { ref } from "@/theme/tokens";
 import * as copy from "../copy";
 import { ProNoticeLine } from "../ProNoticeLine";
 import { ProScreen } from "../ProScreen";
@@ -29,6 +32,8 @@ jest.mock("expo-router", () => {
   };
 });
 
+jest.mock("expo-status-bar", () => ({ setStatusBarStyle: jest.fn() }));
+
 jest.mock("@/lib/escapd-api", () => ({
   ensureSession: jest.fn(),
   getMyAccess: jest.fn(),
@@ -44,7 +49,7 @@ jest.mock("@/capture/testPurchase", () => {
 });
 
 jest.mock("@/game/feedback", () => ({
-  useFeedback: () => ({ success: mockSuccess, tap: jest.fn(), warning: jest.fn() }),
+  useFeedback: () => ({ tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: mockSuccess, warning: jest.fn(), error: jest.fn() }),
 }));
 
 const mocked = jest.mocked(api);
@@ -56,14 +61,21 @@ const open = jest.mocked(openCapture);
 const grant = jest.mocked(grantTestEntitlement);
 const testBuild = jest.mocked(testPurchasesEnabled);
 const announce = jest.mocked(AccessibilityInfo.announceForAccessibility);
+const statusBar = jest.mocked(setStatusBarStyle);
 const hidden = { includeHiddenElements: true } as const;
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
-/** The live Button draws its fill, edge, corners and dimming on an inner surface; layout stays on the pressable. */
-const surfaceOf = (button: Parameters<typeof within>[0]) => within(button).getByTestId("button-surface", { includeHiddenElements: true });
-const buttonLook = (button: Parameters<typeof within>[0]) => ({ ...styleOf(button), ...styleOf(surfaceOf(button)) });
-type Node = ReturnType<typeof screen.getByRole>;
-/** The live Button's spinner, which takes its label's place while it is `loading` (it has no testID of its own). */
-const spinnersIn = (button: Node) => button.queryAll((node) => node.type === "ActivityIndicator");
+/** A hex token as Reanimated's interpolateColor writes it. */
+const rgba = (hex: string) => `rgba(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")}, 1)`;
+const ROWS = ["Your room becomes the case.", "The clues hide in your things.", "Up to 20 new cases a month."];
+const BASE = { frame: { x: 0, y: 0, width: 393, height: 852 }, insets: { top: 59, bottom: 34, left: 0, right: 0 } };
+const NO_BOTTOM = { frame: { x: 0, y: 0, width: 375, height: 667 }, insets: { top: 20, bottom: 0, left: 0, right: 0 } };
+function renderIn(metrics: typeof BASE) {
+  return render(
+    <SafeAreaProvider initialMetrics={metrics}>
+      <ProScreen />
+    </SafeAreaProvider>,
+  );
+}
 
 const access = (overrides: Partial<MyAccess> = {}): MyAccess => ({
   user_id: "u1", is_anonymous: false, tutorial_completed: true, has_custom_rooms_entitlement: false,
@@ -123,17 +135,12 @@ describe("noticeFor", () => {
 });
 
 describe("Default (test build, opened with ?cap)", () => {
-  it("renders the cover sheet on the first frame without a second access check", async () => {
+  it("renders the sheet on the first frame without a second access check", async () => {
     await render(<ProScreen />);
-    expect(screen.getByLabelText(copy.FILE_LABEL_A11Y)).toBeTruthy();
-    expect(screen.getByRole("header", { name: copy.STATEMENT })).toBeTruthy();
-    expect(screen.getByLabelText(copy.SLIP_HEADING_A11Y)).toBeTruthy();
-    for (const row of ["Your room becomes the case.", "The clues hide in your things.", "Up to 20 new cases a month."]) {
-      expect(screen.getByLabelText(row)).toBeTruthy();
-    }
-    // The numerals and the TEST PURCHASE note are hidden from screen readers.
-    expect(screen.queryByText("01")).toBeNull();
-    expect(screen.getByText("01", hidden)).toBeTruthy();
+    expect(screen.getByRole("header", { name: copy.TITLE })).toBeTruthy();
+    // Each benefit line is one screen-reader element.
+    for (const row of ROWS) expect(screen.getByText(row)).toBeTruthy();
+    // The test note is hidden from screen readers: its words are the pill's hint.
     expect(screen.queryByText(copy.TEST_NOTE)).toBeNull();
     expect(screen.getByText(copy.TEST_NOTE, hidden)).toBeTruthy();
     const unlock = screen.getByRole("button", { name: copy.UNLOCK });
@@ -143,66 +150,102 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(mocked.getMyAccess).not.toHaveBeenCalled();
   });
 
-  it("keeps the statement's last two words together", () => {
-    expect(copy.STATEMENT).toBe("Open a file on your own room.");
+  it("has no visible back control: the pill and not now are its only buttons", async () => {
+    await render(<ProScreen />);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual([copy.UNLOCK, copy.NOT_NOW]);
   });
 
-  it("is a case-file cover in the play screen's look", async () => {
-    await render(<ProScreen />);
-    // Canvas under the silk and the live Grain.
-    expect(styleOf(screen.getByTestId("pro-screen")).backgroundColor).toBe(color.canvas);
-    // The top bar's brass stamp, the Playfair statement.
-    expect(styleOf(screen.getByLabelText(copy.FILE_LABEL_A11Y))).toMatchObject({ ...type.stamp, color: color.accent });
-    expect(styleOf(screen.getByRole("header", { name: copy.STATEMENT }))).toMatchObject({ ...type.caseDisplay, color: color.text });
-    // The manila slip: a carbon-ink stamp heading and body lines in ink.
-    expect(styleOf(screen.getByTestId("pro-slip"))).toMatchObject({
-      backgroundColor: color.manila,
-      borderRadius: radius.slip,
-      padding: space.lg,
-      gap: space.xs,
-    });
-    expect(styleOf(screen.getByText(copy.SLIP_HEADING))).toMatchObject({ ...type.stamp, color: color.ink });
-    expect(styleOf(screen.getByText("Your room becomes the case."))).toMatchObject({ ...type.body, color: color.ink });
-    expect(styleOf(screen.getByText("01", hidden))).toMatchObject({ fontFamily: type.stamp.fontFamily, color: color.ink });
-    // The TEST PURCHASE note is a stamp in tone secondary.
-    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden))).toMatchObject({ ...type.stamp, color: color.textSecondary });
-    // The play screen's live Buttons: the brass primary and the quiet one, 8 pt rounded, in the control type.
-    expect(buttonLook(screen.getByRole("button", { name: copy.UNLOCK }))).toMatchObject({
-      backgroundColor: color.accent,
-      borderRadius: radius.control,
-      minHeight: hit.min,
-    });
-    expect(styleOf(screen.getByText(copy.UNLOCK))).toMatchObject({ ...type.control, color: color.onAccent });
-    expect(buttonLook(screen.getByRole("button", { name: copy.NOT_NOW }))).toMatchObject({
-      backgroundColor: "transparent",
-      borderRadius: radius.control,
-    });
-    expect(styleOf(screen.getByText(copy.NOT_NOW))).toMatchObject({ ...type.control, color: color.text });
+  it("keeps the title's last three words together", () => {
+    expect(copy.TITLE).toBe("Open a file on your\u00a0own\u00a0room");
+    expect(copy.benefitRows(1)[2]).toBe("Up to 1 new case a month.");
   });
 
-  it("reserves one caption line for the notice, so nothing moves when one appears", async () => {
-    const { fontScale } = Dimensions.get("window");
+  it("sets every visible line in lowercase while screen readers hear sentence case", async () => {
     await render(<ProScreen />);
-    expect(styleOf(screen.getByTestId("pro-notice-slot")).minHeight).toBe(type.caption.lineHeight * fontScale);
-    // The pinned stack under it: 8, the note, 12, the action button, 8, the quiet button.
-    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).marginTop).toBe(space.sm);
-    expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).marginTop).toBe(space.md);
-    expect(styleOf(screen.getByRole("button", { name: copy.NOT_NOW })).marginTop).toBe(space.sm);
-  });
-
-  it("keeps both buttons at the live 48 with space.md padding, so with larger text they grow and the stack stays 96", async () => {
-    await render(<ProScreen />);
+    // Text: the sentence-case copy with a lowercase transform.
+    expect(styleOf(screen.getByRole("header", { name: copy.TITLE })).textTransform).toBe("lowercase");
+    for (const row of ROWS) expect(styleOf(screen.getByText(row)).textTransform).toBe("lowercase");
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).textTransform).toBe("lowercase");
+    // The kit's pills: lowercased label strings, sentence-case accessibility labels.
     for (const name of [copy.UNLOCK, copy.NOT_NOW]) {
-      expect(styleOf(screen.getByRole("button", { name }))).toMatchObject({
-        minHeight: hit.min,
-        paddingVertical: space.md,
-        paddingHorizontal: space.gutter,
-        justifyContent: "center",
-      });
+      const button = screen.getByRole("button", { name });
+      expect(within(button).getByText(copy.lower(name))).toBeTruthy();
+      expect(button.props.accessibilityLabel).toBe(name);
     }
   });
 
-  it("moves screen-reader focus to the statement when the screen opens", async () => {
+  it("is 03's sheet: paper, the cool grey panel, the black display title and the grey body", async () => {
+    await render(<ProScreen />);
+    expect(styleOf(screen.getByTestId("pro-screen")).backgroundColor).toBe(ref.color.paper);
+    expect(styleOf(screen.getByTestId("pro-sheet"))).toMatchObject({
+      backgroundColor: ref.color.paper,
+      borderTopLeftRadius: ref.radius.bottomSheet,
+      borderTopRightRadius: ref.radius.bottomSheet,
+      overflow: "hidden",
+    });
+    expect(styleOf(screen.getByTestId("pro-panel", hidden))).toMatchObject({
+      backgroundColor: ref.color.panel,
+      height: ref.layout.pro.panelHeight,
+    });
+    expect(styleOf(screen.getByRole("header", { name: copy.TITLE }))).toMatchObject({ ...ref.type.display, color: ref.color.inkDisplay });
+    expect(styleOf(screen.getByText(ROWS[0]))).toMatchObject({ ...ref.type.body, color: ref.color.inkMuted });
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted });
+    // The kit's 64 pt primary pill and the grey quiet button.
+    expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).minHeight).toBe(ref.button.primary.height);
+    expect(styleOf(screen.getByText(copy.lower(copy.UNLOCK)))).toMatchObject(ref.type.ctaLabel);
+    // The kit's quiet pill on paper: grey (Reanimated writes the animated colour as rgba).
+    const notNow = screen.getByRole("button", { name: copy.NOT_NOW });
+    expect(styleOf(notNow)).toMatchObject({ minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignSelf: "center" });
+    expect(styleOf(screen.getByText(copy.lower(copy.NOT_NOW)))).toMatchObject({ ...ref.type.headline, color: rgba(ref.button.quiet.paper.label) });
+    // pushr's haze over the paper.
+    expect(screen.getByTestId("pro-haze", hidden)).toBeTruthy();
+  });
+
+  it("draws the case-file art in pushr's style, hidden from screen readers", async () => {
+    await render(<ProScreen />);
+    const panel = screen.getByTestId("pro-panel", hidden);
+    expect(panel.props).toMatchObject({ accessible: false, importantForAccessibility: "no-hide-descendants", pointerEvents: "none" });
+    expect(screen.queryByTestId("pro-art")).toBeNull();
+    const art = screen.getByTestId("pro-art", hidden);
+    // 03's phone: a solid black frame, the open inside in the panel's grey on top, then the label.
+    // react-native-svg hands its native views processed colours.
+    const paint = (fill: unknown) => (fill as { payload?: unknown } | undefined)?.payload;
+    const fills = art.queryAll((node) => typeof node.props.d === "string").map((node) => paint(node.props.fill));
+    expect(fills).toContain(processColor(ref.color.inkDisplay));
+    expect(fills).toContain(processColor(ref.color.panel));
+    const label = screen.getByTestId("pro-art-label", hidden);
+    expect(label.props).toMatchObject({ width: ref.layout.pro.art.label.width, height: ref.layout.pro.art.label.height });
+    expect(paint(label.props.fill)).toBe(processColor(ref.color.inkDisplay));
+  });
+
+  it("caps the sheet ref.space.lg below the safe top and ends ctaBottom above the safe bottom", async () => {
+    await renderIn(BASE);
+    expect(styleOf(screen.getByTestId("pro-host")).paddingTop).toBe(BASE.insets.top + ref.space.lg);
+    expect(styleOf(screen.getByTestId("pro-controls")).paddingBottom).toBe(BASE.insets.bottom + ref.space.ctaBottom);
+  });
+
+  it("keeps ref.space.lg under the last button when there is no bottom inset", async () => {
+    await renderIn(NO_BOTTOM);
+    expect(styleOf(screen.getByTestId("pro-controls")).paddingBottom).toBe(ref.space.lg);
+  });
+
+  it("lays out the pinned stack: note row, band, the pill, sm, not now", async () => {
+    const { fontScale } = Dimensions.get("window");
+    await render(<ProScreen />);
+    expect(styleOf(screen.getByTestId("pro-lines")).marginTop).toBe(ref.layout.pro.titleGap);
+    expect(styleOf(screen.getByTestId("pro-note-row")).minHeight).toBe(ref.type.meta.lineHeight * fontScale * ref.layout.pro.noteLines);
+    expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).marginTop).toBe(ref.space.band);
+    expect(styleOf(screen.getByRole("button", { name: copy.NOT_NOW })).marginTop).toBe(ref.space.sm);
+  });
+
+  it("asks for dark status-bar glyphs while it has focus, and gives them back", async () => {
+    await render(<ProScreen />);
+    expect(statusBar).toHaveBeenLastCalledWith("dark");
+    await screen.unmount();
+    expect(statusBar).toHaveBeenLastCalledWith("light");
+  });
+
+  it("moves screen-reader focus to the title when the screen opens", async () => {
     const focus = jest.mocked(AccessibilityInfo.sendAccessibilityEvent);
     await render(<ProScreen />);
     expect(focus).toHaveBeenCalledTimes(1);
@@ -221,7 +264,7 @@ describe("Default (test build, opened with ?cap)", () => {
 });
 
 describe("Purchasing", () => {
-  it("shows the in-button state, then the stub's error, then returns to idle", async () => {
+  it("shows the pill's busy state, then the stub's error in the test note's place, then returns to idle", async () => {
     const pending = deferred<void>();
     grant.mockImplementationOnce(() => pending.promise);
     await render(<ProScreen />);
@@ -229,18 +272,20 @@ describe("Purchasing", () => {
 
     const unlock = screen.getByRole("button", { name: copy.UNLOCK });
     expect(unlock.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
-    // The live loading state: the spinner, in the brass button's label colour, in the label's place.
-    expect(spinnersIn(unlock).map((spinner) => spinner.props.color)).toEqual([color.onAccent]);
-    expect(within(unlock).queryByText(copy.UNLOCK, hidden)).toBeNull();
-    expect(buttonLook(unlock).backgroundColor).toBe(color.accent);
-    expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: true });
+    // The kit's busy pill: label kept, full opacity, the indicator in the label colour.
+    expect(screen.getByTestId("pro-unlock-spinner", hidden).props.color).toBe(ref.button.primary.label);
+    expect(within(unlock).getByText(copy.lower(copy.UNLOCK))).toBeTruthy();
+    expect(styleOf(unlock).opacity).toBeUndefined();
+    const notNow = screen.getByRole("button", { name: copy.NOT_NOW });
+    expect(notNow.props.accessibilityState).toMatchObject({ disabled: true });
+    expect(styleOf(notNow).opacity).toBe(ref.button.disabledOpacity.pill);
 
     await act(async () => pending.reject(new TestPurchaseUnavailableError()));
     expect(await screen.findByLabelText(copy.SERVER_OFF)).toBeTruthy();
+    expect(screen.queryByText(copy.TEST_NOTE, hidden)).toBeNull();
     const idle = screen.getByRole("button", { name: copy.UNLOCK });
     expect(idle.props.accessibilityState).toMatchObject({ busy: false });
-    expect(spinnersIn(idle)).toHaveLength(0);
-    expect(within(idle).getByText(copy.UNLOCK)).toBeTruthy();
+    expect(screen.queryByTestId("pro-unlock-spinner", hidden)).toBeNull();
     expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: false });
     expect(open).not.toHaveBeenCalled();
   });
@@ -255,16 +300,17 @@ describe("Purchasing", () => {
     expect(mocked.getMyAccess).not.toHaveBeenCalled();
   });
 
-  it("shows the error as one screen-reader element in a polite live region, never a keyboard stop", async () => {
+  it("shows the error as one screen-reader element in an always-mounted polite live region, never a keyboard stop", async () => {
     await render(<ProScreen />);
-    // The live region is the reserved slot, mounted (empty) before any error:
-    // Android announces only a change inside an existing live region.
-    const slot = screen.getByTestId("pro-notice-slot");
-    expect(slot.props).toMatchObject({ accessibilityLiveRegion: "polite", collapsable: false });
+    // The live region is mounted (empty) before any error: Android announces
+    // only a change inside an existing live region.
+    const region = screen.getByTestId("pro-error-region");
+    expect(region.props).toMatchObject({ accessibilityLiveRegion: "polite", collapsable: false });
+    expect(within(screen.getByTestId("pro-note-row")).getByTestId("pro-error-region")).toBeTruthy();
     await userEvent.setup().press(screen.getByRole("button", { name: copy.UNLOCK }));
     // `accessible` groups it for VoiceOver; on Android it would make the line
     // keyboard focusable, so TalkBack groups it through screenReaderFocusable.
-    const line = await within(slot).findByTestId("pro-notice");
+    const line = await within(region).findByTestId("pro-notice");
     expect(line.props).toMatchObject({
       accessible: Platform.OS === "ios",
       screenReaderFocusable: true,
@@ -273,7 +319,7 @@ describe("Purchasing", () => {
     });
   });
 
-  it("clears the notice on a retry", async () => {
+  it("clears the notice on a retry, and the test note returns", async () => {
     grant.mockRejectedValueOnce(new Error("Network request failed"));
     const pending = deferred<void>();
     grant.mockImplementationOnce(() => pending.promise);
@@ -283,6 +329,7 @@ describe("Purchasing", () => {
     expect(await screen.findByLabelText(copy.OFFLINE)).toBeTruthy();
     await user.press(screen.getByRole("button", { name: copy.UNLOCK }));
     expect(screen.queryByLabelText(copy.OFFLINE)).toBeNull();
+    expect(screen.getByText(copy.TEST_NOTE, hidden)).toBeTruthy();
     await act(async () => pending.reject(new TestPurchaseError("test_purchases_off")));
     expect(await screen.findByLabelText(copy.SERVER_OFF)).toBeTruthy();
   });
@@ -346,12 +393,12 @@ describe("Purchasing", () => {
 describe("Test purchases off", () => {
   beforeEach(() => testBuild.mockReturnValue(false));
 
-  it("says Pro isn't on sale yet and offers Check again, with no signal", async () => {
+  it("says Pro isn't on sale yet and offers check again", async () => {
     const { fontScale } = Dimensions.get("window");
     await render(<ProScreen />);
     expect(screen.getByLabelText(copy.NOT_ON_SALE)).toBeTruthy();
-    // Information, not an error: no icon, live region or announcement, and
-    // never a keyboard stop (so keyboard focus is Check again, then Not now).
+    // Information, not an error: no glyph, live region or announcement, and
+    // never a keyboard stop (so keyboard focus is check again, then not now).
     expect(screen.getByTestId("pro-info").props).toMatchObject({
       accessible: Platform.OS === "ios",
       screenReaderFocusable: true,
@@ -359,12 +406,9 @@ describe("Test purchases off", () => {
       accessibilityLiveRegion: "none",
     });
     expect(announce).not.toHaveBeenCalled();
-    // The notice and test-note slots together, so nothing above moves.
-    expect(styleOf(screen.getByTestId("pro-info-slot")).minHeight).toBe(
-      type.caption.lineHeight * fontScale + space.sm + type.stamp.lineHeight * fontScale,
-    );
-    // Text on the dark ground in tone secondary, with no icon.
-    expect(styleOf(screen.getByText(copy.NOT_ON_SALE))).toMatchObject({ ...type.caption, color: color.textSecondary });
+    // The row reserves the info's two lines, so a one-line error moves nothing.
+    expect(styleOf(screen.getByTestId("pro-note-row")).minHeight).toBe(ref.type.meta.lineHeight * fontScale * ref.layout.pro.infoLines);
+    expect(styleOf(screen.getByText(copy.NOT_ON_SALE))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase" });
     expect(screen.queryByTestId("pro-info-icon", hidden)).toBeNull();
     expect(screen.getByRole("button", { name: copy.CHECK_AGAIN })).toBeTruthy();
     expect(screen.queryByRole("button", { name: copy.UNLOCK })).toBeNull();
@@ -378,11 +422,11 @@ describe("Test purchases off", () => {
     await userEvent.setup().press(screen.getByRole("button", { name: copy.CHECK_AGAIN }));
     const checking = screen.getByRole("button", { name: copy.CHECK_AGAIN });
     expect(checking.props.accessibilityState).toMatchObject({ busy: true });
-    expect(spinnersIn(checking).map((spinner) => spinner.props.color)).toEqual([color.onAccent]);
+    expect(screen.getByTestId("pro-check-again-spinner", hidden).props.color).toBe(ref.button.primary.label);
     expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: true });
     await act(async () => pending.resolve(access({ generations_cap: 12 })));
     expect(announce).toHaveBeenCalledWith(copy.SAY_NO_ACCESS);
-    expect(screen.getByLabelText("Up to 12 new cases a month.")).toBeTruthy();
+    expect(screen.getByText("Up to 12 new cases a month.")).toBeTruthy();
     expect(screen.getByRole("button", { name: copy.NOT_NOW }).props.accessibilityState).toMatchObject({ disabled: false });
     expect(open).not.toHaveBeenCalled();
   });
@@ -440,7 +484,7 @@ describe.each([
       // Not itself a live region: it mounts with its text, which Android never speaks.
       accessibilityLiveRegion: "none",
     });
-    // iOS has no live regions, so it announces; Android speaks through the slot's live region.
+    // iOS has no live regions, so it announces; Android speaks through the region.
     expect(announce.mock.calls).toEqual(os === "ios" ? [[copy.OFFLINE]] : []);
   });
 
@@ -457,29 +501,29 @@ describe.each([
 });
 
 describe("Notice look", () => {
-  it("draws the error glyph in color.warning, never error-coloured text on the dark ground", async () => {
+  it("draws the error glyph in raised ink (03's notice: no colour accent), with the text in 03's small grey", async () => {
     const { fontScale } = Dimensions.get("window");
     await render(<ProNoticeLine kind="error" text={copy.OFFLINE} icon={WifiSlashIcon} testID="line" />);
-    expect(styleOf(screen.getByText(copy.OFFLINE))).toMatchObject({ ...type.caption, color: color.textSecondary });
-    // The glyph box is one caption line tall, so the glyph centres on the first line.
-    expect(styleOf(screen.getByTestId("line-icon", hidden)).height).toBe(type.caption.lineHeight * fontScale);
+    expect(styleOf(screen.getByText(copy.OFFLINE))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase" });
+    // The glyph box is one meta line tall, so the glyph centres on the first line.
+    expect(styleOf(screen.getByTestId("line-icon", hidden)).height).toBe(ref.type.meta.lineHeight * fontScale);
     const glyph = screen.getByTestId("phosphor-react-native-wifi-slash-regular", hidden);
     expect(glyph.props).toMatchObject({
       width: ref.layout.pro.noticeIcon,
       height: ref.layout.pro.noticeIcon,
-      color: color.warning,
+      color: ref.color.raised,
     });
   });
 });
 
 describe("Large text", () => {
-  // The block's frame on 393 x 852 (y 131-626). With flexGrow 1 its content is
-  // exactly the frame's height while it fits, and taller once text outgrows it.
-  const FRAME = { x: 0, y: 0, width: 393, height: 495 };
+  // The title-and-lines frame. With flexGrow 1 its content is exactly the
+  // frame's height while it fits, and taller once text outgrows it.
+  const FRAME = { x: 0, y: 0, width: 393, height: 186 };
   const fits = FRAME.height;
-  const overflows = FRAME.height + type.body.lineHeight;
+  const overflows = FRAME.height + ref.type.body.lineHeight;
 
-  it("scrolls the statement and slip only while they overflow, so a block that fits is never a keyboard stop", async () => {
+  it("scrolls the title and lines only while they overflow, so a block that fits is never a keyboard stop", async () => {
     await render(<ProScreen />);
     const scroll = () => screen.getByTestId("pro-scroll");
     expect(scroll().props.scrollEnabled).toBe(false);
@@ -491,37 +535,86 @@ describe("Large text", () => {
     await fireEvent(scroll(), "contentSizeChange", FRAME.width, fits);
     expect(scroll().props.scrollEnabled).toBe(false);
   });
+
+  it("keeps the note row, pill and not now pinned outside the scroll", async () => {
+    await render(<ProScreen />);
+    const scroll = screen.getByTestId("pro-scroll");
+    expect(within(scroll).queryByRole("button")).toBeNull();
+    expect(within(scroll).queryByTestId("pro-note-row")).toBeNull();
+    expect(within(scroll).getByRole("header", { name: copy.TITLE })).toBeTruthy();
+  });
+
+  it("drops the art panel before it lets the text scroll (as 03)", async () => {
+    await renderIn(BASE);
+    const cap = BASE.insets.top + ref.space.lg;
+    const host = { x: 0, y: 0, width: 393, height: 852 };
+    const controls = { x: 0, y: 0, width: 393, height: 200 };
+    await fireEvent.layout(screen.getByTestId("pro-host"), host);
+    await fireEvent.layout(screen.getByTestId("pro-controls"), controls);
+    // Room for the panel: it stays.
+    const room = host.height - cap - controls.height;
+    // The text block at a height, laid out in full (it fits its frame).
+    const textAt = async (height: number) => {
+      await fireEvent.layout(screen.getByTestId("pro-scroll"), { ...host, height });
+      await fireEvent(screen.getByTestId("pro-scroll"), "contentSizeChange", host.width, height);
+    };
+    await textAt(room - ref.layout.pro.panelHeight);
+    expect(screen.getByTestId("pro-panel", hidden)).toBeTruthy();
+    // Larger text: the panel goes first, and the text still fits, so it doesn't scroll.
+    await textAt(room - ref.layout.pro.panelHeight + 1);
+    expect(screen.queryByTestId("pro-panel", hidden)).toBeNull();
+    expect(screen.getByTestId("pro-scroll").props.scrollEnabled).toBe(false);
+  });
 });
 
 describe("Loading (opened without ?cap)", () => {
   beforeEach(() => params.mockReturnValue({}));
   afterEach(() => jest.useRealTimers());
 
-  it("shows the ground, the brass indicator only past its delay, then fades in Default with the cap", async () => {
+  it("shows paper and haze, the indicator only past its delay, then the sheet with the cap", async () => {
     jest.useFakeTimers();
     const pending = deferred<MyAccess>();
     mocked.getMyAccess.mockImplementationOnce(() => pending.promise);
     await render(<ProScreen />);
-    expect(styleOf(screen.getByTestId("pro-loading")).backgroundColor).toBe(color.canvas);
+    expect(styleOf(screen.getByTestId("pro-loading")).backgroundColor).toBe(ref.color.paper);
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.queryByTestId("pro-spinner", hidden)).toBeNull();
-    // Nothing of Default yet: no stamp, statement or buttons.
-    expect(screen.queryByLabelText(copy.FILE_LABEL_A11Y)).toBeNull();
+    // Nothing of Default yet: no sheet, title or buttons.
+    expect(screen.queryByTestId("pro-sheet")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     await act(async () => jest.advanceTimersByTime(ref.layout.pro.spinnerDelay));
-    // One screen-reader element, never a keyboard stop; a small native indicator in brass.
+    // One screen-reader element, never a keyboard stop; a small native indicator in raised.
     const indicator = screen.getByRole("progressbar", { name: copy.LOADING });
     expect(indicator.props).toMatchObject({ accessible: Platform.OS === "ios", screenReaderFocusable: true, focusable: false });
-    expect(within(indicator).getByTestId("pro-spinner-indicator", hidden).props).toMatchObject({ size: "small", color: color.accent });
+    expect(within(indicator).getByTestId("pro-spinner-indicator", hidden).props).toMatchObject({ size: "small", color: ref.color.raised });
     await act(async () => pending.resolve(access({ generations_cap: 15 })));
     expect(screen.queryByRole("progressbar")).toBeNull();
-    expect(screen.getByLabelText("Up to 15 new cases a month.")).toBeTruthy();
+    expect(screen.getByText("Up to 15 new cases a month.")).toBeTruthy();
+  });
+
+  it("raises the sheet from below; under reduced motion it only fades in", async () => {
+    jest.useFakeTimers();
+    const { height } = Dimensions.get("window");
+    const translateOf = () => (styleOf(screen.getByTestId("pro-sheet")).transform as { translateY: number }[] | undefined)?.[0]?.translateY;
+    await render(<ProScreen />);
+    await act(async () => {});
+    expect(translateOf()).toBe(height);
+    await screen.unmount();
+
+    await render(
+      <ThemeProvider reducedMotion>
+        <ProScreen />
+      </ThemeProvider>,
+    );
+    await act(async () => {});
+    expect(translateOf()).toBe(0);
+    expect(styleOf(screen.getByTestId("pro-sheet")).opacity).toBe(0);
   });
 
   it("falls back to the allowance line when the check fails", async () => {
     mocked.getMyAccess.mockRejectedValueOnce(new Error("Network request failed"));
     await render(<ProScreen />);
-    expect(await screen.findByLabelText("A monthly allowance of new cases.")).toBeTruthy();
+    expect(await screen.findByText("A monthly allowance of new cases.")).toBeTruthy();
     expect(screen.queryByTestId("pro-notice")).toBeNull();
   });
 
@@ -552,7 +645,7 @@ describe("Loading (opened without ?cap)", () => {
 });
 
 describe("Leaving and the foreground re-check", () => {
-  it("Not now goes back, or to the hub when there is no history", async () => {
+  it("not now goes back, or to the hub when there is no history", async () => {
     await render(<ProScreen />);
     const user = userEvent.setup();
     await user.press(screen.getByRole("button", { name: copy.NOT_NOW }));
@@ -563,6 +656,21 @@ describe("Leaving and the foreground re-check", () => {
     await render(<ProScreen />);
     await user.press(screen.getByRole("button", { name: copy.NOT_NOW }));
     expect(replace).toHaveBeenCalledWith("/");
+  });
+
+  it("VoiceOver's escape gesture leaves like not now", async () => {
+    await render(<ProScreen />);
+    await fireEvent(screen.getByTestId("pro-screen"), "accessibilityEscape");
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it("Android back leaves like not now", async () => {
+    const addBack = jest.spyOn(BackHandler, "addEventListener");
+    await render(<ProScreen />);
+    const onBack = addBack.mock.calls.at(-1)?.[1];
+    expect(onBack?.({ type: "hardwareBackPress", timeStamp: 0 })).toBe(true);
+    expect(back).toHaveBeenCalledTimes(1);
+    addBack.mockRestore();
   });
 
   it("skips through when the app comes back with access granted meanwhile", async () => {

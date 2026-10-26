@@ -130,402 +130,1174 @@ export const hit = {
 export const tokens = { color, font, type, space, radius, curve, motion, elevation, z, hit };
 export type Tokens = typeof tokens;
 
-// Noir, the decided identity for the screens in docs/DESIGN.md: near-black
-// ground, grey reading text, white statements, and one oxblood signal used
-// like a case stamp. Nothing reads these yet; the live theme above is
-// unchanged. iOS points on a 393 x 852 iPhone, safe areas 59 / 34.
+// The reference look, for the hub, camera, permission, photo guide and Pro
+// screens: the four screenshots in docs/refs (Opal 01, Once 02, pushr 03,
+// Apple Health 04), measured on a 393 x 852 pt iPhone (safe areas 59 / 34).
+// Neutral greys, flat grounds, pills, discs and hairlines; the only brass is
+// the focus ring. /play and the light table keep the live theme above.
+// Gradient angles are CSS angles (180 = top to bottom, 90 = left to right).
 
-// Geist and Geist Mono are not installed yet (@expo-google-fonts/geist and
-// @expo-google-fonts/geist-mono). Playfair stays for case titles and the escape.
-const noirFont = {
-  ui: "Geist_400Regular",
-  uiMedium: "Geist_500Medium",
-  mono: "GeistMono_400Regular",
-  monoMedium: "GeistMono_500Medium",
-  caseTitle: font.narrative,
-  caseTitleItalic: font.narrativeItalic,
+/**
+ * One gradient stop: a plain hex colour and its own opacity. react-native-svg
+ * takes a stop's alpha from stopOpacity alone and paints an rgba() stop colour
+ * solid, so a colour here is never rgba().
+ */
+export interface GradientStop {
+  readonly offset: number;
+  readonly color: `#${string}`;
+  readonly opacity: number;
+}
+
+// Colour roles. Measured hex (tint-corrected where a capture tint showed).
+const refColor = {
+  // Grounds, darkest first, then the light screen.
+  /** Pure black: 01 and 04's ground; the inset wells (empty viewfinder, zoom track, counter pill). */
+  void: "#000000",
+  /** The camera screen's ground (02); fill of 01's round header chips. */
+  ground: "#101010",
+  /** Faintest fill above black: the ghost pill. */
+  shade: "#0A0A0A",
+  /** Near-black rims on 02: the shutter ring and the last-photo frame (measured #070707). */
+  well: "#070707",
+  /** 02's zoom thumb (measured #1A1A1A to #1B1B1B). */
+  thumb: "#1B1B1B",
+  /** Raised controls on dark (square buttons); the primary pill on paper; glyphs and quiet labels on paper. */
+  raised: "#1E1E1E",
+  /** The light permission screen and its sheet (03). */
+  paper: "#FFFFFF",
+  /** The cool grey illustration panel at the top of 03's sheet. */
+  panel: "#F3F5F7",
+
+  // Text on dark.
+  /** Titles, header titles, active labels, icons, pill labels, the hero illustration line. */
+  textPrimary: "#FFFFFF",
+  /** Tag text on 01's game cards (white 82 %). */
+  textLabel: "rgba(255, 255, 255, 0.82)",
+  /** Subtitles, meta lines and one-line instructions (6.3 to 6.9:1). */
+  textSecondary: "#949494",
+  /** The same grey as white 60 %, for a glyph over 01's glow (the dismiss X). */
+  textSecondaryAlpha: "rgba(255, 255, 255, 0.60)",
+  /** Inactive segment label only (2.8:1). */
+  textTertiary: "#5A5A5A",
+  /** The shot counter's neighbouring numerals (white 24 % on black); decorative only. */
+  textDim: "#3F3F3F",
+
+  // Text on paper.
+  /** 03's sheet title; the solid outline of 03's illustration. */
+  inkDisplay: "#000000",
+  /** 03's sheet body (4.7:1 on paper). */
+  inkMuted: "#737373",
+
+  // Hairlines, glass and highlights.
+  /** White 10 %: 01's divider peak and tag-pill stroke. */
+  rim: "rgba(255, 255, 255, 0.10)",
+  /** The rim as a solid colour on black: the ghost pill's 1 pt edge (measured #1C1C1C top-left, #181818 bottom-right). */
+  hairline: "#1A1A1A",
+  /** White 5 %: the 1 pt rim of 02's square buttons and last-photo image. */
+  rimFaint: "rgba(255, 255, 255, 0.05)",
+  /** White 3.5 %: 01's game-card glass over the floor glow. */
+  glassFill: "rgba(255, 255, 255, 0.035)",
+  /** Black 13 %: 01's dismiss disc over the floor glow. */
+  dismissFill: "rgba(0, 0, 0, 0.13)",
+  /** 04's light grey glass dismiss disc on black. */
+  glassDisc: "#848484",
+  /** White 14 %: the brightest point of the diagonal 1 pt ring on 01's chips. */
+  specularDark: "rgba(255, 255, 255, 0.14)",
+  /** The glass disc's ring highlight, lower right. */
+  specularLight: "#B6B6B6",
+  /** The glass disc's ring highlight, upper left. */
+  specularLightAlt: "#AAAAAA",
+  /** The 1 pt highlight along the top inside edge of 02's shutter disk (peak, leaning top right). */
+  bevel: "#3A3A3A",
+  /** White 20 %: the halo around 02's shutter (with a negative spread, effect.shutterGlow). */
+  shutterGlow: "rgba(255, 255, 255, 0.20)",
+
+  // 01's accent line and floor glow.
+  /** Hero line-icon gradient, top left. */
+  lineStart: "#CEFEB4",
+  /** Hero line-icon gradient, bottom right. */
+  lineEnd: "#ADFCF1",
+  /** Floor glow, the flat bright area on the left half. */
+  glowOlive: "#243425",
+  /** Floor glow, the flat bright area on the right half. */
+  glowTeal: "#1E342C",
+
+  // Illustration depth on dark (04), brightest first; the hero line is textPrimary.
+  /** The object at middle depth. */
+  lineMid: "#DDDDDD",
+  /** The back object. */
+  lineBack: "#7F7F7F",
+  /** Hand and inner-screen context lines, fading to black. */
+  lineContext: "#555555",
+
+  // 03's light illustration and haze.
+  /** The single highlight band on the solid phone outline. */
+  illustrationBevel: "#929090",
+  /** The centre of the grey haze behind the status bar. */
+  ambientCore: "#D4D4D6",
+
+  // Pressed states. The screenshots show none: these are proposals.
+  /** The primary pill pressed: raised at the live Button's 82 % over paper. */
+  raisedPressed: "#474747",
 } as const;
 
-const noirColor = {
-  ground: "#050505",
-  panel: "#0E0E0E",
-  panelPressed: "#161616",
-  hairline: "#222222",
-  hairline2: "#303030",
-  bright: "#F2F2F2",
-  brightPressed: "#D4D4D4",
-  read: "#A6A9AD",
-  meta: "#8A8D91",
-  inverseInk: "#0A0A0A",
-  // Used rarely: a selection that matters, solved, case stamps, the escape.
-  signal: "#C8302B",
-  signalPressed: "#A82823",
-  signalText: "#E5484D",
-  // Never the signal, and always paired with a label or an icon.
-  warning: "#C9A227",
-  error: "#B5564F",
-  scrim: "rgba(5, 5, 5, 0.72)",
+// The two non-system faces (loaded in app/_layout.tsx). Every other style is
+// the platform system font (SF Pro on iOS, Roboto on Android): no fontFamily,
+// a fontWeight. A named face carries its own weight, so it sets no fontWeight.
+const refFont = {
+  /** Once's header serif (02's title): Roboto Serif Regular. */
+  serif: "RobotoSerif_400Regular",
+  /** Once's italic numerals (02's shot counter): Crimson Text Italic. */
+  italic: "CrimsonText_400Regular_Italic",
+  /** pushr's wide grotesk (03's and 05's titles): Archivo ExtraBold, which matches its stroke (4.98 vs 5.05 pt); Black was 18 % heavier. */
+  grotesk: "Archivo_800ExtraBold",
 } as const;
+
+const stop = (offset: number, color: `#${string}`, opacity = 1): GradientStop => ({ offset, color, opacity });
 
 export const ref = {
-  color: noirColor,
-  // Static pools of soft white light on key objects and hero areas. Reading
-  // areas stay flat. Each screen sets the centre; radius is in pt. Colour and
-  // opacity are separate because react-native-svg ignores the alpha of an
-  // rgba() stop colour and paints it solid (stopOpacity defaults to 1).
-  light: {
-    hero: {
-      radius: 220,
+  color: refColor,
+  // Static. Linear ones carry a CSS angle; radial ones a centre and radius in pt.
+  gradient: {
+    // 01's floor glow, drawn over `ground`: nothing down to fadeStart of the
+    // screen height, full from fadeEnd to the bottom (flat there). The stops
+    // run left to right across the screen. Kit: FloorGlow.
+    bottomGlow: {
+      ground: refColor.void,
+      fadeStart: 0.58,
+      fadeEnd: 0.79,
       stops: [
-        { offset: 0, color: noirColor.bright, opacity: 0.1 },
-        { offset: 0.5, color: noirColor.bright, opacity: 0.04 },
-        { offset: 1, color: noirColor.bright, opacity: 0 },
+        stop(0, "#141C12"),
+        stop(0.25, refColor.glowOlive),
+        stop(0.43, refColor.glowOlive),
+        stop(0.5, "#213529"),
+        stop(0.56, refColor.glowTeal),
+        stop(0.69, refColor.glowTeal),
+        stop(1, "#111B19"),
       ],
     },
-    object: {
-      radius: 120,
+    // 01's game card as it looks over the glow (glassFill on bottomGlow), as an opaque fill.
+    card: {
+      angle: 180,
+      stops: [stop(0, "#0A0A0A"), stop(0.31, "#0F0F0F"), stop(0.5, "#141513"), stop(1, "#283628")],
+    },
+    // The card's 1 pt rim, fading out down the card. Opal's measures white
+    // ≈5 % along the top, 2–2.5 % down the sides to half height, gone by 0.85.
+    cardRim: {
+      angle: 180,
+      stops: [stop(0, "#FFFFFF", 0.05), stop(0.15, "#FFFFFF", 0.025), stop(0.5, "#FFFFFF", 0.02), stop(0.85, "#FFFFFF", 0)],
+    },
+    // 01's 1 pt divider under the header, brightest in the middle.
+    divider: {
+      angle: 90,
+      stops: [stop(0.1, "#FFFFFF", 0), stop(0.5, "#FFFFFF", 0.1), stop(0.94, "#FFFFFF", 0)],
+    },
+    // 01's hero line icons: one gradient across the whole icon, not one per stroke.
+    line: {
+      angle: 135,
+      stops: [stop(0, refColor.lineStart), stop(1, refColor.lineEnd)],
+    },
+    // 02's shutter disk: darker at the top right, lighter at the bottom left.
+    // The line spans the disk's box, so the stops run wider than the
+    // measured #1E to #26 across the 67 disk itself.
+    shutterDisk: {
+      angle: 210,
+      stops: [stop(0, "#1C1C1C"), stop(1, "#2A2A2A")],
+    },
+    // The disk one notch darker while pressed (proposal).
+    shutterDiskPressed: {
+      angle: 210,
+      stops: [stop(0, "#171717"), stop(1, "#252525")],
+    },
+    // The opaque fill inside 04's device outlines, as measured down the
+    // reference's phone (#3E at 4 %, #34 at 12 %, #23 at 24 %, #10 at 36 %,
+    // #0C at 42 %, black from about 56 %).
+    deviceFill: {
+      angle: 180,
+      stops: [stop(0, "#424242"), stop(0.13, "#343434"), stop(0.28, "#1E1E1E"), stop(0.42, "#0C0C0C"), stop(0.56, "#000000")],
+    },
+    // pushr's haze as fitted on 03 (rms 2.7 grey levels against the
+    // reference), shared by 03 and 05 (kit: PaperHaze). Not a centred circle:
+    // the focal point sits up and right of the centre, so it falls off faster
+    // to the right and down; paper fades in over its foot so the page is white
+    // by fade.to. Centre and focus x are offsets from the screen's middle.
+    haze: {
+      centre: { dx: 12.4, y: 153.5 },
+      focus: { dx: 38.8, y: 113.5 },
+      r: 218,
       stops: [
-        { offset: 0, color: noirColor.bright, opacity: 0.07 },
-        { offset: 0.5, color: noirColor.bright, opacity: 0.025 },
-        { offset: 1, color: noirColor.bright, opacity: 0 },
+        stop(0, refColor.ambientCore),
+        stop(0.12, refColor.ambientCore, 0.98),
+        stop(0.23, refColor.ambientCore, 0.91),
+        stop(0.45, refColor.ambientCore, 0.59),
+        stop(0.63, refColor.ambientCore, 0.3),
+        stop(0.8, refColor.ambientCore, 0.13),
+        stop(1, refColor.ambientCore, 0),
       ],
+      fade: { from: 250.7, to: 287.5 },
     },
   },
-  // The background still under 01, 04 and 05 (02 and 03 stay flat ground): a
-  // black silk warp rendered offline from @paper-design/shaders-react. Its
-  // peak keeps meta text at 4.5:1 anywhere. Not added to assets yet; ship it
-  // lossless, since lossy WebP brightens the peak.
-  background: {
-    asset: "assets/backgrounds/noir-warp-silk.webp",
-    peak: "#262626",
-  },
-  font: noirFont,
-  // Large type is regular weight with tight tracking. Mono is for labels, case
-  // numbers, dates, codes and short notes, always uppercase and tracked.
+  font: refFont,
+  /** react-native-web's "System" stack, for SVG text on the web, which doesn't inherit it (native SVG text uses the system font already). */
+  webSystemFont: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+  // Measured from the references. Every style follows system text scaling.
   type: {
-    escape: { fontFamily: noirFont.caseTitle, fontSize: 40, lineHeight: 44, letterSpacing: -0.4 },
-    caseTitle: { fontFamily: noirFont.caseTitle, fontSize: 28, lineHeight: 34, letterSpacing: -0.2 },
-    statement: { fontFamily: noirFont.ui, fontSize: 30, lineHeight: 34, letterSpacing: -0.9 },
-    title: { fontFamily: noirFont.ui, fontSize: 22, lineHeight: 28, letterSpacing: -0.45 },
-    headline: { fontFamily: noirFont.uiMedium, fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
-    button: { fontFamily: noirFont.uiMedium, fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
-    body: { fontFamily: noirFont.ui, fontSize: 17, lineHeight: 24 },
-    meta: { fontFamily: noirFont.ui, fontSize: 13, lineHeight: 18 },
-    label: { fontFamily: noirFont.monoMedium, fontSize: 12, lineHeight: 16, letterSpacing: 1.2, textTransform: "uppercase" },
-    note: { fontFamily: noirFont.mono, fontSize: 13, lineHeight: 18, letterSpacing: 0.6, textTransform: "uppercase" },
-    code: { fontFamily: noirFont.monoMedium, fontSize: 28, lineHeight: 34, letterSpacing: 2, fontVariant: ["tabular-nums"] },
+    /** 03's and 05's sheet title: Archivo ExtraBold 30/36, tracked +1.4 so "camera permission" spans pushr's 309 (315 at +1.8), lowercase as in the reference. Left-aligned, inkDisplay. */
+    display: { fontFamily: refFont.grotesk, fontSize: 30, lineHeight: 36, letterSpacing: 1.4, textTransform: "lowercase" },
+    /** 02's shot counter: Crimson Text Italic 29, +1.75. Numerals about 31 apart centre to centre. */
+    counter: { fontFamily: refFont.italic, fontSize: 29, lineHeight: 34, letterSpacing: 1.75 },
+    /** 02's header title: Roboto Serif Regular 17, centred, textPrimary. */
+    serifTitle: { fontFamily: refFont.serif, fontSize: 17, lineHeight: 22, letterSpacing: 0 },
+    /** 01's screen title: Semibold 22, centred, textPrimary. */
+    title: { fontSize: 22, lineHeight: 28, fontWeight: "600" },
+    /** 04's step title: Bold 22, left-aligned, up to two lines, textPrimary. */
+    stepTitle: { fontSize: 22, lineHeight: 28, fontWeight: "700" },
+    /** 04's one-line instruction: Regular 22, left-aligned, textSecondary. */
+    stepBody: { fontSize: 22, lineHeight: 28, fontWeight: "400" },
+    /** The ghost and quiet pill labels: Semibold 17. */
+    headline: { fontSize: 17, lineHeight: 22, fontWeight: "600" },
+    /** 01's header title: Semibold 16 (Opal's "Work Time" cap 11.3 is SF Semibold 16). */
+    navTitle: { fontSize: 16, lineHeight: 21, fontWeight: "600" },
+    /** The label on the 64 pt primary pill (03): Semibold 20 (pushr's "continue" fits SF Pro Semibold at 19.7–20.3 pt). */
+    ctaLabel: { fontSize: 20, lineHeight: 24, fontWeight: "600" },
+    /** The line under 01's title: Medium 17, textSecondary. */
+    subtitle: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
+    /** 03's and 05's sheet body: Medium 17 (pushr's line widths fit SF Pro Text Medium, not Regular), left-aligned, ragged right, inkMuted. */
+    body: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
+    /** 02's meta line under the title: Regular 13, textSecondary. */
+    meta: { fontSize: 13, lineHeight: 16, fontWeight: "400" },
+    /** 02's segment labels, active (textPrimary) and inactive (textTertiary) the same size: Semibold 13. */
+    label: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
+    /** 01's game-card tags: Semibold 13, +0.4, uppercase, textLabel. */
+    tag: { fontSize: 13, lineHeight: 16, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
   } as const satisfies Record<string, TextStyle>,
-  // ctaBottom is added to the bottom safe-area inset.
+  // Spacing that more than one screen uses. ctaBottom is added to the bottom
+  // safe-area inset. A screen's own distances live in its ref.layout block.
   space: {
+    /** Title to subtitle; segment thumb inset; step title to body. */
     xs: 4,
+    /** Tag pill padding; pill to quiet button. */
     sm: 8,
-    md: 12,
+    /** Viewfinder side margins (02). */
     plate: 14,
+    /** 01's chips from the screen edge; sheet title to body (03). */
     lg: 16,
+    /** 02's controls, counter and thumbnail from the screen edge. */
     edge: 20,
+    /** 03's sheet gutter; 02's control row to the bottom row. */
     xl: 24,
+    /** Between major blocks (header to viewfinder, subtitle to cards, panel to title). */
     band: 28,
+    /** From a last baseline to the next block. */
     xxl: 32,
+    /** 04's reading gutter. */
     reading: 38,
+    /** Bottom of the last button above the bottom safe-area inset. */
     ctaBottom: 4,
   },
+  // Continuous corners (curve) everywhere except the small tag pills.
   radius: {
-    panel: 6,
-    pill: 999,
+    /** 01's tag pills. */
+    tag: 8,
+    /** 02's segment thumb (16 minus the 4 inset). */
+    knob: 12,
+    /** 02's 44 pt square header buttons. */
+    square: 14,
+    /** 03's sheet top corners; 02's segment track. */
+    sheet: 16,
+    /** 02's last-photo image (24 minus the 4 frame) and counter pill. */
+    nested: 20,
+    /** 02's last-photo frame. */
+    frame: 24,
+    /** 02's viewfinder. */
+    viewfinder: 40,
+    /** Every bottom sheet's top corners: the camera viewfinder's 40 (the user's call). */
+    bottomSheet: 40,
+    /** Pills, chips, discs and the shutter. Game cards scale theirs (button.gameCard.radiusRatio). */
+    round: 999,
   },
   curve,
-  border: {
-    hairline: 1,
-  },
-  // Every focusable control gets this outline, following its own shape. Brass
-  // since 2026-10-25 (the play screen's accent; 8:1 on canvas).
+  // Every focusable control gets this outline, following its own shape. Brass,
+  // the user's decision (the references show no focus state); 8:1 on black.
   focus: { width: 2, offset: 2, color: color.accent },
   hit: {
     min: 44,
     comfortable: 48,
   },
-  // Pressed states are colour changes over motion.control. Disabled controls
-  // drop to disabledOpacity. Only one signal button per screen.
+  // Pressed states are proposals (the screenshots show none): the pills change
+  // colour over motion.control; the other controls keep the live 0.75 press.
   button: {
-    disabledOpacity: 0.4,
-    primary: { height: 52, radius: 999, fill: noirColor.bright, pressedFill: noirColor.brightPressed, label: noirColor.inverseInk },
-    secondary: { height: 52, radius: 999, fill: noirColor.panel, pressedFill: noirColor.panelPressed, borderWidth: 1, border: noirColor.hairline2, label: noirColor.bright },
-    signal: { height: 52, radius: 999, fill: noirColor.signal, pressedFill: noirColor.signalPressed, label: noirColor.bright },
-    quiet: { height: 44, padX: 16, label: noirColor.read, pressedLabel: noirColor.bright },
-    icon: { size: 44, radius: 999, fill: noirColor.panel, pressedFill: noirColor.panelPressed, borderWidth: 1, border: noirColor.hairline, glyph: noirColor.bright, iconSize: 20 },
-    bare: { hit: 44, glyph: noirColor.bright, pressedGlyph: noirColor.read, iconSize: 24 },
-    shutter: { ring: 76, ringWidth: 2, ringColor: noirColor.bright, disk: 64, fill: noirColor.bright, pressedFill: noirColor.brightPressed, glyph: noirColor.inverseInk, iconSize: 28 },
-    segment: { height: 36, radius: 999, fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, thumbFill: noirColor.hairline2, active: noirColor.bright, inactive: noirColor.meta },
+    // The live Button's and IconButton's disabled opacities.
+    disabledOpacity: { pill: 0.45, icon: 0.4 },
+    // pushr's black pill on paper (03): 64 tall, full content width, ctaLabel.
+    primary: { height: 64, radius: 999, fill: refColor.raised, pressedFill: refColor.raisedPressed, label: refColor.textPrimary },
+    // Apple Health's dark pill on black (04): 52 tall, a 1 pt hairline, headline.
+    ghost: {
+      height: 52,
+      radius: 999,
+      fill: refColor.shade,
+      pressedFill: refColor.raised,
+      borderWidth: 1,
+      border: refColor.hairline,
+      label: refColor.textPrimary,
+    },
+    // Text only, label + padX each side, headline. On paper as in 03, or on dark.
+    quiet: {
+      height: 48,
+      padX: 16,
+      // Grey on paper (03 and 05 agree; 4.7:1), darkening when pressed, so the black pill stays the one strong action.
+      paper: { label: refColor.inkMuted, pressedLabel: refColor.raised },
+      dark: { label: refColor.textPrimary, pressedLabel: refColor.textSecondary },
+    },
+    // 02's square header buttons: 44 box, 48 hit, Phosphor 20.
+    square: { size: 44, radius: 14, fill: refColor.raised, borderWidth: 1, border: refColor.rimFaint, icon: 20, hit: 48, pressedOpacity: 0.75 },
+    // 01's round header chips: 36 disc, diagonal 1 pt ring (specularDark at
+    // top left and bottom right, 0 at the other corners), Phosphor 18.
+    chip: { size: 36, radius: 999, fill: refColor.ground, ringWidth: 1, ring: refColor.specularDark, icon: 18, hit: 48, pressedOpacity: 0.75 },
+    // A glyph with no container: white on dark, raised on paper.
+    bare: { icon: 24, hit: 48, glyph: refColor.textPrimary, glyphOnPaper: refColor.raised, pressedOpacity: 0.75 },
+    // 01's dismiss disc over the glow.
+    dismissDark: { size: 48, radius: 999, fill: refColor.dismissFill, glyph: refColor.textSecondaryAlpha, icon: 20, pressedOpacity: 0.75 },
+    // 04's grey glass dismiss disc on black, with a 1 pt specular ring.
+    dismissGlass: {
+      size: 48,
+      radius: 999,
+      fill: refColor.glassDisc,
+      ringWidth: 1,
+      ring: refColor.specularLight,
+      ringAlt: refColor.specularLightAlt,
+      glyph: refColor.inkDisplay,
+      icon: 26,
+      pressedOpacity: 0.75,
+    },
+    // 02's shutter: a 75 ring 4 thick around a 67 disk (gradient.shutterDisk,
+    // bevel along its top), effect.shutterGlow. It carries Phosphor
+    // MagnifyingGlass in white at `iconFallback` (the painted glass is `icon`).
+    shutter: {
+      ring: 75,
+      ringWidth: 4,
+      ringFill: refColor.well,
+      disk: 67,
+      highlight: refColor.bevel,
+      icon: 32,
+      iconFallback: 28,
+      pressedScale: 0.94,
+    },
+    // 02's zoom segment: a 100 x 40 track, 45 x 32 thumbs inset 4.
+    segment: {
+      width: 100,
+      height: 40,
+      radius: 16,
+      fill: refColor.void,
+      inset: 4,
+      thumbWidth: 45,
+      thumbHeight: 32,
+      thumbRadius: 12,
+      thumbFill: refColor.thumb,
+      active: refColor.textPrimary,
+      inactive: refColor.textTertiary,
+    },
+    // 02's last photo: a 72 frame 4 thick around the image.
+    thumbnail: { size: 72, radius: 24, frameWidth: 4, frameFill: refColor.well, imageRadius: 20, imageRim: refColor.rimFaint, pressedOpacity: 0.75 },
+    // 01's game cards (gradient.card, gradient.cardRim): radius and tag offset
+    // scale with card width (31.5 and 24 on the 187 pt reference card); the
+    // tag (26 tall, 9 padding, radius 8, 1 pt rim) keeps its size.
+    gameCard: { aspect: 0.584, radiusRatio: 0.169, tagInsetRatio: 0.128, tagHeight: 26, tagPadX: 9, tagRadius: 8 },
   },
-  // Opaque graphite panels and frames. No glass, blur or coloured glow.
-  panel: { fill: noirColor.panel, borderWidth: 1, border: noirColor.hairline, radius: 6 },
-  stamp: { height: 24, padX: 8, radius: 6, fill: noirColor.signal, label: noirColor.bright },
-  gameCard: { width: 122, height: 209, radius: 6, tagInset: 16, fanTilt: 6 },
-  // Brand art, tutorial art and empty states are grayscale line work. The
-  // player's own room photos always stay in full colour.
-  illustration: {
-    stroke: 1.6,
-    hero: noirColor.bright,
-    mid: noirColor.read,
-    back: noirColor.meta,
-    context: noirColor.hairline2,
+  // No drop shadows and no blur anywhere: depth is steps in lightness.
+  effect: {
+    /** 02's shutter halo: about 12 above the ring, a little to the right, gone about 2 below (color.shutterGlow, a negative spread). */
+    shutterGlow: "1px -4px 10px -3px rgba(255, 255, 255, 0.20)",
+    /** The diagonal specular rings (01's chips, 04's glass disc). */
+    specularRingWidth: 1,
+    /** 01's game cards on the reference, mirrored. */
+    cardTilt: 5,
+    /** ESCAPD's three-card fan (degrees). */
+    fanTilt: 6,
+    /** 03's phone outline, clockwise (degrees). */
+    illustrationTilt: 14,
+    /** 04's context lines fade to transparent over their last 40 pt. */
     contextFade: 40,
+    /** 01's hero icons: secondary strokes at this opacity. */
+    secondaryLineOpacity: 0.6,
   },
-  // Phosphor regular throughout.
+  // Phosphor regular (stroke = size / 16), the closest weight to the measured
+  // 1.2 to 2.1 pt chrome strokes. Sizes are Phosphor box sizes.
   icon: {
-    small: 16,
+    /** Chrome glyph stroke as drawn. */
+    stroke: 1.5,
+    /** 04's dark line illustrations (the reference's lines integrate to 1.75–1.9 pt). */
+    illustrationStroke: 1.75,
+    /** 03's solid phone outline band. */
+    illustrationBand: 16,
+    /** 01's hero line icons: stroke as a share of icon size (3.5 at 48). */
+    heroStrokeRatio: 0.072,
+    heroMin: 48,
+    heroMax: 68,
+    /** In 01's round chips. */
+    chip: 18,
+    /** In 02's square header buttons; the pill spinner. */
     header: 20,
+    /** Bare controls (flash, flip, back). */
     control: 24,
-    shutter: 28,
+    /** 01's dismiss X. */
+    dismiss: 20,
+    /** 04's glass dismiss X. */
+    close: 26,
+    /** The brass magnifier image on the shutter. */
+    shutter: 32,
+    /** The Phosphor shutter fallback. */
+    shutterFallback: 28,
   },
   // Screen geometry from docs/DESIGN.md that no shared token covers, one block
   // per screen. Shared values stay above; these are only the screen's own.
   layout: {
-    // 01 · Game mode, the hub at /
+    // 01 · Game mode, the hub at / (Opal), measured on 393 x 852 (safe 59 / 34).
+    // The chips are ref.button.chip, the cards ref.button.gameCard over
+    // ref.gradient.card / cardRim, the glow ref.gradient.bottomGlow.
     hub: {
-      // Header wordmark height (stroke 8/60 x 14 = 1.9): one stamp line tall.
-      wordmarkHeight: 14,
-      // The 1 pt lines the play screen draws: the header rule, the mounts'
-      // brass hairline, the plates' rim, the SOLVED stamp and the notice panel.
+      // The 1 pt lines: the divider, the card rims, the tag pills, the notice's and the sheet's edges.
       hairline: 1,
-      // The painted glass: a 128 box. Lens centre and radius as fractions of
-      // the box, measured on magnifier-1024.png (78.6, 42.4) r 32.3 at 128.
-      glass: 128,
-      lens: { x: 0.614, y: 0.331, r: 0.252 },
-      // Column spacer weights (rule to safe bottom): above and below the
-      // glass and below the fan; without the glass, above and below the hero
-      // (15 : 17 keeps the title and fan where the glass leaves them on 852).
-      weights: { aboveGlass: 7, belowGlass: 7, belowFan: 50, aboveHero: 15, belowHero: 17 },
-      // Fan: container height, side-card centre offset from the axis, drop and
-      // tilt (deg); `cover` is the strip of a side card's inner edge under the
-      // centre card at its foot (27.7), which its labels, art and indicator
-      // keep off. It needs this width and text scale or it stacks.
-      fan: { height: 226, sideOffset: 105, sideDrop: 10, tilt: 6, cover: 28, minWidth: 375, maxFontScale: 1 },
-      // A card: the 122 x 209 walnut mount; the line art's box and stroke.
-      card: { width: 122, height: 209, art: 48, artStroke: 1.6 },
-      // Stacked cards (large text, narrow screens): minimum height; the plate
-      // at the right end is square at it (96 - 2 x 4 = 88).
+      // The chip row's top below the safe top (y 71); the ESCAPD wordmark's
+      // height (its letters' full height: a little over Opal's 16 pt title cap, 11.3).
+      header: { top: 12, logo: 14 },
+      // The chips' diagonal 1 pt ring, as a gradient from their top right to
+      // their bottom left. On the circle it spans only 0.146-0.854 of the
+      // line, so: nothing at 45° / 225°, white 10.5 % at the cardinals, 15 %
+      // on the top-left and bottom-right arcs (Opal: peaks 0.15 / 0.13).
+      chipRing: [
+        stop(0.146, refColor.textPrimary, 0),
+        stop(0.25, refColor.textPrimary, 0.105),
+        stop(0.5, refColor.textPrimary, 0.15),
+        stop(0.75, refColor.textPrimary, 0.105),
+        stop(0.854, refColor.textPrimary, 0),
+      ],
+      // The How you play glyph, ESCAPD's three-rail sliders at Opal's numbers
+      // in the 18 chip glyph box: rails 13 wide, stroke 1.2, 3.96 apart; ring
+      // knobs 3.8 across at these shares of the rail (top, middle, bottom).
+      sliders: { width: 13, stroke: 1.2, pitch: 3.96, knob: 3.8, knobs: [0.73, 0.41, 0.7] },
+      // Column spacers (divider to the safe bottom): above the title and below
+      // the cards. The top one never grows past `band`, Opal's 124 from the
+      // divider to the title box (title box y 248, cards from y 330 on 852);
+      // the rest of the column goes below the cards.
+      weights: { above: 131, below: 96 },
+      band: 124,
+      // Opal's cards are see-through: where the centre card lies over a side
+      // card it is white `overlap` brighter, and each side card darkens to
+      // black `falloff` at its outer edge, as the floor light falls off.
+      glass: { overlap: 0.02, falloff: 0.18 },
+      // The three-card fan, a hand in Opal's band (visual x 19.3-373.7 on
+      // 393): container height (the side cards' visual foot), side-card
+      // centre offset from the axis, drop and tilt (deg). `cover` is the strip
+      // of a side card's inner edge the centre card lies over, at its top and
+      // its foot (linear between): a side card centres its content on the
+      // rest (105 wide at the pills, 89 at the icon). Designed on a
+      // `designWidth` screen; narrower or shorter, it scales down as a whole
+      // to `minScale`, then the cards stack; above `maxFontScale` they stack.
+      fan: {
+        height: 335,
+        sideOffset: 93.2,
+        sideDrop: 10,
+        tilt: 6,
+        cover: { top: 29.85, foot: 63.49 },
+        designWidth: 393,
+        minScale: 0.75,
+        maxFontScale: 1,
+      },
+      // A fan card at Opal's height (319.6) and the widest that still shows a
+      // side card's Opal-size pill whole (Opal's 187 would leave 82 of face for
+      // a 92-97 pill): the tag pill's top (Opal's 24); the state line's gap
+      // under it; the hero icon's box (ref.icon.heroMax: the art's ink is
+      // about 62, Opal's 62-68, its stroke 4.9 as Opal's) and its centre, and
+      // the SOLVED pill's centre, as shares of the height; the press scale
+      // (proposal; the reference shows no press).
+      card: { width: 140, height: 320, tagTop: 24, noteGap: 6, icon: 68, iconCentre: 0.54, solvedCentre: 0.74, pressScale: 0.97 },
+      // Stacked cards (large text, narrow screens): minimum height.
       stackedMinHeight: 96,
-      // THE STUDY's notice glyph, as /play's failure banner draws it.
-      noticeIcon: 18,
-      // How you play is the live Sheet, which leaves with a 200 ms slide and has
-      // no exit callback: focus returns to How you play after that slide (or
-      // motion.reducedFade) plus this margin for the layer's removal (ms).
-      sheetExit: 200,
-      sheetFocusMargin: 100,
+      // THE STUDY's notice glyph: one meta line square.
+      noticeIcon: 16,
+      // How you play, a dark sheet in the chips' and cards' material. Scrim
+      // black 55 %. It slides up on ref.motion.sheetRise and away on sheetFall (`exit` is unused)
+      // slide; the scrim fades in and out; focus moves to its title once it
+      // has risen (or sooner under reduced motion), and returns to How you
+      // play after the exit (or motion.reducedFade) plus `focusMargin` (ms).
+      sheet: {
+        scrim: "rgba(0, 0, 0, 0.55)",
+        maxHeight: "64%",
+        exit: 200,
+        scrimIn: 200,
+        scrimOut: 160,
+        titleFocus: 300,
+        titleFocusReduced: 50,
+        focusMargin: 100,
+        // Show interactives: the track takes the line icons' aqua when on.
+        switch: { on: refColor.lineEnd, off: refColor.textTertiary, thumb: refColor.textPrimary },
+      },
+      // Settings (the hub's DarkSheet), grouped rows in the review screen's
+      // list style: a Bold 14 section heading `headingGap` above its group;
+      // each group a raised panel with `radius` corners; rows at least
+      // `rowHeight` tall, `pad` in from the panel's sides, label and control
+      // `gap` apart, split by 1 pt rim lines inset `pad` from the left; a
+      // navigation row ends in a Phosphor CaretRight at `caret`. Pressed rows
+      // at `pressedOpacity` (proposal). The sheet may grow to `maxHeight`.
+      settings: {
+        heading: { fontSize: 14, lineHeight: 20, fontWeight: "700" } as const satisfies TextStyle,
+        headingGap: 8,
+        radius: 8,
+        fill: refColor.raised,
+        divider: refColor.rim,
+        rowHeight: 52,
+        pad: 16,
+        gap: 12,
+        caret: 15,
+        pressedOpacity: 0.75,
+        maxHeight: "88%",
+      },
     },
-    // 02 · Camera, in the play screen's look (live tokens).
+    // 02 · Camera (Once), measured on 393 x 852 (safe 59 / 34). The controls
+    // themselves are ref.button.square / bare / segment / shutter / thumbnail.
     camera: {
-      // Back, library, flash and grid: live 48 IconButtons centred on 02's
-      // columns (x 43 and 350 on 393 x 852), so 19 from the screen edges, and
-      // top = safe top + 6 (centre y 89): 03's back (permission.back) matches.
-      buttons: { edge: 19, top: 6 },
-      // The 1 pt lines: the mounts' brass hairline, the plates' rim, the
-      // privacy note's and the lens track's edge, the framing grid.
+      // Header buttons, counter and thumbnail from the screen edges (measured
+      // 20.8 to 21.2), and the square buttons' top below the safe top (y 67).
+      edge: 21,
+      top: 8,
+      // The thumbnail image's 1 pt rim.
       hairline: 1,
-      // Viewfinder: the inner plate is exactly 3:4 (width / height), fitted by
-      // containBox. The feed is the sensor's 4:3 held upright (CameraView
-      // `ratio`, Android).
+      // The square buttons' rim as measured (#222 to #242424 over the raised
+      // fill; rimFaint composites to #292929 there, a visibly brighter edge).
+      squareRim: "#232323",
+      // Glyphs as measured: the back arrow 14.3 wide with a 1.5 to 1.7 stroke
+      // is Phosphor bold at 18 (Images matches it); the control row's bolt
+      // (20.3 tall) and the flip slot (16.6 wide) are 22.
+      headerIcon: { size: 18, weight: "bold" },
+      controlIcon: 22,
+      // The control row's glyph centres from each screen edge: flash under
+      // the back arrow (x 43), the grid on Once's flip glyph (x 347.6, not
+      // the library button's 350). The lens segment stays on the screen's centre.
+      controlColumns: { left: 43, right: 45.4 },
+      // The chosen lens's "×": a 7.5 pt xmark, 5 after the digits (Phosphor X
+      // bold at 11.5; its side bearing makes up the rest of the gap).
+      lensMark: { size: 11.5, gap: 3 },
+      // The serif title's line box below the buttons' top, and the meta line
+      // metaGap under it: baselines y 87 and 108 (measured 87.0 / 107.8);
+      // 3 + 22 + 3 + 16 fills the buttons' 44.
+      promptTop: 3,
+      metaGap: 3,
+      // Bands on 852: button bottom to the viewfinder (111 -> 140), the
+      // viewfinder to the zoom track (626.7 -> 656.4), the track to the bottom
+      // row (696.4 -> 720.4), the bottom row to the safe bottom (792.4 -> 818).
+      band: { viewfinder: 29, controls: 29.7, bottom: 24, foot: 25.6 },
+      // Viewfinder: exactly 3:4 (width / height), fitted by containBox; the
+      // sensor's 4:3 held upright (CameraView `ratio`, Android).
       frameAspect: 0.75,
       feedRatio: "4:3",
-      // The film-plate mount (SceneView's Kodachrome mount): walnut padding
-      // inside the hairline around the plate, and the plate to its label.
-      mount: { pad: 6, labelGap: 6 },
-      // Framing grid: rule of thirds.
-      gridDivisions: 3,
-      // Corner brackets (brass): 22 arms, 1.5 stroke, inset space.lg. On
-      // camera ready they settle in from 6 further out (inset 10) over
-      // motion.bracketSettle on this curve, fading in over bracketFade.
-      bracketArm: 22,
-      bracketStroke: 1.5,
-      bracketTravel: 6,
-      bracketFade: 200,
-      bracketEasing: [0.2, 0, 0, 1],
-      // Plate counter and last-plate thumbnail: 72 x 72 walnut mounts
-      // (radius.thumbRing) around 64 x 64 plates (radius.thumb, 4 in).
-      plateBox: 72,
-      // The thumbnail's continue cue from 3 plates: a 2 pt brass ring.
-      ringWidth: 2,
-      // The shutter: a 76 box, a 3 pt brass ring (the loupe's), a 5 gap and a
-      // 60 manila core carrying the 28 magnifier.
-      shutter: { size: 76, ringWidth: 3, core: 60, icon: 28 },
-      // Lens segment: a 100 x 36 track of two 50-wide halves (each a 50 x 48
-      // target), brass thumbs 46 x 28 inset space.xs.
-      lensOptionWidth: 50,
-      lensTrack: 36,
-      // Large text caps, so the 72 windows, the 46 thumbs and the one-line
-      // plate label hold.
-      counterMaxFontScale: 1.25,
+      // Framing grid: rule of thirds in 1 pt white lines at this opacity.
+      grid: { divisions: 3, line: 1, opacity: 0.4 },
+      // Privacy note: a black pill on the feed (void at fillOpacity), its foot
+      // `inset` above the viewfinder's, as wide as the copy (one line on 393).
+      note: { inset: 16, padX: 12, padY: 8, fillOpacity: 0.6 },
+      // The counter's void pill (radius.nested): numerals `gap` apart, the
+      // current one centred and nudged by dx / dy (the italic's slant, the
+      // caps' centre). A new plate rolls the strip over motion.counterRoll.
+      // `gap` adds to the tracking each numeral carries (1.75 after it, and on
+      // iOS and the web a leading pad of 1.75). Round 4's Arabic numerals
+      // (Crimson Italic digits, 11.6 advance) sit Once's measured ~31 apart
+      // centre to centre, so one neighbour shows on each side, cut by the
+      // pill's edges (at the old 4 two showed: "1 2 3 4").
+      counter: { width: 73, height: 52.5, gap: 16, dx: 0.8, dy: 1.4, maxFontScale: 1.25 },
+      // Shutter: its centre 2.7 below the bottom row's (measured); the disk's
+      // 1 pt bevel, brightest across the top and gone by about 80 deg either
+      // side (fitted to the reference's edge peaks, objectBoundingBox
+      // fractions); the glass nudged so its lens, not its box, reads as centred.
+      shutter: {
+        drop: 2.7,
+        bevelWidth: 1,
+        bevelLine: { x1: 0.5, y1: 0, x2: 0.5, y2: 1 },
+        bevel: [stop(0, refColor.bevel), stop(0.3, refColor.bevel, 0.35), stop(0.5, refColor.bevel, 0)],
+        glassNudge: { x: 1, y: 1 },
+      },
+      // Lens labels cap so "0.5 ×" stays inside its 45 thumb.
       lensMaxFontScale: 1.25,
-      labelMaxFontScale: 1.25,
-      // The error line's Warning glyph, inside one caption line.
-      noticeIcon: 16,
+      // The way on from MIN_PLATES: a 1 pt grey ring on the thumbnail frame's
+      // outer edge, quiet (the reference's tertiary grey; no brass).
+      cue: { width: 1, color: refColor.textTertiary },
+      // The error line's Warning glyph, inside one meta line.
+      noticeIcon: 14,
       // Busy: the thinking line replaces the detail only past this many ms.
       thinkingDelay: 1000,
     },
-    // 03 · Camera permission, in the play screen's look (live tokens).
+    // 03 · Camera permission: pushr's white sheet, measured on 393 x 852
+    // (docs/refs/03-camera-permission.png). Paper, panel, inks, the 64 pill,
+    // the display title, the gutter and the gaps are shared tokens above;
+    // these are the screen's own.
     permission: {
-      // Back: the live IconButton (48 round) centred on 02's back centre
-      // (43, 89 on 393 x 852): box x 19-67, top = safe top + 6.
-      back: { left: 19, top: 6 },
-      // The 1 pt lines: the sheet's top edge and inner brass rule, the mount's
-      // brass hairline, the plate's rim and the drawn screen's edge.
-      hairline: 1,
-      // The illustration plate: the column's width, 128 tall, on a small
-      // film-plate mount (radius.thumbRing around radius.thumb, 4 in).
-      plate: { height: 128 },
-      // Phone line art, drawn in unrotated phone coordinates and rotated 14 deg
-      // clockwise about its top-left corner: 53.8 left of the plate's centre
-      // and 20 below its top edge; the plate's foot crops it. Body 134 wide,
-      // corners 6; inner screen inset 16 (sides, top); brackets inset 14 from
-      // it with 22 arms; the wall join starts 44 below the inner top edge;
-      // ceiling lines 30 long, rising outward at 15 deg.
+      // The body's box below the title's: title baseline to first body
+      // baseline 39 as measured (39.1), with Archivo's and the system font's
+      // line boxes.
+      titleToBody: 14,
+      // The illustration panel across the top of the sheet: full-bleed, 150 tall
+      // (measured 149.7), panel grey under the sheet's top corners.
+      panel: 150,
+      // The phone outline, fitted to the reference's render. Drawn in its own
+      // upright space (origin at the frame's unrounded top-left corner, y down
+      // from its top edge), then sheared by ref.effect.illustrationTilt, so the
+      // top edge falls to the right while the sides stay upright, as pushr's
+      // phone turned in perspective. The panel's foot crops it.
       phone: {
-        cornerDx: -53.8,
-        cornerDy: 20,
-        rotate: 14,
-        width: 134,
-        radius: 6,
-        screenInset: 16,
-        bracketInset: 14,
-        bracketArm: 22,
-        wallDrop: 44,
-        ceilingAngle: 15,
-        ceilingLength: 30,
+        // The origin: this far left of the panel's centre (x 115.6 on 393) and below its top.
+        dx: -80.9,
+        top: 28.8,
+        width: 157,
+        // Drawn this long, past the panel's foot.
+        length: 160,
+        // Outer corners as ellipses (rx, ry): wider at the top left, taller at the top right.
+        outer: { left: { rx: 44, ry: 41 }, right: { rx: 30, ry: 36 } },
+        // The solid black band, then the open screen (panel grey) inside it.
+        band: { left: 18, right: 18.5, top: 16 },
+        inner: { left: { rx: 8, ry: 18 }, right: { rx: 19, ry: 27 } },
+        // Shading, all ref.color.illustrationBevel over the black at these
+        // opacities. The lit inner wall down the left: 9 wide, full from 39.5
+        // below the top edge (a 2 ramp), and `corner` round the corner above it.
+        bevel: { width: 9, from: 39.5, ramp: 2, corner: 0.2 },
+        // The outer wall down the right: 7.6 wide, centred 5.6 in from the
+        // edge, `upper` (#333333) round the corner down to `to`, `lower`
+        // (#171717) below; it fades in over `ramp` from the corner's start.
+        sheen: { inset: 5.6, width: 7.6, upper: 0.35, lower: 0.16, to: 48, ramp: 15 },
+        // A 1 pt gloss line along the top band, 6 below its edge, fading out to the right.
+        gloss: { y: 6, from: 26, peak: 36, to: 125, width: 1, opacity: 0.36 },
       },
-      // The line art, warm (as the guide's): stroke and the context fade over
-      // the last 40 before the crop; each depth a live colour and an opacity
-      // (react-native-svg ignores a stop colour's alpha). On color.canvas: mid
-      // 7.4:1, context 1.6:1, brackets 8.0:1.
-      line: {
-        stroke: 1.6,
-        fade: 40,
-        mid: { color: color.textSecondary, opacity: 1 },
-        context: { color: color.textSecondary, opacity: 0.3 },
-        bracket: color.accent,
+      // The island, in its own axes (u along it, v across it, from its
+      // centre): 57.3 x 24, rotated 12 deg, centred 72.7 along the frame from
+      // its origin and 30.7 below its top edge. A round left end; the right
+      // end square-cut with `endRadius` corners, showing a flat lit face (u
+      // `face.from` to `face.to`, `face.height` tall, corners `face.radius`)
+      // in illustrationBevel: `lit` down to `split` of its height, `shade`
+      // from `shadeFrom`. The black between the face and the gloss line is the
+      // seam. A gloss line 5.5 above its axis (u -22 to 12, opacity 0.45 to 0.2).
+      island: {
+        x: 72.7,
+        y: 30.7,
+        width: 57.3,
+        height: 24,
+        rotate: 12,
+        endRadius: 8,
+        gloss: { v: -5.5, from: -22, to: 12, width: 1.2, start: 0.45, end: 0.2 },
+        face: { from: 20.5, to: 28.2, height: 19, radius: 4, lit: 0.38, shade: 0.16, split: 0.55, shadeFrom: 0.8 },
       },
-      // The notice's Warning glyph: one caption line square, as Pro's.
-      noticeIcon: 18,
+      // The notice's Warning glyph: one meta line square.
+      noticeIcon: 16,
       // A thinking line shows only once its wait has run past ~1 s (Checking,
       // a single library photo).
       thinkingDelay: 1000,
-      // Accessibility focus moves to the title once the sheet has risen, as the
-      // live Sheet does (under reduced motion: after motion.reducedFade).
+      // Accessibility focus moves to the title once the sheet has risen (under
+      // reduced motion: after motion.reducedFade).
       titleFocusDelay: 300,
     },
-    // 04 · First-time photo guide, in the play screen's look (live tokens).
+    // 04 · First-time photo guide, in Apple Health's look (docs/refs/04).
+    // 393 x 852, safe 59 / 34; the column is ref.space.reading 38 each side.
     guide: {
-      // The 1 pt edges: the mount's brass hairline, the plate's rim, the
-      // drawn phone screen's edge (art units) and the live secondary Button's
-      // edge (the step button's slot reserves it).
-      hairline: 1,
-      // The film-plate mount (SceneView's Kodachrome mount): walnut padding
-      // around the inner plate, and the plate to its plate label.
-      mount: { pad: 6, labelGap: 6 },
-      // The inner plate: 3:4 like a room plate, 264 x 352 on 393 x 852 (mount
-      // 278 x 386 at y 178-564), the art box centred in it. When large text
-      // needs the room it shrinks evenly, the drawing with it, and below
-      // minHeight the whole mount hides.
-      plate: { width: 264, height: 352, minHeight: 160 },
-      // Voids on the base device: header (Close's slop included) to the mount
-      // (y 111-178), and the mount to the title (y 564-620). Text growth comes
-      // out of `below` first, then `above`, each down to space.xl; only then
-      // does the plate shrink.
-      voids: { above: 67, below: 56 },
-      // The art box: the drawings' own units, centred in the plate (x 76.5-316.5,
-      // y 228-494). Ink stays within inkMax.
-      art: { width: 240, height: 266, inkMax: 170 },
-      // Body's last line to the button top (y 700-766, over the live Button's
-      // 48 at 766-814), and the replay status line's box inside it (y 724-742,
-      // 24 clear above and below).
-      ctaGap: 66,
-      statusTop: 24,
-      statusBottom: 24,
+      // The glass close disc (button.dismissGlass): its outer edge, ring
+      // included (48 + 2 x 1 = 50, measured 50.3), 10 below the safe top and
+      // 32 from the right edge: x 311-361, y 69-119, centre (336, 94). Its
+      // 1 pt specular ring, as a gradient at CSS 135 deg: a circle's rim spans
+      // offsets 0.15 (upper left, #AAAAAA) to 0.85 (lower right, #B6B6B6) of
+      // its square's gradient line; top and left read #A0A0A0, right and
+      // bottom #939393, the other diagonal #8D8D8D (measured 141 to 182).
+      close: {
+        top: 10,
+        right: 32,
+        ring: {
+          angle: 135,
+          stops: [
+            stop(0.15, refColor.specularLightAlt),
+            stop(0.25, "#A0A0A0"),
+            stop(0.5, "#8D8D8D"),
+            stop(0.75, "#939393"),
+            stop(0.85, refColor.specularLight),
+          ],
+        },
+      },
+      // The art band, from the disc's bottom (y 119) to the title. On 393 x
+      // 852 the art box sits at y 266-532 (147 below the disc, as measured,
+      // and 81 above a one-line title). A taller band shares its free height
+      // 147 : 81. Text growth comes out of `below` first, then `above`, each
+      // down to `clear`; only then does the art shrink evenly, and below
+      // art.minHeight (scale 0.45) it hides.
+      voids: { above: 147, below: 81, clear: 24 },
+      // The art box in its own units, centred on the screen (x 76.5-316.5).
+      // Ink no wider than inkMax (the reference's is 131 x 265).
+      art: { width: 240, height: 266, inkMax: 170, minHeight: 120 },
+      // Title line box to body line box: the measured baselines are 30.4-30.9
+      // apart on 28 lines. Title 613-641, body 644-700 on the base device.
+      titleGap: 3,
+      // The body's grey, a touch lighter than the shared textSecondary: the
+      // reference's blurred glyph cores read #95-#9B and peak at #A5-#AA.
+      bodyText: "#999999",
+      // Body's last line to the button top (y 700-762; measured 62.5), and the
+      // replay status line (ref.type.meta, 16) inside it, 23 clear each side.
+      ctaGap: 62,
+      statusTop: 23,
+      statusBottom: 23,
       // Horizontal swipe: activation and vertical-fail offsets, then the
       // release commit thresholds (pt and pt/s).
       swipe: { activeOffsetX: 16, failOffsetY: 16, commitDistance: 56, commitVelocity: 500 },
       // Replay wait: the thinking line appears only past this many ms.
       thinkingDelay: 1000,
-      // Replay error: the Warning glyph beside the caption line.
+      // Replay error: the Warning glyph beside the meta line.
       errorIcon: 16,
-      // The line art, warm: stroke and fade length in art units, then each
-      // depth as a live colour and an opacity (kept apart because
-      // react-native-svg ignores a stop colour's alpha). On color.canvas: hero
-      // 17.0:1, mid 7.4:1, back 4.1:1, context 1.6:1. Viewfinder brackets brass.
-      line: {
-        stroke: 1.6,
-        fade: 40,
-        hero: { color: color.text, opacity: 1 },
-        mid: { color: color.textSecondary, opacity: 1 },
-        back: { color: color.textSecondary, opacity: 0.7 },
-        context: { color: color.textSecondary, opacity: 0.3 },
-        bracket: color.accent,
+      // The line art's inks beyond ref.color's line greys (art units). `thin`:
+      // the inner screen's edge and ridges. The inner screen's edge darkens
+      // from lineContext at its top to screenBottom. Print on a lit panel:
+      // `text` (its first line) and `textDim`. `ridge`: detail inside a dark
+      // shape. Context lines that run off the bottom fade from lineContext at
+      // fade.from to nothing at fade.to (the reference hand: 77 at y 172, 33
+      // at 224, 7 at 256, 0 at 266); step 2's rays and step 3's desk fade over
+      // their last endFade instead.
+      ink: {
+        thin: 1,
+        screenBottom: "#323232",
+        text: "#A8A8A8",
+        textDim: "#585858",
+        ridge: "#3C3C3C",
+        fade: { from: 170, to: 266 },
+        endFade: 40,
       },
-      // Illustration geometry in the art box's own units (it scales with the
-      // plate): the hero phone, its corner radius (also the plan symbols') and
-      // inner-screen insets (44 x 85.5 screen), the bracket L-shapes, and step
-      // 2's phone plan symbols.
-      phone: { width: 70, height: 137, radius: 6, screenInsetX: 13, screenInsetTop: 24.5, screenInsetBottom: 27 },
-      bracket: { arm: 9, inset: 4 },
-      planPhone: { width: 20, height: 40 },
+      // Fills beyond ref.gradient.deviceFill, each across its shape's own box:
+      // the lit panel (the reference's bottle label: #6B6B6B at the top right
+      // to black three quarters across) and the small tag (its box label,
+      // #474747 to #0D0D0D top to bottom).
+      fill: {
+        panel: { angle: 235, stops: [stop(0, "#6B6B6B"), stop(0.75, refColor.void)] },
+        tag: { angle: 180, stops: [stop(0, "#474747"), stop(1, "#0D0D0D")] },
+      },
+      // The hero phone (measured 70 x 137, corners 10.5; inner screen inset 13
+      // at the sides, 24.5 at the top and 27 at the bottom, corners 10; a thin
+      // lineBack bezel 1.3 inside the outline at corners 9.2, the darker
+      // shoulder inside the reference's white edge), and step 2's plan phones
+      // seen from above.
+      phone: {
+        width: 70,
+        height: 137,
+        radius: 10.5,
+        bezel: { inset: 1.3, radius: 9.2 },
+        screen: { insetX: 13, insetTop: 24.5, insetBottom: 27, radius: 10 },
+      },
+      planPhone: { width: 22, height: 42, radius: 5 },
     },
-    // 05 · Pro (test paywall)
+    // 05 · Pro (test paywall), modelled on 03's pushr sheet: paper and the
+    // haze (kit PaperHaze), a full-bleed sheet (radius.sheet top corners)
+    // whose panel holds the case-file art, then title, body, the note row,
+    // the primary pill and the grey quiet pill. Gaps are ref.space unless
+    // named here: panel to title xl, body to note row sm, note row to pill
+    // band, pill to quiet sm; the sheet's top stops lg below the safe top;
+    // bottom ctaBottom above the safe area (lg with no bottom inset); gutter xl.
     pro: {
-      // Loading: the brass ActivityIndicator appears only if the access check
-      // is still running after this many ms, so a faster check shows nothing.
+      // Loading: the ActivityIndicator appears only if the access check is
+      // still running after this many ms, so a faster check shows nothing.
       spinnerDelay: 300,
-      // Notice glyph (Warning / WifiSlash): one caption line square, as the
-      // play screen's failure banner draws it.
-      noticeIcon: 18,
+      // 03's illustration panel (panel colour), full-bleed; it crops the art.
+      panelHeight: 150,
+      // Title box to body box: title baseline to first body baseline 39, as
+      // pushr's (39.1), with Archivo's 36 line over the 17/22 body.
+      titleGap: 14,
+      // The note row's error glyph (Warning / WifiSlash): one meta line square.
+      noticeIcon: 16,
+      // Lines the note row reserves: the test note or an error (test builds);
+      // "isn't on sale yet" takes two (test purchases off).
+      noteLines: 1,
+      infoLines: 2,
+      // The case file, drawn as 03's phone (ref.layout.permission.phone):
+      // the same frame metrics, lights and placement, with a folder's tab in
+      // its top edge and a label in place of the island. Drawn upright (origin
+      // at the frame's unrounded top-left corner, y down from the tab's top
+      // edge), then sheared by `slope` (ref.effect.illustrationTilt, 14 deg) so
+      // the top falls to the right while the sides stay upright; the panel's
+      // foot crops it. Ink: 157 wide, its top 38.6 below the panel's top.
+      art: {
+        // Origin this far left of the panel's centre (x 115.6 on 393) and below its top.
+        dx: -80.9,
+        top: 28.8,
+        width: 157,
+        // Drawn this long, past the panel's foot.
+        length: 160,
+        slope: Math.tan((14 * Math.PI) / 180),
+        // Outer corners as ellipses (rx, ry), heavy; the inner ones tight.
+        outer: { left: { rx: 44, ry: 40 }, right: { rx: 30, ry: 36 } },
+        band: { left: 18, right: 18.5, top: 16 },
+        inner: { left: { rx: 8, ry: 18 }, right: { rx: 19, ry: 27 } },
+        // The folder's tab: the tab's top edge runs to `width`, then a
+        // shoulder falls `rise` over `shoulder` to the body's top edge, both
+        // bends rounded over `bend`. The right corner sits on the body's edge.
+        tab: { width: 62, rise: 18, shoulder: 16, bend: 6 },
+        // Lights, all illustrationBevel over the black at these opacities, as
+        // 03's: the lit inner wall down the left (9 wide, full from 37.5 below
+        // the top, `corner` round the corner); the outer wall down the right
+        // (7.6 wide, 5.6 in, `upper` #333 round the corner to `to` below the
+        // body's edge, `lower` #171717 below, fading in over `ramp`); a 1 pt
+        // gloss line 6 inside the top band, following the tab, fading right.
+        bevel: { width: 9, from: 37.5, ramp: 2, corner: 0.2 },
+        sheen: { inset: 5.6, width: 7.6, upper: 0.35, lower: 0.16, to: 48, ramp: 15 },
+        gloss: { y: 6, from: 26, peak: 36, to: 125, width: 1, opacity: 0.36 },
+        // The label: a black stadium (03's island is 57.3 x 23.6), its left
+        // end `left` along the frame and `drop` below the body band's inner
+        // edge, right of the shoulder, with the island's gloss line.
+        label: {
+          left: 78,
+          drop: 3,
+          width: 50,
+          height: 23.6,
+          gloss: { v: -5.5, from: -18, to: 10, width: 1.2, start: 0.45, end: 0.2 },
+        },
+      },
+    },
+    // 06 · Darkroom wait (/capture/develop). No reference screen: derived
+    // from 02 and 07. 07's ground and tiles (in miniature), 01's tag pill as
+    // the stamp, 01's title and subtitle, a void pill (02's wells) for the
+    // clock, and the state screen's actions (ref.layout.state). The
+    // painted glass drifts over the plates with a thinking line
+    // (ref.motion.thinking, dark ground) under it, only while a real wait runs
+    // (sending, queued, developing, retrying).
+    develop: {
+      // One plate on the strip: 07's tile in miniature (square, photo in full
+      // colour, a 1 pt ref.color.rim edge, 07's 5 corners scaled to 48 = 4),
+      // with its numeral above it in 07's label style (Regular 12/17 grey), the
+      // label box `labelGap` above the tile. Tiles `gap` apart.
+      plate: { size: 48, radius: 4, rim: 1, gap: 8, label: { fontSize: 12, lineHeight: 17, fontWeight: "400" }, labelGap: 2 },
+      // A void veil over plates still to send (lighter over sent ones) until
+      // the case is developed: neutral, so the photos' colours never shift.
+      veil: { color: refColor.void, unsent: 0.7, sent: 0.35 },
+      // The glass: the magnifier.png @2x / @3x set at its own 96 pt (288 px at
+      // 3x), and the lens centre as a share of the image box (measured on
+      // magnifier-1024: 640, 336). It leans about the lens centre.
+      glass: { size: 96, lensX: 0.625, lensY: 0.33 },
+      // The stage the glass works over: the strip sits stripTop below its top
+      // and the lens path centres on the tiles' middle (4 + 17 + 2 + 24 = 47
+      // below the top). The rim reaches 28 above the lens centre and the
+      // handle's end 61 below it (66 at full lean, plus drift.y 8), so at full
+      // drift the art stays inside the height.
+      stage: { height: 122, stripTop: 4 },
+      // Column gaps: the stage to the thinking line (the kit asks 8 or more),
+      // the hero to the stamp, the stamp to the title, the title to the body,
+      // the body to the clock.
+      gap: { line: 12, copy: 28, title: 16, body: 8, clock: 20 },
+      // The elapsed clock ("3 min"): ref.type.meta in textSecondary on a void
+      // pill (02's wells; 7:1), `padX` to the text, at least `height` tall.
+      clock: { height: 32, padX: 14, fill: refColor.void },
+      // The drift: a figure-eight (a 1 : 2 Lissajous) over the plates. The lens
+      // centre runs x sin t, y sin 2t and the glass leans tilt sin t degrees,
+      // one loop per `duration`. The phase runs linearly so the glass never
+      // stalls; the path is sinusoidal, so each axis eases in and out at its
+      // turns. x is one plate pitch (48 + space.sm). Reduced motion: the glass
+      // holds still and level at the path's centre.
+      drift: { x: 56, y: 8, tilt: 5, duration: 4000, easing: "linear" },
+    },
+    // The shared state screen (src/components/StateScreen.tsx): loading,
+    // offline, error and access states for the player, the darkroom and
+    // /account/confirmed. No reference: 07's flat ground and pinned white bar,
+    // 01's centred title (ref.type.title) and subtitle (ref.type.subtitle,
+    // grey), 02's void wells. Loading is the kit's ThinkingStates (body size)
+    // instead of a spinner.
+    state: {
+      // The centred text column's inset from the screen edges (controls sit at ref.space.edge).
+      textInset: 32,
+      // A caller's glyph sits in a void well with a 1 pt faint rim, as 02's wells.
+      well: { size: 72, fill: refColor.void, rim: 1, rimColor: refColor.rimFaint },
+      // The well to the title, the title to the body.
+      gap: { title: 20, body: 8 },
+      // The pinned actions, as 07's band: `pad` above and below (plus the
+      // bottom safe area), the quiet secondary `gap` under the bar.
+      footer: { pad: 16, gap: 8 },
+      // 07's develop bar: the strongest fill on this ground (paper) with the
+      // label in the ground colour, 48 tall, 2 corners. Pressed dims (proposal).
+      bar: {
+        height: 48,
+        radius: 2,
+        fill: refColor.paper,
+        label: refColor.ground,
+        pressedOpacity: 0.75,
+        type: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+      },
+    },
+    // The in-game player (/tutorial, /play/[roomId]) and Case closed
+    // (/tutorial/complete). No reference: derived from 02 (the photo in a
+    // rounded well on the flat ground, Once's square header buttons, the serif
+    // title over a grey meta line, near-black wells, white glyphs whose shape
+    // shows state), 01's dark sheet (kit DarkSheet) and 07's cards, hint rows,
+    // outlined pill and white bar. Room photos keep their full colour.
+    play: {
+      // Header: the squares (ref.button.square, 02's measured rim and bold 18
+      // glyphs) `edge` from the screen edges, `top` below the safe top, one
+      // each side (Back, Case options); the serif title promptTop below the
+      // squares' top and the meta line metaGap under it (3 + 22 + 3 + 16 = 44).
+      edge: 21,
+      top: 8,
+      promptTop: 3,
+      metaGap: 3,
+      squareRim: "#232323",
+      headerIcon: { size: 18, weight: "bold" },
+      // Bands: the squares to the photo area, the photo area to the tray,
+      // between the tray's rows, and the tray to the bottom safe area.
+      band: { photo: 12, tray: 12, row: 12, foot: 8 },
+      // The photo: full bleed, edge to edge, square corners. It fills the
+      // screen's width; when the area is shorter than that photo, it is cropped
+      // top and bottom evenly, but only into the margins no visible hotspot
+      // reaches and never more than `maxCrop` of its height a side; otherwise
+      // it is contained (narrower). Use mode: a white `armed` ring inside its edge.
+      photo: { armed: 1.5, maxCrop: 0.1 },
+      // Swiping photo to photo: pages one screen wide with no gap, following
+      // the finger; past the first or last page it moves at `edgeResistance`.
+      // On release the page projects `projection` s of velocity ahead and snaps
+      // to the nearest page (one at most), settling on an ease-out with no
+      // overshoot (`easing`, initial slope `slope`), its duration matched to the
+      // release speed within min..max ms. The pan wins after `activeOffset` pt
+      // sideways and fails after `failOffset` pt vertically. Reduced motion: no
+      // following; a swipe past `reducedSwipe` pt or `swipeVelocity` pt/s
+      // cross-fades to the next page over motion.reducedFade.
+      pager: {
+        activeOffset: 12,
+        failOffset: 12,
+        edgeResistance: 0.3,
+        projection: 0.2,
+        easing: [0.25, 1, 0.5, 1],
+        slope: 4,
+        minDuration: 180,
+        maxDuration: 380,
+        reducedSwipe: 40,
+        swipeVelocity: 500,
+        // Until a photo reports its size: the camera's 3:4.
+        fallbackAspect: 0.75,
+      },
+      // Page dots at the photo's foot: `size` dots `gap` apart in 02's
+      // see-through void pill (`padX` / `padY`, void at `fillOpacity`), `inset`
+      // above the photo's foot. On view white, others textSecondary; a view
+      // with something new: a white ring (`ring` thick, `marked` across). The
+      // control's hit area is `ref.hit.min` tall; tapping left of centre goes
+      // back, right goes on.
+      dots: { size: 6, gap: 8, padX: 10, padY: 7, inset: 12, fillOpacity: 0.6, marked: 8, ring: 1.5 },
+      // Hotspot brackets, white on a void halo (02's privacy-note black):
+      // `arm` long, `inset` from the target's edge, a `tick` at each side's
+      // middle; idle ones rest at `subtle`. Solved ones are textSecondary with
+      // a check in a void disc (`seal`); a just-revealed one is drawn `iris`
+      // thick; the solve flash is a white `trace`; the reveal thread a dashed
+      // white line on its halo.
+      brackets: { arm: 10, inset: 1.5, tick: 4, stroke: 1.5, iris: 2.5, halo: 4, haloOpacity: 0.55, subtle: 0.42 },
+      seal: { size: 16, icon: 10, inset: 2, fillOpacity: 0.7 },
+      trace: { width: 2, radius: 4 },
+      thread: { width: 1.5, halo: 4, dash: 4, haloOpacity: 0.55 },
+      // The loupe: 02's last-plate frame as a circle (a `well` ring) with a faint inner rim.
+      loupe: { ring: 4, rim: 1 },
+      // A hotspot's press-in waits this long, so a swipe that starts on one
+      // pages without a press (or its haptic); a quick tap still presses.
+      hotspotPressDelay: 120,
+      // The 1 pt white cue ring (02's, in white): the next code slot.
+      cueRing: 1,
+      // The tray: four tiles across the content width (ref.space.edge each
+      // side, `gap` apart), never narrower than `minTile`; each a square
+      // button (raised, ref.radius.square, the square rim), its glyph over its
+      // name; empty places are void wells. Chosen: a white `selectedRing` and
+      // the glyph's fill weight.
+      tray: { columns: 4, gap: 8, minTile: 76, height: 72, padX: 6, padY: 8, icon: 22, selectedRing: 1.5 },
+      // 07's cards (raised, 8 corners, 16 padding) for the coach, the failure
+      // line, the item in use, the worktable, list rows and the result's
+      // text; `padY` for one-line rows; the glyph `icon`; an item's void
+      // `well` (ref.radius.knob corners).
+      card: { radius: 8, pad: 16, padY: 12, gap: 12, icon: 18, well: 40 },
+      // 07's outlined pill, small: rows' actions (Inspect, Try again).
+      outline: { height: 44, padX: 16, border: 1, pressedFill: refColor.raised },
+      // 07's white bar: the one strong action (paper, label in ground, 48, 2 corners).
+      bar: { height: 48, radius: 2, fill: refColor.paper, label: refColor.ground },
+      // The toast: 02's privacy note (a see-through void pill) at the top of the photo area.
+      toast: { top: 12, padX: 12, padY: 8, fillOpacity: 0.6, maxWidth: "86%" },
+      // The code pad. Tumbler wheels: vertical pickers in void wells (02's
+      // counter pill corners), `rows` rows of `row` each: the digit in the
+      // middle row in 02's italic, white; its neighbours above and below in
+      // textDim, as the counter's. Dragging rolls the digits (`activeOffset`
+      // pt starts it); on release it projects `projection` s of velocity and
+      // snaps to the nearest digit on the pager's no-overshoot curve, within
+      // min..max ms. Tapping a neighbour steps to it. Fixed slots and the
+      // free-text field are void wells; the keypad keys are square buttons. A
+      // wrong code: 02's error line (white Warning and words).
+      code: {
+        wheel: { width: 64, row: 44, rows: 3, activeOffset: 4, projection: 0.12, minDuration: 140, maxDuration: 420 },
+        slot: { width: 52, height: 64 },
+        key: 56,
+        // Three keys to a row, space-between.
+        keyWidth: "31.5%",
+        input: 64,
+        noticeIcon: 14,
+        messageMin: 20,
+      },
+      // Case closed: the column's inset, the tag pill (01's), the gaps.
+      complete: { inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 } },
+      type: {
+        /** Code digits: 02's counter. */
+        digit: { fontFamily: refFont.italic, fontSize: 29, lineHeight: 34, letterSpacing: 1.75 },
+        /** Keypad digits: system Medium 24. */
+        key: { fontSize: 24, lineHeight: 28, fontWeight: "500" },
+        /** Narrative text (a result's message, a quiet result): 07's body, Regular 16/23. */
+        body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
+        /** A card's title (an item's name, a list row): 07's card text, Bold 16. */
+        card: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
+        /** Section headings in sheets: 07's Bold 14. */
+        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+        /** Hint and detail lines: 07's Regular 14. */
+        hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
+        /** The white bar's and the outlined pill's labels: Semibold 16. */
+        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+        /** Case closed: the case's name in 02's serif, larger. */
+        caseTitle: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
+        /** Case closed: a stat's value. */
+        stat: { fontSize: 22, lineHeight: 28, fontWeight: "600" },
+      } as const satisfies Record<string, TextStyle>,
+      // A state screen's glyph (offline, can't open), drawn grey by the player.
+      stateIcon: 32,
+      // Presses other than the pills' (proposal; nothing in the references).
+      pressedOpacity: 0.75,
+    },
+    // 07 · The review screen, "Photos" (/capture/review): Vestiaire's photo
+    // review layout (docs/refs/07-light-table.png, 393 x 852 @3x, measured
+    // above its tab bar) in 02's dark palette. Its white page is
+    // ref.color.ground, its black ink textPrimary, its greys textSecondary, the
+    // tiles' grey edge ref.color.rim, the black bar paper. System font.
+    // Measured baselines on 852 (safe 59 / 34): header 87, title 139, body
+    // 176 / 199, labels 304.7 / 322. Round 4: the tips are a plain list.
+    review: {
+      // Text gutter (header, title, body). Controls, tiles and cards sit at ref.space.edge 20.
+      gutter: 16,
+      // The header row under the safe top; Back's label `backDrop` below centre,
+      // on the title's baseline (both at y 87); Back's focus ring corners.
+      header: { height: 44, backDrop: 1, focusRadius: 8 },
+      type: {
+        /** "Back" (the reference's "Close"): Regular 14. */
+        back: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
+        /** The centred title: Bold 16. */
+        navTitle: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
+        /** "Your photos": Bold 18. */
+        title: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
+        /** The count line: Regular 16/23, the title's colour. */
+        body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
+        /** The add pill's and the build bar's labels: Semibold 16. */
+        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+        /** Photo labels over the tiles: Regular 12/17, grey. */
+        label: { fontSize: 12, lineHeight: 17, fontWeight: "400" },
+        /** The retake hint, the build helper and the privacy line: Regular 14, grey. */
+        hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
+        /** "Before you build": Bold 14. */
+        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
+        /** A tip's number in its disc: Bold 16. */
+        tipNumber: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
+        /** A tip: Regular 16, a friendly line rather than a rule. */
+        tip: { fontSize: 16, lineHeight: 22, fontWeight: "400" },
+      } as const satisfies Record<string, TextStyle>,
+      // Vertical gaps between blocks: header to title, title to body, body to
+      // the add pill, the pill to the grid (its label box), the grid to the
+      // hint, the hint to the section heading (where round 3's heading sat,
+      // 24 under the hint), the end of the column.
+      gap: { title: 18, body: 14, add: 23.5, grid: 14.5, hint: 17, section: 24, end: 24 },
+      // The count line's right margin: the reference wraps its body at least 44 short of the edge.
+      captionInsetEnd: 48,
+      // The outlined pill: x 19.5-373.5, y 228.5-277.5 (49), its 1 pt outline
+      // straddling x 20 / 373 as the reference's does; the camera glyph 11
+      // from the label (ink to ink); pressed fill (proposal).
+      add: { inset: 19.5, height: 49, border: 1, gap: 11, pressedFill: refColor.raised },
+      // The add pill's camera, ESCAPD line art to the reference's: 19.7 x 16.7
+      // overall, square corners, a ~1.2 line; a bump `bump` wide and `bodyTop`
+      // tall centred on the top edge; a lens `lens` across (outer), its centre
+      // `lensY` below the top.
+      camera: { width: 19.7, height: 16.7, line: 1.2, bodyTop: 2, bump: 7.3, lens: 9.6, lensY: 8.8 },
+      // The retake hint's glyph, ESCAPD line art to the reference's: a finger
+      // pressing inside a rounded-square button, 12.3 x 18 ink, 1 line, round
+      // caps. Paths in pt (stroke centres), offset x / y in the `box` glyph box
+      // so the ink starts 3 in from the edge (x 23 on 393) and the text at 42.
+      tap: {
+        box: 20,
+        x: 3,
+        y: 1,
+        line: 1,
+        paths: [
+          // The button, open where the finger enters it.
+          "M 3.33 6.4 H 3.1 A 1.3 1.3 0 0 1 1.8 5.1 V 1.75 A 1.3 1.3 0 0 1 3.1 0.45 H 6.4 A 1.3 1.3 0 0 1 7.7 1.75 V 5.1 A 1.3 1.3 0 0 1 6.4 6.4 H 5.67",
+          // Finger, knuckles, palm and thumb in one outline.
+          "M 3.33 11.4 V 4.67 A 1.17 1.17 0 0 1 5.67 4.67 V 8.9 A 1 1 0 0 1 7.67 8.9 A 1 1 0 0 1 9.67 9.2 A 1 1 0 0 1 11.67 10.2 V 13.3 C 11.67 15.2 10.9 16.6 10 17.5 H 3.8 L 0.5 11.4 A 1.15 1.15 0 0 1 2.6 10.4 L 3.33 11.4",
+          // The creases between the fingers.
+          "M 5.67 8.9 V 9.9 M 7.67 8.9 V 9.9 M 9.67 9.2 V 10.1",
+        ],
+      },
+      // Three columns, 8 apart both ways (tiles 112.3 on 393); a label's box 2 above its tile.
+      grid: { columns: 3, gap: 8, labelGap: 2 },
+      // Tiles: 5 corners, a 1 pt rim (2 when flagged). The ×: Phosphor X
+      // regular 16 (1 pt line, 9.7 ink), its centre `centre` from the top and
+      // right edges, on a 44 hit area; under it a void halo `halo` wide at
+      // `haloOpacity`, along X's strokes (haloFrom to haloTo of its haloBox).
+      tile: {
+        radius: 5,
+        rim: 1,
+        flaggedRim: 2,
+        remove: { icon: 16, weight: "regular", centre: 21, halo: 3, haloOpacity: 0.45, haloFrom: 56, haloTo: 200, haloBox: 256 },
+        // A slot the player emptied: a 1 pt dashed rim in the tertiary grey
+        // (clearly a gap, not a photo), the camera glyph and "Take this photo" `gap` apart.
+        open: { border: 1, rim: refColor.textTertiary, gap: 6 },
+      },
+      // The retake hint's row: a 20 glyph box at the edge (the tap art), the text 2 from it.
+      note: { icon: 20, gap: 2 },
+      // A failure about the whole set: a raised note at the top, `pad` inside,
+      // `radius` corners, `gap` above "Your photos".
+      issue: { pad: 16, radius: 8, gap: 18 },
+      // "Before you build": the heading `inset` from the left edge (the
+      // reference's section heading), the tips `listGap` under it, the privacy
+      // line `noteGap` under the tips.
+      section: { inset: 24, listGap: 16, noteGap: 16 },
+      // The tips, a plain vertical list at ref.space.edge: a 24 disc (raised,
+      // its number centred), the line 8 after it, tips 12 apart.
+      tips: { disc: 24, discGap: 8, gap: 12 },
+      // The pinned band: 16 above and below the 48 bar (2 corners), the helper
+      // line 8 over it. Bar fill paper, label in the page colour.
+      footer: { pad: 16, bar: 48, radius: 2, helperGap: 8, fill: refColor.paper, label: refColor.ground },
+      // Flagged photos and their helper: the live warning amber (6.7:1 on ground).
+      warning: color.warning,
+      // Every press here but the add pill's (proposal; the reference shows none).
+      pressedOpacity: 0.75,
     },
   },
-  // Control colour changes only. Functional game motion (scene crossfade,
-  // sheet rise, wrong-code shake, solve and escape) stays on `motion` above.
-  // No decorative or ambient animation.
+  // Control feedback and the few movements the reference look adds. Functional
+  // game motion (scene crossfade, sheet rise, bracket settle, reduced fade)
+  // stays on `motion` above. No decorative or ambient animation.
   motion: {
+    // Every press and state colour change.
     control: { duration: 120, easing: "ease-out" },
-    shutterPress: { scale: 0.96, duration: 120, easing: "ease-out" },
+    // Bottom sheets slide up on a long ease-out with no overshoot (iOS's sheet
+    // curve), and slide away on an ease-in. Never a spring: the user found the
+    // bounce cheap. Reduced motion: motion.reducedFade, no movement.
+    sheetRise: { duration: 380, easing: [0.32, 0.72, 0, 1] },
+    sheetFall: { duration: 240, easing: [0.32, 0, 0.67, 0] },
+    // 02's shutter disk scales down while pressed; the ring stays still.
+    shutterPress: { scale: 0.94, duration: 100, easing: "ease-out" },
+    // 02's counter numerals roll to the next shot (proposal).
+    counterRoll: { duration: 220, easing: "ease-in-out" },
+    // 02's zoom thumb slides under the chosen option (proposal).
+    segmentSlide: { duration: 200, easing: "ease-out" },
     // Thinking states: progress, not decoration, so it runs only while a real
-    // wait does (a room developing). Each line holds, then exits up as the
-    // next rises in from below; a highlight band about 0.8x the line's width
-    // sweeps the glyphs left to right. The web original also blurs during the
-    // swap; Noir has no blur. Reduced motion: lines swap with motion.reducedFade,
-    // no movement, no sweep, colour read.
+    // wait does. Each line holds, then exits up as the next rises in from
+    // below; a highlight band about 0.8x the line's width sweeps the glyphs
+    // left to right. Reduced motion: lines swap with motion.reducedFade, no
+    // movement, no sweep, the line in `still`.
     thinking: {
       hold: 2000,
       swap: 150,
       gap: 50,
       distance: 8,
       easing: "ease-in-out",
-      shimmer: { duration: 2000, easing: "linear", band: 0.8, base: noirColor.meta, highlight: noirColor.bright },
-      // The same sweep in the play screen's warm text colours (hub, guide, Pro).
-      // Reduced motion shows the line still in `still`.
-      shimmerWarm: { base: color.textSecondary, highlight: color.text, still: color.textSecondary },
-    },
-    // Short waits with no status line: a 4 x 4 Bayer dither dissolve, like a
-    // halftone developing. Cells light in Bayer order, each opacity 0.1 to 1
-    // over one cycle. Reduced motion: static half-lit pattern.
-    dither: { size: 24, grid: 4, gap: 1.2, duration: 1000, easing: "ease-in-out", min: 0.1, max: 1, color: noirColor.bright },
-    // The one exception to "no pointer effects": the magnifying glass tilts
-    // toward a press-and-drag (max is the full swing, so +/-16 deg) and eases
-    // flat on release. Glare is white light clipped to the lens. Reduced
-    // motion: no tilt, no glare.
-    tilt: {
-      perspective: 1000,
-      max: 32,
-      follow: { duration: 400, easing: [0.22, 1, 0.36, 1] },
-      return: { duration: 1000, easing: [0.22, 1, 0.36, 1] },
-      glare: {
-        opacity: 0.32,
-        fade: 300,
-        // White, with each stop's alpha as a separate opacity (see ref.light).
-        color: "#FFFFFF",
-        layers: [
-          { radius: 95, opacities: [0.48, 0.06, 0], offsets: [0, 0.52, 0.84] },
-          { radius: 200, opacities: [0.22, 0.04, 0], offsets: [0, 0.58, 0.78] },
-          { radius: 360, opacities: [0.1, 0], offsets: [0, 0.88] },
-        ],
+      // On dark: the reference greys.
+      shimmer: {
+        duration: 2000,
+        easing: "linear",
+        band: 0.8,
+        base: refColor.textSecondary,
+        highlight: refColor.textPrimary,
+        still: refColor.textSecondary,
       },
+      // The same sweep on paper (03's sheet).
+      shimmerPaper: { base: refColor.inkMuted, highlight: refColor.inkDisplay, still: refColor.inkMuted },
     },
   },
 } as const;

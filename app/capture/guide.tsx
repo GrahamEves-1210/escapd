@@ -1,7 +1,8 @@
-// /capture/guide: 04 · First-time photo guide (docs/DESIGN.md). Shown once,
-// before the first camera session (openCapture and /capture's backstop route
-// a first-timer here), or as a replay from 01's How you play sheet
-// (?replay=1). The seen flag lives in src/capture/guideSeen.ts.
+// /capture/guide: 04 · Photo guide (docs/DESIGN.md). Shown before every new
+// room: openCapture() always opens it, and /capture's backstop sends any
+// other way in here first. Its last step and its X continue to the camera.
+// ?replay=1 (opened directly, with no access check behind it) makes that
+// continue check access first. The room's flag lives in src/capture/guideSeen.ts.
 import { useLocalSearchParams } from "expo-router";
 import { PhotoGuide } from "@/screens/guide/PhotoGuide";
 

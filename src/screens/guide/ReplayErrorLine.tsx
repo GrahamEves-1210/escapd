@@ -1,28 +1,22 @@
-// Replay error (docs/DESIGN.md 04, States): Warning in color.warning (the
-// error red is 2.3:1 on dark, so on this ground the icon is warning and the
-// words carry the message), 8 pt, then the message in caption type and the
-// secondary tone, in the y 724-742 slot.
+// Replay error (docs/DESIGN.md 04, States): Phosphor Warning in color.warning
+// (an icon, never coloured text), ref.space.sm, then the message in
+// ref.type.meta and ref.color.textSecondary, in the status slot above the
+// button.
 //
-// Built here rather than with the kit's NoticeLine because NoticeLine makes its
-// row `accessible`, and on Android that also makes the row focusable
-// (ReactViewManager.setAccessible sets isFocusable, which `focusable={false}`
-// does not undo). The spec keeps keyboard and switch focus to Close -> button,
-// so this row is not an accessibility element: screen readers read the text
-// itself (an Android Text with no press handler is not focusable), the icon is
-// hidden, and the words are announced (a polite live region on Android, an
+// The row is not an accessibility element: making it `accessible` would, on
+// Android, also make it focusable (ReactViewManager.setAccessible sets
+// isFocusable, which `focusable={false}` does not undo), and keyboard and
+// switch focus stay Close -> button. Screen readers read the text itself (an
+// Android Text with no press handler is not focusable), the icon is hidden,
+// and the words are announced (a polite live region on Android, an
 // announcement on iOS).
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, View, useWindowDimensions } from "react-native";
+import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { ICON_WEIGHT, WarningIcon } from "@/components/icons";
-import { Text } from "@/components/Text";
-import { color, ref, space, type as typeScale } from "@/theme/tokens";
+import { color, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
 
-export interface ReplayErrorLineProps {
-  testID?: string;
-}
-
-export function ReplayErrorLine({ testID }: ReplayErrorLineProps) {
+export function ReplayErrorLine({ testID }: { testID?: string }) {
   const { fontScale } = useWindowDimensions();
 
   useEffect(() => {
@@ -36,20 +30,18 @@ export function ReplayErrorLine({ testID }: ReplayErrorLineProps) {
       <View
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        style={[styles.iconBox, { height: typeScale.caption.lineHeight * fontScale }]}
+        style={[styles.iconBox, { height: ref.type.meta.lineHeight * fontScale }]}
         testID={testID ? `${testID}-icon` : undefined}
       >
         <WarningIcon size={ref.layout.guide.errorIcon} color={color.warning} weight={ICON_WEIGHT} />
       </View>
-      <Text variant="caption" tone="secondary" style={styles.text}>
-        {COPY.checkError}
-      </Text>
+      <Text style={styles.text}>{COPY.checkError}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  row: { flexDirection: "row", alignItems: "flex-start", justifyContent: "center", gap: ref.space.sm },
   iconBox: { justifyContent: "center" },
-  text: { flexShrink: 1 },
+  text: { ...ref.type.meta, color: ref.color.textSecondary, flexShrink: 1 },
 });

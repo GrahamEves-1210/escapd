@@ -24,6 +24,7 @@ import { CostLedger, SPEND_CAP_USD } from "./cost.ts";
 import {
   collectCandidates,
   flaggedPositions,
+  flaggedReasons,
   perceivePhotos,
   type PhotoPayload,
   reconcile,
@@ -153,11 +154,15 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
     stage("perception", { objects: perceptions.reduce((n, p) => n + p.objects.length, 0) });
 
     // 3. Privacy gate
+    // The message keeps its "photo position(s): 0, 2." prefix, which current
+    // clients parse, and ends with each position's reason, which newer
+    // clients show on the photo: "Reasons: 0=person; 2=private_text."
     const flagged = flaggedPositions(perceptions, photos);
     if (flagged.length) {
       throw fail(
         `Person or private text detected in photo position(s): ${flagged.join(", ")}. ` +
-          "Retake those photos without people, mail, documents or lit screens.",
+          "Retake those photos without people, mail, documents or lit screens. " +
+          `Reasons: ${flaggedReasons(perceptions, photos)}.`,
         ErrorCode.personOrSensitive, false);
     }
 

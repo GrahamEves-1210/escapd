@@ -95,3 +95,43 @@ export function hitSlopFor(rect: Size, min: number) {
   const v = Math.max(0, (min - rect.height) / 2);
   return { left: h, right: h, top: v, bottom: v };
 }
+
+/** A photo laid out to fill a page: the image box at 1x (hotspot fractions live in it) and the visible window. */
+export interface PageFit {
+  image: Size;
+  window: Size;
+}
+
+/**
+ * Full-bleed fit for a page. The photo fills the viewport's width. When that
+ * photo is taller than the viewport it is cropped evenly top and bottom, but
+ * only if each side loses no more than `maxCrop` of its height (pass the
+ * share free of hotspots, `freeMargin`, capped by the design's limit), so no
+ * hotspot is ever cut; otherwise it is contained (narrower, never cropped).
+ * Image and window share a centre, so zoom and pan maths stay centred.
+ */
+export function fillWidthFit(viewport: Size, aspect: number, maxCrop: number): PageFit {
+  "worklet";
+  const none = { width: 0, height: 0 };
+  if (viewport.width <= 0 || viewport.height <= 0 || !(aspect > 0)) return { image: none, window: none };
+  const height = viewport.width / aspect;
+  const image = { width: viewport.width, height };
+  if (height <= viewport.height) return { image, window: image };
+  if ((height - viewport.height) / 2 <= maxCrop * height + 1e-6) {
+    return { image, window: { width: viewport.width, height: viewport.height } };
+  }
+  const box = containBox(viewport, aspect);
+  const contained = { width: box.width, height: box.height };
+  return { image: contained, window: contained };
+}
+
+/**
+ * The share of a photo's height that no hotspot reaches, at its top and its
+ * bottom (the smaller of the two): how much each side may be cropped
+ * without cutting one. 0.5 with no hotspots.
+ */
+export function freeMargin(rects: readonly { y: number; h: number }[]): number {
+  let margin = 0.5;
+  for (const r of rects) margin = Math.min(margin, r.y, 1 - r.y - r.h);
+  return Math.max(0, margin);
+}

@@ -1,14 +1,18 @@
 // 02 · Camera (docs/DESIGN.md 02): the rangefinder, guided capture one plate
-// at a time, mounted by /capture once camera access is granted. In the play
-// screen's look: soot ground (color.canvas) under the live grain, and no silk,
-// so photos are judged on a plain ground. The live feed sits on a film plate in
-// a walnut mount with brass brackets and a brass plate label, as /play mounts
-// the room it becomes. A Playfair prompt between live IconButtons, walnut and
-// brass controls, the brass shutter with its manila core and magnifier, and a
-// brass ring on the last-plate thumbnail from 3 plates.
-// Every plate is re-encoded on the phone (EXIF and location dropped) before it
-// joins the roll. In retake mode it replaces that plate and returns to the
-// light table.
+// at a time, mounted by /capture once camera access is granted. In Once's
+// look (docs/refs/02-camera.png): the flat ref.color.ground; square header
+// buttons around the serif plate prompt; the big rounded black viewfinder with
+// the live feed; flash, the 0.5 / 1.0 segment and the framing grid; then the
+// italic photo counter (Arabic numerals), the glowing shutter with its
+// magnifying glass and the last-photo thumbnail. Every photo is re-encoded on
+// the phone (EXIF and location dropped) before it is added. Photos keep their
+// slots (src/capture/roll.ts): the next shot fills the first open slot, and
+// its prompt and counter are that slot's. With ?retake=<slot> it takes
+// exactly that slot (replacing its photo in place, or filling it when the
+// player removed it) and returns to the review screen ("Photos").
+// Haptics: thud as the shutter fires, error on a failed shot, success when
+// the 6th photo fills the set, tick on flash, grid and lens changes, press
+// on the square buttons and the thumbnail (inside those components).
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -16,7 +20,6 @@ import {
   Platform,
   StyleSheet,
   View,
-  useWindowDimensions,
   type HostInstance,
   type LayoutChangeEvent,
 } from "react-native";
@@ -24,20 +27,19 @@ import type { CameraView } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
-import { addPlate, replacePlate, usePlates } from "@/capture/roll";
+import { addPlate, firstOpenSlot, getPlates, replacePlate, usePlates, useSlots } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
-import { Grain } from "@/components/Grain";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
-import { color, motion, ref, space } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 import { ControlRow } from "./rangefinder/ControlRow";
-import { COPY, counterCopy, lastPlateLabel, libraryError, plateLabel, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
-import { SLOP } from "./rangefinder/Dimmable";
+import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
 import { Header, type PromptSubtitle } from "./rangefinder/Header";
 import { LastPlate } from "./rangefinder/LastPlate";
 import { PlateCounter } from "./rangefinder/PlateCounter";
 import { Shutter } from "./rangefinder/Shutter";
+import { SQUARE_SLOP } from "./rangefinder/SquareButton";
 import { useLenses } from "./rangefinder/useLenses";
 import { Viewfinder, viewfinderLayout } from "./rangefinder/Viewfinder";
 import type { RangefinderProps } from "./types";
@@ -47,22 +49,27 @@ const L = ref.layout.camera;
 // JPEG quality of the camera's own file; processPhoto then re-encodes it.
 const CAPTURE_QUALITY = 0.92;
 
-// Header and control-row buttons are the live IconButton: 48 circles with
-// 56 x 56 hit areas (hitSlop 4), and the lens halves are 50 x 48. Native
-// hit-testing (iOS Fabric and Android) drops touches outside a parent that
-// nothing overflows, so the two rows carry SLOP inside their own boxes
-// (padding) and the gaps around them shrink by as much, so every visible
-// position stays on the spec.
-//
-// On 393 x 852 (safe 59 / 34): buttons y 65-113 at x 19-67 / 326-374; the
-// mount x 14-379, y 132.5-634.5 around the 351 x 468 plate at x 21-372,
-// y 139.5-607.5; the control row's buttons y 654-702; the bottom row
-// y 722-798; 20 clear above the safe bottom.
+// Native hit-testing (iOS Fabric and Android) drops touches outside a parent
+// that nothing overflows, so each row carries its controls' hit areas inside
+// its own box and the bands around it shrink by as much; every visible
+// position stays on the reference's.
+// - Header: the square buttons' 44 plus SQUARE_SLOP above and below (48).
+// - Control row: the glyphs' and lens halves' 48, the 40 track centred in it.
+// - Bottom row: the shutter with the room for its drop above it (80.4); the
+//   counter and the thumbnail are centred in it.
+const CONTROL_PAD = (ref.button.bare.hit - ref.button.segment.height) / 2;
+const BOTTOM_ROW = Math.max(ref.button.thumbnail.size, ref.button.shutter.ring + L.shutter.drop * 2);
+const BOTTOM_PAD = (BOTTOM_ROW - ref.button.thumbnail.size) / 2;
+
+// On 393 x 852 (safe 59 / 34): square buttons y 67-111 at x 21-65 / 328-372;
+// the viewfinder x 14-379, y 140-626.7 (365 x 486.7, exactly 3:4); the zoom
+// track y 656.4-696.4; the thumbnail y 720.4-792.4, the counter's pill centred
+// on it (y 730.2-782.7), the shutter's ring y 721.6-796.6 (centre 2.7 lower).
 
 export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
   const plates = usePlates();
+  const slots = useSlots();
   const camera = useRef<CameraView>(null);
   const promptRef = useRef<HostInstance>(null);
   const feedback = useFeedback();
@@ -72,7 +79,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const [mountFailed, setMountFailed] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [held, setHeld] = useState<number | null>(null);
+  // The slot and the count a capture or an import started on, held until it ends.
+  const [held, setHeld] = useState<{ index: number; taken: number } | null>(null);
   const [flash, setFlash] = useState(false);
   const [grid, setGrid] = useState(false);
   const [area, setArea] = useState({ width: 0, height: 0 });
@@ -83,12 +91,17 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const retake = retakeIndex !== null;
   const busy = shooting || library.busy;
   const live = ready && !mountFailed;
-  const nextIndex = retakeIndex ?? plates.length;
+  // The slot this shot fills: the retake's, or the first open one (MAX_PLATES once all 6 are filled).
+  const nextIndex = retakeIndex ?? firstOpenSlot(slots) ?? MAX_PLATES;
   const full = !retake && plates.length >= MAX_PLATES;
+  // Retake mode on a slot the player emptied: a first take of that slot, not a retake.
+  const filling = retake && slots[retakeIndex] == null;
 
   // While a capture or an import is busy, the prompt, counter and shutter hold
   // the plate it started on, so they change (and are announced) once, as it ends.
-  const at = { index: busy && held !== null ? held : nextIndex, retake };
+  const at = busy && held !== null
+    ? { index: held.index, retake, filling, taken: held.taken }
+    : { index: nextIndex, retake, filling, taken: plates.length };
   const headline = promptCopy(at);
   const counter = counterCopy(at);
 
@@ -154,20 +167,26 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     if (!view || inFlight.current || busy || full || !live) return;
     inFlight.current = true;
     setShooting(true);
-    setHeld(nextIndex);
+    setHeld({ index: nextIndex, taken: plates.length });
     setNotice(null);
     try {
       const picture = await view.takePictureAsync({ quality: CAPTURE_QUALITY, exif: false });
-      feedback.tap();
+      // The shutter firing: the firm, physical moment.
+      feedback.thud();
       const plate = await processPhoto(picture);
       if (retakeIndex === null) {
-        addPlate(plate);
+        // The 6th photo fills the set: an outcome the prompt also states.
+        if (addPlate(plate) && getPlates().length >= MAX_PLATES) feedback.success();
       } else if (mounted.current) {
-        // A retake that outlives the screen is dropped: its plate stays as it was.
+        // A retake that outlives the screen is dropped: its photo stays as it was.
+        const before = getPlates().length;
         replacePlate(retakeIndex, plate);
+        // Filling the last open slot completes the set too.
+        if (before < MAX_PLATES && getPlates().length >= MAX_PLATES) feedback.success();
         router.back();
       }
     } catch {
+      feedback.error();
       setNotice(COPY.captureError);
     } finally {
       inFlight.current = false;
@@ -180,17 +199,20 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     if (inFlight.current || busy || full) return;
     inFlight.current = true;
     setNotice(null);
-    setHeld(nextIndex);
+    setHeld({ index: nextIndex, taken: plates.length });
+    const before = getPlates().length;
     try {
       const result = await library.pick();
       if (result && result.failed > 0) setNotice(libraryError(result.failed));
+      // Picks that fill the set to 6: the same outcome haptic as a 6th shot.
+      if (!retake && before < MAX_PLATES && getPlates().length >= MAX_PLATES) feedback.success();
     } finally {
       inFlight.current = false;
       setHeld(null);
     }
   };
 
-  const lastPlate = retakeIndex !== null ? plates[retakeIndex] : plates.at(-1);
+  const lastPlate = retakeIndex !== null ? slots[retakeIndex] : plates.at(-1);
   const lastUri = lastPlate?.uri ?? null;
   const openLightTable = () => {
     if (busy) return;
@@ -208,15 +230,13 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     const { width, height } = e.nativeEvent.layout;
     setArea((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
   };
-  // The plate exactly 3:4, its mount fitted into the space left and centred: the viewfinder shrinks before any text does.
-  const viewfinder = viewfinderLayout(area, fontScale);
+  // The viewfinder exactly 3:4, fitted into the space left and centred: it shrinks before any text does.
+  const viewfinder = viewfinderLayout(area);
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + L.buttons.top - SLOP, paddingBottom: insets.bottom + space.gutter }]}>
-      {/* The live grain on the soot ground, under the chrome; the mounts are opaque, so it never crosses the feed. */}
-      <Grain />
+    <View style={[styles.root, { paddingTop: insets.top + L.top - SQUARE_SLOP, paddingBottom: insets.bottom + L.band.foot - BOTTOM_PAD }]}>
       <Header
-        backLabel={retake ? COPY.cancelRetake : COPY.close}
+        backLabel={filling ? COPY.cancelFill : retake ? COPY.cancelRetake : COPY.close}
         onBack={close}
         libraryLabel={retake ? COPY.libraryRetake : COPY.library}
         onLibrary={fromLibrary}
@@ -225,17 +245,15 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
         subtitle={subtitle}
         promptLabel={promptLabel}
         promptRef={promptRef}
-        style={styles.slopRoom}
+        style={styles.headerRow}
       />
       <View style={styles.area} onLayout={onArea} testID="viewfinder">
-        {viewfinder.plate.width > 0 ? (
+        {viewfinder.width > 0 ? (
           <Viewfinder
             layout={viewfinder}
-            label={plateLabel(at)}
             cameraRef={camera}
             flash={flash ? "on" : "off"}
             selectedLens={lenses.selectedLens}
-            settled={ready}
             grid={grid}
             note={!retake && plates.length === 0}
             onCameraReady={onCameraReady}
@@ -246,24 +264,32 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       </View>
       <ControlRow
         flash={flash}
-        onFlash={() => setFlash((on) => !on)}
+        onFlash={() => {
+          feedback.tick();
+          setFlash((on) => !on);
+        }}
         flashDisabled={!live || busy}
         grid={grid}
-        onGrid={() => setGrid((on) => !on)}
+        onGrid={() => {
+          feedback.tick();
+          setGrid((on) => !on);
+        }}
         gridDisabled={!live}
         showLens={live && lenses.ultraWide !== null}
         lens={lenses.choice}
-        onLens={lenses.choose}
+        onLens={(choice) => {
+          if (choice !== lenses.choice) feedback.tick();
+          lenses.choose(choice);
+        }}
         lensDisabled={busy}
-        style={styles.slopRoom}
       />
       <View style={styles.bottomRow}>
-        <PlateCounter label={counter.label} numeral={counter.numeral} accessibilityLabel={counter.accessibilityLabel} />
+        <PlateCounter current={counter.current} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
         <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full} busy={busy} onPress={shoot} testID="shutter" />
         <LastPlate
           uri={lastUri}
           ring={!retake && plates.length >= MIN_PLATES}
-          accessibilityLabel={lastPlateLabel(plates.length, retake)}
+          accessibilityLabel={lastPlateLabel(plates.length, retake, filling)}
           disabled={lastUri === null || busy}
           dimmed={lastUri !== null && busy}
           onPress={openLightTable}
@@ -274,25 +300,26 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   );
 }
 
-// The counter and the thumbnail align with the plate's edges: the mount's gutter, its hairline and its walnut.
-const PLATE_EDGE = space.plate + L.hairline + L.mount.pad;
-
 const styles = StyleSheet.create({
-  // Soot ground with the live grain (rendered first). No silk, pool or
-  // vignette: the camera stays flat so photos are judged on a plain ground.
-  root: { flex: 1, backgroundColor: color.canvas },
-  slopRoom: { paddingVertical: SLOP },
-  // The viewfinder takes what's left: at least space.lg below the header and
-  // above the control row (19.5 on 852, where the mount is centred), the
-  // mount space.plate from the sides as /play's.
-  area: { flex: 1, marginHorizontal: space.plate, marginVertical: space.lg - SLOP },
-  // Counter, shutter and thumbnail on one centre line, with equal gaps,
-  // space.gutter below the control row.
+  // Once's flat ground: no grain, glow or vignette, so photos are judged on a plain ground.
+  root: { flex: 1, backgroundColor: ref.color.ground },
+  headerRow: { paddingVertical: SQUARE_SLOP },
+  // The viewfinder takes what's left between the header and the control row,
+  // space.plate from the sides; on 852 that is exactly its 3:4 box.
+  area: {
+    flex: 1,
+    marginHorizontal: ref.space.plate,
+    marginTop: L.band.viewfinder - SQUARE_SLOP,
+    marginBottom: L.band.controls - CONTROL_PAD,
+  },
+  // Counter, shutter and thumbnail on one centre line, edge from the sides,
+  // space-between (65.5 gaps on 393).
   bottomRow: {
+    height: BOTTOM_ROW,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: PLATE_EDGE,
-    marginTop: space.gutter - SLOP,
+    paddingHorizontal: L.edge,
+    marginTop: L.band.bottom - CONTROL_PAD - BOTTOM_PAD,
   },
 });

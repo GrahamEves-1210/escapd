@@ -1,27 +1,37 @@
 // The darkroom: sends the plates, then follows the case while the server
 // develops it. Opened with ?roomId=<id> it follows a case already in progress.
-// Every state here comes from the server's job row; nothing is guessed.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Image } from "expo-image";
+// Every state here comes from the server's job row; nothing is guessed. While
+// a real wait runs, the painted glass drifts over the plates with a thinking
+// line under it (src/screens/develop, ref.layout.develop). Reference look:
+// 07's ground and tiles in miniature, 01's tag pill, title and subtitle, and
+// the state screen's pinned band (white bar, quiet text button).
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { clearPlates, usePlates } from "@/capture/roll";
-import { promptFor } from "@/capture/slots";
-import { useDevelopment, type DevStage } from "@/capture/useDevelopment";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { encodeFlags } from "@/capture/failure";
+import { clearPlates, usePlates, useSlots } from "@/capture/roll";
+import { useDevelopment } from "@/capture/useDevelopment";
 import { useFeedback } from "@/game/feedback";
 import { formatDuration } from "@/game/format";
-import type { GenerationJob } from "@/lib/escapd-api";
-import { color, curve, radius, space } from "@/theme/tokens";
-import { Button } from "@/components/Button";
-import { Grain } from "@/components/Grain";
-import { StateScreen } from "@/components/StateScreen";
-import { Text } from "@/components/Text";
+import { waitingCopy, type WaitLine } from "@/screens/develop/copy";
+import { DarkroomHero } from "@/screens/develop/DarkroomHero";
+import { PlateStrip } from "@/screens/develop/PlateStrip";
+import { ref } from "@/theme/tokens";
+import { trackingPad } from "@/components/noir";
+import { StateActions, StateScreen, type StateAction } from "@/components/StateScreen";
+
+const L = ref.layout.develop;
+const S = ref.layout.state;
+const TAG = ref.button.gameCard;
 
 export default function DarkroomScreen() {
   const { roomId } = useLocalSearchParams<{ roomId?: string }>();
   const { stage, retry } = useDevelopment(roomId || undefined);
   const plates = usePlates();
+  // The strip numbers each photo by its slot, so a removed photo leaves a gap in the numbers, not a renumbering.
+  const slots = useSlots();
+  const numbered = slots.flatMap((plate, slot) => (plate ? [{ uri: plate.uri, number: slot + 1 }] : []));
   const feedback = useFeedback();
 
   // Coming back from the account screen: check again.
@@ -41,19 +51,28 @@ export default function DarkroomScreen() {
     if (stage.kind === "failed") feedback.warning();
   }, [stage.kind, feedback]);
 
+  // A tick each time a photo finishes sending (the count steps), never on mount.
+  const sentCount = stage.kind === "sending" ? stage.sent : null;
+  const lastSent = useRef(sentCount);
+  useEffect(() => {
+    const before = lastSent.current;
+    lastSent.current = sentCount;
+    if (sentCount !== null && before !== null && sentCount > before) feedback.tick();
+  }, [sentCount, feedback]);
+
   const home = () => router.replace("/");
   const back = () => (router.canGoBack() ? router.back() : home());
 
   switch (stage.kind) {
     case "checking":
-      return <StateScreen title="Opening the darkroom" loading />;
+      return <StateScreen title="One moment" loading />;
     case "account":
       return (
         <StateScreen
           title="Keep your cases on an account"
-          body="Cases you develop are saved to your account so they're never lost. Add an email and confirm it, then develop."
+          body="Cases you build are saved to your account so they're never lost. Add an email and confirm it, then build."
           primary={{ label: "Add your email", onPress: addEmail }}
-          secondary={{ label: "Back to the light table", onPress: back }}
+          secondary={{ label: "Back to your photos", onPress: back }}
         />
       );
     case "access":
@@ -62,13 +81,13 @@ export default function DarkroomScreen() {
           title="Your own rooms are part of ESCAPD Pro"
           body="Pro isn't on sale in this test build. If you're testing, ask for test access for your account, then try again."
           primary={{ label: "Try again", onPress: () => retry() }}
-          secondary={{ label: "Back to the light table", onPress: back }}
+          secondary={{ label: "Back to your photos", onPress: back }}
         />
       ) : (
         <StateScreen
-          title="You've developed every case this month allows"
-          body="Your allowance comes back over the next few days. Your plates stay on this phone until you close the app."
-          primary={{ label: "Back to the title", onPress: home }}
+          title="You've built every case this month allows"
+          body="Your allowance comes back over the next few days. Your photos stay on this phone until you close the app."
+          primary={{ label: "Back to home", onPress: home }}
         />
       );
     case "error":
@@ -77,14 +96,20 @@ export default function DarkroomScreen() {
           title="The case didn't go through"
           body={stage.message}
           primary={{ label: "Try again", onPress: () => retry() }}
-          secondary={{ label: "Back to the light table", onPress: back }}
+          secondary={{ label: "Back to your photos", onPress: back }}
         />
       );
     case "failed": {
       const { copy } = stage;
       const retake = () => {
-        if (plates.length) router.dismissTo({ pathname: "/capture/review", params: { flag: copy.plates.join(",") } });
-        else {
+        // Back to the photos with each flagged photo's reason (?flag=0:person,2:private_text)
+        // and, for a failure about the whole set, its note (?issue=too_few_objects).
+        if (plates.length) {
+          router.dismissTo({
+            pathname: "/capture/review",
+            params: { flag: encodeFlags(copy.flagged), ...(copy.issue ? { issue: copy.issue } : {}) },
+          });
+        } else {
           clearPlates();
           router.replace("/capture");
         }
@@ -93,117 +118,93 @@ export default function DarkroomScreen() {
         <StateScreen
           title={copy.title}
           body={copy.body}
-          primary={copy.action === "retake" ? { label: plates.length ? "Retake plates" : "Photograph the room again", onPress: retake }
+          primary={copy.action === "retake" ? { label: plates.length ? "Retake photos" : "Take the photos again", onPress: retake }
             : copy.action === "retry" ? { label: "Try again", onPress: () => retry(stage.roomId) }
-            : { label: "Back to the title", onPress: home }}
-          secondary={copy.action === "later" ? undefined : { label: "Back to the title", onPress: home }}
+            : { label: "Back to home", onPress: home }}
+          secondary={copy.action === "later" ? undefined : { label: "Back to home", onPress: home }}
         />
       );
     }
     case "ready":
       return (
         <Darkroom
-          stamp="CASE DEVELOPED"
-          title="Your room is a case now"
-          body="Everything you need is somewhere in the plates."
-          plates={plates}
+          stamp="CASE READY"
+          title="Your case is ready"
+          body="Everything you need is somewhere in your photos."
+          plates={numbered}
           developed
-          footer={(
-            <Button
-              label="Open the case"
-              testID="open-case"
-              onPress={() => {
-                clearPlates();
-                router.replace(`/play/${stage.roomId}`);
-              }}
-            />
-          )}
+          primary={{
+            label: "Open the case",
+            testID: "open-case",
+            // Committing to play: the weighty press.
+            haptic: "thud",
+            onPress: () => {
+              clearPlates();
+              router.replace(`/play/${stage.roomId}`);
+            },
+          }}
         />
       );
     case "sending":
-    case "waiting":
+    case "waiting": {
+      const { thinking, ...copy } = waitingCopy(stage);
       return (
         <Darkroom
-          {...waitingCopy(stage)}
-          plates={plates}
+          {...copy}
+          wait={thinking}
+          plates={numbered}
           sent={stage.kind === "sending" ? stage.sent : plates.length}
           since={stage.kind === "waiting" ? stage.job.created_at : undefined}
-          footer={stage.kind === "waiting" ? (
-            <Button label="Leave it developing" variant="quiet" onPress={home} />
-          ) : null}
+          secondary={stage.kind === "waiting" ? { label: "Leave it building", onPress: home } : undefined}
         />
       );
+    }
   }
 }
 
-function waitingCopy(stage: Extract<DevStage, { kind: "sending" | "waiting" }>) {
-  if (stage.kind === "sending") {
-    return {
-      stamp: "SENDING PLATES",
-      title: "Sending your plates",
-      body: `Plate ${Math.min(stage.sent + 1, stage.total)} of ${stage.total}. Keep the app open until they're all sent.`,
-    };
-  }
-  return jobCopy(stage.job);
-}
-
-function jobCopy(job: GenerationJob) {
-  if (job.status === "running") {
-    return {
-      stamp: "DEVELOPING",
-      title: "Developing your case",
-      body: "Finding the objects, choosing what to hide, and writing the case. This usually takes a minute or two.",
-    };
-  }
-  if (job.attempt_count > 0) {
-    return {
-      stamp: "SECOND ATTEMPT",
-      title: "Trying again",
-      body: "The first attempt didn't finish. The darkroom will try again shortly; you don't need to do anything.",
-    };
-  }
-  return {
-    stamp: "IN THE QUEUE",
-    title: "Waiting for the darkroom",
-    body: "Your case is next. You can leave this screen; it keeps developing, and you'll find it on the title screen.",
-  };
-}
-
-function Darkroom({ stamp, title, body, plates, sent, developed, since, footer }: {
+function Darkroom({ stamp, title, body, plates, sent, developed, since, wait, primary, secondary }: {
   stamp: string;
   title: string;
   body: string;
-  plates: readonly { uri: string }[];
+  plates: readonly { uri: string; number?: number }[];
   sent?: number;
   developed?: boolean;
   since?: string;
-  footer?: ReactNode;
+  /** Only during a real wait: the drifting glass over the plates and this thinking line under it (they replace the spinner). */
+  wait?: WaitLine;
+  /** The white bar (Open the case). */
+  primary?: StateAction;
+  /** The quiet text button (Leave it building). */
+  secondary?: StateAction;
 }) {
+  const insets = useSafeAreaInsets();
+  const strip = plates.length ? <PlateStrip plates={plates} sent={sent} developed={developed} /> : null;
+  const hero = strip || wait;
   return (
-    <View style={styles.root}>
-      <Grain />
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.center} accessibilityLiveRegion="polite">
-          {plates.length ? (
-            <View style={styles.strip} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              {plates.map((plate, i) => (
-                <View key={plate.uri} style={styles.plate}>
-                  <Image source={{ uri: plate.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
-                  {/* Unsent and developing plates sit under the safelight. */}
-                  {!developed ? <View style={[styles.safelight, sent !== undefined && i < sent && styles.safelightSent]} /> : null}
-                  <Text variant="stamp" tone="accent" style={styles.plateNumeral}>{promptFor(i).numeral}</Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          <Text variant="stamp" tone="accent">{stamp}</Text>
-          <Text variant="narrativeTitle" align="center" accessibilityRole="header">{title}</Text>
-          <Text tone="secondary" align="center">{body}</Text>
-          {developed ? null : <ActivityIndicator color={color.accent} accessibilityLabel={title} />}
-          {since ? <Elapsed since={since} /> : null}
+    <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={styles.center}>
+        {hero ? <DarkroomHero wait={wait}>{strip}</DarkroomHero> : null}
+        {/* The thinking line is its own polite live region, so it sits outside this one. */}
+        <View style={[styles.copy, hero ? styles.copyUnderHero : null]} accessibilityLiveRegion="polite">
+          <Stamp label={stamp} />
+          <Text style={styles.title} accessibilityRole="header">
+            {title}
+          </Text>
+          <Text style={styles.body}>{body}</Text>
         </View>
-        {footer ? <View style={styles.actions}>{footer}</View> : null}
-      </SafeAreaView>
+        {/* Outside the live region, so the clock's ticks aren't read out (TalkBack). */}
+        {since ? <Elapsed since={since} /> : null}
+      </View>
+      <StateActions primary={primary} secondary={secondary} bottom={insets.bottom} />
+    </View>
+  );
+}
+
+/** 01's tag pill as the stamp: no fill, a 1 pt rim, ref.type.tag in textLabel. */
+function Stamp({ label }: { label: string }) {
+  return (
+    <View style={styles.stamp} testID="darkroom-stamp">
+      <Text style={[styles.stampText, trackingPad(ref.type.tag)]}>{label}</Text>
     </View>
   );
 }
@@ -215,26 +216,40 @@ function Elapsed({ since }: { since: string }) {
     return () => clearInterval(timer);
   }, []);
   const ms = Math.max(0, now - new Date(since).getTime());
-  return <Text variant="slip" tone="secondary" accessibilityLabel={`Elapsed ${formatDuration(ms)}`}>{formatDuration(ms)}</Text>;
+  return (
+    <View style={styles.clock} testID="darkroom-elapsed">
+      <Text style={styles.clockText} accessibilityLabel={`Elapsed ${formatDuration(ms)}`}>
+        {formatDuration(ms)}
+      </Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.canvas },
-  safe: { flex: 1, paddingHorizontal: space.gutter },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: space.md },
-  strip: { flexDirection: "row", gap: space.sm, marginBottom: space.lg },
-  plate: {
-    width: 48,
-    height: 64,
-    borderRadius: radius.control,
-    ...curve,
-    overflow: "hidden",
-    backgroundColor: color.surface,
-    borderWidth: 1,
-    borderColor: color.rim,
+  root: { flex: 1, backgroundColor: ref.color.ground },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: ref.space.edge },
+  copy: { alignSelf: "stretch", alignItems: "center", paddingHorizontal: S.textInset - ref.space.edge },
+  copyUnderHero: { marginTop: L.gap.copy },
+  stamp: {
+    minHeight: TAG.tagHeight,
+    // The 9 to the text includes the 1 pt stroke.
+    paddingHorizontal: TAG.tagPadX - L.plate.rim,
+    paddingVertical: (TAG.tagHeight - ref.type.tag.lineHeight) / 2 - L.plate.rim,
+    borderWidth: L.plate.rim,
+    borderColor: ref.color.rim,
+    borderRadius: TAG.tagRadius,
+    justifyContent: "center",
   },
-  safelight: { ...StyleSheet.absoluteFill, backgroundColor: color.velvet, opacity: 0.85 },
-  safelightSent: { opacity: 0.45 },
-  plateNumeral: { position: "absolute", left: space.xs, bottom: space.xxs },
-  actions: { gap: space.sm, paddingBottom: space.xl },
+  stampText: { ...ref.type.tag, color: ref.color.textLabel, textAlign: "center" },
+  title: { ...ref.type.title, color: ref.color.textPrimary, textAlign: "center", marginTop: L.gap.title },
+  body: { ...ref.type.subtitle, color: ref.color.textSecondary, textAlign: "center", marginTop: L.gap.body },
+  clock: {
+    minHeight: L.clock.height,
+    paddingHorizontal: L.clock.padX,
+    marginTop: L.gap.clock,
+    borderRadius: ref.radius.round,
+    backgroundColor: L.clock.fill,
+    justifyContent: "center",
+  },
+  clockText: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
 });

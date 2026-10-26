@@ -126,6 +126,21 @@ export function flaggedPositions(results: PerceptionResult[], photos: PhotoPaylo
   return photos.filter((_, i) => results[i]?.personPresent || results[i]?.sensitiveText).map((p) => p.position);
 }
 
+/**
+ * Stage 3, for the player: what was seen in each flagged photo, as
+ * "position=reason" entries joined by "; " ("0=person; 2=private_text;
+ * 3=person+private_text"), in position order. The client shows each photo's
+ * reason on its tile; older clients read only the positions.
+ */
+export function flaggedReasons(results: PerceptionResult[], photos: PhotoPayload[]): string {
+  return photos
+    .flatMap((photo, i) => {
+      const kinds = [results[i]?.personPresent ? "person" : null, results[i]?.sensitiveText ? "private_text" : null].filter(Boolean);
+      return kinds.length ? [`${photo.position}=${kinds.join("+")}`] : [];
+    })
+    .join("; ");
+}
+
 // Objects that must never become part of the fiction, or that would invite a
 // real-world action we never instruct (plan section 6). The perception prompt
 // already excludes them; this is the deterministic backstop.

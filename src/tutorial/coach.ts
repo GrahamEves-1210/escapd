@@ -43,7 +43,7 @@ const STEPS: StepDef[] = [
   },
   {
     id: "scenes",
-    text: "The room has more than one view. Tap the second view below.",
+    text: "The room has more than one view. Swipe to see the next one.",
     target: { kind: "scene", photoIndex: 1 },
     done: (c) => c.visitedScenes.includes(1),
   },

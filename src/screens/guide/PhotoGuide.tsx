@@ -1,37 +1,37 @@
-// 04 · First-time photo guide (docs/DESIGN.md), in the play screen's look.
-// Four steps, each a warm line drawing on a film plate (SceneView's walnut
-// mount with a brass plate label), a Playfair title and a Jakarta instruction,
-// and one live Button (the play screen's 8 pt-rounded button): the walnut
-// secondary "Next" for three steps, the brass primary "Open the camera" on
-// step 4. Silk still and grain under everything; no light pool.
+// 04 · Photo guide (docs/DESIGN.md), in Apple Health's look
+// (docs/refs/04-photo-tutorial.png). Four steps on pure black: the light grey
+// glass close disc at the top right, one line drawing floating in the middle,
+// then a bold white title over a regular grey instruction and one dark
+// hairline pill. No step label on screen (the reference has none): screen
+// readers hear "Step n of 4" when a step opens and in the button's hint.
+// It shows before every new room (openCapture always opens it), and both the
+// last step and the X continue to the camera. Opened directly
+// (/capture/guide?replay=1, with no access check behind it), that continue
+// runs the access check first (useReplayCheck).
 //
-// Layout on 393 x 852 (safe 59 / 34), top to bottom: the light table's top bar
-// at y 59-107 (gutter 20): Close (48, x 325-373) on the right, the brass step
-// stamp centred on it (line box 76-90), a 48 spacer on the left; the mount at
-// y 178-564; the title (620-650) and body (654-700), bottom-anchored; a 66
-// gap that holds the replay status line (724-742); the button at 766-814;
-// then safe bottom + space.xs, as Pro. Large text grows the block upward
-// from 814.
+// Layout on 393 x 852 (safe 59 / 34), top to bottom: the close disc at
+// x 311-361, y 69-119; the drawing at y 266-532; the title (613-641) and body
+// (644-700), bottom-anchored; a 62 gap that holds the check's status line
+// (723-739); the pill at 762-814; then safe bottom + ref.space.ctaBottom.
+// Large text grows the block upward from 814.
 import { useCallback, useEffect, useRef } from "react";
-import { AccessibilityInfo, BackHandler, StyleSheet, View, useWindowDimensions } from "react-native";
+import { AccessibilityInfo, BackHandler, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import { router, useFocusEffect, useNavigation, type NativeStackNavigationProp } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
-import { Grain } from "@/components/Grain";
-import { BackgroundStill, ThinkingStates } from "@/components/noir";
-import { Text, type TextRef } from "@/components/Text";
+import { useFeedback } from "@/game/feedback";
+import { ThinkingStates } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { color, hit, motion, ref, space, type as typeScale } from "@/theme/tokens";
+import { motion, ref } from "@/theme/tokens";
 import { CloseButton } from "./CloseButton";
-import { COPY, LAST_STEP, STEPS, stampLabel, stampText, stepAnnouncement } from "./copy";
+import { COPY, LAST_STEP, STEPS, stepAnnouncement } from "./copy";
 import { GuideArt } from "./GuideArt";
-import { GuideText } from "./GuideText";
-import { CLOSE_SLOP } from "./layout";
+import { GuideText, type TitleRef } from "./GuideText";
 import { ReplayErrorLine } from "./ReplayErrorLine";
 import { StepButton } from "./StepButton";
-import { FadeLayer, layersOf, useStepper } from "./stepper";
+import { layersOf, useStepper } from "./stepper";
 import { SWIPE_OFFSETS, swipeStep } from "./swipe";
 import { useReplayCheck } from "./useReplayCheck";
 
@@ -41,22 +41,22 @@ const G = ref.layout.guide;
 export type GuideParams = Record<string, string | string[] | undefined>;
 
 export interface PhotoGuideProps {
-  /** Opened from 01's How you play sheet (/capture/guide?replay=1). */
+  /** Opened directly, with no access check behind it (/capture/guide?replay=1): the continue checks access first. */
   replay: boolean;
-  /** First run: the route's other params, carried on to /capture. */
+  /** The route's other params, carried on to /capture. */
   carry: GuideParams;
 }
 
 export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   const insets = useSafeAreaInsets();
-  const { fontScale } = useWindowDimensions();
   const { reducedMotion } = useTheme();
+  const feedback = useFeedback();
   const navigation = useNavigation<NativeStackNavigationProp<Record<string, object | undefined>>>();
   const { state, clock, goTo, isMoving, currentStep } = useStepper(
     STEPS.length,
     reducedMotion ? motion.reducedFade : motion.sceneCrossfade,
   );
-  // Set once the guide navigates away (or replay's check does), so no later
+  // Set once the guide navigates away (or its access check does), so no later
   // tap, swipe or back press can navigate a second time.
   const gone = useRef(false);
   const markGone = useCallback(() => {
@@ -64,7 +64,7 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   }, []);
   const check = useReplayCheck(markGone);
   const { cancel: cancelCheck, start: startCheck } = check;
-  const titleRef = useRef<TextRef>(null);
+  const titleRef = useRef<TitleRef>(null);
 
   const step = state.current.step;
   const last = step === LAST_STEP;
@@ -96,16 +96,23 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
     navigation.setOptions({ gestureEnabled: step === 0 });
   }, [navigation, step]);
 
-  /** Moves to another step with the crossfade; ignored mid-transition. Leaving step 4 drops a replay check. */
+  /**
+   * Moves to another step with the crossfade; ignored mid-transition. Leaving
+   * step 4 drops a running access check. A step that really changes (Next, a
+   * swipe, Android back) gives the light `tick` haptic.
+   */
   const moveTo = useCallback(
     (target: number) => {
       if (gone.current) return;
-      if (goTo(target)) cancelCheck();
+      if (goTo(target)) {
+        feedback.tick();
+        cancelCheck();
+      }
     },
-    [goTo, cancelCheck],
+    [goTo, cancelCheck, feedback],
   );
 
-  /** Back to whoever opened the guide, without marking it seen (iOS swipe-back's twin). */
+  /** Back to whoever opened the guide, without marking it shown (iOS swipe-back's twin). */
   const leaveToOpener = useCallback(() => {
     gone.current = true;
     cancelCheck();
@@ -120,24 +127,24 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
     router.replace({ pathname: "/capture", params: carry });
   }, [carry]);
 
-  // Taps during a step transition are ignored (never shown as disabled).
+  /** On to the camera: straight there after openCapture's check, or through the check when opened directly. */
+  const continueToCamera = () => {
+    if (replay) startCheck();
+    else openCamera();
+  };
+
+  // Taps during a step transition are ignored (never shown as disabled). The
+  // X skips the rest of the guide and continues to the camera, as step 4
+  // does; while the access check runs it waits, as the step button does.
   const onClose = () => {
-    if (gone.current || isMoving()) return;
-    if (!replay) {
-      // First run: skip the guide, mark it seen and open the camera.
-      openCamera();
-      return;
-    }
-    // Replay: mark it seen (it already is) and go back to the hub.
-    void markCaptureGuideSeen();
-    leaveToOpener();
+    if (gone.current || isMoving() || check.busy) return;
+    continueToCamera();
   };
 
   const onStepButton = () => {
     if (gone.current || isMoving()) return;
     if (!last) moveTo(currentStep() + 1);
-    else if (replay) startCheck();
-    else openCamera();
+    else continueToCamera();
   };
 
   // Android hardware back: the previous step, or out to the opener from step 1.
@@ -176,79 +183,50 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
     },
   });
 
-  // The stamp's first line is centred on Close (y 83); a wrapped stamp grows downward.
-  const stampTop = Math.max(0, (hit.min - typeScale.stamp.lineHeight * fontScale) / 2);
-
   return (
-    <View style={styles.root}>
-      <BackgroundStill />
-      <Grain />
-      <View style={[styles.frame, { paddingBottom: insets.bottom + space.xs }]}>
-        {/* Row-reverse: Close comes first for screen readers and focus, and sits on the right. */}
-        <View style={[styles.header, { paddingTop: insets.top }]}>
-          <CloseButton accessibilityLabel={replay ? COPY.close : COPY.skip} onPress={onClose} />
-          <View style={[styles.stampSlot, { marginTop: stampTop }]}>
-            {layers.map((layer) => (
-              <FadeLayer key={layer.step} clock={clock} layer={layer} style={layer.leftAt !== null && styles.stampLeaving}>
-                <Text variant="stamp" tone="accent" align="center" accessibilityLabel={stampLabel(layer.step)}>
-                  {stampText(layer.step)}
-                </Text>
-              </FadeLayer>
-            ))}
-          </View>
-          {/* Balances Close, so the stamp is centred on the screen (the light table's top bar). */}
-          <View style={styles.headerSpacer} />
-        </View>
-
-        <GestureDetector gesture={pan}>
-          <View style={styles.swipeArea} testID="guide-swipe-area">
-            <GuideArt layers={layers} clock={clock} />
-            <GuideText layers={layers} clock={clock} titleRef={titleRef} />
-            <View style={styles.status}>
-              {check.status === "checking" ? (
-                <ThinkingStates
-                  lines={COPY.checkingLines}
-                  tone="warm"
-                  accessibilityLabel={COPY.checkingLabel}
-                  showDelay={G.thinkingDelay}
-                  announceOnMount
-                  testID="guide-checking"
-                />
-              ) : check.status === "failed" ? (
-                <ReplayErrorLine testID="guide-check-error" />
-              ) : null}
-            </View>
-          </View>
-        </GestureDetector>
-
-        <StepButton last={last} busy={check.busy} onPress={onStepButton} />
+    <View style={[styles.root, { paddingBottom: insets.bottom + ref.space.ctaBottom }]}>
+      <View style={[styles.header, { paddingTop: insets.top + G.close.top }]}>
+        <CloseButton accessibilityLabel={COPY.skip} onPress={onClose} />
       </View>
+
+      <GestureDetector gesture={pan}>
+        <View style={styles.swipeArea} testID="guide-swipe-area">
+          <GuideArt layers={layers} clock={clock} />
+          <GuideText layers={layers} clock={clock} titleRef={titleRef} />
+          <View style={styles.status}>
+            {check.status === "checking" ? (
+              <ThinkingStates
+                lines={COPY.checkingLines}
+                variant="meta"
+                accessibilityLabel={COPY.checkingLabel}
+                showDelay={G.thinkingDelay}
+                announceOnMount
+                testID="guide-checking"
+              />
+            ) : check.status === "failed" ? (
+              <ReplayErrorLine testID="guide-check-error" />
+            ) : null}
+          </View>
+        </View>
+      </GestureDetector>
+
+      <StepButton step={step} last={last} busy={check.busy} onPress={onStepButton} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: color.canvas },
-  frame: { flex: 1 },
-  header: {
-    flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    gap: space.xs,
-    paddingHorizontal: space.gutter,
-    // Keeps Close's 56 x 56 hit area inside the header (see CLOSE_SLOP).
-    paddingBottom: CLOSE_SLOP,
-  },
-  // x 72-321 on the base device: between the spacer and Close, 4 clear of each.
-  stampSlot: { flex: 1 },
-  stampLeaving: { position: "absolute", top: 0, left: 0, right: 0 },
-  headerSpacer: { width: hit.min },
-  // y 111-766 on the base device: the swipe area, between the header and the button.
+  // Pure black, as the reference: no still, grain or glow.
+  root: { flex: 1, backgroundColor: ref.color.void },
+  // The disc's outer edge 10 below the safe top and 32 from the right edge.
+  header: { flexDirection: "row", justifyContent: "flex-end", paddingRight: G.close.right },
+  // y 119-762 on the base device: the swipe area, between the disc and the pill.
   swipeArea: { flex: 1 },
-  // The 66 gap above the button (y 700-766), holding replay's status line at y 724-742, 24 clear above and below.
+  // The 62 gap above the pill (y 700-762), holding the check's status line at y 723-739.
   status: {
     minHeight: G.ctaGap,
     paddingTop: G.statusTop,
     paddingBottom: G.statusBottom,
-    paddingHorizontal: space.gutter,
+    paddingHorizontal: ref.space.reading,
   },
 });

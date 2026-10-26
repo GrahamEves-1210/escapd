@@ -1,15 +1,17 @@
 /// <reference types="node" />
 import fs from "fs";
 import path from "path";
+import ts from "typescript";
 import { AccessibilityInfo, BackHandler, Dimensions, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { openCapture } from "@/capture/openCapture";
 import * as api from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { color, hit, radius, ref, space } from "@/theme/tokens";
+import { ref } from "@/theme/tokens";
 import { HubScreen } from "../HubScreen";
+import { TAG_TOP } from "../layout";
 
 jest.mock("expo-router", () => {
   const { useEffect } = jest.requireActual("react");
@@ -30,13 +32,21 @@ jest.mock("@/lib/escapd-api", () => ({
   watchRoom: jest.fn(),
 }));
 jest.mock("@/capture/openCapture", () => ({ openCapture: jest.fn() }));
+jest.mock("expo-constants", () => ({ __esModule: true, default: { expoConfig: { version: "0.1.0" } } }));
 jest.mock("@/capture/useDevelopment", () => ({ POLL_MS: 5000 }));
 jest.mock("@/tutorial/assets", () => ({ TUTORIAL_ROOM_ID: "tutorial-room" }));
 
-const mockPreferences = { hotspotAssist: false, setHotspotAssist: jest.fn() };
-jest.mock("@/game/preferences", () => ({ usePreferences: () => mockPreferences }));
-const mockTap = jest.fn();
-jest.mock("@/game/feedback", () => ({ useFeedback: () => ({ tap: mockTap, success: jest.fn(), warning: jest.fn() }) }));
+const mockPreferences = {
+  hotspotAssist: false,
+  setHotspotAssist: jest.fn(),
+  haptics_enabled: true,
+  reduced_motion: false,
+  update: jest.fn(async (_patch: Record<string, boolean>) => {}),
+};
+jest.mock("@/game/preferences", () => ({ usePreferences: () => ({ ...mockPreferences }) }));
+// The full feedback vocabulary (a partial mock would crash a kit control that presses).
+const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
+jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 const mocked = api as jest.Mocked<typeof api>;
 const push = jest.mocked(router.push);
 const capture = jest.mocked(openCapture);
@@ -76,6 +86,10 @@ function player({ tutorial = null, own = null, ownSession = null }: { tutorial?:
 beforeEach(() => {
   jest.clearAllMocks();
   mockPreferences.hotspotAssist = false;
+  mockPreferences.haptics_enabled = true;
+  mockPreferences.reduced_motion = false;
+  mockPreferences.update.mockImplementation(async () => {});
+  mocked.ensureSession.mockResolvedValue({} as never);
   mocked.watchRoom.mockReturnValue(() => Promise.resolve("ok"));
   mocked.currentSession.mockResolvedValue(null);
   setWindow(393, 852, 1);
@@ -83,9 +97,6 @@ beforeEach(() => {
 
 const card = (name: string) => screen.getByRole("button", { name });
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
-/** The live Button draws its fill, edge, corners and dimming on an inner surface; layout stays on the pressable. */
-const surfaceOf = (button: Parameters<typeof within>[0]) => within(button).getByTestId("button-surface", { includeHiddenElements: true });
-const buttonLook = (button: Parameters<typeof within>[0]) => ({ ...styleOf(button), ...styleOf(surfaceOf(button)) });
 /** Every drawn focus ring: the kit's 2 pt ring in ref.focus.color (brass), wherever it is composed. */
 const focusRings = () =>
   screen.container.queryAll((node) => {
@@ -105,10 +116,15 @@ describe("01 · Game mode", () => {
       </GestureHandlerRootView>,
     );
 
-    expect(screen.getByRole("header", { name: "Choose a case" })).toBeTruthy();
-    expect(screen.getByText("Three files on the desk.")).toBeTruthy();
+    // The header's title is the ESCAPD wordmark, white with a grey doorway edge (no brass), read as a header.
+    // No magnifier and no "Case files"; Opal's left chip and X disc are left out (the hub is the root).
+    const logo = screen.getByRole("header", { name: "ESCAPD" });
+    expect(logo.props.testID).toBe("hub-logo");
+    expect(screen.queryByText("Case files")).toBeNull();
+    expect(styleOf(screen.getByRole("header", { name: "Choose a case" }))).toMatchObject({ ...ref.type.title, color: ref.color.textPrimary });
+    expect(styleOf(screen.getByText("Three files on the desk."))).toMatchObject({ ...ref.type.subtitle, color: ref.color.textSecondaryAlpha });
     expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual([
-      "How you play",
+      "Settings",
       "The Study. Unseal the first case.",
       "Your room. Photograph a room.",
       "Your case. Loading.",
@@ -127,25 +143,27 @@ describe("01 · Game mode", () => {
     expect(mocked.ensureSession).not.toHaveBeenCalled();
   });
 
-  it("shows REPLAY and the SOLVED stamp for a solved own case, and plays it", async () => {
+  it("shows Replay and the SOLVED pill for a solved own case, and plays it", async () => {
     player({ tutorial: session("completed"), own: room("r1", "ready"), ownSession: session("completed") });
     await renderHub();
     expect(card("The Study. Replay the first case.")).toBeTruthy();
-    // A brass case stamp: brass mono text in a 1 pt brass border, never oxblood.
-    const stamp = screen.getByText("SOLVED", hidden);
-    expect(StyleSheet.flatten(stamp.props.style).color).toBe(color.accent);
-    expect(StyleSheet.flatten(stamp.parent?.props.style)).toMatchObject({ borderColor: color.accent, borderRadius: radius.control });
-    // A real press: the selection haptic fires on press-in.
+    // A label pill in the reference style (rim hairline, radius 8, white 82 % caps), never an oxblood stamp.
+    const solved = screen.getByText("SOLVED", hidden);
+    expect(styleOf(solved)).toMatchObject({ ...ref.type.tag, color: ref.color.textLabel });
+    expect(styleOf(solved.parent!)).toMatchObject({ borderColor: ref.color.rim, borderRadius: ref.radius.tag, borderWidth: H.hairline });
+    // A real press: the press haptic (a light impact) fires on press-in.
     await userEvent.setup().press(card("Your case. Solved. Replay the case."));
     expect(push).toHaveBeenCalledWith({ pathname: "/play/[roomId]", params: { roomId: "r1" } });
-    expect(mockTap).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.press).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.tap).not.toHaveBeenCalled();
   });
 
-  it("maps the case states: CONTINUE, OPEN after an abandoned run, SEE WHY, and a draft as none", async () => {
+  it("maps the case states: Continue, Open after an abandoned run, See why, and a draft as none", async () => {
     player({ tutorial: session("active"), own: room("r1", "ready"), ownSession: session("active") });
     await renderHub();
     expect(card("The Study. Continue the first case.")).toBeTruthy();
     expect(card("Your case. Continue the case.")).toBeTruthy();
+    expect(screen.queryByText("SOLVED", hidden)).toBeNull();
     await screen.unmount();
 
     player({ tutorial: session("abandoned"), own: room("r1", "ready"), ownSession: session("abandoned") });
@@ -156,7 +174,7 @@ describe("01 · Game mode", () => {
 
     player({ own: room("r3", "failed") });
     await renderHub();
-    await fireEvent.press(card("Your case. It didn't develop. See why."));
+    await fireEvent.press(card("Your case. It didn't build. See why."));
     expect(push).toHaveBeenCalledWith({ pathname: "/capture/develop", params: { roomId: "r3" } });
     await screen.unmount();
 
@@ -165,7 +183,7 @@ describe("01 · Game mode", () => {
     expect(card("Your case. None yet.")).toBeTruthy();
   });
 
-  it("shows OFFLINE or TRY LATER when the fetch fails, keeping THE STUDY and YOUR ROOM enabled", async () => {
+  it("shows Offline or Try later when the fetch fails, keeping THE STUDY and YOUR ROOM enabled", async () => {
     player({});
     mocked.getLatestCustomRoom.mockRejectedValue(new Error("Network request failed"));
     await renderHub();
@@ -188,8 +206,11 @@ describe("01 · Game mode", () => {
     // Busy: this card keeps full strength and ignores taps; the rest are disabled.
     expect(card("The Study. Unseal the first case.").props.accessibilityState).toMatchObject({ busy: true, disabled: true });
     expect(screen.getByTestId("hub-card-room").props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByRole("button", { name: "How you play" }).props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByTestId("hub-card-study-busy", hidden)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Settings" }).props.accessibilityState).toMatchObject({ disabled: true });
+    // The state line becomes the small indicator in white 82 %.
+    const indicator = screen.getByTestId("hub-card-study-busy", hidden);
+    expect(indicator.props.color).toBe(ref.color.textLabel);
+    expect(screen.queryByText("Unseal", hidden)).toBeNull();
     // A real tap through the Pressable (fireEvent would call the composite's own onPress prop).
     await userEvent.setup().press(card("The Study. Unseal the first case."));
     expect(mocked.ensureSession).toHaveBeenCalledTimes(1);
@@ -208,10 +229,11 @@ describe("01 · Game mode", () => {
     expect(notice.props.accessibilityLabel).toBe("You're offline. Connect to begin.");
     // Android speaks it through the always-mounted slot's polite live region.
     expect(screen.getByTestId("hub-notice-slot").props.accessibilityLiveRegion).toBe("polite");
-    expect(StyleSheet.flatten(notice.props.style)).toMatchObject({
-      backgroundColor: color.surface,
-      borderColor: color.hairline,
-      borderRadius: radius.control,
+    // A capsule in the chips' material.
+    expect(styleOf(notice)).toMatchObject({
+      backgroundColor: ref.color.ground,
+      borderColor: ref.color.rim,
+      borderRadius: ref.radius.round,
     });
     expect(push).not.toHaveBeenCalled();
 
@@ -240,7 +262,7 @@ describe("01 · Game mode", () => {
     expect(push).toHaveBeenCalledWith("/capture");
   });
 
-  it("follows a developing case and announces the flip to ready", async () => {
+  it("follows a building case and announces the flip to ready", async () => {
     const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
     let onStatus: (status: string) => void = () => {};
     mocked.watchRoom.mockImplementation((_id, onChange) => {
@@ -249,9 +271,9 @@ describe("01 · Game mode", () => {
     });
     player({ own: room("r2", "generating") });
     await renderHub();
-    expect(card("Your case. Developing.")).toBeTruthy();
-    // The warm one-line Thinking state (its hidden sizer holds the line).
-    expect(screen.getByText("DEVELOPING", hidden)).toBeTruthy();
+    expect(card("Your case. Building.")).toBeTruthy();
+    // The kit's one-line thinking line (its hidden sizer holds the line).
+    expect(screen.getByText("Building", hidden)).toBeTruthy();
     expect(mocked.watchRoom).toHaveBeenCalledWith("r2", expect.any(Function));
     // The first fetch is never announced.
     expect(announce).not.toHaveBeenCalled();
@@ -262,47 +284,138 @@ describe("01 · Game mode", () => {
     expect(push).toHaveBeenCalledWith({ pathname: "/play/[roomId]", params: { roomId: "r2" } });
   });
 
-  it("How you play: the live sheet with the Show interactives switch and the guide replay", async () => {
+  it("Settings: grouped rows that work, in the review screen's list style, on the kit's dark sheet", async () => {
     await renderHub();
-    await fireEvent.press(screen.getByRole("button", { name: "How you play" }));
-    expect(screen.getByRole("header", { name: "How you play" })).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
+    expect(styleOf(screen.getByTestId("hub-sheet"))).toMatchObject({
+      backgroundColor: ref.color.ground,
+      borderTopLeftRadius: ref.radius.bottomSheet,
+      borderColor: ref.color.rim,
+    });
+    // Four sections, Bold 14 headings over raised groups.
+    for (const name of ["Gameplay", "Accessibility", "Account", "About"]) {
+      expect(styleOf(screen.getByRole("header", { name }))).toMatchObject({ ...H.settings.heading, color: ref.color.textPrimary });
+    }
+    expect(styleOf(screen.getByRole("header", { name: "Gameplay" }).parent!.children[1] as never)).toMatchObject({
+      backgroundColor: H.settings.fill,
+      borderRadius: H.settings.radius,
+    });
+    // Each switch row is one accessible switch, at least 52 tall; the native switch inside only shows the value.
+    const interactives = screen.getByRole("switch", { name: "Show interactives" });
+    expect(interactives.props.accessibilityState).toMatchObject({ checked: false });
+    expect(styleOf(interactives).minHeight).toBe(H.settings.rowHeight);
+    expect(screen.getByTestId("hub-show-interactives-switch", hidden).props).toMatchObject({
+      value: false,
+      onTintColor: H.sheet.switch.on,
+      tintColor: H.sheet.switch.off,
+      thumbTintColor: H.sheet.switch.thumb,
+    });
+    expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({ checked: true });
+    expect(screen.getByRole("switch", { name: "Reduce motion" }).props.accessibilityState).toMatchObject({ checked: false });
+    // Navigation rows are buttons; the guide replay is gone (the guide shows before every new room).
+    expect(screen.getByRole("button", { name: "Add your email" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ESCAPD Pro" })).toBeTruthy();
+    expect(screen.queryByText("How to photograph a room")).toBeNull();
+    expect(screen.getByLabelText(/^Version, \S+/)).toBeTruthy();
 
-    const toggle = screen.getByRole("switch", { name: "Show interactives" });
-    // React Native's Switch, as Case options draws it: the brass track and a warm thumb.
-    expect(toggle.props).toMatchObject({ value: false, onTintColor: color.accent, tintColor: color.hairline, thumbTintColor: color.text });
-    await fireEvent(toggle, "valueChange", true);
+    await fireEvent.press(interactives);
     expect(mockPreferences.setHotspotAssist).toHaveBeenCalledWith(true);
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
 
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByTestId("hub-sheet")).toBeNull();
-
-    await fireEvent.press(screen.getByRole("button", { name: "How you play" }));
-    const guide = screen.getByRole("button", { name: "How to photograph a room" });
-    // The live secondary Button: walnut with a brass hairline, 8 pt rounded, never under 48.
-    expect(buttonLook(guide)).toMatchObject({
-      backgroundColor: color.raised,
-      borderWidth: H.hairline,
-      borderColor: color.hairline,
-      borderRadius: radius.control,
-      minHeight: hit.min,
-      paddingVertical: space.md,
-    });
-    expect(styleOf(screen.getByText("How to photograph a room"))).toMatchObject({ color: color.text });
-    await fireEvent.press(guide);
-    expect(push).toHaveBeenCalledWith({ pathname: "/capture/guide", params: { replay: "1" } });
-    expect(screen.queryByTestId("hub-sheet")).toBeNull();
   });
 
-  it("leaves How you play's focus ring to the live IconButton: one brass ring, nothing composed around it", async () => {
+  it("Settings saves Haptics and Reduce motion to the account, showing the new value at once, and flips back calmly if saving fails", async () => {
     await renderHub();
-    const help = screen.getByRole("button", { name: "How you play" });
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+
+    // Reduce motion: a tick as it changes, a guest made if there is no session, then saved.
+    await fireEvent.press(screen.getByRole("switch", { name: "Reduce motion" }));
+    await act(async () => {});
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    expect(mocked.ensureSession).toHaveBeenCalledTimes(1);
+    expect(mockPreferences.update).toHaveBeenCalledWith({ reduced_motion: true });
+
+    // Haptics off: saved, and no tick (it is turning off).
+    mockFeedback.tick.mockClear();
+    await fireEvent.press(screen.getByRole("switch", { name: "Haptics" }));
+    await act(async () => {});
+    expect(mockPreferences.update).toHaveBeenCalledWith({ haptics_enabled: false });
+    expect(mockFeedback.tick).not.toHaveBeenCalled();
+
+    // Offline: the switch shows the new value while it tries, then flips back with a quiet note.
+    let fail: (error: Error) => void = () => {};
+    mocked.ensureSession.mockReturnValueOnce(new Promise((_resolve, reject) => (fail = reject)));
+    const motionRow = () => screen.getByRole("switch", { name: "Reduce motion" });
+    await fireEvent.press(motionRow());
+    expect(motionRow().props.accessibilityState).toMatchObject({ checked: true });
+    await act(async () => fail(new Error("Network request failed")));
+    expect(motionRow().props.accessibilityState).toMatchObject({ checked: false });
+    expect(mockPreferences.update).toHaveBeenLastCalledWith({ reduced_motion: false });
+    expect(screen.getByText("Couldn't save that while offline. It's back as it was.")).toBeTruthy();
+  });
+
+  it("Settings: Haptics ticks once just after it turns on, and not as it turns off", async () => {
+    mockPreferences.haptics_enabled = false;
+    // update() turns the setting on, as the provider does.
+    mockPreferences.update.mockImplementation(async (patch: Record<string, boolean>) => {
+      Object.assign(mockPreferences, patch);
+    });
+    await renderHub();
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.press(screen.getByRole("switch", { name: "Haptics" }));
+    await act(async () => {});
+    expect(mockPreferences.update).toHaveBeenCalledWith({ haptics_enabled: true });
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("switch", { name: "Haptics" }));
+    await act(async () => {});
+    expect(mockPreferences.update).toHaveBeenLastCalledWith({ haptics_enabled: false });
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+  });
+
+  it("Settings' account rows: Add your email for a guest, the email when signed in, and ESCAPD Pro", async () => {
+    await renderHub();
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    // A real press: the press haptic on press-in, then the sheet closes and /account opens (back to the hub when done).
+    await userEvent.setup().press(screen.getByRole("button", { name: "Add your email" }));
+    expect(mockFeedback.press).toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith({ pathname: "/account", params: { next: "back" } });
+    expect(screen.queryByTestId("hub-sheet")).toBeNull();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    await fireEvent.press(screen.getByRole("button", { name: "ESCAPD Pro" }));
+    expect(push).toHaveBeenCalledWith("/pro");
+    await screen.unmount();
+
+    mocked.currentSession.mockResolvedValue({ user: { email: "ada@example.com", is_anonymous: false } } as never);
+    await renderHub();
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    await act(async () => {});
+    expect(screen.getByLabelText("Email, ada@example.com")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add your email" })).toBeNull();
+  });
+
+  it("draws Settings as Opal's chip, with the press haptic and one brass focus ring round its disc", async () => {
+    await renderHub();
+    const help = screen.getByRole("button", { name: "Settings" });
+    // A 48 hit box around the 36 disc in `ground`.
+    expect(styleOf(help)).toMatchObject({ width: ref.button.chip.hit, height: ref.button.chip.hit });
+    const disc = help.queryAll((node) => node.type === "View" && styleOf(node).backgroundColor === ref.button.chip.fill);
+    expect(disc).toHaveLength(1);
+    expect(styleOf(disc[0])).toMatchObject({ width: ref.button.chip.size, height: ref.button.chip.size, borderRadius: ref.radius.round });
+    await fireEvent(help, "pressIn");
+    expect(mockFeedback.press).toHaveBeenCalledTimes(1);
+
     expect(focusRings()).toHaveLength(0);
     await fireEvent(help, "focus");
     const rings = focusRings();
     expect(rings).toHaveLength(1);
-    expect(styleOf(rings[0])).toMatchObject({ borderColor: color.accent, borderRadius: ref.radius.pill });
-    // Drawn inside the button itself, so it follows the 48 circle.
-    expect(help.queryAll((node) => node === rings[0])).toHaveLength(1);
+    expect(styleOf(rings[0])).toMatchObject({ borderRadius: ref.radius.round });
+    // Drawn inside the disc, so it follows the 36 circle.
+    expect(disc[0].queryAll((node) => node === rings[0])).toHaveLength(1);
     await fireEvent(help, "blur");
     expect(focusRings()).toHaveLength(0);
   });
@@ -320,7 +433,7 @@ describe("01 · Game mode", () => {
     await renderHub();
     expect(back()).toBe(false);
 
-    await fireEvent.press(screen.getByRole("button", { name: "How you play" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
     let handled: boolean | null | undefined;
     await act(async () => {
       handled = back();
@@ -333,46 +446,62 @@ describe("01 · Game mode", () => {
     add.mockRestore();
   });
 
-  it("deals the fan with the glass on 393 x 852, drops the glass alone on a short screen, and stacks at large text", async () => {
+  it("fans the cards whole on 393 x 852, scales the whole hand on 375 x 667 and 360 wide, and stacks at large text or a very short screen", async () => {
+    const hand = () => styleOf(screen.getByTestId("hub-fan-hand"));
     await renderHub();
     expect(screen.getByTestId("hub-fanned")).toBeTruthy();
-    expect(screen.getByTestId("hub-glass", hidden)).toBeTruthy();
+    expect(hand().transform).toEqual([{ translateY: -0 }, { scale: 1 }]);
     await screen.unmount();
 
-    // 375 x 667: a 610 column (no insets here) is under the glass's 649.4.
+    // Scaled about the axis with its top kept: never clipped by the screen.
     setWindow(375, 667, 1);
     await renderHub();
     expect(screen.getByTestId("hub-fanned")).toBeTruthy();
-    expect(screen.queryByTestId("hub-glass", hidden)).toBeNull();
+    const [lift, scale] = hand().transform as [{ translateY: number }, { scale: number }];
+    expect(scale.scale).toBeCloseTo(375 / 393, 6);
+    expect(lift.translateY).toBeCloseTo((-H.fan.height * (1 - 375 / 393)) / 2, 6);
     await screen.unmount();
 
-    // From the first larger text step the cards stack and the glass goes.
+    setWindow(360, 800, 1);
+    await renderHub();
+    expect(screen.getByTestId("hub-fanned")).toBeTruthy();
+    await screen.unmount();
+
+    // From the first larger text step the cards stack, upright, at least 96 tall.
     setWindow(393, 852, 1.12);
     await renderHub();
     expect(screen.getByTestId("hub-stacked")).toBeTruthy();
-    expect(screen.queryByTestId("hub-glass", hidden)).toBeNull();
-    expect(StyleSheet.flatten(screen.getByTestId("hub-card-study").props.style).minHeight).toBe(ref.layout.hub.stackedMinHeight);
+    expect(styleOf(screen.getByTestId("hub-card-study")).minHeight).toBe(H.stackedMinHeight);
+    expect(styleOf(screen.getByTestId("hub-card-study")).transform).toBeUndefined();
     await screen.unmount();
 
-    // Narrower than 375 also stacks.
-    setWindow(360, 800, 1);
+    // A column (window less the 65 header) that would need the fan under 0.75 stacks too.
+    setWindow(393, 360, 1);
     await renderHub();
     expect(screen.getByTestId("hub-stacked")).toBeTruthy();
   });
 
-  it("returns focus to How you play once the sheet has left, never while it is still leaving", async () => {
+  it("caps the band above the title at Opal's 124 and lifts the floor glow with the fan", async () => {
+    await renderHub();
+    const fanned = screen.getByTestId("hub-fanned");
+    // The column runs to the safe bottom: no slot is kept for Opal's X disc.
+    expect(styleOf(fanned).marginBottom).toBe(0);
+    expect(styleOf(fanned.children[0] as never)).toMatchObject({ flex: H.weights.above, maxHeight: H.band });
+  });
+
+  it("returns focus to Settings once the sheet has left, never while it is still leaving", async () => {
     const focus = jest.spyOn(AccessibilityInfo, "sendAccessibilityEvent").mockImplementation(() => {});
     await renderHub();
-    const help = screen.getByRole("button", { name: "How you play" });
+    const help = screen.getByRole("button", { name: "Settings" });
     // By the ref's testID (under jest it is RN's mocked View, not the query's
     // host element): a deep comparison of two elements walks the whole tree.
-    // The live Sheet also focuses its own title 300 ms after it opens.
+    // The sheet also focuses its own title 300 ms after it opens.
     const helpFocus = () =>
       focus.mock.calls.filter(
-        ([target, type]) => (target as unknown as { props?: { testID?: string } }).props?.testID === "hub-how-you-play" && type === "focus",
+        ([target, type]) => (target as unknown as { props?: { testID?: string } }).props?.testID === "hub-settings" && type === "focus",
       ).length;
-    // The live Sheet has no exit callback: focus returns after its 200 ms slide plus the margin.
-    const waitOutExit = () => act(() => new Promise((resolve) => setTimeout(resolve, H.sheetExit + H.sheetFocusMargin + 50)));
+    // Focus returns after the sheet's slide away (ref.motion.sheetFall) plus the margin.
+    const waitOutExit = () => act(() => new Promise((resolve) => setTimeout(resolve, ref.motion.sheetFall.duration + H.sheet.focusMargin + 50)));
 
     await fireEvent.press(help);
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
@@ -381,55 +510,73 @@ describe("01 · Game mode", () => {
     await waitOutExit();
     expect(helpFocus()).toBe(1);
 
-    // Reopened before that exit ended, or left for the guide: no return.
+    // Reopened before that exit ended, or left for another screen: no return.
     focus.mockClear();
     await fireEvent.press(help);
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     await fireEvent.press(help);
-    await fireEvent.press(screen.getByRole("button", { name: "How to photograph a room" }));
+    await fireEvent.press(screen.getByRole("button", { name: "ESCAPD Pro" }));
     await waitOutExit();
     expect(helpFocus()).toBe(0);
     focus.mockRestore();
   });
 
-  it("deals the fan on the window's axis: centre card at 135.5 on 393, side cards 105 out", async () => {
-    const lefts = () =>
-      ["hub-card-study", "hub-card-room", "hub-card-case"].map((id) => StyleSheet.flatten(screen.getByTestId(id).props.style).left);
+  it("deals the hand on the window's axis: the 140 x 320 centre card at 126.5 on 393, side cards 93.2 out, tilted -/+6 degrees", async () => {
+    const slots = () =>
+      ["hub-card-study", "hub-card-room", "hub-card-case"].map((id) => {
+        const style = styleOf(screen.getByTestId(id));
+        return [style.left as number, style.top, style.transform, style.width, style.height];
+      });
     await renderHub();
-    expect(lefts()).toEqual([30.5, 135.5, 240.5]);
+    const [study, room, kase] = slots();
+    expect(study[0]).toBeCloseTo(33.3, 6);
+    expect(room[0]).toBeCloseTo(126.5, 6);
+    expect(kase[0]).toBeCloseTo(219.7, 6);
+    expect(study.slice(1)).toEqual([H.fan.sideDrop, [{ rotate: `${-H.fan.tilt}deg` }], 140, 320]);
+    expect(room.slice(1)).toEqual([0, [{ rotate: "0deg" }], 140, 320]);
+    expect(kase.slice(1)).toEqual([H.fan.sideDrop, [{ rotate: `${H.fan.tilt}deg` }], 140, 320]);
+    // The centre card lies on top.
+    expect(styleOf(screen.getByTestId("hub-card-room")).zIndex).toBe(1);
     await screen.unmount();
 
     setWindow(440, 956, 1);
     await renderHub();
-    expect(lefts()).toEqual([54, 159, 264]);
+    const lefts = slots().map(([left]) => left);
+    [56.8, 150, 243.2].forEach((left, i) => expect(lefts[i]).toBeCloseTo(left, 6));
   });
 
-  it("centres a side card's plate label and note on the face the centre card leaves exposed", async () => {
+  it("lays out each fan card as Opal's: the tag pill 24 from the top, the state line in meta grey under it", async () => {
     await renderHub();
-    const box = (text: string) => StyleSheet.flatten(screen.getByText(text, hidden).props.style);
-    expect(box("THE STUDY")).toMatchObject({ left: 4, right: H.fan.cover, color: color.accent });
-    expect(box("YOUR ROOM")).toMatchObject({ left: 4, right: 4 });
-    // Loading: the note line is kept, blank; the tag still sits on its column.
-    expect(box("YOUR CASE")).toMatchObject({ left: H.fan.cover, right: 4 });
-    expect(StyleSheet.flatten(screen.getByText("Photograph", hidden).props.style).color).toBe(color.textSecondary);
+    for (const tag of ["THE STUDY", "YOUR ROOM", "YOUR CASE"]) {
+      const text = screen.getByText(tag, hidden);
+      expect(styleOf(text)).toMatchObject({ ...ref.type.tag, color: ref.color.textLabel });
+      const pill = text.parent!;
+      expect(styleOf(pill)).toMatchObject({
+        minHeight: ref.button.gameCard.tagHeight,
+        borderWidth: H.hairline,
+        borderColor: ref.color.rim,
+        borderRadius: ref.radius.tag,
+      });
+      expect(styleOf(pill.parent!)).toMatchObject({ position: "absolute", top: TAG_TOP, alignItems: "center" });
+    }
+    // A side card centres each block on the face the centre card leaves exposed: inset on its covered side.
+    const head = (tag: string) => styleOf(screen.getByText(tag, hidden).parent!.parent!);
+    const between = (n: unknown) => typeof n === "number" && n > H.fan.cover.top && n < H.fan.cover.foot;
+    expect(between(head("THE STUDY").right)).toBe(true);
+    expect(between(head("YOUR CASE").left)).toBe(true);
+    expect(head("YOUR ROOM")).toMatchObject({ left: 0, right: 0 });
+    expect(styleOf(screen.getByText("Photograph", hidden))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
   });
 
-  it("mounts a stacked card's plate at its right end, 88 wide and 4 in, on any width", async () => {
-    setWindow(440, 956, 1.12);
-    await renderHub();
-    const plate = StyleSheet.flatten(screen.getByTestId("hub-card-study-plate", hidden).props.style);
-    expect(plate).toMatchObject({ top: 4, right: 4, bottom: 4, width: 88, backgroundColor: color.canvas, borderColor: color.rim });
-    expect(plate.borderRadius).toBe(radius.thumb);
-    // The card reserves the plate, so the text column never runs under it.
-    expect(StyleSheet.flatten(screen.getByTestId("hub-card-study").props.style).paddingRight).toBe(92);
-  });
-
-  it("keeps the glass under reduced motion, as a still image in the same place", async () => {
+  it("keeps the building line still under reduced motion", async () => {
+    player({ own: room("r2", "generating") });
     await renderHub({ reducedMotion: true });
-    expect(screen.getByTestId("hub-glass", hidden)).toBeTruthy();
+    // The kit's still copy (its hidden sizer holds the same words).
+    const colours = screen.getAllByText("Building", hidden).map((text) => styleOf(text).color);
+    expect(colours).toContain(ref.motion.thinking.shimmer.still);
   });
 
-  it("uses only tokens: no colour, font or raw style values in the screen's source", () => {
+  it("uses only reference tokens: no colours, fonts, numbers, live look or old hub pieces in the screen's source", () => {
     const dir = path.join(ROOT, "src/screens/hub");
     const files = [path.join(ROOT, "app/index.tsx"), ...fs.readdirSync(dir).filter((f) => /\.tsx?$/.test(f)).map((f) => path.join(dir, f))];
     for (const file of files) {
@@ -437,11 +584,22 @@ describe("01 · Game mode", () => {
       expect({ file, hex: source.match(/#[0-9a-f]{3,8}\b/gi) }).toEqual({ file, hex: null });
       expect({ file, rgb: source.match(/rgba?\(/g) }).toEqual({ file, rgb: null });
       expect({ file, font: source.match(/fontFamily\s*[:=]\s*["']/g) }).toEqual({ file, font: null });
-      // The play screen's look: live type and colours, no Noir text, pools or panels.
-      expect({ file, noir: source.match(/NoirText|LightPools?\b|NoticeLine|ref\.(type|color|panel|gameCard|illustration|light|space|radius)\b/g) }).toEqual({
+      // The reference look: ref.* only (plus the live motion and z timings), no silk, grain, glass or play-screen pieces.
+      const tokens = source.match(/import \{([^}]*)\} from "@\/theme\/tokens"/)?.[1].split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+      expect({ file, live: tokens.filter((t) => !["motion", "ref", "z", "type GradientStop"].includes(t)) }).toEqual({ file, live: [] });
+      expect({
         file,
-        noir: null,
-      });
+        old: source.match(/BackgroundStill|\bGrain\b|Magnifier|magnifier\.png|@\/components\/(Text|Sheet|Button|IconButton)"/g),
+      }).toEqual({ file, old: null });
+      // No raw numbers beyond 0, 1 and 2 as arithmetic.
+      const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const numbers: string[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isNumericLiteral(node) && !["0", "1", "2"].includes(node.text)) numbers.push(node.text);
+        ts.forEachChild(node, visit);
+      };
+      visit(ast);
+      expect({ file, numbers }).toEqual({ file, numbers: [] });
     }
   });
 });
