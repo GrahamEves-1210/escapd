@@ -1,22 +1,26 @@
 // A mode's first-time "how this mode works" (MODES_PROMPT.md Part 2), for
 // crime scene and paranormal: one screen in the mode's palette, under the
-// same banner as its mode screen: a kicker, the mode's name and tagline,
-// three short numbered steps, and its start button ("Take the case", "Step
-// inside"; caseFiles.ts, MODE_COPY), pinned to the foot. Start remembers it
-// (introSeen.ts) and replaces itself with the mode's screen, so back from
-// there returns home. Back leaves without remembering: the intro shows again
-// next time.
+// banner of its drawn cover: a kicker, the mode's name and tagline, three
+// short numbered steps, and its start button ("Take the case", "Step
+// inside"; copy.ts, MODE_INTRO) pinned to the foot as the photo guide's pill
+// in the mode's accent (ModePill). Start remembers it (introSeen.ts) and
+// starts the mode's first case: openCapture({ genre }) in place of the intro
+// (a guest to /account, no Pro to /pro, else the guide), so back from there
+// returns home; if the access check can't run it carries on to /capture,
+// whose backstop shows the guide first. Back leaves without remembering:
+// the intro shows again next time.
+import { useCallback, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { openCapture } from "@/capture/openCapture";
+import { ModePill } from "@/capture/ui/ModePill";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
 import { modeThemes, ref } from "@/theme/tokens";
-import { useModeArt } from "./art";
-import { MODE_COPY } from "./caseFiles";
+import { MODE_INTRO } from "./copy";
 import { markIntroSeen } from "./introSeen";
-import { FootShade, ModeBanner, ModeBar, ModeHeader, useModeScroll } from "./parts";
-import { modeHref } from "./routes";
+import { FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
 
 const L = ref.layout.mode;
 const I = L.intro;
@@ -24,20 +28,45 @@ const I = L.intro;
 export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
   const theme = modeThemes[genre];
   const insets = useSafeAreaInsets();
-  const art = useModeArt();
-  // Crime scene and paranormal always have one.
-  const intro = MODE_COPY[genre].intro!;
+  const intro = MODE_INTRO[genre];
   const steps = intro.steps;
   const scroll = useModeScroll();
+  const [busy, setBusy] = useState(false);
+  const action = useRef<AbortController | null>(null);
   useModeOnFocus(genre);
+
+  // Leaving drops a late access check (nothing moves a player who has gone) and returns Start to idle.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        action.current?.abort();
+        action.current = null;
+        setBusy(false);
+      },
+      [],
+    ),
+  );
 
   const back = () => {
     if (router.canGoBack()) router.back();
     else router.replace("/");
   };
   const start = async () => {
-    await markIntroSeen(genre);
-    router.replace(modeHref(genre));
+    if (action.current) return;
+    const controller = new AbortController();
+    action.current = controller;
+    setBusy(true);
+    try {
+      await markIntroSeen(genre);
+      await openCapture({ genre, replace: true, signal: controller.signal });
+    } catch {
+      if (!controller.signal.aborted) router.replace("/capture");
+    } finally {
+      if (action.current === controller) {
+        action.current = null;
+        setBusy(false);
+      }
+    }
   };
 
   const bannerHeight = insets.top + L.banner;
@@ -53,7 +82,7 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
         testID="mode-intro-scroll"
       >
         <View style={{ height: bannerHeight }}>
-          <ModeBanner genre={genre} theme={theme} art={art} height={bannerHeight} />
+          <ModeBanner genre={genre} theme={theme} height={bannerHeight} />
         </View>
         <View style={styles.column}>
           <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>{intro.kicker}</Text>
@@ -81,11 +110,13 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
         </View>
       </Animated.ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: theme.ground, paddingBottom: insets.bottom + L.bar.foot }]}>
+      <View style={[styles.footer, { backgroundColor: theme.ground, paddingBottom: insets.bottom + ref.space.ctaBottom }]}>
         <FootShade theme={theme} />
-        <ModeBar
-          theme={theme}
+        <ModePill
+          variant="ghost"
           label={intro.start}
+          busy={busy}
+          spinner
           onPress={() => {
             start();
           }}
@@ -99,7 +130,7 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
-  content: { flexGrow: 1, paddingBottom: L.sectionTop },
+  content: { flexGrow: 1, paddingBottom: L.foot.pad },
   column: { paddingHorizontal: L.inset, paddingTop: I.introTop },
   kicker: { marginBottom: L.taglineGap },
   tagline: { marginTop: L.taglineGap },
@@ -109,5 +140,6 @@ const styles = StyleSheet.create({
   // The step's words wrap at large text; the numeral keeps its column.
   stepWords: { flex: 1, paddingTop: (L.type.numeral.lineHeight - L.type.step.lineHeight) / 2 },
   stepBody: { marginTop: I.stepTextGap },
-  footer: { paddingTop: L.bar.pad, paddingHorizontal: L.inset },
+  // The photo guide's foot: its reading column, the pill ctaBottom above the safe bottom.
+  footer: { paddingTop: L.foot.pad, paddingHorizontal: ref.space.reading },
 });

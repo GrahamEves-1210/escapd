@@ -160,17 +160,19 @@ describe("Case closed: The Study (noir)", () => {
     expect(screen.getByLabelText("Rating: 2 of 3 magnifiers")).toBeTruthy();
   });
 
-  it("goes on to the player's own room in noir, back to Detective Noir, or replays The Study", async () => {
+  it("Start a new case (the player's own room, in noir), Back to Detective Noir (home), or Replay The Study", async () => {
     await render(<TutorialCompleteScreen />);
     const bar = screen.getByTestId("complete-capture");
     // The photo guide's pill (ModePill) in noir's accent, then the quiet ways out in its ink.
     expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
-    expect(flat(screen.getByText("Photograph your room"))).toMatchObject({ ...ref.type.headline, color: NOIR.accentInk });
+    expect(flat(screen.getByText("Start a new case"))).toMatchObject({ ...ref.type.headline, color: NOIR.accentInk });
+    expect(screen.getByText("The next case is your own room.")).toBeTruthy();
     expect(flat(screen.getByText("Replay The Study")).color).toBe(NOIR.ink);
     await fireEvent.press(bar);
     expect(capture).toHaveBeenLastCalledWith({ genre: "noir", replace: true });
+    // Back to the mode is home now: there is no mode screen.
     await fireEvent.press(screen.getByLabelText("Back to Detective Noir"));
-    expect(router.dismissTo).toHaveBeenLastCalledWith({ pathname: "/mode/[genre]", params: { genre: "noir" } });
+    expect(router.dismissTo).toHaveBeenLastCalledWith("/");
     await fireEvent.press(screen.getByLabelText("Replay The Study"));
     expect(router.replace).toHaveBeenLastCalledWith("/tutorial");
   });
@@ -241,15 +243,31 @@ describe("Case closed: custom rooms", () => {
     expect(flat(screen.getByText("The Cold Room"))).toMatchObject({ ...C.title, color: GHOST.ink });
   });
 
-  it("noir: CASE CLOSED; then a new case in the mode, back to the mode, or this case again", async () => {
+  it("noir: CASE CLOSED; then Start a new case in the mode (the guide's pill), Back to the mode (home), or this case again", async () => {
     params.mockReturnValue({ roomId: "noir-room", genre: "noir", title: "The Second Drawer" });
     await render(<PlayCompleteScreen />);
     expect(screen.getByTestId("closed-stamp")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("complete-new-case"));
+    const fresh = screen.getByTestId("complete-new-case");
+    expect(screen.getByRole("button", { name: "Start a new case" })).toBe(fresh);
+    expect(flat(fresh)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
+    expect(screen.queryByText("Next case")).toBeNull();
+    await fireEvent.press(fresh);
     expect(capture).toHaveBeenLastCalledWith({ genre: "noir", replace: true });
     await fireEvent.press(screen.getByLabelText("Back to Detective Noir"));
-    expect(router.dismissTo).toHaveBeenLastCalledWith({ pathname: "/mode/[genre]", params: { genre: "noir" } });
+    expect(router.dismissTo).toHaveBeenLastCalledWith("/");
     await fireEvent.press(screen.getByLabelText("Replay the case"));
     expect(router.replace).toHaveBeenLastCalledWith({ pathname: "/play/[roomId]", params: { roomId: "noir-room" } });
+  });
+
+  it("every mode: Back to <mode> goes home and Start a new case stays in the mode", async () => {
+    for (const [genre, name] of [["crime_scene", CRIME.name], ["paranormal", GHOST.name]] as const) {
+      params.mockReturnValue({ roomId: `${genre}-room`, genre, title: "A case" });
+      await render(<PlayCompleteScreen />);
+      await fireEvent.press(screen.getByLabelText(`Back to ${name}`));
+      expect(router.dismissTo).toHaveBeenLastCalledWith("/");
+      await fireEvent.press(screen.getByRole("button", { name: "Start a new case" }));
+      expect(capture).toHaveBeenLastCalledWith({ genre, replace: true });
+      await screen.unmount();
+    }
   });
 });

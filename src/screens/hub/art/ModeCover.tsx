@@ -1,6 +1,5 @@
-// A mode's drawn cover (draw.ts), filling its frame: the default art of
-// home's cards and the mode screens' banners until the player has
-// photographed a room (src/screens/mode/art.ts). The frame shows the mode's
+// A mode's drawn cover (draw.ts), filling its frame: the art of home's cards
+// and the mode intros' banners, always (never a room photo). The frame shows the mode's
 // surface colour; once it has been laid out, the cover is baked for its size
 // (bake.ts) and fades in over it on ref.motion.treatment, as a treated photo
 // does (TreatedImage); under reduced motion it is simply there, and a cover

@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { modeThemes, shellTheme } from "@/theme/tokens";
-import { GENRES, genreOf, getMode, isGenre, parseGenre, setMode, subscribeMode, themeFor, useMode, useModeTheme } from "../mode";
+import type { ReactNode } from "react";
+import { GENRES, ModeScope, genreOf, getMode, isGenre, parseGenre, setMode, subscribeMode, themeFor, useMode, useModeTheme } from "../mode";
 
 beforeEach(() => {
   setMode(null);
@@ -27,6 +28,20 @@ describe("the active mode", () => {
     expect(result.current).toEqual({ mode: "paranormal", theme: modeThemes.paranormal });
     await act(async () => setMode(null));
     expect(result.current.theme).toBe(shellTheme);
+  });
+
+  it("a ModeScope shows one mode inside it (home's continue prompt) without touching the store", async () => {
+    const wrapper = ({ children }: { children: ReactNode }) => <ModeScope genre="crime_scene">{children}</ModeScope>;
+    const { result } = await renderHook(() => ({ mode: useMode(), theme: useModeTheme() }), { wrapper });
+    expect(result.current).toEqual({ mode: "crime_scene", theme: modeThemes.crime_scene });
+    expect(getMode()).toBeNull();
+    // The store changing doesn't reach inside the scope.
+    await act(async () => setMode("noir"));
+    expect(result.current.mode).toBe("crime_scene");
+    // A null scope is the shell, whatever the store says.
+    const shell = ({ children }: { children: ReactNode }) => <ModeScope genre={null}>{children}</ModeScope>;
+    const { result: inShell } = await renderHook(() => useModeTheme(), { wrapper: shell });
+    expect(inShell.current).toBe(shellTheme);
   });
 
   it("the shell's theme is today's reference look, with no photo treatment", () => {

@@ -1,5 +1,5 @@
 // Bakes home's mode covers (draw.ts): each cover is drawn once per mode and
-// size into an image the size of the frame it fills (a card, a mode screen's
+// size into an image the size of the frame it fills (a card, a mode intro's
 // banner) at the screen's pixel scale, and never again: the card then draws
 // that image (ModeCover). Results stay in memory for the launch, keyed by
 // mode, size in pixels and scale; a cover is the same drawing every time,

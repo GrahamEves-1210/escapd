@@ -1,107 +1,121 @@
-// One of home's three mode cards (MODES_PROMPT.md Part 2): a solid,
-// physical panel in its mode's palette, not glass. The mode's art fills it
-// (ModeArtImage): the player's own room in the mode's treatment once they
-// have photographed one, else the mode's drawn cover. Over it: a small count
-// capsule at the top left, and at the foot the mode's name in its display
-// face and its tagline on a plate of the mode's ground that fades up from
-// clear. One signature touch each, decorative and static: noir's brass rule
-// over the name, crime scene's strip of police tape across the top-right
-// corner (over the player's own room only: the drawn cover has its own
-// tape), paranormal's soft glow. Every value is ref.layout.hub.modes or the
-// mode's theme (modeThemes).
-// The whole card is one button ("Detective Noir. Solve the case. 2 cases")
-// with the `press` haptic on press-in and the brass focus ring round it.
-// Pressed it sinks to `pressScale` with the kit's press-in squash
-// (SquashPressable: eased in, sprung back); under reduced motion it stays still.
-import { useId } from "react";
-import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+// One of home's three mode cards (MODES_PROMPT.md Part 2, round 6): a solid,
+// physical card in its mode's palette, not glass, dealt into home's deck
+// (HubScreen, deck.ts) so the next card lies over its foot. The mode's drawn
+// cover fills it (ModeCover), always: never a room photo. At its top, the part
+// no card covers: the mode's name in its display face and its tagline on a
+// plate of the mode's ground that fades down to clear, and, when the mode has
+// a case to go back to, a small "In progress" tag beside the tagline (a busy
+// indicator takes its place while the card's tap works). One signature touch
+// each, decorative and static: noir's brass rule over the name and
+// paranormal's soft glow (crime scene's cover tapes off its own door). Every
+// value is ref.layout.hub.modes or the mode's theme (modeThemes).
+// The card is turned by its deck tilt about its centre, casts a soft shadow
+// up onto the card it covers, and catches a faint line of light along its top
+// edge (the hub divider's white), so each card reads as its own card. The whole card is one button ("Detective
+// Noir. Solve the case. In progress.") with the `press` haptic on press-in and
+// the brass focus ring round it. Pressed it sinks to `pressScale` with the
+// kit's press-in squash (SquashPressable: eased in, sprung back); under
+// reduced motion it stays still. Dimmed while another card works: shaded,
+// never see-through, so the card beneath stays hidden.
+import { useId, type Ref } from "react";
+import { ActivityIndicator, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
-import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
+import { FocusRing, SquashPressable, gradientLine, gradientStops, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
-import type { ModeArt } from "@/screens/mode/art";
-import { ModeArtImage } from "@/screens/mode/ModeArtImage";
-import { caseCount } from "@/screens/mode/caseFiles";
 import { modeThemes, ref, type ModeTheme } from "@/theme/tokens";
-import { modeCardLabel } from "./caseStatus";
+import { ModeCover } from "./art/ModeCover";
+import { IN_PROGRESS, modeCardLabel } from "./caseStatus";
 
 const M = ref.layout.hub.modes;
-
-/** Police tape's words, repeated past both ends of the strip. */
-const TAPE_WORDS = Array.from({ length: M.tape.repeat }, () => "Crime scene · Do not cross").join(" · ");
+const EDGE = M.deck.edge;
 
 export interface ModeCardProps {
   genre: Genre;
-  art: ModeArt;
-  /** Undefined while home's fetch runs: no count shows. */
-  count: number | undefined;
-  /** This card's own action is running (noir's first tap): taps are ignored, a small indicator replaces the count. */
+  /** The mode has a case to go back to: the "In progress" tag. */
+  inProgress: boolean;
+  /** This card's own action is running: taps are ignored, a small indicator shows in the tag's place. */
   busy?: boolean;
-  /** Another card is busy: dimmed and disabled. */
+  /** Another card is busy: shaded and disabled. */
   disabled?: boolean;
   onPress: () => void;
+  /** The words block's height (name, tagline, tag), for the deck's spacing. */
+  onWordsLayout?: (height: number) => void;
+  /** The deck's place: size, overlap and tilt (HubScreen). */
   style?: StyleProp<ViewStyle>;
+  /** The button, for returning screen-reader focus to it. */
+  ref?: Ref<HostInstance>;
 }
 
-export function ModeCard({ genre, art, count, busy = false, disabled = false, onPress, style }: ModeCardProps) {
+export function ModeCard({ genre, inProgress, busy = false, disabled = false, onPress, onWordsLayout, style, ref: buttonRef }: ModeCardProps) {
   const theme = modeThemes[genre];
   const focus = useFocusRing();
   const feedback = useFeedback();
   const testID = `hub-card-${genre}`;
   return (
-    <SquashPressable
-      squash={busy ? false : M.pressScale}
-      accessibilityRole="button"
-      accessibilityLabel={modeCardLabel(theme.name, theme.tagline, count)}
-      accessibilityState={{ disabled: disabled || busy, busy }}
-      disabled={disabled || busy}
-      onPressIn={busy ? undefined : feedback.press}
-      onPress={busy ? undefined : onPress}
-      onFocus={focus.onFocus}
-      onBlur={focus.onBlur}
-      testID={testID}
-      style={[styles.card, disabled && styles.dimmed, style]}
-    >
-      <View style={[styles.face, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID={`${testID}-face`}>
-        <ModeArtImage genre={genre} art={art} maxEdge={M.artEdge} testID={`${testID}-art`} />
-        {genre === "paranormal" ? <Glow theme={theme} /> : null}
-        {/* The drawn cover tapes its own door off: the strip is for a photo, which has none. */}
-        {genre === "crime_scene" && art.own ? <Tape theme={theme} /> : null}
-        <View style={styles.top}>
-          {busy || count !== undefined ? (
-            <View style={[styles.chip, { backgroundColor: theme.ground, borderColor: theme.rim }]} testID={`${testID}-count`}>
-              {busy ? (
-                <ActivityIndicator size="small" color={theme.ink} testID={`${testID}-busy`} />
-              ) : (
-                <Text style={[M.type.count, { color: theme.ink }]}>{caseCount(count ?? 0)}</Text>
-              )}
+    <View style={style} pointerEvents="box-none" testID={`${testID}-slot`}>
+      <SquashPressable
+        ref={buttonRef}
+        squash={busy ? false : M.pressScale}
+        accessibilityRole="button"
+        accessibilityLabel={modeCardLabel(theme.name, theme.tagline, inProgress)}
+        accessibilityState={{ disabled: disabled || busy, busy }}
+        disabled={disabled || busy}
+        onPressIn={busy ? undefined : feedback.press}
+        onPress={busy ? undefined : onPress}
+        onFocus={focus.onFocus}
+        onBlur={focus.onBlur}
+        testID={testID}
+        style={[styles.card, { backgroundColor: theme.surface }]}
+      >
+        <View style={[styles.face, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID={`${testID}-face`}>
+          <ModeCover genre={genre} style={StyleSheet.absoluteFill} testID={`${testID}-art`} />
+          {genre === "paranormal" ? <Glow theme={theme} /> : null}
+          <View
+            style={styles.words}
+            onLayout={onWordsLayout ? (e: LayoutChangeEvent) => onWordsLayout(e.nativeEvent.layout.height) : undefined}
+            testID={`${testID}-words`}
+          >
+            <Plate theme={theme} />
+            {genre === "noir" ? <View style={[styles.rule, { backgroundColor: theme.accent }]} testID={`${testID}-rule`} /> : null}
+            <Text style={[theme.display, { color: theme.ink }]}>{theme.name}</Text>
+            <View style={styles.line}>
+              <Text style={[M.type.tagline, styles.tagline, { color: theme.ink }]}>{theme.tagline}</Text>
+              {busy || inProgress ? (
+                <View style={[styles.tag, { backgroundColor: theme.ground, borderColor: theme.rim }]} testID={`${testID}-tag`}>
+                  {busy ? (
+                    <ActivityIndicator size="small" color={theme.ink} testID={`${testID}-busy`} />
+                  ) : (
+                    <Text style={[M.type.tag, { color: theme.ink }]}>{IN_PROGRESS}</Text>
+                  )}
+                </View>
+              ) : null}
             </View>
-          ) : null}
+          </View>
+          <TopEdge />
+          {disabled ? <View style={styles.shade} pointerEvents="none" testID={`${testID}-dim`} /> : null}
         </View>
-        <View style={styles.words}>
-          <Plate theme={theme} />
-          {genre === "noir" ? <View style={[styles.rule, { backgroundColor: theme.accent }]} testID={`${testID}-rule`} /> : null}
-          <Text style={[theme.display, { color: theme.ink }]}>{theme.name}</Text>
-          <Text style={[M.type.tagline, styles.tagline, { color: theme.ink }]}>{theme.tagline}</Text>
-        </View>
-      </View>
-      <FocusRing visible={focus.focused} shape="panel" radius={M.radius} />
-    </SquashPressable>
+        <FocusRing visible={focus.focused} shape="panel" radius={M.radius} />
+      </SquashPressable>
+    </View>
   );
 }
 
 /**
- * The plate behind the words: the mode's ground at M.plate, and above it a
- * fade from clear up over M.fade, so the photo melts into it with no edge.
+ * The plate behind the words: the mode's ground at M.plate from the card's
+ * top to the words' foot, and below it a fade down to clear over M.fade, so
+ * the cover melts into it with no edge.
  */
 function Plate({ theme }: { theme: ModeTheme }) {
   const id = `plate${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={[StyleSheet.absoluteFill, styles.plate, { backgroundColor: theme.ground }]} testID="hub-card-plate" />
       <View style={styles.fade}>
         <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
           <Defs>
-            <LinearGradient id={id} x1={0} y1={0} x2={0} y2={1}>
+            {/* Offsets run up from the fade's foot (clear) to the plate's edge (M.plate). */}
+            <LinearGradient id={id} x1={0} y1={1} x2={0} y2={0}>
               {M.fadeStops.map((s) => (
                 <Stop key={s.offset} offset={s.offset} stopColor={theme.ground} stopOpacity={s.opacity} />
               ))}
@@ -110,7 +124,23 @@ function Plate({ theme }: { theme: ModeTheme }) {
           <Rect x={0} y={0} width={1} height={1} fill={`url(#${id})`} />
         </Svg>
       </View>
-      <View style={[StyleSheet.absoluteFill, styles.plate, { backgroundColor: theme.ground }]} testID="hub-card-plate" />
+    </View>
+  );
+}
+
+/** Light catching the card's top edge, inside its rim: the hub divider's faint white line, so each card reads as a separate card where it lies over the one above. */
+function TopEdge() {
+  const id = `edge${useId().replace(/[^A-Za-z0-9]/g, "")}`;
+  return (
+    <View style={styles.edge} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="hub-card-edge">
+      <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
+        <Defs>
+          <LinearGradient id={id} {...gradientLine(EDGE.angle)}>
+            {gradientStops(EDGE.stops)}
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={1} height={1} fill={`url(#${id})`} />
+      </Svg>
     </View>
   );
 }
@@ -135,27 +165,9 @@ function Glow({ theme }: { theme: ModeTheme }) {
   );
 }
 
-/** Crime scene's police tape: a thin strip in the mode's tape yellow across the top-right corner. */
-function Tape({ theme }: { theme: ModeTheme }) {
-  const tape = theme.detail ?? theme.accent;
-  return (
-    <View
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={[styles.tape, { backgroundColor: tape }]}
-      testID="hub-card-crime_scene-tape"
-    >
-      <Text numberOfLines={1} style={[M.type.tape, { color: theme.ground }]}>
-        {TAPE_WORDS}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  card: { minHeight: M.minHeight, borderRadius: M.radius, ...ref.curve },
-  dimmed: { opacity: ref.button.disabledOpacity.pill },
+  // The shadow sits on the card (no clipping here), cast up onto the card it covers.
+  card: { flex: 1, borderRadius: M.radius, boxShadow: M.deck.shadow, ...ref.curve },
   face: {
     flex: 1,
     overflow: "hidden",
@@ -163,29 +175,21 @@ const styles = StyleSheet.create({
     borderWidth: M.rim,
     ...ref.curve,
   },
-  top: { flex: 1, alignItems: "flex-start", padding: M.pad },
-  chip: {
-    minHeight: M.type.count.lineHeight + M.chip.padY * 2 + M.rim * 2,
+  words: { padding: M.pad },
+  fade: { position: "absolute", left: 0, right: 0, bottom: -M.fade, height: M.fade },
+  plate: { opacity: M.plate },
+  rule: { width: M.rule.width, height: M.rule.height, marginBottom: M.rule.gap },
+  // The tagline and the tag share a line; at large text the tag wraps under it.
+  line: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: M.tag.gap, rowGap: M.taglineGap, marginTop: M.taglineGap },
+  tagline: { flexShrink: 1 },
+  tag: {
+    minHeight: M.type.tag.lineHeight + M.tag.padY * 2 + M.rim * 2,
     justifyContent: "center",
-    paddingHorizontal: M.chip.padX,
-    paddingVertical: M.chip.padY,
+    paddingHorizontal: M.tag.padX,
+    paddingVertical: M.tag.padY,
     borderWidth: M.rim,
     borderRadius: ref.radius.round,
   },
-  words: { paddingHorizontal: M.pad, paddingBottom: M.pad },
-  fade: { position: "absolute", left: 0, right: 0, top: -M.fade, height: M.fade },
-  plate: { opacity: M.plate },
-  rule: { width: M.rule.width, height: M.rule.height, marginBottom: M.rule.gap },
-  tagline: { marginTop: M.taglineGap },
-  tape: {
-    position: "absolute",
-    width: M.tape.length,
-    height: M.tape.height,
-    top: M.tape.inset - M.tape.height / 2,
-    right: M.tape.inset - M.tape.length / 2,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    transform: [{ rotate: M.tape.angle }],
-  },
+  edge: { position: "absolute", top: 0, left: M.radius, right: M.radius, height: M.rim },
+  shade: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.void, opacity: 1 - ref.button.disabledOpacity.pill },
 });

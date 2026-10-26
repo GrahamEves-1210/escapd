@@ -1,56 +1,43 @@
-// Home's data (MODES_PROMPT.md Part 2): The Study's entry (noir's first tap),
-// each mode's number of cases, and the player's newest room photo for the
-// cards' art. Fetched on every focus, and only with a stored session: a
-// guest is never created just to label a card. Calls only exported API
-// functions and the mode screens' batched photo read.
+// Home's data (MODES_PROMPT.md Part 2, round 6): The Study's entry (noir's
+// first tap) and, for each mode, the case the player can go back to (its
+// card's "In progress" tag, and what its tap offers to continue). Fetched on
+// every focus, and only with a stored session: a guest is never created just
+// to label a card. Calls only exported API functions (src/lib/escapd-api.ts):
+// the tutorial's latest session and the sent rooms in parallel, then the
+// latest session of each mode's newest ready room (three at most).
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { currentSession, getLatestCustomRoom, getLatestSession, listMyRooms, type Room } from "@/lib/escapd-api";
-import { setOwnArt, type OwnArt } from "@/screens/mode/art";
-import { coverPhotos, signCovers } from "@/screens/mode/caseQueries";
+import { GENRES } from "@/game/mode";
+import { currentSession, getLatestSession, listMyRooms } from "@/lib/escapd-api";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { NO_CASES, countByGenre, studyEntry, type ModeCounts, type StudyEntry } from "./caseStatus";
+import { NO_CASES, caseToContinue, newestByGenre, noirCase, studyEntry, type ModeCases, type StudyEntry } from "./caseStatus";
 
-/** How many of the newest rooms are searched for a photo (a draft first, then sent ones). */
-const ART_CANDIDATES = 8;
-
-export interface HubFetch {
-  /** Absent when the fetch failed: the last known entry stands (or none yet). */
-  study?: StudyEntry;
-  /** Absent when the fetch failed: the cards keep what they showed. */
-  counts?: ModeCounts;
-  /** The newest own room photo; null for none; absent when it couldn't be read (the art stays). */
-  art?: OwnArt | null;
+export interface HubEntry {
+  study: StudyEntry;
+  cases: ModeCases;
 }
 
-/**
- * The newest custom room with a photo (drafts included: a room photographed
- * but never sent still counts), as a signed URL keyed by the photo's id.
- * One query for the photos, one signature.
- */
-export async function newestRoomArt(latest: Pick<Room, "id"> | null, rooms: readonly Pick<Room, "id">[]): Promise<OwnArt | null> {
-  const ids = [...new Set([latest?.id, ...rooms.map((room) => room.id)].filter((id): id is string => !!id))].slice(0, ART_CANDIDATES);
-  if (ids.length === 0) return null;
-  const covers = await coverPhotos(ids);
-  const roomId = ids.find((id) => covers.has(id));
-  const cover = roomId ? covers.get(roomId) : undefined;
-  if (!cover) return null;
-  const uri = (await signCovers([cover])).get(cover.id);
-  if (!uri) throw new Error("The room photo couldn't be signed");
-  return { id: cover.id, uri };
+/** What a card's tap needs. Rejects when it can't be read (offline, a server error). */
+export async function loadHub(): Promise<HubEntry> {
+  if (!(await currentSession())) return { study: "unseal", cases: NO_CASES };
+  const [tutorial, rooms] = await Promise.all([getLatestSession(TUTORIAL_ROOM_ID), listMyRooms()]);
+  const newest = newestByGenre(rooms);
+  const found = await Promise.all(
+    GENRES.map(async (genre) => {
+      const room = newest[genre];
+      const session = room?.status === "ready" ? await getLatestSession(room.id) : null;
+      return [genre, caseToContinue(room, session)] as const;
+    }),
+  );
+  const study = studyEntry(tutorial);
+  const cases = Object.fromEntries(found) as ModeCases;
+  return { study, cases: { ...cases, noir: noirCase(cases.noir, study) } };
 }
 
-/**
- * One focus fetch. Never rejects. The tutorial session, the sent rooms and
- * the newest room (drafts included) are read in parallel, then the photo.
- * A photo that can't be read leaves the art as it was.
- */
-export async function fetchHub(): Promise<HubFetch> {
+/** One focus fetch. Never rejects: a failure is {} and the cards keep what they showed. */
+export async function fetchHub(): Promise<Partial<HubEntry>> {
   try {
-    if (!(await currentSession())) return { study: "unseal", counts: NO_CASES, art: null };
-    const [tutorial, rooms, latest] = await Promise.all([getLatestSession(TUTORIAL_ROOM_ID), listMyRooms(), getLatestCustomRoom()]);
-    const art = await newestRoomArt(latest, rooms).catch(() => undefined);
-    return { study: studyEntry(tutorial), counts: countByGenre(rooms), art };
+    return await loadHub();
   } catch {
     return {};
   }
@@ -59,45 +46,52 @@ export async function fetchHub(): Promise<HubFetch> {
 export interface HubData {
   /** Null until known (still loading, or the fetch failed). */
   study: StudyEntry | null;
-  /** Undefined until known: the count line stays empty. */
-  counts: ModeCounts | undefined;
+  /** Undefined until known: no tags. The last known stays through a failed fetch. */
+  cases: ModeCases | undefined;
+  /** This focus's data once it has landed (a tap can use it at once), else null. */
+  fresh: () => HubEntry | null;
+  /** This focus's data, waiting for its fetch; asks again if that failed, and rejects if that fails too. */
+  entry: () => Promise<HubEntry>;
 }
 
-// Every focus fetch's place in line, and the one whose art the shared store
-// holds. Module-wide, like the store, so no older fetch outranks a newer one.
-let artFetches = 0;
-let artFrom = 0;
+interface FocusFetch {
+  promise: Promise<HubEntry | null>;
+  landed: HubEntry | null;
+}
 
-/** Home's card data, fetched on each focus. The art goes to the shared store (art.ts) for the cards and the mode screens. */
+/** Home's card data, fetched on each focus. */
 export function useHubData(): HubData {
   const [study, setStudy] = useState<StudyEntry | null>(null);
-  const [counts, setCounts] = useState<ModeCounts | undefined>(undefined);
+  const [cases, setCases] = useState<ModeCases | undefined>(undefined);
   // Only the newest focus fetch applies to home's own state.
   const fetches = useRef(0);
+  const current = useRef<FocusFetch | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       const id = ++fetches.current;
-      const turn = ++artFetches;
-      fetchHub().then((next) => {
-        // The art is shared with the mode screens (art.ts), so it lands even
-        // when the player has already tapped through to one (a mode banner
-        // then shows their own room, as home's cards do); only a newer
-        // fetch's art outranks it.
-        if (next.art !== undefined && turn > artFrom) {
-          artFrom = turn;
-          setOwnArt(next.art);
-        }
-        if (fetches.current !== id) return;
-        if (next.study) setStudy(next.study);
-        if (next.counts) setCounts(next.counts);
-      });
+      const fetch: FocusFetch = { promise: Promise.resolve(null), landed: null };
+      fetch.promise = loadHub().then(
+        (next) => {
+          if (fetches.current !== id) return next;
+          fetch.landed = next;
+          setStudy(next.study);
+          setCases(next.cases);
+          return next;
+        },
+        () => null,
+      );
+      current.current = fetch;
       return () => {
-        // Losing focus drops a late study and counts (not the art).
+        // Losing focus drops a late result; the next focus fetches again.
         fetches.current += 1;
+        current.current = null;
       };
     }, []),
   );
 
-  return { study, counts };
+  const fresh = useCallback(() => current.current?.landed ?? null, []);
+  const entry = useCallback(async () => (await current.current?.promise) ?? (await loadHub()), []);
+
+  return { study, cases, fresh, entry };
 }

@@ -131,7 +131,7 @@ export const PLAY_COPY = {
   evidenceShow: "Check your evidence",
   evidenceHide: "Hide your evidence",
   replay: "Replay the case",
-  nextCase: "Next case",
+  newCase: "Start a new case",
   restartTitle: "Restart this case?",
   restartBody: "Everything you've found goes back where it was. You can replay it any time.",
 } as const;

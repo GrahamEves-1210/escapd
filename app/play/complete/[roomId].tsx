@@ -5,8 +5,10 @@
 // and the magnifier rating they earn. The player passes the mode, the case's name, the
 // server's lines and the accused suspect's id as params, and the case in
 // memory (closedCase.ts); after a reload the case's name and the accused are
-// read from the completed session's definition instead. Then: a new case in
-// the same mode, back to the mode's cases, or this case again.
+// read from the completed session's definition instead. Then the pinned
+// actions: Start a new case in the same mode (the photo guide's pill,
+// openCapture({ genre })), Back to <mode> (home, where the mode's card is),
+// or this case again.
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import type { AccuseOption } from "@/lib/puzzle-types";
@@ -17,6 +19,7 @@ import { suspectById } from "@/game/selectors";
 import { ModePill } from "@/capture/ui/ModePill";
 import { CaseClosed } from "@/render/CaseClosed";
 import { closedCaseFor } from "@/render/closedCase";
+import { PLAY_COPY } from "@/render/voice";
 import { caseSummary, type CaseSummary } from "@/render/victory";
 
 export default function PlayCompleteScreen() {
@@ -70,21 +73,21 @@ export default function PlayCompleteScreen() {
       photo={stash?.photo}
       actions={(
         <>
-          <ModePill variant="ghost" label="Next case" onPress={newCase} testID="complete-new-case" />
+          <ModePill variant="ghost" label={PLAY_COPY.newCase} onPress={newCase} testID="complete-new-case" />
           <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
             label={`Back to ${theme.name}`}
-            // Back down the stack to the mode's screen (or to it, in place of this one, when it isn't there).
-            onPress={() => router.dismissTo({ pathname: "/mode/[genre]", params: { genre } })}
+            // Home, where the mode's card is: back down the stack to it (or to it in place of this screen).
+            onPress={() => router.dismissTo("/")}
             testID="complete-mode"
           />
           <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
-            label="Replay the case"
+            label={PLAY_COPY.replay}
             onPress={() => router.replace({ pathname: "/play/[roomId]", params: { roomId } })}
             testID="complete-replay"
           />

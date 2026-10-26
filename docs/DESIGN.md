@@ -6,7 +6,7 @@
 
 | # | Screen | Route | Layout and look reference | Your note |
 |---|---|---|---|---|
-| 01 | Game mode, the hub | `/` | [Opal, game mode](refs/01-game-mode.png) | "3 cards instead of 2." |
+| 01 | Home, the three mode cards | `/` | [Opal, game mode](refs/01-game-mode.png) (header only since the modes) | Round 6: "the three cards should have some overlap … but vertical"; no case list. |
 | 02 | Camera | `/capture` | [Once, camera](refs/02-camera.png) | "the photo button has a magnifier glass icon on it." |
 | 03 | Camera permission | `/capture` (before access) | [pushr, permission sheet](refs/03-camera-permission.png) | none |
 | 04 | First-time photo guide | `/capture/guide` | [Apple Health, how-to steps](refs/04-photo-tutorial.png) | "taking photos step by step short tutorial for first onboarding." |
@@ -24,7 +24,7 @@
 
 **Base:** iPhone 393 × 852 pt, safe areas 59 top and 34 bottom. Tap targets are at least 44 pt, text contrast at least 4.5:1, and reduced motion is respected everywhere.
 
-**Contents:** Global tokens · 01 Game mode · 02 Camera · 03 Camera permission · 04 Photo guide · 05 Pro · 06 Building your case · 07 Review (Photos) · 08 In-game player · Decisions · Needs you · Build notes · Screens with no layout reference yet
+**Contents:** Global tokens · 01 Home · 02 Camera · 03 Camera permission · 04 Photo guide · 05 Pro · 06 Building your case · 07 Review (Photos) · 08 In-game player · Decisions · Needs you · Build notes · Screens with no layout reference yet
 
 ## Global tokens (`ref` in src/theme/tokens.ts)
 
@@ -161,133 +161,117 @@ There is one haptic per moment, never stacked, and only on discrete events. Unde
 
 `PillButton`, `DarkSheet` (the bottom sheet from the hub, used by the player), `FocusRing` / `useFocusRing` / `focusRingStyle`, `FloorGlow`, `LightPool(s)`, `PaperHaze`, `ThinkingStates`, `GlyphStack`, `gradientStops` / `gradientLine`, `trackingPad`, `useShowAfter` and the motion helpers. `BackgroundStill` (the silk) was removed; its asset stays in `assets/backgrounds`.
 
-## 01 · Game mode (the hub at /)
+## 01 · Home (the mode cards at /)
 
-Reference: docs/refs/01-game-mode.png (Opal, "Pick a game to continue"), measured at 2.389 px/pt on a 393 × 852 pt screen (safe areas 59 / 34); the Mobbin footer from y 2033 px is not part of the design. This round matches it as closely as the platform allows: the black ground with the green-teal floor glow, the header of round dark chips with the diagonal specular ring, the centred title with a small image before it, the faint gradient divider, the large empty band, the centred Semibold title and grey subtitle, the tilted dark-glass cards with fading rims, hairline label pills and gradient line icons, the spacing and the z-order. ESCAPD keeps its own copy, icons, three cards (the user's note) and every behaviour.
+Round 6 (MODES_PROMPT.md Part 2, the user's round 6 note). Home is the shell: the reference look's black ground, Opal's header (the ESCAPD wordmark centred, the Settings chip at the right) and the faint divider, then a deck of three mode cards, DETECTIVE NOIR, CRIME SCENE and PARANORMAL, each solid and in its own mode's palette. There is no case list anywhere: a card's tap goes into the mode (Entering a mode, below). The old Opal fan (THE STUDY, YOUR ROOM, YOUR CASE, the glass cards and the floor glow) is gone.
 
-Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files: `HubScreen.tsx` (ground, header, divider, column, routing, notice slot, sheet, focus return, Android back), `Chip.tsx` (Opal's round chip, for Settings and the sheet's Close, and the three-rail sliders glyph), `Deck.tsx` (fan, stack, fan focus ring), `GameCard.tsx` (card layout, states, press), `CardGlass.tsx` (the card material), `TagPill.tsx` (label pills, SOLVED included), `CardArt.tsx` (the three gradient line icons), `CardNote.tsx` (state line and the developing thinking line), `HubNotice.tsx`, `SettingsSheet.tsx`, `layout.ts` (geometry rules: the band, the fan's position, the glow), `caseStatus.ts` (every word and state), `useHubData.ts` (fetch and follow). Tests: `src/screens/hub/__tests__/hub-test.tsx`, `layout-test.tsx`. The painted glass hero and its tilt (`Magnifier.tsx`) are gone.
+Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files in `src/screens/hub/`: `HubScreen.tsx` (header, divider, the deck, a card's tap, the notice, the two sheets, focus return, Android back), `ModeCard.tsx` (one card), `deck.ts` (the deck's geometry, pure), `caseStatus.ts` (The Study's entry, a case to go back to, where Continue goes, labels and notice copy, pure), `useHubData.ts` (`loadHub`, `fetchHub` and the focus fetch), `ResumeSheet.tsx` (the continue prompt), `SettingsSheet.tsx`, `HubNotice.tsx`, `Chip.tsx`, and the covers in `art/` (Modes · Mode art). The prompt's words are in `src/screens/mode/copy.ts`. Tests: `src/screens/hub/__tests__/hub-test.tsx`, `caseStatus-test.ts`, `art/__tests__/bake-test.tsx`.
 
-Tokens: `ref` in `src/theme/tokens.ts` throughout (`ref.color`, `ref.type`, `ref.space`, `ref.radius`, `ref.curve`, `ref.gradient.bottomGlow / card / cardRim / divider / line`, `ref.button.chip / dismissDark / gameCard / ghost / disabledOpacity`, `ref.icon`, `ref.effect.secondaryLineOpacity`, `ref.focus`, `ref.motion.control` and `thinking`), the live `motion.sheetSpring` / `motion.reducedFade` and `z.sheet`, and the hub's own `ref.layout.hub`: `hairline` 1; `header` { top 12, mark 20, markGap 6 }; `chipRing` (white 0 / 10.5 / 15 / 10.5 / 0 % at 0.146 / 0.25 / 0.5 / 0.75 / 0.854 from the chip's top right to its bottom left); `sliders` { width 13, stroke 1.2, pitch 3.96, knob 3.8, knobs 0.73 / 0.41 / 0.7 }; `weights` { above 131, below 96 }; `band` 124; `glass` { overlap 0.02, falloff 0.18 }; `fan` { height 335, sideOffset 93.2, sideDrop 10, tilt 6, cover { top 29.85, foot 63.49 }, designWidth 393, minScale 0.75, maxFontScale 1 }; `card` { width 140, height 320, tagTop 24, noteGap 6, icon 68, iconCentre 0.54, solvedCentre 0.74, pressScale 0.97 }; `stackedMinHeight` 96; `noticeIcon` 16; `sheet` { scrim black 55 %, maxHeight 64 %, exit 200, scrimIn 200, scrimOut 160, titleFocus 300, titleFocusReduced 50, focusMargin 100, switch { on `lineEnd`, off `textTertiary`, thumb `textPrimary` } }. No live colour, type, space or radius; no silk, grain, wordmark, walnut or brass (the focus ring excepted).
+Tokens: `ref` throughout (`ref.button.chip`, `ref.gradient.divider`, `ref.type`, `ref.space`, `ref.radius`, `ref.curve`, `ref.focus`, `ref.motion.sheetRise / sheetFall`), the mode themes (`modeThemes`), and home's own `ref.layout.hub`: `header` { top 12, logo 14 }, `chipRing`, `sliders`, `noticeIcon` 16, `sheet`, `settings`, and `modes`:
+
+| Token | Value | What |
+|---|---|---|
+| `top` / `edge` / `foot` | 16 / 16 / 12 | the deck's first card under the divider, from the screen's sides, the last card above the safe bottom |
+| `deck.cover` | 0.36 | each card covers the foot of the card above by 36 % of a card's height |
+| `deck.peek` | 40 | at least this much of a card's art shows under its words before the next card |
+| `deck.tilt` | 2.5°, −2°, 2° | each card turned about its centre, alternating |
+| `deck.shadow` | `0 −10 24` black 62 % | each card's shadow, cast up onto the card it covers |
+| `deck.edge` | white 0 → 16 % → 0 | a line of light along each card's top edge, inside its rim, between its corners |
+| `minHeight` | 168 | no card is shorter |
+| `radius` / `rim` / `pad` | 20 / 1 / 18 | continuous corners, the rim in the mode's `rim`, the words' padding |
+| `plate` / `fade` / `fadeStops` | 0.72 / 56 / 0 → 0.38 → 0.72 | the mode's ground behind the words, fading down to clear under them |
+| `tag` | padX 10, padY 4, gap 8 | the "In progress" capsule beside the tagline |
+| `rule`, `glow` | | noir's brass rule over the name; paranormal's soft glow |
+| `type.tagline` / `type.tag` | 17/22 Medium / 13/16 Semibold | |
+| `pressScale` | 0.98 | the kit's squash |
 
 ### Feel
 
-A quiet black room with a low green light coming up from the floor. The top half is pure black and empty: a header of two round dark chips' worth of space, a small brass magnifier beside "Case files", a divider that is only a breath of light, then a long dark band. Below it the title and a grey line, and three dark-glass files dealt onto the desk, the middle one upright on top and the other two tipped out to either side. The glow rises through the lower halves of the cards. There are no shadows: every edge is a white hairline at 8–14 %, and hierarchy comes from weight and white opacity (100 / 82 / 60 %), not from hue. Bright colour is kept to two small places: the painted brass magnifier in the header and the pale lime-to-aqua line icons, which read as glowing only because they are the brightest thing on near-black. Nothing moves unless something is happening.
-
-**Accent on this screen:** the line icons' gradient (`ref.color.lineStart` #CEFEB4 to `lineEnd` #ADFCF1) and the Show interactives track (`lineEnd`). Brass only in the painted magnifier (art, not accent) and the focus ring.
+Three case files dealt down a dark desk. Each card is solid and lit by its own cover art, lies over the foot of the card above it and is turned a couple of degrees the other way, so the deck reads as physical cards, not a list. Where a card lies over another it casts a soft shadow up onto it, and a faint line of light catches its top edge. The names sit at the top of each card, the part nothing covers, in each mode's display face. Nothing moves until a card is pressed.
 
 ### Layout, top to bottom
 
-393 × 852, default text size, all three cards idle (the harness is offline, so YOUR CASE shows None yet). Measured positions of the web render (Inter in place of SF Pro) against the reference are in brackets.
+| Element | Position and size (pt) | Style |
+|---|---|---|
+| Ground | full screen | `ref.color.void`. No glow, no grain |
+| Header | chip row at safe top + 12 (discs 36 in 48 hit boxes, 16 from the edges); the divider 16 under the discs | Opal's header as before: the left slot empty (home is the root), the ESCAPD wordmark (white, its doorway edge grey) centred as the screen's header, the Settings chip (sliders glyph) at the right |
+| Deck | a scroll view from the divider to the screen's foot; content `top` 16 under the divider, `edge` 16 from the sides, `foot` 12 + the safe bottom at the end | Three cards in reading order, later cards on top (tree order; no zIndex) |
+| Card size | card = column / (1 + 2 × (1 − cover)), at least the tallest card's words + `peek` divided by (1 − cover), at least 168. Each card after the first starts `overlap` = round(card × 0.36) above the previous card's foot | 375 × 667 (column 554): cards 242, overlap 87, 155 of each upper card showing; 393 × 852: 292 / 105 / 187; 430 × 932: 327 / 118 / 209. All three fit with no scrolling at the default text size |
+| Card face | the card's full size, turned `tilt` | the mode's drawn cover full bleed (`ModeCover`, baked at the card's real size); 1 pt rim in the mode's `rim`; corners 20, continuous; the `deck.shadow` and the top `deck.edge` |
+| Words | top of the card, padded 18 | noir's brass rule (28 × 2, 10 above the name); the mode's name in its display face (`theme.display`) in `ink`; the tagline (17/22) in `ink`; beside it, when the mode has a case to go back to, the "In progress" tag (a capsule in the mode's `ground`, 1 pt `rim`, 13/16 Semibold `ink`). A plate of the mode's ground at 72 % behind them, fading down to clear over 56 pt below them (the mode's ink stays 4.5:1 over even a white picture) |
+| Notice | over the last card's foot, centred | the dark capsule (States: Error) |
 
-| Element | Position & size (pt) | Style | ESCAPD content |
+Large text: the words grow; the cards grow with them (the same share covered) so every name and tagline stays in the part no card covers, and the deck scrolls. The tag wraps under the tagline when they don't fit on one line.
+
+### Entering a mode
+
+A card's tap, one at a time (`HubScreen.openMode`):
+
+1. **First time.** Noir runs The Study (`ensureSession()`, then `/tutorial`) while it has never been played (no tutorial session, or the last one abandoned). Crime scene and paranormal show their one-screen intro (`/mode/intro/<genre>`, once per device, `introSeen.ts`), whose button ("Take the case", "Step inside") starts the mode's first case with `openCapture({ genre, replace: true })`.
+2. **A case to go back to:** the continue prompt (below).
+3. **Otherwise:** a new case straight away, `openCapture({ genre })`: a guest to `/account?next=back`, no Pro to `/pro`, the monthly cap to the build wait's cap state, otherwise the guide, then the camera, the photos and the build. The server picks the story. If the access check can't run, the card carries on to `/capture`, whose backstop shows the guide and whose build checks access again.
+
+**A case to go back to** (`caseStatus.ts`, from existing API functions only: `getLatestSession(TUTORIAL_ROOM_ID)` and `listMyRooms()` in parallel, then `getLatestSession(roomId)` for each mode's newest room when it is ready, three at most): the mode's newest sent room (`listMyRooms` is newest first and never lists drafts) when it is still building (queued or generating), or ready and its latest session not completed (never played, in progress, or abandoned by Restart this case). A completed or failed newest room means none, even if an older room is still open. These are the old case files' OPEN, IN PROGRESS and BUILDING; CLOSED and DIDN'T BUILD count as none. Noir also counts The Study while it is part-way through (its session active) when the player has no case of their own there.
+
+**Data:** fetched on every focus, and only with a stored session (a guest is never made just to label the cards). A tap uses this focus's result once it has landed; until then the card goes busy and waits for it; if that fetch failed it asks once more. A failure shows the notice.
+
+### The continue prompt (`ResumeSheet.tsx`)
+
+The kit's `DarkSheet` over home, in the mode's colours: it is wrapped in a `ModeScope` (`src/game/mode.ts`), so the sheet, its Close chip and its pills read the mode while home itself stays the shell and the store is left alone.
+
+| Element | Style | Content |
+|---|---|---|
+| Sheet | the mode's `surface`, a 1 pt `rim`, top corners 40, black 55 % scrim; slides up on `sheetRise`, away on `sheetFall` | |
+| Title | the mode's display face (`titleStyle="display"`) in `ink`, header role | the mode's name |
+| Line | `ref.type.subtitle` in `inkMuted` | in the mode's voice (`RESUME_COPY`): noir "You've still got a case open." (building: "Your next case is still coming together."; The Study: "The Study is still waiting for you."), crime scene "You have an open case on file." ("Your scene is still being processed."), paranormal "Something is still waiting for you." ("Something is still taking shape.") |
+| Continue | the photo guide's pill (`ModePill` ghost: 52 tall, full capsule, headline label) in the mode's `accent` / `accentInk` | resumes it: `/play/<id>`; a building case opens the build wait (`/capture/develop?roomId=<id>`, the mode set first so it takes the mode's look); The Study opens `/tutorial`. The sheet goes as the route opens |
+| Start a new case | the guide's ghost pill (`OutlinePill`: the mode's `ground` fill, 1 pt `rim`, `ink` label; pressed `raised`) | `openCapture({ genre })`, as a first new case; busy (spinner, Continue disabled) while it checks access; then the sheet goes. `/capture` if the check can't run |
+
+Close, the scrim and Android back close it and return screen-reader focus to the card that opened it once it has gone.
+
+### Settings sheet
+
+Opened from the sliders chip; unchanged in round 6 except the new Replay The Study row.
+
+| Element | Position and size (pt) | Style | Content |
 |---|---|---|---|
-| Screen | 393 × 852, full bleed | Root `ref.color.void` #000000, then the kit's `<FloorGlow glow={fanGlow(...)} />`: `ref.gradient.bottomGlow`'s colours (#141C12 → `glowOlive` #243425 at 0.25–0.43 → #213529 → `glowTeal` #1E342C at 0.56–0.69 → #111B19, left to right), fitted to the fan as Opal's is: nothing above the cards' centre (y 490, 0.575 of the height), full by the fan's foot (y 665, 0.78), which is the token's own 0.58 / 0.79 on 852. Scaled fans follow their smaller hand; stacked cards keep the token. Static, untouchable, hidden. No grain [render: x 5 at y 520 / 640 / 720 #030503 / #121910 / #141D13 against Opal's #050505 / #0F170E / #141C12; y 730 at x 100 / 197 / 293 #243425 / #203429 / #1B2F28 against #243425 / #213529 / #1E3229] | — |
-| Status bar | y 0–59 | System, light content (root layout) | — |
-| Header row | Hit boxes y 65–113 (48), padX 10 (`ref.space.lg` 16 − the chip's 6 of padding) | A row: left slot, title group, right chip | — |
-| Left slot | x 10–58 (48 × 48), empty, not focusable | Opal's dismiss chevron is left out: the hub is the root and has nothing to dismiss to. Its place keeps the title centred | — |
-| Logo | Centred on x 196.5 between the two 48 slots, vertically centred on the chips (y 89): the wordmark 14 tall (`header.logo`; its letters' full height, a little over Opal's 16 pt title cap 11.3), 66.3 wide | `<Wordmark>` (src/components/Wordmark.tsx, unchanged) with `tint` `ref.color.textPrimary` (white) and `edgeColor` `ref.color.textSecondary` (the D's doorway edge grey: no brass). Wrapped in one accessible View, `accessibilityRole="header"`, label "ESCAPD" | The ESCAPD wordmark (no magnifier, no "Case files", as the user asked) |
-| Settings chip | Disc x 341–377, y 71–107 (36, `ref.button.chip`), centre (359, 89); hit box x 335–383, y 65–113 [ref 340.7–377.1 × 70.7–107.1; render 341–377 × 71–107] | Fill `ref.color.ground` #101010; 1 pt ring drawn in react-native-svg with `chipRing`, a gradient from the disc's top right to its bottom left with stops at 0.146 / 0.25 / 0.5 / 0.75 / 0.854 (white 0 / 10.5 / 15 / 10.5 / 0 %): on a circle the line spans only 0.146–0.854, so nothing at 45° / 225°, 10.5 % at the cardinals, 15 % on the top-left and bottom-right arcs (Opal 0.15 / 0.13). No shadow. Glyph: ESCAPD's three-rail sliders (`SlidersGlyph`, `ref.layout.hub.sliders`) in the 18 box: rails 13 wide, stroke 1.2, 3.96 apart, ring knobs 3.8 across at 73 / 41 / 70 % along, round caps, `textPrimary` (Opal: 13 × 11.3) | Opens Settings |
-| Divider | y 123–124 (1), full width; `ref.space.lg` 16 below the discs [ref 122.6–123.6] | `ref.gradient.divider`, 90°: white 0 at 0.10 → 10 % at 0.50 → 0 at 0.94, as a react-native-svg gradient (stops `stopColor` + `stopOpacity`) [render #101010 at x 196, #060606 at x 100] | — |
-| Column | y 124–818 (694): the divider to the safe bottom. Opal's X disc is left out and no slot is kept for it | A flex column: the top spacer (131 : 96 of the free space, never more than `band` 124), the hero block, the bottom spacer (the rest) | — |
-| Upper void | y 124–248 (124, `ref.layout.hub.band`: Opal's band from the divider to the title box) [Opal divider to title cap 131.2; render 129.7] | Black | — |
-| Title | Line box y 248–276, centred, padX 20 [Opal cap 254.6, baseline 270.1; render cap 253.7, baseline 270.3] | `ref.type.title` (system Semibold 22/28), `textPrimary`, `accessibilityRole="header"` | **"Choose a case"** |
-| Subtitle | Line box y 280–302, `ref.space.xs` 4 below the title [Opal baseline 297.2; render 297.3] | `ref.type.subtitle` (system Medium 17/22), `textSecondaryAlpha` (white 60 %, #999999 on black; Opal ≈ #9C) | **"Three files on the desk."** |
-| Fan container | y 330–665 (335, `fan.height`, the side cards' visual foot), `ref.space.band` 28 below the subtitle; never clips. Visual extent x 19.3–373.7, Opal's band [Opal 19.3–373.8, y 329.4–658; render top 330, centre card foot 650, side feet about 663] | — | 3 cards, dealt like a hand |
-| Card, centre | x 126.5–266.5, y 330–650 (140 × 320: Opal's height 319.6; the widest that still shows a side card's pill whole), upright, in front (`zIndex`) | Card material below | **YOUR ROOM** |
-| Card, left | Centre (103.3, 500): `fan.sideOffset` 93.2 left of the axis, `fan.sideDrop` 10 lower, `rotate: -6deg` (`fan.tilt`) about its centre; tucked behind the centre card, which covers its inner edge 29.9 wide at the top and 63.5 at the foot (`fan.cover`): about 105 of it shows at the pill, 89 at the icon | Same | **THE STUDY** |
-| Card, right | Centre (289.7, 500), `rotate: 6deg`, the mirror | Same | **YOUR CASE** |
-| Card material | Each card | `CardGlass`: opaque `ref.gradient.card` (180°: #0A0A0A → #0F0F0F 0.31 → #141513 0.50 → #283628) with a 1 pt `ref.gradient.cardRim` (Opal's measured rim: white 5 % at the top, 2.5 % at 0.15, 2 % at 0.5, 0 by 0.85, so the foot has none), corners 23.7 (`gameCard.radiusRatio` 0.169 × 140) continuous, clipped by views (the rim is the 1 pt between an outer and an inner clip). Opaque, so the centre card hides the side cards' rims, as in the reference. See-through in look (Opal's z-stack): the centre card is white 2 % (`glass.overlap`) brighter where it lies over a side card (the side cards' rotated outlines drawn in its own space, clipped by it), and each side card darkens from black 0 at its inner edge to 18 % (`glass.falloff`) at its outer edge, as the floor light falls off. No shadow | — |
-| Tag pill | Card-local top 24 (`card.tagTop`, Opal's 24), 26 tall (`tagHeight`), 9 from the outer edge to the text (`tagPadX`, the stroke included), width hugging the text: Opal's absolute size | `TagPill`: no fill, 1 pt `ref.color.rim` (white 10 %), radius `ref.radius.tag` 8 (not continuous); text `ref.type.tag` (system Semibold 13/16, +0.4, uppercase) in `textLabel` (white 82 %), centred (`trackingPad` on iOS) | THE STUDY · YOUR ROOM · YOUR CASE |
-| State line | Card-local y 56–72, `card.noteGap` 6 under the pill | `ref.type.meta` (system Regular 13/16), `textSecondary`, centred. Developing: the kit's thinking line (States) | Study: Unseal / Continue / Replay. Room: Photograph. Case: Case status |
-| Hero icon | 68 × 68 (`card.icon`, `ref.icon.heroMax`), centred at card-local y 172.8 (`card.iconCentre` 54 %, as Opal's); ink about 62 [Opal's art 62–68; render 61.7 × 61.7 on the centre card] | `CardArt`: ESCAPD's own line art in react-native-svg, drawn in a 48-unit box it nearly fills, stroke 4.9 at 68 (`heroStrokeRatio` 0.072, Opal's 4.9), round caps and joins, no fill, one `ref.gradient.line` across the whole box (135°, lime → aqua); secondary strokes at `ref.effect.secondaryLineOpacity` 0.6. No halo. Rotates with its card. Stacked cards show it at 48 | Study: an arched door on its threshold (primary) with a keyhole (secondary). Room: four viewfinder corner brackets (primary) round a room corner, one vertical edge and two diverging floor lines (secondary). Case: a dossier folder with its tab (primary) and a wax-seal circle (secondary) |
-| SOLVED pill (YOUR CASE only) | Centred at card-local y 236.8 (`card.solvedCentre` 74 %), 26 tall | `TagPill`, the same as the tag: a label pill in the reference style, not a stamp | **SOLVED**, when the latest session on the newest own case is completed |
-| Side-card centring | Each block (the pill with its state line, the icon, SOLVED) is centred on the face the centre card leaves exposed at the block's middle: inset on the covered side by `coveredWidth(v)` = 29.85 + 33.64 × v / 320 (34.5 for the head, 48.0 for the icon, 54.8 for SOLVED). The centre card's blocks are centred on the card | YOUR CASE's pill (97 with Inter, about 92 with SF) fits the 105 exposed at its height |
-| Lower void | y 665–818 (153, the rest of the column) | Floor glow only (Opal's X disc is left out) | The notice overlays it |
-| Notice (when shown) | Top y 689 (`ref.space.xl` 24 below the fan container), centred, hugging its text; one line 34 tall | A capsule: `ref.color.ground`, 1 pt `ref.color.rim`, `ref.radius.round`, padding 8 × 16; Phosphor glyph at 16 (`noticeIcon`) in `textPrimary`, centred on the first line; gap 8; text `ref.type.meta` in `textPrimary`. Absolutely placed in an always-mounted slot, so nothing moves | States: Error |
-| Safe bottom | y 818–852 | Glow | — |
 | **Settings sheet** (over everything) | Scrim full screen. The kit's `DarkSheet`, `maxHeight` 88 % (`settings.maxHeight`); at the default size it holds everything without scrolling (top at y 408 on 852) | The kit's dark sheet: fill `ref.color.ground`, top corners `ref.radius.bottomSheet` 40, a 1 pt rim, black 55 % scrim; slides up on `ref.motion.sheetRise` with no spring and away on `sheetFall`; Close (the kit's chip) concentric with the corner | — |
 | Sheet: header | Title on the 24 gutter; Close's disc centred on the 40 corner's centre of curvature | Title `ref.type.headline`, `accessibilityRole="header"`. A save that fails shows its note as the sheet's grey meta line under the title (announced) | **"Settings"** · X |
 | Sheet: sections | Content padX 24, sections 24 apart; each a Bold 14/20 heading (`settings.heading`, `textPrimary`, header role) 8 (`settings.headingGap`) above its group | The review screen's list style: a group is a `ref.color.raised` panel (`settings.fill`) with 8 corners (`settings.radius`, continuous); rows at least 52 tall (`settings.rowHeight`), 16 in (`settings.pad`), label and control 12 apart (`settings.gap`), split by 1 pt `ref.color.rim` lines inset 16 from the left. Label `ref.type.body` white; a detail line `ref.type.meta` grey under it; a value `ref.type.body` grey on the right; a navigation row ends in Phosphor `CaretRight` 15 grey. Pressed rows at 0.75 (proposal) | Gameplay · Accessibility · Account · About |
-| Sheet: rows | Gameplay: Show interactives, Haptics. Accessibility: Reduce motion. Account: Add your email (a guest or no session) or Email (signed in, plain value); ESCAPD Pro. About: Version | Switch rows: a React Native `Switch` (track on `lineEnd` aqua, off `textTertiary`, thumb white) that only shows the value; the row is the control | "Show interactives" / "Keep the marks on objects you can use visible." · "Haptics" / "A light tap when you press or find something." · "Reduce motion" / "Fades in place of slides and sweeps." · "Add your email" or "Email  ada@…" · "ESCAPD Pro" · "Version  0.1.0" |
-| Sheet: bottom | content 8 + `ref.space.lg` 16 + the safe bottom | — | — |
-
-**Totals on 852:** safe top 0–59; chip row 65–113 (discs 71–107); divider 123–124; column 124–818 = band 124 + title 28 + 4 + subtitle 22 + 28 + fan 335 + lower void 153; safe bottom 818–852. Header 65 = 12 + 36 + 16 + 1. The top spacer takes 131 / 227 of the free space but never more than 124. The fan is designed on 393; a narrower screen scales the whole hand by width / 393, and a short one by what its column leaves for it (`fanScale`), its top kept and nothing clipped; below 0.75 the cards stack. 375 × 667: 0.954 (foot at y 587 with safe areas 59 / 34).
+| Sheet: rows | Gameplay: Show interactives, Case clock, Sound, Haptics, and Replay The Study once The Study is solved. Accessibility: Reduce motion. Account: Add your email (a guest or no session) or Email (signed in, plain value); ESCAPD Pro. About: Version | Switch rows: the row is the switch (a white track, black thumb when on). Navigation rows end in a CaretRight and give `press` | Replay The Study: "The first case, from the top." (its hint); it closes the sheet and opens `/tutorial` |
 
 ### Tappable elements
 
-| Element | Hit area ≥ 44 | Action in ESCAPD |
+| Element | Hit area | Action |
 |---|---|---|
-| Settings chip | 48 × 48 box around the 36 disc (x 335–383, y 65–113), inside the header, no hitSlop | Opens Settings. Role button, label "Settings". The `press` haptic on press-in. Pressed opacity 0.75; disabled 0.4 while a card is busy |
-| THE STUDY card | Its exposed face (the centre card takes 5.8–27.7 of its inner edge) | `ensureSession()` (card busy), then `router.push('/tutorial')` (start_or_resume_session resumes or starts). The state line comes from `getLatestSession(TUTORIAL_ROOM_ID)`: none or abandoned Unseal, active Continue, completed Replay. Labels "The Study. Unseal / Continue / Replay the first case." A failure shows the notice |
-| YOUR ROOM card | Full 140 × 320 (in front) | Access check first (card busy): `openCapture()` sends a guest to `/account?next=back`, no `custom_rooms` to `/pro`, the monthly cap to `/capture/develop?from=hub`, a first-timer to `/capture/guide`, otherwise `/capture`. If the check can't run it rejects and the card carries on to `/capture`. Label "Your room. Photograph a room." |
-| YOUR CASE card | Its exposed face | From `getLatestCustomRoom()` (drafts count as no room) and, for a ready room, `getLatestSession(room.id)`. Ready → `/play/<id>`; developing or failed → `/capture/develop?roomId=<id>`; none, offline, try later: disabled. One element, "Your case." plus the state |
-| Sheet scrim | Above the sheet | Closes the sheet. Not focusable |
-| Sheet Close | The kit's chip, 48 box | Closes the sheet (the kit's `press` haptic); focus returns to the Settings chip once it has left (`ref.motion.sheetFall` + 100). Label "Close" |
-| Switch rows (Show interactives, Haptics, Reduce motion) | The whole row, at least 52 tall | One accessible element each: role switch, its label, the detail as hint, `checked` state; a press flips it with the `tick` haptic (Haptics: one tick just after it turns on, none as it turns off). Show interactives is local (`setHotspotAssist`). Haptics and Reduce motion save to the account (`ensureSession()` first, then `usePreferences().update`): the new value shows at once; if saving fails it flips back and the grey note says "Couldn't save that while offline. It's back as it was." (or "…just now…") |
-| Add your email · ESCAPD Pro | The whole row, at least 52 tall | Buttons with a chevron and the `press` haptic: the sheet closes (no focus return), then `/account?next=back` or `/pro`. A signed-in player's email is a plain value, not a control. The guide replay is gone: the guide shows before every new room |
-| Android back | — | Sheet open → closes it. A card busy → consumed until navigation or the notice. Otherwise not handled: the system leaves the app (root) |
-| Not tappable | — | Left slot, the ESCAPD logo, divider, title, subtitle, pills, state lines, icons, SOLVED, notice. Each card is one button; its children are not separately focusable |
-| Focus order | — | Screen reader: ESCAPD (header) → Settings → "Choose a case" (header) → subtitle → THE STUDY → YOUR ROOM → YOUR CASE → notice. The centre card is stacked with `zIndex`, not render order. Keyboard: Settings → the three cards. Sheet open: title → Close → Gameplay → Show interactives → Haptics → Accessibility → Reduce motion → Account → Add your email → ESCAPD Pro → About → Version; VoiceOver is trapped (`accessibilityViewIsModal`); the screen behind is `no-hide-descendants` for TalkBack; the sheet moves focus to its title 300 ms after opening (50 under reduced motion) |
+| Settings chip | the 48 box | opens Settings (`press`); disabled while a card is busy |
+| A mode card | the card's own visible face: where a card lies over another, the tap goes to the card on top, as it looks. Each card's centre is always on its own uncovered part (overlap < half a card) | Entering a mode. One button, "Detective Noir. Solve the case." plus "In progress." when it has a case to go back to. `press` on press-in; sinks to 0.98 (none under reduced motion) |
+| Prompt: Continue, Start a new case, Close | 52 pills, the 48 chip | as above |
+| Settings rows | at least 52 tall | Show interactives, Case clock, Sound, Haptics; Replay The Study (once solved: closes the sheet, `/tutorial`); Reduce motion; Add your email or the email; ESCAPD Pro; the version |
+| Android back | | a busy card swallows it; the prompt or Settings closes; otherwise the system leaves the app |
+| Focus order | | ESCAPD → Settings → the three cards in deck order → the notice. A sheet traps VoiceOver and hides home from TalkBack; its title takes focus once it has risen |
 
 ### States
 
-- **Appear:** no entry animation; the root Stack's fade. Rendered at once with THE STUDY "Unseal" and YOUR ROOM "Photograph".
-- **Loading (focus fetch):** YOUR CASE keeps its state line blank (a non-breaking space in the meta line), ignores taps, is not dimmed, and reads "Your case. Loading." with `{ busy: true, disabled: true }`. The fetch runs on every focus and only with a stored session (never creating a guest to label a card). No session → None yet.
-- **Building (queued or generating):** the state line is the kit's `ThinkingStates variant="meta" decorative`: "Building" in `ref.type.meta`, the shimmer sweeping from `textSecondary` to `textPrimary` and back (`ref.motion.thinking.shimmer`), repeating while the room develops. Hidden from accessibility (the card says "Your case. Developing."). While it shows and the hub has focus the room is followed with `watchRoom` plus a 5 s poll; a flip to ready (Open) or failed (See why) stops the shimmer at once and is announced ("Your case is ready." / "Your case didn't build. Open it to see why.") only when seen while the hub is open.
-- **Pressed (card):** white `glassFill` (3.5 %) eases in over the whole card and it settles to 0.97 (`card.pressScale`), both over `ref.motion.control` (120 ms ease-out); a selection haptic on press-in. Reduced motion: the overlay only, no scale. **Chips:** opacity 0.75. **Ghost pill:** the kit's colour cross-fade. **Switch:** native.
-- **Busy (THE STUDY or YOUR ROOM tapped):** the tapped card's state line becomes a small native `ActivityIndicator` in `textLabel`, centred in the line; the card stays at full strength, ignores taps and reads `{ busy: true, disabled: true }`, keeping focus. The other two cards go to 0.45 (`disabledOpacity.pill`) and the chip to 0.4, all disabled until navigation or the notice. A dimmed centre card keeps an opaque `void` underlay, so the side cards don't show through.
-- **Disabled (YOUR CASE: no room or a draft, no session, offline, try later):** glass, pills and icon at 0.45 as one layer; the state line explains why and stays at full strength; with no room, hint "Photograph a room first."
-- **Case status:**
-
-  | Case status | State line | Pill | Card label |
-  |---|---|---|---|
-  | Ready, never played, or the latest session abandoned | Open | — | "Your case. Open the case." |
-  | Ready, in progress | Continue | — | "Your case. Continue the case." |
-  | Ready, solved | Replay | SOLVED | "Your case. Solved. Replay the case." |
-  | Queued or generating | Building (thinking line) | — | "Your case. Building." |
-  | Failed | See why (never blames the player) | — | "Your case. It didn't build. See why." |
-  | No room (or a draft) | None yet | — | "Your case. None yet." + hint |
-  | Fetch failed: network / other | Offline / Try later | — | "Your case. Offline." / "Your case. Try later." |
-
-- **Error (THE STUDY only):** the notice capsule: "You're offline. Connect to begin." (Phosphor `WifiSlash`) or "Couldn't start the case. Try again in a moment." (`Warning`). It fades in over 120 ms (opacity, so it stays under reduced motion), is announced (iOS `announceForAccessibility`; Android through the slot's polite live region), and stays until the next card tap or focus; a repeat failure mounts a new one. One element on iOS (`accessible`), `screenReaderFocusable` on Android, never a keyboard stop. The layout does not move.
-- **Focus:** the kit's brass ring (`ref.focus`: 2 pt at a 2 pt offset). Chips: `FocusRing shape="pill"` round the 36 disc. Fan cards: one overlay above the fan with the focused card's box, centre and rotation, RN outline props round its 20.6 continuous corners, above the centre card; the cards are never restacked. Stacked cards: the same outline on the card. Ghost pill: the kit's own ring. **Focus return:** closing the sheet (Close, scrim, Android back) returns screen-reader focus to Settings after the 200 ms exit (`sheet.exit`; `motion.reducedFade` under reduced motion) plus 100 (`sheet.focusMargin`); reopening, leaving for the guide or leaving the hub cancels it.
-- **Large text / narrow / short screens:** the fan is designed on a 393-wide screen. Narrower screens scale the whole hand by width / 393 (360: 0.916); short columns scale it to what is left after the heading (`fanScale`); the hand shrinks about the axis with its top kept, so it never clips, and its container shrinks with it. The fan needs fontScale ≤ 1 (`fan.maxFontScale`) and a scale ≥ 0.75 (`fan.minScale`); otherwise the cards stack, upright, in reading order, in a scrolling column (spacers 131 : 96 round the hero block, the top one never more than the 124 band and frozen while the notice shows; the floor glow keeps the token's own 0.58 / 0.79): width = screen − 2 × `ref.space.edge` 20, gap 16, min height 96, height hugging the content, padding 16: the tag pill and the state line left-aligned (the busy indicator at the line's start; SOLVED 8 below), the 48 icon right-aligned and vertically centred. Same glass and rim at the card's own height, radius 23.7, no tilt. Text never shrinks; title, subtitle, notice and sheet rows wrap; the sheet scrolls past 64 %.
-- **Reduced motion** (`useTheme().reducedMotion`): no press scale; the building line is still (`shimmer.still`); the sheet and scrim cross-fade over `motion.reducedFade` 140 and focus returns after 240. The colour and opacity changes keep their 120 ms timing.
-- **Permission:** none here (section 03).
-
-### User notes
-
-> "you need to follow the formatting and design as closely as you possibly can. pay attention to the colors, typography, icons, layout, and small details like shadows gradients border radius background z stacks, how things are being laid out." (2026-10-25, round 3)
-
-Applied. The hub takes Opal's look element by element: the void ground and the measured floor glow, the 36 chips with the diagonal specular ring at safe top + 12 and 16 from the edges, the image-plus-title group centred on the chips, the 1 pt gradient divider 16 below them, Opal's 124 band from the divider to the title box (title cap 253.7 / baseline 270.3 against 254.6 / 270.1), the 22 Semibold title and 17 Medium white-60 % subtitle 4 apart, the 28 band to the cards (from y 330), the floor glow rising from the cards' centre, the dark-glass cards with Opal's faint fading rim, no shadow, and its see-through z-stack (brighter where the front card lies over a back card, darker toward each side card's outer edge), the hairline label pills in 13 Semibold caps at 82 % white, the 54 %-height hero icon in the lime-to-aqua gradient with secondary strokes at 60 %, and the z-order (centre card on top, hiding the rims beneath).
-
-> "3 cards instead of 2."
-
-Kept, re-scaled after review: three cards at Opal's height (140 × 320) dealt like a hand into Opal's band (x 19.3–373.7), the centre one upright in front, the side ones ±6° and 10 lower, tucked behind it with about 85–105 of each showing. Opal's 187 width would leave only 82 of a side card showing at its pill, less than YOUR CASE's Opal-size pill, so the cards are 140 wide. Left to right: learn (THE STUDY) → photograph (YOUR ROOM) → play (YOUR CASE).
+- **Loading:** the cards show at once, without tags.
+- **In progress:** the tag, as above. A building case shows the same tag.
+- **Busy (a card's tap waiting on the network):** a small `ActivityIndicator` in the mode's ink takes the tag's place; the card ignores taps and reads busy. The other cards are shaded with black at 55 % (never made see-through, so the card beneath stays hidden) and disabled, and the chip is disabled.
+- **Error:** the notice capsule, "You're offline. Connect to begin." (WifiSlash) or "Couldn't start the case. Try again in a moment." (Warning). It fades in, is announced, and stays until the next tap or focus.
+- **Focus:** the brass ring round the focused card (turned with it).
+- **Reduced motion:** no squash; sheets cross-fade.
 
 ### Decisions
 
-1. **Header (round 4, the user):** the ESCAPD wordmark, white with a grey doorway edge, centred, as the screen's header; no magnifier and no "Case files". The right chip keeps Opal's sliders and is labelled "Settings" (sliders read as settings; a gear would break Opal's look). Opal's left chevron and X disc stay left out (the hub is the root); the chevron's place keeps the logo centred.
-2. **Glass hero:** removed with its tilt, glare and layout rules; `Magnifier.tsx` is deleted.
-3. **Ground:** `void` + `FloorGlow`, no grain (the reference has none; the user's instruction overrides day one's Grain). Fanned, the glow is moved up with the fan (main's call after review): it starts at the cards' centre and is full 20 below the fan's foot, so the cards' olive feet sit on lit floor, as in Opal.
-4. **Cards:** opaque glass (`ref.gradient.card` + Opal's faint `cardRim`) built from clipped views, so the corners are the platform's continuous corner and the centre card hides the side cards' rims; Opal's see-through look is painted on (white 2 % where the centre card lies over a side card; black 0 to 18 % across each side card toward its outer edge). Pressed: a 3.5 % white overlay and 0.97 scale (proposals; the reference shows no press).
-5. **Side-card centring:** each block centres on the face the centre card leaves exposed at its own height (inset `coveredWidth`), not on the card: with the side cards tucked behind the centre card, only 85–105 of each shows. The centre card is unchanged.
-6a. **Card scale (after review):** Opal's height (320), Opal's absolute pill and 24 tag offset, icons at 68 (ink about 62) with Opal's 4.9 stroke, dealt like a hand in Opal's band. Width 140, not Opal's 187: with three cards in Opal's 354 band, a 176–187 card leaves only 82–88 of a side card showing at its pill, and YOUR CASE's pill is 92–97.
-6. **State line:** `ref.type.meta` grey in sentence case (Unseal, Photograph, Open, See why, None yet, Offline, Try later, Building). "Building" is sentence case too.
-7. **SOLVED:** a label pill like the tags, centred at 83 % of the card's height, below the icon.
-8. **Busy:** the state line becomes a small `ActivityIndicator` in `textLabel` (no brass).
-9. **Notice:** a dark capsule in the chips' material, white glyph and meta text; no warning colour.
-10. **Settings (round 4, the user: "more than 2 things in it"):** the kit's `DarkSheet` with grouped rows in the review screen's list style, only settings that work: Show interactives, Haptics, Reduce motion, the account row, ESCAPD Pro, the version. Sound, music and hints have no effect in the app yet, so they are left out. Server-backed switches save optimistically (a new player is made a guest first, as THE STUDY does, since settings live on the account) and flip back with a quiet grey note when saving fails. A signed-in email is shown as a value, not a link (the account screen has nothing to do for a full account).
-13. **Copy (round 4 glossary):** "Developing" → "Building"; "Your case. Developing." → "Your case. Building."; "It didn't develop" → "It didn't build"; "Your case didn't develop…" → "Your case didn't build…". "Settings" → "Settings".
-14. **Haptics (round 4):** card press-in `press`; the Settings chip `press`; switches `tick` on change (Haptics ticks once after it turns on, never as it turns off); navigation rows `press`; Close is the kit's `press`.
-11. **Icons:** ESCAPD's three-rail sliders glyph (react-native-svg), Phosphor `X`, `WifiSlash`, `Warning` at regular weight; the three card icons are ESCAPD's own line art in Opal's style.
-12. **Subtitle colour:** `ref.color.textSecondaryAlpha` (white 60 %), Opal's measured ≈ #9C on black.
+1. **Words at the top** (round 6): with each card lying over the foot of the one above, the top is the only part of an upper card that always shows, so the name, tagline and tag moved there from the foot.
+2. **The tilt alternates** with the first card turned clockwise, so the next card's edge drops away under the first card's words; the 40 pt peek covers the second card's few points of lean.
+3. **Dimmed is shaded, not faded,** so an overlapped card never shows through.
+4. **The Study:** the first noir tap runs it. Part-played, it is noir's case to go back to (Continue resumes it) unless the player has a case of their own there; once solved it can be replayed from its case closed and from Settings → Replay The Study.
+5. **No Pro lock on the prompt:** Start a new case goes through `openCapture`, which sends a player without Pro to `/pro`.
 
 ### Needs you
 
-1. **Card width:** Opal's cards are 187 × 320; ours are 140 × 320, so three fit Opal's 354 pt hand with each side card's label clear of the centre card (about 105 pt of each side card shows at the label). Wider cards would need smaller side labels, or a hand that runs past the screen edges.
-2. **Switch track:** the "on" track uses the icons' aqua (`lineEnd`); the reference shows no switch. White thumb on pale aqua is low-contrast on iOS (the thumb's shadow carries it). Alternative: `textPrimary` track with a `void` thumb.
-3. **iOS switch touch area:** the native switch is 51 × 31 on iOS, under 44; as in Case options.
+1. The tilt (2–2.5°), the cover share (36 %) and the shadow's weight are first values; say if the deck should lean more or less.
+2. Covers are composed with their focus centre-right; on the two upper cards the lower third is covered, so the detective's coat and crime scene's floor sit partly under the next card.
 
 ## 02 · Camera
 
@@ -757,7 +741,7 @@ Screen-reader order: title (header) → the three lines → the error or info li
 
 ## 06 · Building your case (the build wait, formerly the darkroom)
 
-Reference: none. It's derived from 07 Photos (the review screen it opens from), 02 Camera and 01 Game mode. Values are in pt, on 393 × 852 (safe areas 59 / 34).
+Reference: none. It's derived from 07 Photos (the review screen it opens from), 02 Camera and 01 Home. Values are in pt, on 393 × 852 (safe areas 59 / 34).
 
 **Round 4: plain language.** The user said to "drop the light table dark room thing, it's not very self explanatory". The screen is no longer named; the wait is "Building your case". Every visible and spoken string follows the round-4 glossary: photo (not plate), build / building / ready (not develop), home screen (not title screen), Arabic numerals, and no AI. Layout, the glass, its drift and the thinking line are unchanged. Internal names (`/capture/develop`, `useDevelopment`, testIDs, `ref.layout.develop`, file names) stay as they are.
 
@@ -1178,7 +1162,7 @@ Each wheel is a vertical picker in a 64 × 132 void well (radius 20, 02's counte
 
 ### Layout (Case closed)
 
-Unchanged from round 3: `ground`; a centred column (inset 24): 01's tag pill "CASE CLOSED", "The Study" in Roboto Serif 30/36, the server's message (body white) and the exit line (subtitle grey), two 07 stat cards (Time, Hints used), "The next case is your own room." in 14 grey; the pinned band: the white bar "Photograph your room", quiet "Back to start", quiet "Replay The Study". Copy checked for the old metaphor: none.
+Unchanged from round 3: `ground`; a centred column (inset 24): 01's tag pill "CASE CLOSED", "The Study" in Roboto Serif 30/36, the server's message (body white) and the exit line (subtitle grey), two 07 stat cards (Time, Hints used), "The next case is your own room." in 14 grey; the pinned band: the white bar "Photograph your room", quiet "Back to start", quiet "Replay The Study". Copy checked for the old metaphor: none. (Superseded by Game feel · 5: the band is now the guide's pill "Start a new case", quiet "Back to Detective Noir", which goes home, and quiet "Replay The Study".)
 
 ### Haptics (`useFeedback`)
 
@@ -1365,14 +1349,14 @@ Only the account screens still use the round-2 look; they have no layout of thei
 
 ## Modes
 
-Three modes (MODES_PROMPT.md, Part 2): Detective Noir, Crime Scene and Paranormal. The shell (home, Pro, account) keeps the reference look above. The screens inside a mode take that mode's theme: its mode screen and intro, the capture flow it opened (guide, camera, review, build wait), and the player with its case-closed screen.
+Three modes (MODES_PROMPT.md, Part 2): Detective Noir, Crime Scene and Paranormal. The shell (home, Pro, account) keeps the reference look above. The screens inside a mode take that mode's theme: its first-time intro, the capture flow it opened (guide, camera, review, build wait), and the player with its case-closed screen. Round 6 removed the mode's own screen (the case list): a mode card goes straight into the mode (01 · Entering a mode).
 
 ### Themes and the active mode
 
 - **Tokens:** `modeThemes[genre]` in `src/theme/tokens.ts` holds the only mode colours. Each theme has `ground`, `surface`, `raised`, `ink`, `inkMuted`, `accent` (a fill), `accentInk`, `stamp` (text in the mode's colour), `rim`, `glow` (paranormal) and `detail` (crime scene's police-tape yellow, tiny accents only), plus `display`, `name`, `tagline` and `treatment`. `shellTheme` is the reference look with no treatment.
 - **Contrast:** `ink`, `inkMuted` and `stamp` reach 4.5:1 or more on `ground`, `surface` and `raised`, and `accentInk` on `accent` (`src/theme/__tests__/modeThemes-test.ts`). Crime scene's red fill (#A3201F) is too dark for text, so red text uses `stamp` (#E2524C).
 - **Display faces** (Google Fonts, loaded in `app/_layout.tsx`, `ref.font.*Display`): Playfair Display Black, Archivo Black and Crimson Text SemiBold Italic, all set in capitals.
-- **The active mode** is `src/game/mode.ts` (`useMode`, `setMode`, `useModeTheme`; null is the shell). It is set on focus by `useModeOnFocus` (home passes null, a mode screen its genre), by the player from `definition.genre` (absent means noir), and by `openCapture({ genre })`, which also keeps the genre with the roll, so `developPlates` creates the room in it.
+- **The active mode** is `src/game/mode.ts` (`useMode`, `setMode`, `useModeTheme`; null is the shell). It is set on focus by `useModeOnFocus` (home passes null, a mode's intro its genre), by the player from `definition.genre` (absent means noir), by `openCapture({ genre })`, which also keeps the genre with the roll, so `developPlates` creates the room in it, and by home's Continue before it opens a building case's wait. `<ModeScope genre>` shows one mode inside a part of the shell without setting the store: home's continue prompt is one, over home.
 
 ### Photo treatment
 
@@ -1393,18 +1377,18 @@ Three modes (MODES_PROMPT.md, Part 2): Detective Noir, Crime Scene and Paranorma
 
 Each mode has its own illustrated cover, drawn in code with Skia from that mode's theme colours. It uses no photographs.
 
-**When it shows:** on home's mode card, the mode screen's banner and the mode intro, whenever the player hasn't photographed a room yet. Once they have, all three show their own newest room photo in the mode's treatment (MODES_PROMPT's signature touch). This replaces The Study's photo as the default art; The Study keeps its photo as a case (its case file and the tutorial).
+**When it shows:** always, on home's mode cards and the mode intro's banner. No card or banner ever shows a photo: not the player's own room, not The Study's (round 6, the user: illustrated art, not their pictures). The Study's photo stays in the tutorial only.
 
 **The covers** (`src/screens/hub/art/`):
 - **Detective Noir** (`noir.ts`): an office wall raked by light through venetian blinds, with rain on the window and smoke in the beams. A detective in a fedora stands in silhouette, the hat band and shoulder caught in brass, and his shadow falls on the wall. Monochrome, with brass only in the light.
 - **Crime Scene** (`crimeScene.ts`): a dark room at night, in one-point perspective. Through an open door, a hall is lit harsh pale from a far window and washed blood red. Crossed police tape over the doorway reads "CRIME SCENE · DO NOT CROSS". The beam falls across the floorboards onto a chalk outline and three yellow evidence markers numbered 1 to 3. No blood, body, weapon or gore, and yellow is only a detail.
 - **Paranormal** (`paranormal.ts`): an old oval mirror hung askew on damp trellis wallpaper. In it is a pale, featureless woman who isn't in the room; her cold light is the only real light. Below it are a console table with a drawer pulled out, a candle burning pale blue with smoke curling toward the glass, an empty balloon-back chair, floor mist and drifting motes. Eerie, not demonic: no symbols. Every pixel stays between 180° and 215° in hue, never mint.
 
-**Composition rules for all three:** the count chip's corner (top left) and the name plate (bottom left) stay dark and calm; the focus sits centre-right. Every colour comes from `modeThemes[genre]` via the kit's `tone()` and `mix()`, never a literal. Sizes scale with the cover's height (each has a design height of 260). Randomness is a fixed seed per mode (`draw.ts` `SEEDS`), so a cover is the same every time.
+**Composition rules for all three:** the top left (where the name, tagline and tag now sit) and the bottom left stay dark and calm; the focus sits centre-right. Every colour comes from `modeThemes[genre]` via the kit's `tone()` and `mix()`, never a literal. Sizes scale with the cover's height (each has a design height of 260). Randomness is a fixed seed per mode (`draw.ts` `SEEDS`), so a cover is the same every time.
 
-**Overlays on the card:** noir's brass rule and paranormal's glow still sit over the cover. Crime scene's corner police tape shows only over the player's own photo, since the drawn cover already tapes off its door.
+**Overlays on the card:** noir's brass rule and paranormal's glow sit over the cover. Crime scene has no overlay: its cover tapes off its own door (the corner tape strip is gone).
 
-**Baking** (`bake.ts`, `ModeCover.tsx`, `src/screens/mode/ModeArtImage.tsx`):
+**Baking** (`bake.ts`, `ModeCover.tsx`):
 - **Once per mode and size:** each cover is drawn once per mode, pixel size and scale, and kept in memory for the launch (12 entries, oldest dropped). A request for a key already baking shares that bake; a failed bake isn't kept, so the next request retries.
 - **Never in a render:** a frame asks for its cover from an effect after layout. Bakes run one at a time, each in its own idle slot (`requestIdleCallback`, 500 ms at most), so the screen paints first with each frame in its mode's `surface` colour.
 - **Showing it:** the cover fades in over `ref.motion.treatment` (instant under Reduce Motion; no fade if it was already baked). On a resize the old cover stays until the new one is ready. It is decorative and hidden from screen readers.
@@ -1413,15 +1397,24 @@ Each mode has its own illustrated cover, drawn in code with Skia from that mode'
 - **Font:** the police tape is set in Archivo ExtraBold (`@expo-google-fonts/archivo`). If the font fails or takes more than 3 s, the cover draws without the tape's words.
 - **Cost:** in a CPU-only headless renderer, a cover takes about 0.8 to 1.3 s; on the web build in this sandbox (software WebGL), about 2 to 2.7 s at 3×. Neither a real GPU nor a phone has been measured yet.
 
-**Tests:** `src/screens/hub/art/__tests__/bake-test.tsx` (it bakes once, at the right size, retries a failure, fades or doesn't, and keeps the old cover on a resize); hub-test and mode-test cover the cover-or-own-photo rule and the tape overlay.
+**Tests:** `src/screens/hub/art/__tests__/bake-test.tsx` (it bakes once, at the right size, retries a failure, fades or doesn't, and keeps the old cover on a resize); hub-test and mode-test check that every card and the intro's banner draw the cover and that no photo or tape strip shows anywhere.
 
 ### Needs you (mode art)
 
 - Check the cover bake time on a real phone and in a desktop browser with hardware WebGL.
 - Crime scene's chalk outline: keep it, or drop it if it reads as a body? Removing it is one block (step 7 in `crimeScene.ts`).
 - Crime scene's doorway is strongly red against the otherwise grey image; say if it should be more desaturated.
-- On short cards (168 pt) the name plate covers most of crime scene's floor, and the tape words are too small to read below about 200 pt of card height.
-- On the mode screen's wide, short banner (about 393 × 200), crime scene's door ends up small in the top right.
+- On the deck's upper cards the next card covers the cover's lower third (crime scene's floor and markers, the detective's coat); the tape words are too small to read below about 200 pt of card height.
+- On the intro's wide, short banner (about 393 × 200), crime scene's door ends up small in the top right.
+
+### Inside a mode, round 6 (no case list)
+
+The user's round 6 note: no case list and no saved titles; tapping a mode resumes the case you have or starts a new one. So:
+- **Removed:** the mode screen `/mode/<genre>` (`app/mode/[genre].tsx`, `ModeScreen.tsx`) and its pieces: the case files and their rubber stamps (`CaseFileRow.tsx`, `Stamp`), `useModeCases.ts`, `caseQueries.ts`, `caseFiles.ts` (its intro words moved to `src/screens/mode/copy.ts`, `MODE_INTRO`), the light table's bar (`ModeBar`) with its Pro lock, `TextButton`, `STUDY_ART` (`art.ts`), the noir list's "The first case" entry, home's case counts, and their tokens (`ref.layout.mode.file / stamp / bar / empty`, `ref.layout.hub.modes.chip / gap / tape / artEdge`).
+- **Kept:** the first-time intro, `/mode/intro/<genre>` (`ModeIntro.tsx`), for crime scene and paranormal: the banner of the mode's cover with the camera's back square (`parts.tsx`: `BackSquare`, `ModeHeader`, `ModeBanner`, `FootShade`), the kicker, the name and tagline, three steps, and its start button, now the photo guide's pill in the mode's accent (`ModePill` ghost) pinned in the guide's reading column, `ref.space.ctaBottom` above the safe bottom. Start remembers the intro and runs `openCapture({ genre, replace: true })` (busy with the pill's spinner while access is checked; `/capture` if the check can't run), so back from the guide returns home. Noir has no intro; a noir param goes home.
+- **Entering a mode** (first time, the continue prompt, or a new case at once) is home's: 01 · Entering a mode.
+- **Words:** `src/screens/mode/copy.ts`: `MODE_INTRO` (the intros) and `RESUME_COPY` / `RESUME_ACTIONS` (the prompt), in each mode's voice.
+- **Tests:** `src/screens/mode/__tests__/mode-test.tsx` (the intro), `src/screens/hub/__tests__/hub-test.tsx` and `caseStatus-test.ts` (entering a mode).
 
 ### Motion: one exception
 
@@ -1457,7 +1450,7 @@ The brief: keep the premium quality, but make Escapd feel like a noir detective 
 
 ### 1. Every tap answers back
 
-- **Press squash** (`src/components/noir/squash.tsx`: `usePressSquash`, `SquashPressable`, a drop-in `Pressable`). Every button sinks while pressed: pills, buttons, square header buttons, keypad keys, tray items and the guide's close button go to 0.96; large panels (mode cards, case-file rows, photo tiles) go to 0.98. Press-in takes 90 ms, easing out. Release is a spring (damping 22, stiffness 420, mass 0.6) with a trace of overshoot that settles in about 220 ms. A pressed opacity or fill still applies on top. There's no squash while a button is busy. Tokens: `ref.motion.juice.press`. Settings rows don't squash, because list rows that scale read oddly.
+- **Press squash** (`src/components/noir/squash.tsx`: `usePressSquash`, `SquashPressable`, a drop-in `Pressable`). Every button sinks while pressed: pills, buttons, square header buttons, keypad keys, tray items and the guide's close button go to 0.96; large panels (mode cards, photo tiles) go to 0.98. Press-in takes 90 ms, easing out. Release is a spring (damping 22, stiffness 420, mass 0.6) with a trace of overshoot that settles in about 220 ms. A pressed opacity or fill still applies on top. There's no squash while a button is busy. Tokens: `ref.motion.juice.press`. Settings rows don't squash, because list rows that scale read oddly.
 - **Hotspots:** pressing one in gives a `tick`, and the outcome brings its own haptic.
 - **Item pickup** (`src/render/PickupFlight.tsx`): a granted item stays out of the tray until the player taps "Pocket artifact" or closes the clue (the sheet covers the tray). It then flies from the object to its slot on an arc and bounces as it lands, with `pickup`. Positions are measured once; if they can't be measured within 160 ms, the item simply lands. A combined item lands without a flight. Tokens: `ref.layout.play.pickup`.
 - **The code pad** (`CodePad.tsx`, `CodeWheel.tsx`):
@@ -1518,7 +1511,7 @@ Docs: `docs/AUDIO.md` lists every file, what it's for, how it's made, its licenc
   | none | either number missing |
 
   Time never counts.
-- **Then the actions fade in:** "New case" and the way back.
+- **Then the actions fade in** (round 6): "Start a new case", the photo guide's pill in the mode's accent, which runs `openCapture({ genre, replace: true })` (a new case in the same mode; a player without Pro goes to `/pro`); then quiet "Back to <mode>", which now goes home (`router.dismissTo("/")`: there is no mode screen), and quiet "Replay the case" (The Study: "Replay The Study"). The Study's band keeps "The next case is your own room." over them.
 - **Timeline (ms after mount):**
 
   | Beat | Noir / crime scene | Paranormal |
@@ -1542,7 +1535,7 @@ Docs: `docs/AUDIO.md` lists every file, what it's for, how it's made, its licenc
 A short, dry voice per mode, only where the player is playing: noir is a hard-boiled narrator, crime scene is clipped police procedural, and paranormal is hushed and eerie (never demonic). Shared lines use noir's voice.
 - **Where the words live:**
   - `src/render/voice.ts`: `playVoice(genre)` for each mode's play-screen lines, `PLAY_COPY` for the shared ones and `failedLine()`;
-  - `MODE_COPY` in `src/screens/mode/caseFiles.ts`;
+  - `MODE_INTRO` and `RESUME_COPY` in `src/screens/mode/copy.ts` (the intros and home's continue prompt);
   - `src/render/accuse.ts`;
   - `WRONG_LABEL` in `victory.ts`.
   - The quiet "nothing new here" lines moved from `selectors.ts` into each voice.
@@ -1555,14 +1548,10 @@ A short, dry voice per mode, only where the player is playing: noir is a hard-bo
 - **Never rewritten:** server text (clues, hints, case names, messages). The app's lines are only fallbacks for when the server sends none.
 - **No darkroom or film words.** GAME_FEEL's "Developing the prints…" became "Pulling the case file…".
 
-**Before → after (the main lines; noir / crime scene / paranormal where they differ):**
+**Before → after (the main lines; noir / crime scene / paranormal where they differ; the mode screen's list, empty, error and The Study lines went with the screen in round 6):**
 
 | Where | Before | After |
 |---|---|---|
-| Mode screen list | Your cases | Case files / Case files / Your hauntings |
-| Empty list | No cases yet. Photograph a room and it becomes a case to solve. | Quiet week. Photograph a room and it becomes a case. / No cases on file. … becomes a crime scene. / (kept) |
-| Load error | Couldn't load your cases. Try again in a moment. | The trail went cold. Try again. / Couldn't pull the files. Try again. / Something interfered. Try again. |
-| The Study | Play / Continue / Replay The Study | Take the case / Back on the case / Reopen the case |
 | Intro kicker / button | How this mode works / Start | Crime scene: Briefing / Take the case · Paranormal: Before you go in / Step inside |
 | Player loading | Opening the case | Pulling the case file… / Securing the scene… / The room is waking… |
 | Player offline title | You're offline | The line's dead / No signal / Contact lost |
@@ -1582,7 +1571,8 @@ A short, dry voice per mode, only where the player is playing: noir is a hard-bo
 | Wrong accusation | That doesn't add up. | The charge won't stick. |
 | Case closed hints stat | Hints used | Tips taken |
 | Case closed wrong stat | Wrong codes / Wrong answers / Wrong codes | Wrong codes / Wrong calls / Missteps |
-| Case closed actions | New case / Play this case again | Next case / Replay the case |
+| Case closed actions | New case / Play this case again | Start a new case / Replay the case (round 6: "Next case" became "Start a new case") |
+| Continue prompt (round 6, new) | — | You've still got a case open. / You have an open case on file. / Something is still waiting for you. (building: Your next case is still coming together. / Your scene is still being processed. / Something is still taking shape.) |
 
 ### Tests
 
@@ -1599,7 +1589,7 @@ A short, dry voice per mode, only where the player is playing: noir is a hard-bo
 - a second press doesn't restart it, and touches pass through while it falls;
 - a sheet unmounted mid-slide never calls `onClose` late;
 - a caller that unmounts a sheet directly (one sheet swapped for another, home's Android back) still gets the old exit animation;
-- home bumps the Settings sheet's key on every open, so a tap while it's still falling opens a fresh one, and focus returns to the chip a margin after the sheet has gone.
+- home bumps the Settings sheet's and the continue prompt's keys on every open, so a tap while one is still falling opens a fresh one, and focus returns to the chip (or the card) a margin after the sheet has gone.
 
 Tests: `src/components/noir/__tests__/darkSheet-test.tsx`. The play tests wait for the sheet to leave (`continueResult`).
 

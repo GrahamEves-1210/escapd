@@ -1,4 +1,4 @@
-// Home's error notice when noir's first tap can't start The Study (docs/DESIGN.md, 01 · States: Error), in the
+// Home's error notice when a mode card's tap can't go on (offline, or the server; docs/DESIGN.md, 01 · States: Error), in the
 // chips' material: a capsule in ref.color.ground (the chips' fill) with a 1 pt rim
 // (white 10 %), padding 8 x 16. Inside: a Phosphor glyph (WifiSlash offline,
 // Warning otherwise) at 16 in textPrimary, centred on the first meta line,
@@ -17,13 +17,13 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-na
 import { ICON_WEIGHT, WarningIcon, WifiSlashIcon } from "@/components/icons";
 import { controlTiming } from "@/components/noir";
 import { ref } from "@/theme/tokens";
-import { STUDY_FAILED, STUDY_OFFLINE } from "./caseStatus";
+import { NOTICE_FAILED, NOTICE_OFFLINE } from "./caseStatus";
 
 const H = ref.layout.hub;
 const T = ref.type.meta;
 
 export function HubNotice({ offline }: { offline: boolean }) {
-  const text = offline ? STUDY_OFFLINE : STUDY_FAILED;
+  const text = offline ? NOTICE_OFFLINE : NOTICE_FAILED;
   const Icon = offline ? WifiSlashIcon : WarningIcon;
   const { fontScale } = useWindowDimensions();
 

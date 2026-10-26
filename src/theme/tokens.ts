@@ -586,25 +586,48 @@ export const ref = {
       // in the 18 chip glyph box: rails 13 wide, stroke 1.2, 3.96 apart; ring
       // knobs 3.8 across at these shares of the rail (top, middle, bottom).
       sliders: { width: 13, stroke: 1.2, pitch: 3.96, knob: 3.8, knobs: [0.73, 0.41, 0.7] },
-      // The three mode cards (MODES_PROMPT.md Part 2), one column under the
-      // divider: the first `top` below it, `edge` from the screen's sides,
-      // `gap` apart, the last `foot` above the safe bottom. They share the
-      // height and fill the screen; none is shorter than `minHeight` (all three
-      // fit a 375 x 667 iPhone SE; large text scrolls). Each card is solid and physical: the
-      // mode's photo full bleed (baked at `artEdge` on its long edge), corners
-      // `radius` (continuous), a `rim` pt edge in the mode's rim. Its name and
-      // tagline sit `pad` in from the sides and foot on a plate of the mode's
-      // ground at `plate` opacity that fades up from clear over `fade` pt
-      // above them (`fadeStops`, shares of the fade, end on `plate`): enough
-      // for the mode's ink at 4.5:1 over a white photo (hub-test). The count
-      // is a capsule in the mode's ground at the top left, `pad` in, with a
-      // `rim` pt edge, `chip` padding. Pressed: `pressScale`, with the kit's squash (ref.motion.juice.press).
+      // The three mode cards (MODES_PROMPT.md Part 2, round 6): a deck dealt
+      // down the screen under the divider, each card lying partly over the one
+      // above it (later cards on top), the first `top` below the divider,
+      // `edge` from the screen's sides, the last `foot` above the safe bottom.
+      // `deck`: each card covers the foot of the one above by `cover` of a
+      // card's height, so on a short screen (375 x 667) all three fit and on a
+      // tall one they fill it: card = column / (3 - 2 x cover). Every card
+      // keeps its words plus `peek` of its art clear of the next card (large
+      // text grows the cards and the deck scrolls), and none is shorter than
+      // `minHeight`. Each is turned `tilt` degrees about its centre (one per
+      // card, alternating; the words' side keeps its room), and casts `shadow`
+      // up onto the card it covers, a soft darkening where they overlap, and
+      // catches `edge`, a faint line of light along its top.
+      // Each card is solid and physical: the mode's drawn cover full bleed,
+      // corners `radius` (continuous), a `rim` pt edge in the mode's rim. Its
+      // name and tagline sit `pad` in from the top and sides (the part no
+      // card covers) on a plate of the mode's ground at `plate` opacity that
+      // fades down to clear over `fade` pt below them (`fadeStops`, shares of
+      // the fade from the plate's edge, end on `plate`): enough for the mode's
+      // ink at 4.5:1 over a white picture (hub-test). A card with a case to go
+      // back to shows a small "In progress" tag beside its tagline: a capsule
+      // in the mode's ground with a `rim` pt edge, `tag` padding (its busy
+      // indicator takes the same place). A card dimmed while another works is
+      // shaded with void at 1 - disabledOpacity.pill (never see-through, so
+      // the card under it stays hidden). Pressed: `pressScale`, with the kit's
+      // squash (ref.motion.juice.press).
       modes: {
         top: 16,
         edge: 16,
-        gap: 12,
         foot: 12,
         minHeight: 168,
+        deck: {
+          cover: 0.36,
+          peek: 40,
+          tilt: [2.5, -2, 2],
+          shadow: "0px -10px 24px 0px rgba(0, 0, 0, 0.62)",
+          // Light along each card's top edge, inside its rim (between the corners): white 0 to 16 % to 0 across.
+          edge: {
+            angle: 90,
+            stops: [stop(0, refColor.textPrimary, 0), stop(0.5, refColor.textPrimary, 0.16), stop(1, refColor.textPrimary, 0)],
+          },
+        },
         radius: 20,
         rim: 1,
         pad: 18,
@@ -616,17 +639,11 @@ export const ref = {
           { offset: 1, opacity: 0.72 },
         ],
         taglineGap: 2,
-        chip: { padX: 10, padY: 4 },
+        tag: { padX: 10, padY: 4, gap: 8 },
         pressScale: 0.98,
-        artEdge: 1000,
         // Each mode's one signature touch, decorative and static:
         // noir's brass rule `gap` above the name;
         rule: { width: 28, height: 2, gap: 10 },
-        // crime scene's strip of police tape across the top-right corner
-        // (`length` x `height`, its centre `inset` in from the top and right
-        // edges, turned `angle`), its words (`repeat` times, past both ends)
-        // in the ground colour;
-        tape: { length: 240, height: 18, inset: 34, angle: "38deg", repeat: 3 },
         // paranormal's soft glow: a radial light in the mode's glow colour
         // centred at (cx, cy) of the card, `r` of its width across.
         glow: {
@@ -641,11 +658,10 @@ export const ref = {
         },
         type: {
           tagline: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
-          count: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
-          tape: { fontSize: 8, lineHeight: 10, fontWeight: "800", letterSpacing: 1.6, textTransform: "uppercase" },
+          tag: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
         } as const satisfies Record<string, TextStyle>,
       },
-      // THE STUDY's notice glyph: one meta line square.
+      // The notice's glyph (a card's tap that can't go on): one meta line square.
       noticeIcon: 16,
       // How you play, a dark sheet in the chips' and cards' material. Scrim
       // black 55 %. It slides up on ref.motion.sheetRise and away on sheetFall (`exit` is unused)
@@ -686,27 +702,26 @@ export const ref = {
         maxHeight: "88%",
       },
     },
-    // A mode's own screens (/mode/<genre> and its first-time intro), in the
-    // mode's theme (modeThemes): every colour is the mode's, never one here.
+    // A mode's first-time intro (/mode/intro/<genre>), in the mode's theme
+    // (modeThemes): every colour is the mode's, never one here.
     mode: {
       // The back square (ref.button.square in the mode's raised and rim) `edge`
       // from the side and `top` below the safe top, as on the camera.
       edge: 21,
       top: 8,
-      // The fixed header's backing, so the list never runs under the square
+      // The fixed header's backing, so the content never runs under the square
       // or the status bar: the ground from the screen's top to `header.below`
       // under the square, then a `header.shade`-tall fade to clear. It fades
       // in over the last `header.fade` pt of scroll before the banner's foot
       // reaches the backing's foot, so at rest the square sits on the art.
-      // The list reports its scroll every `throttle` ms (a frame at 60 fps).
+      // The content reports its scroll every `throttle` ms (a frame at 60 fps).
       header: { below: 8, fade: 24, shade: 24, throttle: 16 },
-      // The banner: the mode's art (home's card art) full bleed from the
-      // screen's top to `banner` below the safe top, baked at `artEdge`,
-      // shaded in the ground behind the status bar and fading into it over
-      // its lower part (`bannerFade`, shares of its height). The back square
-      // sits on it; the words sit below it.
+      // The banner: the mode's drawn cover (home's card art) full bleed from
+      // the screen's top to `banner` below the safe top, shaded in the ground
+      // behind the status bar and fading into it over its lower part
+      // (`bannerFade`, shares of its height). The back square sits on it; the
+      // words sit below it.
       banner: 148,
-      artEdge: 1000,
       bannerFade: [
         { offset: 0, opacity: 0.55 },
         { offset: 0.3, opacity: 0 },
@@ -714,66 +729,22 @@ export const ref = {
         { offset: 0.78, opacity: 0.62 },
         { offset: 1, opacity: 1 },
       ],
-      // The column's side inset; the name `titleTop` under the banner, the
-      // tagline `taglineGap` under the name; the list's heading `sectionTop`
-      // under the tagline and `sectionGap` above the first case file.
+      // The column's side inset; the tagline `taglineGap` under the name.
       inset: 20,
-      titleTop: 4,
       taglineGap: 4,
-      sectionTop: 28,
-      sectionGap: 12,
-      // A case file: a panel in the mode's surface with a `rim` pt edge in its
-      // rim, `radius` corners, `pad` inside, at least `minHeight` tall, `gap`
-      // between files; the treated thumbnail `thumb` square (baked at
-      // `thumbEdge`) with `thumbRadius` corners, the words `textGap` from it,
-      // the date `metaGap` under the title. Pressed at `pressedOpacity`.
-      file: { radius: 8, rim: 1, pad: 12, minHeight: 88, gap: 10, thumb: 64, thumbRadius: 4, thumbEdge: 256, textGap: 14, metaGap: 4, pressedOpacity: 0.75 },
-      // A stamp (OPEN, IN PROGRESS, CLOSED, BUILDING, DIDN'T BUILD): a `border`
-      // pt outline in the mode's stamp colour, `radius` corners, padding, set
-      // at `angle` like a rubber stamp; CLOSED is inked solid. In Archivo
-      // ExtraBold caps (ref.font.grotesk).
-      stamp: {
-        border: 1.5,
-        radius: 3,
-        padX: 6,
-        padY: 3,
-        angle: "-5deg",
-        type: { fontFamily: refFont.grotesk, fontSize: 11, lineHeight: 14, letterSpacing: 1, textTransform: "uppercase" } as const satisfies TextStyle,
-      },
-      // The one strong action (New case, Start), pinned to the foot: the light
-      // table's bar in the mode's accent with its accentInk label, `height`
-      // tall, `radius` corners, `pad` above it and `foot` above the safe
-      // bottom; the list scrolls under a `shade`-tall fade into the ground.
-      // The Pro lock: a capsule `lock.border` pt in accentInk at the bar's
-      // right, `lock.inset` in, a LockSimple glyph at `lock.icon` and "Pro".
-      bar: {
-        height: 48,
-        radius: 2,
-        pad: 12,
-        foot: 8,
-        shade: 24,
-        lock: { inset: 12, icon: 13, gap: 4, padX: 8, padY: 2, border: 1 },
-      },
-      // No cases yet: the friendly line inside an empty file's outline (a
-      // dashed `empty.border` pt edge in the mode's muted ink, the file's
-      // corners, `empty.pad` inside, at least a file's height). The error
-      // line sits `emptyTop` under the heading.
-      emptyTop: 4,
-      empty: { border: 1, pad: 20 },
-      // The first-time intro: the kicker `introTop` under the banner; the
-      // steps `stepsTop` under the tagline, `stepGap` apart; each step's
-      // numeral (the mode's display face at `numeral`) in a `numeralWidth`
-      // column, its words `stepTextGap` under the step's title.
+      // The pinned foot (the photo guide's pill, in its reading column,
+      // ref.space.ctaBottom above the safe bottom): `pad` above the pill, and
+      // the content scrolls under a `shade`-tall fade into the ground.
+      foot: { pad: 12, shade: 24 },
+      // The intro: the kicker `introTop` under the banner; the steps
+      // `stepsTop` under the tagline, `stepGap` apart; each step's numeral
+      // (the mode's display face at `numeral`) in a `numeralWidth` column, its
+      // words `stepTextGap` under the step's title.
       intro: { introTop: 4, stepsTop: 32, stepGap: 24, numeralWidth: 40, stepTextGap: 4 },
       type: {
         tagline: { fontSize: 17, lineHeight: 22, fontWeight: "500" },
-        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
         kicker: { fontSize: 13, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2, textTransform: "uppercase" },
-        title: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
-        meta: { fontSize: 13, lineHeight: 16, fontWeight: "400" },
         body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
-        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
-        lock: { fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 0.4 },
         step: { fontSize: 17, lineHeight: 22, fontWeight: "600" },
         numeral: { fontSize: 34, lineHeight: 38 },
       } as const satisfies Record<string, TextStyle>,
@@ -1695,7 +1666,7 @@ export const ref = {
 
 // ---------------------------------------------------------------------------
 // The modes (MODES_PROMPT.md, Part 2). The shell (home, Pro, account) keeps
-// the reference look above; the screens inside a mode (its mode screen, the
+// the reference look above; the screens inside a mode (its intro, the
 // capture flow, the player and its case closed) take that mode's theme, read
 // through useModeTheme() in src/game/mode.ts. Colours here are the only mode
 // colours: screen code never writes one.

@@ -6,8 +6,8 @@ import type { Genre } from "@/lib/puzzle-types";
 import { setMode } from "./mode";
 
 /**
- * Sets the active mode each time the calling screen gains focus: a mode
- * screen passes its genre, home passes null. Leaving does nothing; the next
+ * Sets the active mode each time the calling screen gains focus: a mode's
+ * intro passes its genre, home passes null. Leaving does nothing; the next
  * screen sets its own.
  */
 export function useModeOnFocus(genre: Genre | null) {

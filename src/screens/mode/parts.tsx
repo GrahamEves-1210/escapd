@@ -1,23 +1,21 @@
-// A mode's own controls (MODES_PROMPT.md Part 2), the reference look's
-// pieces in the mode's palette: the camera's square back button, the light
-// table's bar in the mode's accent (with New case's Pro lock), the rubber
-// stamps on case files, and the banner of the mode's art. Every button sinks
-// with the kit's press-in squash (SquashPressable) beside its pressed opacity. Every colour is
-// the mode's theme (modeThemes), every size ref.layout.mode or a shared ref token.
+// A mode's own pieces (MODES_PROMPT.md Part 2), the reference look's parts
+// in the mode's palette, for its first-time intro: the camera's square back
+// button, the fixed header that backs it once the content scrolls under it,
+// the banner of the mode's drawn cover, and the fade above the pinned foot.
+// The foot's button is the photo guide's pill (ModePill, the mode's accent).
+// Every colour is the mode's theme (modeThemes), every size ref.layout.mode or
+// a shared ref token.
 import { useId } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { Extrapolation, interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { LockSimpleIcon } from "phosphor-react-native/src/icons/LockSimple";
 import { ArrowLeftIcon } from "@/components/icons";
 import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { ref, type ModeTheme } from "@/theme/tokens";
-import type { ModeArt } from "./art";
-import { ModeArtImage } from "./ModeArtImage";
-import { STAMP_WORDS, type CaseStamp } from "./caseFiles";
+import { ModeCover } from "@/screens/hub/art/ModeCover";
 
 const L = ref.layout.mode;
 const SQ = ref.button.square;
@@ -46,7 +44,7 @@ export function BackSquare({ theme, onPress, testID = "mode-back" }: { theme: Mo
 }
 
 /**
- * The scroll offset of a mode screen's list, tracked on the UI thread for its
+ * The scroll offset of a mode intro's content, tracked on the UI thread for its
  * header: `y` for ModeHeader, `props` for the list's Animated.ScrollView.
  */
 export function useModeScroll() {
@@ -116,102 +114,11 @@ export function ModeHeader({
 }
 
 /**
- * The one strong action, pinned to the foot: the light table's bar in the
- * mode's accent, its label in accentInk. `locked` adds the Pro lock (a
- * LockSimple glyph and "Pro" in an outlined capsule at the right); the tap
- * still goes through (openCapture sends the player to /pro). Busy keeps full
- * strength, ignores taps and shows a small indicator in place of the lock.
- */
-export function ModeBar({
-  theme,
-  label,
-  onPress,
-  locked = false,
-  busy = false,
-  testID,
-}: {
-  theme: ModeTheme;
-  label: string;
-  onPress: () => void;
-  locked?: boolean;
-  busy?: boolean;
-  testID?: string;
-}) {
-  const focus = useFocusRing();
-  const feedback = useFeedback();
-  return (
-    <SquashPressable
-      accessibilityRole="button"
-      accessibilityLabel={locked ? `${label}. Pro` : label}
-      accessibilityHint={locked ? "Needs ESCAPD Pro." : undefined}
-      squash={busy ? false : undefined}
-      accessibilityState={{ disabled: busy, busy }}
-      onPressIn={busy ? undefined : feedback.press}
-      onPress={busy ? undefined : onPress}
-      onFocus={focus.onFocus}
-      onBlur={focus.onBlur}
-      testID={testID}
-      style={({ pressed }) => [styles.bar, { backgroundColor: theme.accent }, pressed && !busy && styles.pressed]}
-    >
-      <Text style={[L.type.action, styles.barLabel, { color: theme.accentInk }]}>{label}</Text>
-      {busy ? (
-        <View pointerEvents="none" style={styles.barSide}>
-          <ActivityIndicator size="small" color={theme.accentInk} testID={testID ? `${testID}-busy` : undefined} />
-        </View>
-      ) : locked ? (
-        <View pointerEvents="none" style={styles.barSide}>
-          <View style={[styles.lock, { borderColor: theme.accentInk }]} testID={testID ? `${testID}-lock` : undefined}>
-            <LockSimpleIcon size={L.bar.lock.icon} weight="bold" color={theme.accentInk} />
-            <Text style={[L.type.lock, { color: theme.accentInk }]}>Pro</Text>
-          </View>
-        </View>
-      ) : null}
-      <FocusRing visible={focus.focused} shape="panel" radius={L.bar.radius} />
-    </SquashPressable>
-  );
-}
-
-/** A quiet text button in the mode's ink (Try again): 44 tall at least, the press haptic, the focus ring. */
-export function TextButton({ theme, label, onPress, testID }: { theme: ModeTheme; label: string; onPress: () => void; testID?: string }) {
-  const focus = useFocusRing();
-  const feedback = useFeedback();
-  return (
-    <SquashPressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPressIn={feedback.press}
-      onPress={onPress}
-      onFocus={focus.onFocus}
-      onBlur={focus.onBlur}
-      testID={testID}
-      style={({ pressed }) => [styles.text, pressed && styles.pressed]}
-    >
-      <Text style={[L.type.action, { color: theme.ink }]}>{label}</Text>
-      <FocusRing visible={focus.focused} shape="panel" radius={L.bar.radius} />
-    </SquashPressable>
-  );
-}
-
-/** A case file's rubber stamp, in the mode's stamp colour (BUILDING in the muted ink); CLOSED is inked solid. */
-export function Stamp({ theme, stamp, testID }: { theme: ModeTheme; stamp: CaseStamp; testID?: string }) {
-  const solid = stamp === "closed";
-  const tone = stamp === "building" ? theme.inkMuted : theme.stamp;
-  return (
-    <View
-      style={[styles.stamp, { borderColor: tone }, solid && { backgroundColor: tone }, stamp === "building" && styles.dashed]}
-      testID={testID}
-    >
-      <Text style={[L.stamp.type, { color: solid ? theme.surface : tone }]}>{STAMP_WORDS[stamp]}</Text>
-    </View>
-  );
-}
-
-/**
- * The top of a mode's screens: its art (the same picture as its home card:
- * the player's room in the mode's treatment, or the mode's cover) full bleed from the screen's top to `height`, fading into
+ * The top of a mode's screens: its drawn cover (the same picture as its home
+ * card) full bleed from the screen's top to `height`, fading into
  * the ground at its foot. Decorative: hidden from screen readers.
  */
-export function ModeBanner({ genre, theme, art, height }: { genre: Genre; theme: ModeTheme; art: ModeArt; height: number }) {
+export function ModeBanner({ genre, theme, height }: { genre: Genre; theme: ModeTheme; height: number }) {
   const id = `banner${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
     <View
@@ -221,7 +128,7 @@ export function ModeBanner({ genre, theme, art, height }: { genre: Genre; theme:
       importantForAccessibility="no-hide-descendants"
       testID="mode-banner"
     >
-      <ModeArtImage genre={genre} art={art} maxEdge={L.artEdge} testID="mode-banner-art" />
+      <ModeCover genre={genre} style={StyleSheet.absoluteFill} testID="mode-banner-art" />
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 1 1" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id={id} x1={0} y1={0} x2={0} y2={1}>
@@ -236,7 +143,7 @@ export function ModeBanner({ genre, theme, art, height }: { genre: Genre; theme:
   );
 }
 
-/** The fade the list scrolls under, above the pinned bar: clear to the ground. Decorative. */
+/** The fade the content scrolls under, above the pinned foot: clear to the ground. Decorative. */
 export function FootShade({ theme }: { theme: ModeTheme }) {
   const id = `shade${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
@@ -269,37 +176,6 @@ const styles = StyleSheet.create({
   backing: { position: "absolute", top: 0, left: 0, right: 0 },
   headerShade: { height: L.header.shade },
   back: { position: "absolute", left: L.edge },
-  bar: {
-    alignSelf: "stretch",
-    minHeight: L.bar.height,
-    alignItems: "center",
-    justifyContent: "center",
-    // Room for the lock on both sides, so the label stays on the axis.
-    paddingHorizontal: ref.space.xxl + ref.space.xxl,
-    borderRadius: L.bar.radius,
-    ...ref.curve,
-  },
-  barLabel: { textAlign: "center" },
-  barSide: { position: "absolute", top: 0, bottom: 0, right: L.bar.lock.inset, justifyContent: "center" },
-  lock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: L.bar.lock.gap,
-    paddingHorizontal: L.bar.lock.padX,
-    paddingVertical: L.bar.lock.padY,
-    borderWidth: L.bar.lock.border,
-    borderRadius: ref.radius.round,
-  },
-  stamp: {
-    alignSelf: "center",
-    paddingHorizontal: L.stamp.padX,
-    paddingVertical: L.stamp.padY,
-    borderWidth: L.stamp.border,
-    borderRadius: L.stamp.radius,
-    transform: [{ rotate: L.stamp.angle }],
-  },
-  dashed: { borderStyle: "dashed" },
-  text: { alignSelf: "flex-start", minHeight: ref.hit.min, justifyContent: "center" },
   banner: { position: "absolute", top: 0, left: 0, right: 0 },
-  shade: { position: "absolute", left: 0, right: 0, top: -L.bar.shade, height: L.bar.shade },
+  shade: { position: "absolute", left: 0, right: 0, top: -L.foot.shade, height: L.foot.shade },
 });

@@ -1,14 +1,15 @@
 // The one way into the camera (docs/DESIGN.md, 04 · Entry rule, as changed by
 // 05 · Entry rule). It checks access first; with access it always opens the
 // photo guide, which shows before every new room and then continues to the
-// camera. Callers: a mode's New case ({ genre }, push), the guide's
+// camera. Callers: home's mode cards and its continue prompt's Start a new
+// case ({ genre }, push), a mode's first-time intro ({ genre, replace: true }),
+// case closed's Start a new case ({ genre, replace: true }), the guide's
 // access-checked continue when it was opened directly ({ replace: true,
-// skipGuide: true }), /pro after its test purchase ({ replace: true }) and
-// /tutorial/complete ({ replace: true }, not wired yet). Every caller sits
-// directly on the hub or a mode screen, so back from wherever this lands
-// returns there. A genre sets the active mode (the guide, camera, review and
-// build wait take its look) and the mode the room is built in; a caller
-// without one keeps the roll's, so the trip through /pro keeps it.
+// skipGuide: true }) and /pro after its test purchase ({ replace: true }).
+// Back from wherever this lands returns home. A genre sets the active mode
+// (the guide, camera, review and build wait take its look) and the mode the
+// room is built in; a caller without one keeps the roll's, so the trip
+// through /pro keeps it.
 import { router, type Href } from "expo-router";
 import { setMode } from "@/game/mode";
 import { ensureSession, getMyAccess } from "@/lib/escapd-api";

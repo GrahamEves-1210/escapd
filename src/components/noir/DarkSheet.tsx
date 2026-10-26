@@ -45,8 +45,12 @@ const CLOSE_INSET = ref.radius.bottomSheet - C.size / 2;
 
 export interface DarkSheetProps {
   title: string;
-  /** "headline" (system Semibold 17, a utility sheet) or "serif" (Roboto Serif 17, 02's title: a narrative moment). */
-  titleStyle?: "headline" | "serif";
+  /**
+   * "headline" (system Semibold 17, a utility sheet), "serif" (Roboto Serif
+   * 17, 02's title: a narrative moment) or "display" (the mode's own display
+   * face, its `theme.display`: a mode's name, as home's continue prompt).
+   */
+  titleStyle?: "headline" | "serif" | "display";
   /** A grey ref.type.meta line under the title. */
   meta?: string;
   /** Called once the sheet has slid away (or at once if it is unmounted first). */
@@ -63,6 +67,8 @@ export interface DarkSheetProps {
   /** Default true. False holds the content still (a picker inside is being dragged). */
   scrollEnabled?: boolean;
 }
+
+const TITLE = { headline: ref.type.headline, serif: ref.type.serifTitle, display: null } as const;
 
 const SheetClose = createContext<(() => void) | null>(null);
 
@@ -163,7 +169,7 @@ export function DarkSheet({
       >
         <View style={styles.header}>
           <View style={styles.titleColumn}>
-            <Text ref={titleRef} accessibilityRole="header" style={[titleStyle === "serif" ? ref.type.serifTitle : ref.type.headline, { color: theme.ink }]}>
+            <Text ref={titleRef} accessibilityRole="header" style={[TITLE[titleStyle] ?? theme.display, { color: theme.ink }]}>
               {title}
             </Text>
             {meta ? <Text style={[styles.meta, { color: theme.inkMuted }]}>{meta}</Text> : null}

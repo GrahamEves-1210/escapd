@@ -1,7 +1,7 @@
-// What home's mode cards say (MODES_PROMPT.md Part 2). Pure: no React, no network.
-import type { GameSession } from "@/lib/escapd-api";
+// What home's mode cards know and say (MODES_PROMPT.md Part 2, round 6). Pure: no React, no network.
+import type { Href } from "expo-router";
+import type { GameSession, Room } from "@/lib/escapd-api";
 import type { Genre } from "@/lib/puzzle-types";
-import { caseCount } from "@/screens/mode/caseFiles";
 
 /** The Study's entry, from the latest tutorial session (an abandoned one unseals again, as the title screen did). */
 export type StudyEntry = "unseal" | "continue" | "replay";
@@ -12,22 +12,73 @@ export function studyEntry(session: Pick<GameSession, "status"> | null): StudyEn
   return "unseal";
 }
 
-/** Each mode's number of cases (rooms sent to be built: building, ready or failed). */
-export type ModeCounts = Record<Genre, number>;
+/**
+ * A case the player can go back to in a mode, which home's continue prompt
+ * resumes:
+ * - play: a ready room not completed (never played, in progress, or its last
+ *   run abandoned by "Restart this case"): /play/<id>;
+ * - build: a room still building (queued or generating): the build wait;
+ * - study: noir only, The Study left part-way (its session active) while the
+ *   player has no case of their own to go back to: /tutorial.
+ */
+export type CaseToContinue = { kind: "play"; roomId: string } | { kind: "build"; roomId: string } | { kind: "study" };
 
-export const NO_CASES: ModeCounts = { noir: 0, crime_scene: 0, paranormal: 0 };
+/** Each mode's case to go back to; null for none. */
+export type ModeCases = Record<Genre, CaseToContinue | null>;
 
-export function countByGenre(rooms: readonly { genre: Genre }[]): ModeCounts {
-  const counts: ModeCounts = { ...NO_CASES };
-  for (const room of rooms) if (room.genre in counts) counts[room.genre] += 1;
-  return counts;
+export const NO_CASES: ModeCases = { noir: null, crime_scene: null, paranormal: null };
+
+/**
+ * Each mode's newest sent room, from listMyRooms (newest first; drafts are
+ * never listed, so a photographed but unsent room is no case).
+ */
+export function newestByGenre<R extends Pick<Room, "genre">>(rooms: readonly R[]): Partial<Record<Genre, R>> {
+  const newest: Partial<Record<Genre, R>> = {};
+  for (const room of rooms) if (!newest[room.genre]) newest[room.genre] = room;
+  return newest;
 }
 
-/** The card's one accessibility label: "Detective Noir. Solve the case. 2 cases" (no count while it loads). */
-export function modeCardLabel(name: string, tagline: string, count: number | undefined): string {
-  return count === undefined ? `${name}. ${tagline}.` : `${name}. ${tagline}. ${caseCount(count)}`;
+/**
+ * The case to go back to, from a mode's newest room and (when it is ready)
+ * that room's latest session: building, or ready and not completed. A
+ * completed, failed or draft newest room is none, even when an older room is
+ * still open: the newest room is the one the player last started.
+ */
+export function caseToContinue(
+  room: Pick<Room, "id" | "status"> | undefined,
+  session: Pick<GameSession, "status"> | null | undefined,
+): CaseToContinue | null {
+  if (!room) return null;
+  if (room.status === "queued" || room.status === "generating") return { kind: "build", roomId: room.id };
+  if (room.status === "ready" && session?.status !== "completed") return { kind: "play", roomId: room.id };
+  return null;
 }
 
-// Noir's first tap (The Study) failing: today's inline-error copy.
-export const STUDY_OFFLINE = "You're offline. Connect to begin.";
-export const STUDY_FAILED = "Couldn't start the case. Try again in a moment.";
+/** Noir's case: the player's own first; else The Study while it is part-way through. */
+export function noirCase(own: CaseToContinue | null, study: StudyEntry): CaseToContinue | null {
+  return own ?? (study === "continue" ? { kind: "study" } : null);
+}
+
+/** Where Continue goes: the player, the build wait (as the old case files did), or The Study. */
+export function continueHref(target: CaseToContinue): Href {
+  switch (target.kind) {
+    case "play":
+      return { pathname: "/play/[roomId]", params: { roomId: target.roomId } };
+    case "build":
+      return { pathname: "/capture/develop", params: { roomId: target.roomId } };
+    case "study":
+      return "/tutorial";
+  }
+}
+
+/** The small tag on a card with a case to go back to. */
+export const IN_PROGRESS = "In progress";
+
+/** The card's one accessibility label: "Detective Noir. Solve the case." and, with a case to go back to, "In progress." */
+export function modeCardLabel(name: string, tagline: string, inProgress: boolean): string {
+  return inProgress ? `${name}. ${tagline}. ${IN_PROGRESS}.` : `${name}. ${tagline}.`;
+}
+
+// A card's tap failing before it could choose (offline, or the server): plain words, as the old Study notice.
+export const NOTICE_OFFLINE = "You're offline. Connect to begin.";
+export const NOTICE_FAILED = "Couldn't start the case. Try again in a moment.";
