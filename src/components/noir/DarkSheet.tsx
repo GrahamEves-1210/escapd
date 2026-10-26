@@ -11,10 +11,18 @@
 // (cross-fades over motion.reducedFade under reduced motion),
 // moves screen-reader focus to its title once it has risen, and traps
 // VoiceOver (accessibilityViewIsModal). Tapping the scrim closes it.
-// Render it conditionally: it animates in on mount and out on unmount.
-import { useEffect, useId, useRef, type ReactNode } from "react";
-import { AccessibilityInfo, Pressable, ScrollView, StyleSheet, Text, View, type DimensionValue, type HostInstance } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+// Render it conditionally: it animates in on mount.
+// Closing: Close, the scrim and anything inside that asks through
+// useSheetClose() (or a function `footer`'s `close`) slide the sheet away
+// while it is still mounted, and call `onClose` only once it is gone. A
+// sheet that only animated out on unmount lost its stacking on the way down
+// (the removed view no longer sorts by its zIndex), so the tray and the
+// header drew over it. A caller that unmounts it directly (a sheet swapped
+// for another) still gets the old exit animation.
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { AccessibilityInfo, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type DimensionValue, type HostInstance } from "react-native";
+import Animated, { FadeIn, FadeOut, ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
 import { XIcon } from "phosphor-react-native/src/icons/X";
@@ -22,8 +30,9 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { motion, ref, z } from "@/theme/tokens";
-import { sheetEntering, sheetExiting } from "./motion";
+import { sheetEntering, sheetExiting, toEasing } from "./motion";
 import { FocusRing, useFocusRing } from "./focus";
+import { SquashPressable } from "./squash";
 import { gradientStops } from "./gradient";
 
 const H = ref.layout.hub;
@@ -40,10 +49,11 @@ export interface DarkSheetProps {
   titleStyle?: "headline" | "serif";
   /** A grey ref.type.meta line under the title. */
   meta?: string;
+  /** Called once the sheet has slid away (or at once if it is unmounted first). */
   onClose: () => void;
   children: ReactNode;
-  /** Pinned under the scrolling content. */
-  footer?: ReactNode;
+  /** Pinned under the scrolling content. A function gets `close`, which slides the sheet away, then calls onClose. */
+  footer?: ReactNode | ((close: () => void) => ReactNode);
   /** Default true: black 55 %. False keeps the screen behind visible (the scrim still closes the sheet). */
   scrim?: boolean;
   /** Default the hub sheet's 64 %. */
@@ -52,6 +62,13 @@ export interface DarkSheetProps {
   closeTestID?: string;
   /** Default true. False holds the content still (a picker inside is being dragged). */
   scrollEnabled?: boolean;
+}
+
+const SheetClose = createContext<(() => void) | null>(null);
+
+/** Inside a DarkSheet: closes it as its Close does (slides away, then onClose). Outside one: null. */
+export function useSheetClose() {
+  return useContext(SheetClose);
 }
 
 export function DarkSheet({
@@ -72,12 +89,48 @@ export function DarkSheet({
   const theme = useModeTheme();
   const insets = useSafeAreaInsets();
   const titleRef = useRef<HostInstance>(null);
+  const { height: windowHeight } = useWindowDimensions();
+
+  // Closing: 0 open, 1 gone. The sheet slides down by the window's height (as SlideOutDown does) and the scrim fades.
+  const gone = useSharedValue(0);
+  const [closing, setClosing] = useState(false);
+  // Set once the slide starts, so a second press doesn't start it again.
+  const started = useSharedValue(false);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  // A sheet unmounted mid-slide (its caller reopened or swapped it) never calls onClose late.
+  const mounted = useRef(true);
+  useEffect(() => () => {
+    mounted.current = false;
+  }, []);
+  const finish = useCallback(() => {
+    if (mounted.current) onCloseRef.current();
+  }, []);
+  const close = useCallback(() => {
+    if (started.get()) return;
+    started.set(true);
+    setClosing(true);
+    const fall = ref.motion.sheetFall;
+    const timing = reducedMotion
+      ? { duration: motion.reducedFade, reduceMotion: ReduceMotion.Never }
+      : { duration: fall.duration, easing: toEasing(fall.easing), reduceMotion: ReduceMotion.Never };
+    gone.set(withTiming(1, timing, (finished) => {
+      if (finished) scheduleOnRN(finish);
+    }));
+  }, [gone, started, reducedMotion, finish]);
+  const scrimFade = useAnimatedStyle(() => ({ opacity: 1 - gone.get() }));
+  const slide = useAnimatedStyle(() => (reducedMotion
+    ? { opacity: 1 - gone.get() }
+    : { transform: [{ translateY: gone.get() * windowHeight }] }));
 
   // Screen-reader focus to the title once the sheet has risen.
   useEffect(() => {
     const t = setTimeout(
       () => {
-        if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, "focus");
+        // The web has no sendAccessibilityEvent.
+        if (titleRef.current && Platform.OS !== "web") AccessibilityInfo.sendAccessibilityEvent(titleRef.current, "focus");
       },
       reducedMotion ? S.titleFocusReduced : S.titleFocus,
     );
@@ -85,17 +138,22 @@ export function DarkSheet({
   }, [reducedMotion]);
 
   const entering = sheetEntering(reducedMotion);
-  const exiting = sheetExiting(reducedMotion);
+  // Once it has slid away itself there is nothing left to animate on unmount.
+  const exiting = closing ? undefined : sheetExiting(reducedMotion);
 
   return (
-    <View style={styles.layer} pointerEvents="box-none">
-      <Animated.View
-        entering={FadeIn.duration(reducedMotion ? motion.reducedFade : S.scrimIn)}
-        exiting={FadeOut.duration(reducedMotion ? motion.reducedFade : S.scrimOut)}
-        style={[StyleSheet.absoluteFill, scrim && styles.scrim]}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} importantForAccessibility="no" />
+    <SheetClose.Provider value={close}>
+    <View style={styles.layer} pointerEvents={closing ? "none" : "box-none"}>
+      <Animated.View style={[StyleSheet.absoluteFill, scrimFade]} pointerEvents="box-none">
+        <Animated.View
+          entering={FadeIn.duration(reducedMotion ? motion.reducedFade : S.scrimIn)}
+          exiting={closing ? undefined : FadeOut.duration(reducedMotion ? motion.reducedFade : S.scrimOut)}
+          style={[StyleSheet.absoluteFill, scrim && styles.scrim]}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={close} accessible={false} importantForAccessibility="no" />
+        </Animated.View>
       </Animated.View>
+      <Animated.View style={[styles.slot, slide]} pointerEvents="box-none">
       <Animated.View
         entering={entering}
         exiting={exiting}
@@ -110,15 +168,23 @@ export function DarkSheet({
             </Text>
             {meta ? <Text style={[styles.meta, { color: theme.inkMuted }]}>{meta}</Text> : null}
           </View>
-          <CloseChip onPress={onClose} testID={closeTestID} />
+          <CloseChip onPress={close} testID={closeTestID} />
         </View>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} bounces={false} scrollEnabled={scrollEnabled}>
           {children}
         </ScrollView>
-        {footer ? <View style={styles.footer}>{footer}</View> : null}
+        {footer ? <View style={styles.footer}><SheetFooter footer={footer} /></View> : null}
+      </Animated.View>
       </Animated.View>
     </View>
+    </SheetClose.Provider>
   );
+}
+
+/** A footer, given the sheet's close when it is a function (read from the sheet's context). */
+function SheetFooter({ footer }: { footer: NonNullable<DarkSheetProps["footer"]> }) {
+  const close = useSheetClose();
+  return <>{typeof footer === "function" ? footer(close ?? (() => {})) : footer}</>;
 }
 
 /** 01's round chip as Close: a 36 ground disc with the diagonal specular ring, in a 48 hit box. */
@@ -128,7 +194,7 @@ function CloseChip({ onPress, testID }: { onPress: () => void; testID?: string }
   const theme = useModeTheme();
   const id = `sheetchip${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel="Close"
       onPressIn={feedback.press}
@@ -152,18 +218,16 @@ function CloseChip({ onPress, testID }: { onPress: () => void; testID?: string }
         <XIcon size={ref.icon.chip} weight="regular" color={theme.ink} />
         <FocusRing visible={focus.focused} shape="pill" />
       </View>
-    </Pressable>
+    </SquashPressable>
   );
 }
 
 const styles = StyleSheet.create({
   layer: { ...StyleSheet.absoluteFill, zIndex: z.sheet },
   scrim: { backgroundColor: S.scrim },
+  // The sheet's slot: the whole layer, the sheet at its foot (its maxHeight is a share of the layer).
+  slot: { ...StyleSheet.absoluteFill, justifyContent: "flex-end" },
   sheet: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     borderTopLeftRadius: ref.radius.bottomSheet,
     borderTopRightRadius: ref.radius.bottomSheet,
     ...ref.curve,

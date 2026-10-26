@@ -1,20 +1,22 @@
 // A mode's own controls (MODES_PROMPT.md Part 2), the reference look's
 // pieces in the mode's palette: the camera's square back button, the light
 // table's bar in the mode's accent (with New case's Pro lock), the rubber
-// stamps on case files, and the banner of the mode's art. Every colour is
+// stamps on case files, and the banner of the mode's art. Every button sinks
+// with the kit's press-in squash (SquashPressable) beside its pressed opacity. Every colour is
 // the mode's theme (modeThemes), every size ref.layout.mode or a shared ref token.
 import { useId } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import Animated, { Extrapolation, interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { LockSimpleIcon } from "phosphor-react-native/src/icons/LockSimple";
 import { ArrowLeftIcon } from "@/components/icons";
-import { FocusRing, TreatedImage, useFocusRing } from "@/components/noir";
+import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { ref, type ModeTheme } from "@/theme/tokens";
 import type { ModeArt } from "./art";
+import { ModeArtImage } from "./ModeArtImage";
 import { STAMP_WORDS, type CaseStamp } from "./caseFiles";
 
 const L = ref.layout.mode;
@@ -26,7 +28,7 @@ export function BackSquare({ theme, onPress, testID = "mode-back" }: { theme: Mo
   const focus = useFocusRing();
   const feedback = useFeedback();
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel="Back"
       onPressIn={feedback.press}
@@ -39,7 +41,7 @@ export function BackSquare({ theme, onPress, testID = "mode-back" }: { theme: Mo
     >
       <ArrowLeftIcon size={ref.layout.camera.headerIcon.size} weight={ref.layout.camera.headerIcon.weight} color={theme.ink} />
       <FocusRing visible={focus.focused} shape="panel" edge={SQ.borderWidth} radius={SQ.radius} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -138,10 +140,11 @@ export function ModeBar({
   const focus = useFocusRing();
   const feedback = useFeedback();
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={locked ? `${label}. Pro` : label}
       accessibilityHint={locked ? "Needs ESCAPD Pro." : undefined}
+      squash={busy ? false : undefined}
       accessibilityState={{ disabled: busy, busy }}
       onPressIn={busy ? undefined : feedback.press}
       onPress={busy ? undefined : onPress}
@@ -164,7 +167,7 @@ export function ModeBar({
         </View>
       ) : null}
       <FocusRing visible={focus.focused} shape="panel" radius={L.bar.radius} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -173,7 +176,7 @@ export function TextButton({ theme, label, onPress, testID }: { theme: ModeTheme
   const focus = useFocusRing();
   const feedback = useFeedback();
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPressIn={feedback.press}
@@ -185,7 +188,7 @@ export function TextButton({ theme, label, onPress, testID }: { theme: ModeTheme
     >
       <Text style={[L.type.action, { color: theme.ink }]}>{label}</Text>
       <FocusRing visible={focus.focused} shape="panel" radius={L.bar.radius} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -204,8 +207,8 @@ export function Stamp({ theme, stamp, testID }: { theme: ModeTheme; stamp: CaseS
 }
 
 /**
- * The top of a mode's screens: its art (the same photo as its home card, in
- * its treatment) full bleed from the screen's top to `height`, fading into
+ * The top of a mode's screens: its art (the same picture as its home card:
+ * the player's room in the mode's treatment, or the mode's cover) full bleed from the screen's top to `height`, fading into
  * the ground at its foot. Decorative: hidden from screen readers.
  */
 export function ModeBanner({ genre, theme, art, height }: { genre: Genre; theme: ModeTheme; art: ModeArt; height: number }) {
@@ -218,16 +221,7 @@ export function ModeBanner({ genre, theme, art, height }: { genre: Genre; theme:
       importantForAccessibility="no-hide-descendants"
       testID="mode-banner"
     >
-      <TreatedImage
-        source={art.source}
-        genre={genre}
-        cacheKey={art.cacheKey}
-        maxEdge={L.artEdge}
-        contentFit="cover"
-        style={StyleSheet.absoluteFill}
-        accessible={false}
-        testID="mode-banner-art"
-      />
+      <ModeArtImage genre={genre} art={art} maxEdge={L.artEdge} testID="mode-banner-art" />
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 1 1" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id={id} x1={0} y1={0} x2={0} y2={1}>

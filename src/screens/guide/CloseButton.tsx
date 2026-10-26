@@ -11,10 +11,10 @@
 // and the X its ground (src/capture/ui/palette.ts): still a light disc with a
 // dark glyph, the ring's highlights unchanged.
 import { useId } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
 import { ICON_WEIGHT, XIcon } from "@/components/icons";
-import { FocusRing, gradientLine, gradientStops, useFocusRing } from "@/components/noir";
+import { FocusRing, gradientLine, gradientStops, useFocusRing, SquashPressable } from "@/components/noir";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
@@ -34,7 +34,7 @@ export function CloseButton({ accessibilityLabel, onPress }: { accessibilityLabe
   const palette = useCapturePalette();
   const ringId = `guideRing${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       onPressIn={feedback.press}
@@ -58,7 +58,7 @@ export function CloseButton({ accessibilityLabel, onPress }: { accessibilityLabe
         <XIcon size={D.icon} weight={ICON_WEIGHT} color={palette.closeGlyph} />
       </View>
       <FocusRing visible={focus.focused} shape="pill" />
-    </Pressable>
+    </SquashPressable>
   );
 }
 

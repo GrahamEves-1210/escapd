@@ -1,5 +1,7 @@
 // The capture flow's pills in the active mode: 03's pill and quiet buttons,
-// 04's step button and the build wait's quiet button. In the shell it is the
+// 04's step button, and (round 6) every primary and quiet action that wears
+// the step button's look: the review's "Build the case", the build wait and
+// state screens, the player's sheets and case closed. In the shell it is the
 // kit's PillButton, unchanged. Inside a mode it takes the mode's colours
 // (src/capture/ui/palette.ts) at the kit's sizes and type:
 // - primary (64, ctaLabel) and ghost (52, headline) are the mode's primary
@@ -8,10 +10,12 @@
 //   ("dark"), or its muted ink on 03's sheet ("paper", the sheet's quieter
 //   way out, as the shell's grey on paper).
 // Pressed: the whole pill at ref.button.square.pressedOpacity (the live 0.75
-// press; the kit's colour step has no mode tokens). Disabled, busy, the
+// press; the kit's colour step has no mode tokens) and the kit's press-in
+// squash (SquashPressable, ref.motion.juice.press; none while busy or under
+// reduced motion). Disabled, busy, the
 // spinner, the haptic and the brass focus ring behave as the kit's.
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { FocusRing, PillButton, useFocusRing, type PillButtonProps } from "@/components/noir";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { FocusRing, PillButton, SquashPressable, useFocusRing, type PillButtonProps } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 import { useCapturePalette, type CapturePalette } from "./palette";
@@ -64,8 +68,9 @@ function ThemedPill({
   const stretch = fullWidth ?? filled;
 
   return (
-    <Pressable
+    <SquashPressable
       ref={pressableRef}
+      squash={busy ? false : undefined}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={accessibilityHint}
@@ -102,7 +107,7 @@ function ThemedPill({
         </View>
       ) : null}
       <FocusRing visible={focus.focused} shape="pill" />
-    </Pressable>
+    </SquashPressable>
   );
 }
 

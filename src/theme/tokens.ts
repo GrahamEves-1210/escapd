@@ -258,6 +258,9 @@ const refFont = {
   crimeDisplay: "Archivo_900Black",
   /** PARANORMAL's name (modeThemes.paranormal.display): Crimson Text SemiBold Italic. */
   paranormalDisplay: "CrimsonText_600SemiBold_Italic",
+  /** The play screen's typewriter (ref.layout.play.type: notes, evidence tags, the informant): Courier Prime. */
+  typewriter: "CourierPrime_400Regular",
+  typewriterBold: "CourierPrime_700Bold",
 } as const;
 
 const stop = (offset: number, color: `#${string}`, opacity = 1): GradientStop => ({ offset, color, opacity });
@@ -595,7 +598,7 @@ export const ref = {
       // above them (`fadeStops`, shares of the fade, end on `plate`): enough
       // for the mode's ink at 4.5:1 over a white photo (hub-test). The count
       // is a capsule in the mode's ground at the top left, `pad` in, with a
-      // `rim` pt edge, `chip` padding. Pressed: `pressScale` (instant).
+      // `rim` pt edge, `chip` padding. Pressed: `pressScale`, with the kit's squash (ref.motion.juice.press).
       modes: {
         top: 16,
         edge: 16,
@@ -1113,38 +1116,31 @@ export const ref = {
       drift: { x: 56, y: 8, tilt: 5, duration: 4000, easing: "linear" },
     },
     // The shared state screen (src/components/StateScreen.tsx): loading,
-    // offline, error and access states for the player, the darkroom and
-    // /account/confirmed. No reference: 07's flat ground and pinned white bar,
-    // 01's centred title (ref.type.title) and subtitle (ref.type.subtitle,
-    // grey), 02's void wells. Loading is the kit's ThinkingStates (body size)
-    // instead of a spinner.
+    // offline, error and access states for the player, the build wait and
+    // /account/confirmed. No reference: 07's flat ground, 01's centred title
+    // (ref.type.title) and subtitle (ref.type.subtitle, grey), 02's void
+    // wells, and the photo guide's foot (its pill, then a quiet button, in the
+    // reading column). Loading is the kit's ThinkingStates (body size) instead
+    // of a spinner. Colours are the mode's (useModeTheme): the shell's are
+    // the reference look's.
     state: {
       // The centred text column's inset from the screen edges (controls sit at ref.space.edge).
       textInset: 32,
-      // A caller's glyph sits in a void well with a 1 pt faint rim, as 02's wells.
-      well: { size: 72, fill: refColor.void, rim: 1, rimColor: refColor.rimFaint },
+      // A caller's glyph sits in a well (the theme's ground: void in the shell) with a 1 pt faint rim, as 02's wells.
+      well: { size: 72, rim: 1, rimColor: refColor.rimFaint },
       // The well to the title, the title to the body.
       gap: { title: 20, body: 8 },
-      // The pinned actions, as 07's band: `pad` above and below (plus the
-      // bottom safe area), the quiet secondary `gap` under the bar.
+      // The pinned actions, as the guide's foot: `pad` above the pill, the
+      // quiet secondary `gap` under it (ref.space.ctaBottom over the safe area).
       footer: { pad: 16, gap: 8 },
-      // 07's develop bar: the strongest fill on this ground (paper) with the
-      // label in the ground colour, 48 tall, 2 corners. Pressed dims (proposal).
-      bar: {
-        height: 48,
-        radius: 2,
-        fill: refColor.paper,
-        label: refColor.ground,
-        pressedOpacity: 0.75,
-        type: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
-      },
     },
     // The in-game player (/tutorial, /play/[roomId]) and Case closed
     // (/tutorial/complete). No reference: derived from 02 (the photo in a
     // rounded well on the flat ground, Once's square header buttons, the serif
     // title over a grey meta line, near-black wells, white glyphs whose shape
-    // shows state), 01's dark sheet (kit DarkSheet) and 07's cards, hint rows,
-    // outlined pill and white bar. Room photos keep their full colour.
+    // shows state), 01's dark sheet (kit DarkSheet) and 07's cards and hint
+    // rows; its actions are the photo guide's pills (ModePill). Room photos
+    // keep their full colour.
     play: {
       // Header: the squares (ref.button.square, 02's measured rim and bold 18
       // glyphs) `edge` from the screen edges, `top` below the safe top, one
@@ -1223,10 +1219,6 @@ export const ref = {
       // text; `padY` for one-line rows; the glyph `icon`; an item's void
       // `well` (ref.radius.knob corners).
       card: { radius: 8, pad: 16, padY: 12, gap: 12, icon: 18, well: 40 },
-      // 07's outlined pill, small: rows' actions (Inspect, Try again).
-      outline: { height: 44, padX: 16, border: 1, pressedFill: refColor.raised },
-      // 07's white bar: the one strong action (paper, label in ground, 48, 2 corners).
-      bar: { height: 48, radius: 2, fill: refColor.paper, label: refColor.ground },
       // The toast: 02's privacy note (a see-through void pill) at the top of the photo area.
       toast: { top: 12, padX: 12, padY: 8, fillOpacity: 0.6, maxWidth: "86%" },
       // The code pad. Tumbler wheels: vertical pickers in void wells (02's
@@ -1248,9 +1240,53 @@ export const ref = {
         noticeIcon: 14,
         messageMin: 20,
       },
+      // The code pad's padlock (ref.motion.juice.latch), drawn in the mode's
+      // accent, centred over the code: a `body` with `radius` corners and a
+      // `keyhole` in accentInk; a U `shackle` of `bar` pt stock whose legs sit
+      // `seat` pt into the body; `room` pt clear above it for the lift. The
+      // lit ring round the code stands `ringPad` out at `ring` pt.
+      codePad: {
+        lock: {
+          body: { width: 22, height: 16, radius: 4 },
+          keyhole: { width: 3, height: 6, radius: 1.5 },
+          shackle: { width: 14, height: 14, bar: 3, seat: 5 },
+          room: 9,
+        },
+        ring: 1.5,
+        ringPad: 6,
+      },
       // Case closed: the column's inset, the tag pill (01's), the gaps;
       // paranormal's room back in full colour as a `photo` (aspect, corners).
-      complete: { inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 }, photo: { aspect: 2, radius: 8, width: "100%" } },
+      // The victory moment (GAME_FEEL_PROMPT.md, 5; src/render/victory.ts):
+      // - beat: ms. The case enters over `enter`; a stamp starts its fall at
+      //   `slam` (P.stamp.slam ms to impact); paranormal snaps to colour at
+      //   `snap`, "The presence is gone." falls at `gone`, then CASE CLOSED at
+      //   `goneStamp`. The stats land `statsGap` after the last impact,
+      //   `stat` apart (rising `rise` pt); the magnifiers `ratingGap` later,
+      //   `magnifier` apart; `solved` then `cta` after the last of them. A
+      //   stat that is still loading is waited for up to `wait` past its beat.
+      // - reduced: everything fades (motion.reducedFade): the stats at
+      //   `stats` (their ticks `tick` apart), the rating at `rating`, the
+      //   solved cue and the actions at `solved`. All in under 600 ms.
+      // - slam: a falling stamp overshoots to `overshoot` and settles back
+      //   over `settle`; its ink spreads from the frame to `inkTo` times its
+      //   size, from `inkPeak` to nothing, over `ink`. "The presence is
+      //   gone." falls from `goneFrom`. The case card is nudged `nudge.y` pt
+      //   down and `nudge.x` across, `nudge.step` ms a beat.
+      // - folder: noir's case file, a raised folder with a `tab`, its title
+      //   typed on a paper `label`. title: case titles in Playfair.
+      // - rating: three magnifiers `size` across, `gap` apart, `stroke` line
+      //   art; an earned one fills its lens at `lens` and pops from `pop`.
+      complete: {
+        inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 }, photo: { aspect: 2, radius: 8, width: "100%" },
+        beat: { enter: 220, slam: 420, snap: 360, gone: 480, goneStamp: 900, statsGap: 300, stat: 180, rise: 10, ratingGap: 240, magnifier: 220, solved: 160, cta: 160, wait: 1200 },
+        reduced: { stats: 200, tick: 60, rating: 320, solved: 420 },
+        slam: { overshoot: 0.93, settle: 140, inkTo: 1.22, inkPeak: 0.45, ink: 420, goneFrom: 1.45, nudge: { x: 3, y: 5, step: 50 } },
+        folder: { radius: 8, pad: 20, tabWidth: 120, tabHeight: 16, tabRadius: 6, label: { padX: 14, padY: 8, radius: 2, tilt: -1 } },
+        title: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 28, lineHeight: 34 } as const satisfies TextStyle,
+        statValue: { fontSize: 22, lineHeight: 28 },
+        rating: { size: 34, gap: 14, stroke: 2.25, lens: 0.3, pop: 1.35 },
+      },
       // ---- The modes in the player (MODES_PROMPT.md, Part 2). Every colour is
       // the mode's (modeThemes, read through useModeTheme); these are shapes and times.
       // A stamp (CONTRADICTED on a suspect card; CASE CLOSED and GUILTY on case
@@ -1346,6 +1382,18 @@ export const ref = {
         presence: { fontSize: 11, lineHeight: 14, fontWeight: "600", letterSpacing: 1.2, textTransform: "uppercase" },
         /** "The presence is gone.": paranormal's face at reading size. */
         gone: { fontFamily: refFont.paranormalDisplay, fontSize: 26, lineHeight: 32 },
+        /** A clue's note and the informant's line: the typewriter at reading size. */
+        note: { fontFamily: refFont.typewriter, fontSize: 16, lineHeight: 24 },
+        /** A note's small print (a description under the message) and a polaroid's caption. */
+        noteSmall: { fontFamily: refFont.typewriter, fontSize: 14, lineHeight: 20 },
+        /** An evidence tag's item name. */
+        tag: { fontFamily: refFont.typewriterBold, fontSize: 12, lineHeight: 15 },
+        /** The tray's stamped lip label (EVIDENCE) and the informant's byline: the mono plate label. */
+        plate: { fontFamily: font.mono, fontSize: 10, lineHeight: 14, letterSpacing: 1.6, textTransform: "uppercase" },
+        /** The case clock: the mono plate label, tabular figures. */
+        clock: { fontFamily: font.mono, fontSize: 12, lineHeight: 16, letterSpacing: 1.2, fontVariant: ["tabular-nums"] },
+        /** The matchbook's label: the typewriter, bold. */
+        matchbook: { fontFamily: refFont.typewriterBold, fontSize: 13, lineHeight: 16, letterSpacing: 0.4 },
         /** Code digits: 02's counter. */
         digit: { fontFamily: refFont.italic, fontSize: 29, lineHeight: 34, letterSpacing: 1.75 },
         /** Keypad digits: system Medium 24. */
@@ -1358,7 +1406,7 @@ export const ref = {
         section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
         /** Hint and detail lines: 07's Regular 14. */
         hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** The white bar's and the outlined pill's labels: Semibold 16. */
+        /** The keypad's Clear key: Semibold 16. */
         action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
         /** Case closed: the case's name in 02's serif, larger. */
         caseTitle: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
@@ -1367,64 +1415,149 @@ export const ref = {
       } as const satisfies Record<string, TextStyle>,
       // A state screen's glyph (offline, can't open), drawn grey by the player.
       stateIcon: 32,
+      // ---- The diegetic play screen (GAME_FEEL_PROMPT.md, 4). Materials are
+      // per mode (keyed by genre), drawn only on the play screen; text on them
+      // keeps 4.5:1 or more (diegetic-test).
+      // The evidence tray: a leather tray (`radius`, `pad`) with a stitched
+      // seam `stitchInset` in (`stitch` thick, dashed), a lip row (`lip` tall:
+      // the stamped EVIDENCE label and the informant's matchbook), and felt
+      // wells for the items, each item an object (a tag) sitting in its well.
+      evidence: {
+        radius: 12,
+        pad: 10,
+        stitchInset: 4,
+        stitch: 1,
+        lip: 32,
+        well: { radius: 8, edge: 2 },
+        // A tag's string hole: `hole` across, `holeInset` from its top left.
+        hole: 5,
+        holeInset: 6,
+        materials: {
+          noir: {
+            leather: "#1C1712", edge: "#080605", stitch: "rgba(200, 157, 84, 0.55)", well: "#100D0A", wellEdge: "#040302", tag: "#2A231C",
+          },
+          crime_scene: {
+            leather: "#1F1110", edge: "#090505", stitch: "rgba(236, 228, 211, 0.4)", well: "#130A0A", wellEdge: "#050202", tag: "#2E1A18",
+          },
+          paranormal: {
+            leather: "#111A1E", edge: "#05090B", stitch: "rgba(191, 228, 236, 0.45)", well: "#0A1114", wellEdge: "#030607", tag: "#1C292E",
+          },
+        },
+      },
+      // Picking up an item: it flies from the hotspot to its tray slot on an
+      // arc (`arc` pt above the straight line at its middle) over `flight` ms,
+      // shrinking from `from` to the tile's size, then the tile bounces
+      // (`bounce` up, then a spring back). Measuring gives up after
+      // `measureTimeout` ms and the item simply lands. Reduced motion: no
+      // flight; the item appears in its slot (the haptic is kept).
+      pickup: { flight: 520, arc: 90, from: 1.25, size: 44, bounce: 1.14, bounceUp: 90, spring: { damping: 9, stiffness: 260, mass: 0.6 }, measureTimeout: 160 },
+      // A clue as an object on the sheet: a note on lined, torn paper (`tear`
+      // pt of torn edge, ruled every line, a margin rule `margin` in, tilted
+      // `tilt` degrees) and, for an object in the room, a polaroid of it (the
+      // photo cropped to the object: `width` across, a `frame` border and a
+      // `foot` for its caption, tilted `polaroidTilt`). Item tags (`tagWidth`)
+      // say what was pocketed. Below `stackScale` font scale the polaroid sits
+      // beside the note; above, it stacks over it. The paper haptic waits
+      // `paperDelay` ms after a solve's success haptic, so they never land together.
+      clue: {
+        pad: 16,
+        tear: 6,
+        margin: 28,
+        rule: 1,
+        tilt: -0.8,
+        width: 104,
+        frame: 6,
+        foot: 26,
+        polaroidTilt: -3,
+        gap: 12,
+        stackScale: 1.3,
+        paperDelay: 260,
+        papers: {
+          noir: { paper: "#EAE3D2", ink: "#1A1611", inkMuted: "#574F45", rule: "rgba(26, 22, 17, 0.13)", margin: "rgba(200, 157, 84, 0.7)", frame: "#F1EEE7", shade: "rgba(0, 0, 0, 0.35)" },
+          crime_scene: { paper: "#E8E0CF", ink: "#1C1210", inkMuted: "#5B4C46", rule: "rgba(28, 18, 16, 0.13)", margin: "rgba(163, 32, 31, 0.65)", frame: "#EFEAE0", shade: "rgba(0, 0, 0, 0.4)" },
+          paranormal: { paper: "#E3EBED", ink: "#0F1C21", inkMuted: "#475A61", rule: "rgba(15, 28, 33, 0.13)", margin: "rgba(110, 160, 172, 0.75)", frame: "#EDF2F3", shade: "rgba(0, 0, 0, 0.35)" },
+        },
+      },
+      // Ask the informant: a silhouette (`figure` across) in a booth panel
+      // under a streetlight glow (`glow` opacity), beside his line on a paper
+      // slip; the matchbook in the tray's lip (`matchbook` tall, its striker
+      // `striker` tall at the foot) opens him.
+      informant: { figure: 64, glow: 0.22, matchbook: 32, matchbookPadX: 12, striker: 5, strikerOpacity: 0.35, gap: 12 },
+      // The case clock in the header: the mono plate label, once a second.
+      clock: { tick: 1000, gap: 8 },
+      // The idle glint: after `idle` ms with no touch, each discoverable,
+      // unfound hotspot gets a flashlight pulse (a soft pool `spread` times its
+      // size, at least `min` pt across), `pulses` times over `pulse` ms each
+      // up to `peak`, then it stops until the next idle spell. Reduced motion:
+      // a still, faint pool at `rest` until the next touch.
+      glint: { idle: 20000, pulses: 2, pulse: 1100, peak: 0.5, rest: 0.16, spread: 1.4, min: 64, stagger: 140 },
       // Presses other than the pills' (proposal; nothing in the references).
       pressedOpacity: 0.75,
     },
-    // 07 · The review screen, "Photos" (/capture/review): Vestiaire's photo
-    // review layout (docs/refs/07-light-table.png, 393 x 852 @3x, measured
-    // above its tab bar) in 02's dark palette. Its white page is
-    // ref.color.ground, its black ink textPrimary, its greys textSecondary, the
-    // tiles' grey edge ref.color.rim, the black bar paper. System font.
-    // Measured baselines on 852 (safe 59 / 34): header 87, title 139, body
-    // 176 / 199, labels 304.7 / 322. Round 4: the tips are a plain list.
+    // 07 · Your photos (/capture/review), round 6: the camera's (02) and the
+    // photo guide's (04) language, so the three capture screens read as one
+    // flow. The header is the camera's (ref.layout.camera edge, top,
+    // promptTop and metaGap: a 44 square back button, the serif title over the
+    // grey meta line). The column sits at ref.space.edge; the photos are 02's
+    // last-photo thumbnail grown into 3:4 tiles (camera.frameAspect: the shot
+    // as the viewfinder framed it) in a 2-column grid; the pinned foot is the
+    // guide's (its pill in the reading column, ctaBottom over the safe area).
+    // Inside a mode every colour is the capture palette's (src/capture/ui/palette.ts).
     review: {
-      // Text gutter (header, title, body). Controls, tiles and cards sit at ref.space.edge 20.
-      gutter: 16,
-      // The header row under the safe top; Back's label `backDrop` below centre,
-      // on the title's baseline (both at y 87); Back's focus ring corners.
-      header: { height: 44, backDrop: 1, focusRadius: 8 },
+      // Vertical gaps: the header to the first block (the camera's header to
+      // its viewfinder), a whole-set note to the lead, the lead to the grid,
+      // the grid to the hint, the hint to "Add a photo", the pill to "Before
+      // you build", and the column's end over the foot.
+      gap: { top: 29, issue: 20, lead: 24, hint: 22, add: 18, section: 44, end: 28 },
       type: {
-        /** "Back" (the reference's "Close"): Regular 14. */
-        back: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** The centred title: Bold 16. */
-        navTitle: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
-        /** "Your photos": Bold 18. */
-        title: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
-        /** The count line: Regular 16/23, the title's colour. */
-        body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
-        /** The add pill's and the build bar's labels: Semibold 16. */
-        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
-        /** Photo labels over the tiles: Regular 12/17, grey. */
-        label: { fontSize: 12, lineHeight: 17, fontWeight: "400" },
-        /** The retake hint, the build helper and the privacy line: Regular 14, grey. */
-        hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** "Before you build": Bold 14. */
-        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
-        /** A tip's number in its disc: Bold 16. */
-        tipNumber: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
-        /** A tip: Regular 16, a friendly line rather than a rule. */
-        tip: { fontSize: 16, lineHeight: 22, fontWeight: "400" },
+        /** A photo's numeral, before its name: 02's counter face (Crimson Text Italic), smaller. */
+        numeral: { fontFamily: refFont.italic, fontSize: 22, lineHeight: 24, letterSpacing: 0.5 },
+        /** A flagged photo's reason under its name, and the open tile's line: Medium 15. */
+        reason: { fontSize: 15, lineHeight: 20, fontWeight: "500" },
+        /** A tip: Regular 17, a friendly line rather than a rule. */
+        tip: { fontSize: 17, lineHeight: 22, fontWeight: "400" },
+        /** A tip's numeral in its disc: the counter's italic. */
+        tipNumber: { fontFamily: refFont.italic, fontSize: 18, lineHeight: 22, letterSpacing: 0 },
+        /** The privacy line and the build helper over the pill: Regular 15. */
+        note: { fontSize: 15, lineHeight: 20, fontWeight: "400" },
       } as const satisfies Record<string, TextStyle>,
-      // Vertical gaps between blocks: header to title, title to body, body to
-      // the add pill, the pill to the grid (its label box), the grid to the
-      // hint, the hint to the section heading (where round 3's heading sat,
-      // 24 under the hint), the end of the column.
-      gap: { title: 18, body: 14, add: 23.5, grid: 14.5, hint: 17, section: 24, end: 24 },
-      // The count line's right margin: the reference wraps its body at least 44 short of the edge.
-      captionInsetEnd: 48,
-      // The outlined pill: x 19.5-373.5, y 228.5-277.5 (49), its 1 pt outline
-      // straddling x 20 / 373 as the reference's does; the camera glyph 11
-      // from the label (ink to ink); pressed fill (proposal).
-      add: { inset: 19.5, height: 49, border: 1, gap: 11, pressedFill: refColor.raised },
-      // The add pill's camera, ESCAPD line art to the reference's: 19.7 x 16.7
-      // overall, square corners, a ~1.2 line; a bump `bump` wide and `bodyTop`
-      // tall centred on the top edge; a lens `lens` across (outer), its centre
+      // Two columns `gap` apart (170 pt tiles on 393), rows `rowGap` apart;
+      // the name `labelGap` under its tile, a reason `reasonGap` under the name.
+      grid: { columns: 2, gap: 13, rowGap: 24, labelGap: 10, reasonGap: 2, numeralGap: 8 },
+      // A tile is 02's last photo (ref.button.thumbnail) grown: the photo at
+      // thumbnail.imageRadius inside a thumbnail.frameWidth frame of the
+      // palette's near-black at thumbnail.radius, its 1 pt imageRim over it.
+      // A flagged photo: a `flaggedRing` warning ring on the frame's outer
+      // edge (where the camera draws its way-on ring). The ×: Phosphor X bold
+      // `icon` in white on a `disc` of the palette's well at `fillOpacity`
+      // (02's privacy-note black), `inset` in from the photo's corner, on a
+      // 44 hit area.
+      tile: {
+        flaggedRing: 2,
+        remove: { disc: 30, icon: 14, weight: "bold", inset: 8, fillOpacity: 0.6 },
+        // A slot the player emptied: the tile's shape in a dashed `border`
+        // of the tertiary grey (clearly a gap, not a photo), the camera glyph
+        // and "Take this photo" `gap` apart.
+        open: { border: 1.5, rim: refColor.textTertiary, gap: 10 },
+        // Inside a mode, the capture flow's photos (these tiles, the
+        // camera's last photo, the build wait's strip) bake the mode's
+        // treatment at this long edge (px): a tile is 170 x 227 pt, 681 px
+        // tall at 3x. One size for all three, so one bake per photo serves them all.
+        bake: 720,
+      },
+      // The hint row: the tap glyph's box beside its line, `gap` apart.
+      note: { icon: 20, gap: 8 },
+      // "Add a photo": the guide's ghost pill (52, ref.button.ghost's
+      // hairline) in the palette's well, the camera glyph `gap` from its label.
+      add: { gap: 10 },
+      // The add pill's camera, ESCAPD line art to 07's: 19.7 x 16.7 overall,
+      // square corners, a ~1.2 line; a bump `bump` wide and `bodyTop` tall
+      // centred on the top edge; a lens `lens` across (outer), its centre
       // `lensY` below the top.
       camera: { width: 19.7, height: 16.7, line: 1.2, bodyTop: 2, bump: 7.3, lens: 9.6, lensY: 8.8 },
-      // The retake hint's glyph, ESCAPD line art to the reference's: a finger
-      // pressing inside a rounded-square button, 12.3 x 18 ink, 1 line, round
-      // caps. Paths in pt (stroke centres), offset x / y in the `box` glyph box
-      // so the ink starts 3 in from the edge (x 23 on 393) and the text at 42.
+      // The retake hint's glyph, ESCAPD line art: a finger pressing inside a
+      // rounded-square button, 12.3 x 18 ink, 1 line, round caps. Paths in pt
+      // (stroke centres), offset x / y in the `box` glyph box.
       tap: {
         box: 20,
         x: 3,
@@ -1439,45 +1572,21 @@ export const ref = {
           "M 5.67 8.9 V 9.9 M 7.67 8.9 V 9.9 M 9.67 9.2 V 10.1",
         ],
       },
-      // Three columns, 8 apart both ways (tiles 112.3 on 393); a label's box 2 above its tile.
-      grid: { columns: 3, gap: 8, labelGap: 2 },
-      // Tiles: 5 corners, a 1 pt rim (2 when flagged). The ×: Phosphor X
-      // regular 16 (1 pt line, 9.7 ink), its centre `centre` from the top and
-      // right edges, on a 44 hit area; under it a void halo `halo` wide at
-      // `haloOpacity`, along X's strokes (haloFrom to haloTo of its haloBox).
-      tile: {
-        radius: 5,
-        rim: 1,
-        flaggedRim: 2,
-        remove: { icon: 16, weight: "regular", centre: 21, halo: 3, haloOpacity: 0.45, haloFrom: 56, haloTo: 200, haloBox: 256 },
-        // A slot the player emptied: a 1 pt dashed rim in the tertiary grey
-        // (clearly a gap, not a photo), the camera glyph and "Take this photo" `gap` apart.
-        open: { border: 1, rim: refColor.textTertiary, gap: 6 },
-        // Inside a mode, the capture flow's thumbnails (these tiles, the
-        // camera's last photo, the build wait's strip) bake the mode's
-        // treatment at this long edge (px): a tile is 112 pt, 336 px at 3x.
-        // One size for all three, so one bake per photo serves them all.
-        bake: 360,
-      },
-      // The retake hint's row: a 20 glyph box at the edge (the tap art), the text 2 from it.
-      note: { icon: 20, gap: 2 },
       // A failure about the whole set: a raised note at the top, `pad` inside,
-      // `radius` corners, `gap` above "Your photos".
-      issue: { pad: 16, radius: 8, gap: 18 },
-      // "Before you build": the heading `inset` from the left edge (the
-      // reference's section heading), the tips `listGap` under it, the privacy
-      // line `noteGap` under the tips.
-      section: { inset: 24, listGap: 16, noteGap: 16 },
-      // The tips, a plain vertical list at ref.space.edge: a 24 disc (raised,
-      // its number centred), the line 8 after it, tips 12 apart.
-      tips: { disc: 24, discGap: 8, gap: 12 },
-      // The pinned band: 16 above and below the 48 bar (2 corners), the helper
-      // line 8 over it. Bar fill paper, label in the page colour.
-      footer: { pad: 16, bar: 48, radius: 2, helperGap: 8, fill: refColor.paper, label: refColor.ground },
+      // at the camera's nested corners (ref.radius.nested).
+      issue: { pad: 18 },
+      // "Before you build" (04's step title), the tips `listGap` under it, the
+      // privacy line `noteGap` under the tips.
+      section: { listGap: 18, noteGap: 22 },
+      // The tips, a plain vertical list: a `disc` (raised, its numeral in the
+      // counter's italic), the line `discGap` after it, tips `gap` apart.
+      tips: { disc: 30, discGap: 12, gap: 14 },
+      // The pinned foot (the guide's): `pad` over the helper or the pill, the
+      // helper `helperGap` over the pill, and a `fade` of the page colour over
+      // the column's last points so the photos slip under it.
+      footer: { pad: 12, helperGap: 12, fade: 32 },
       // Flagged photos and their helper: the live warning amber (6.7:1 on ground).
       warning: color.warning,
-      // Every press here but the add pill's (proposal; the reference shows none).
-      pressedOpacity: 0.75,
     },
   },
   // Control feedback and the few movements the reference look adds. Functional
@@ -1524,6 +1633,41 @@ export const ref = {
     // then the treatment fades in over it; the same fade takes it away again
     // (paranormal's case closed, back to full colour). Reduced motion: instant.
     treatment: { duration: 240, easing: "ease-out" },
+    // "Every tap answers back" (GAME_FEEL_PROMPT.md 1): the physical answer
+    // to a press, transforms and opacity only, on the UI thread. Reduced
+    // motion keeps every haptic and drops the movement.
+    juice: {
+      // Press-in squash on every button (usePressSquash, src/components/noir/
+      // squash.tsx): down to `scale` over `in`, back to 1 on the `release`
+      // spring (about 0.7 of critical damping: a trace of overshoot, settled
+      // in about 220 ms). Large panels (a case file row) sink to `panel`,
+      // as home's mode cards do (ref.layout.hub.modes.pressScale). Reduced
+      // motion: no scale.
+      press: {
+        scale: 0.96,
+        panel: 0.98,
+        in: { duration: 90, easing: "ease-out" },
+        release: { damping: 22, stiffness: 420, mass: 0.6 },
+      },
+      // A wrong code: the pad rattles side to side, `distance` pt at the first
+      // swing, each later swing a share of it (`swings`), over `duration` ms
+      // in all. Reduced motion: no movement; the pad dips to `dim` opacity
+      // and back over motion.reducedFade.
+      rattle: { duration: 300, distance: 8, swings: [1, -0.8, 0.55, -0.32, 0.14, 0], dim: 0.45 },
+      // A correct code: the padlock's shackle springs up `lift` ms (with a
+      // `kick` pt overshoot that settles back over `settle` ms), then swings
+      // open about its left leg `swing` degrees over `swingTime` ms, while a
+      // ring in the mode's accent lights round the code over `glow` ms after
+      // `glowDelay`. The flow continues (the scene change or result) after
+      // `hold` ms. Reduced motion: the closed lock cross-fades to the open one
+      // and the ring fades in over motion.reducedFade, and the flow continues
+      // then (under 150 ms).
+      latch: { lift: 150, kick: 2, settle: 90, swing: -24, swingTime: 180, glowDelay: 120, glow: 220, hold: 620 },
+      // A code wheel settling on a digit runs `overshoot` of a row past it,
+      // then seats back over `back` ms: a detent, so a step reads as a
+      // mechanical click (one tick per digit). Reduced motion: no roll.
+      detent: { overshoot: 0.08, back: 90 },
+    },
   },
   // How a mode photo is baked (src/components/noir/treatPhoto.ts): once per
   // photo and mode, on an offscreen Skia surface, never per frame. The

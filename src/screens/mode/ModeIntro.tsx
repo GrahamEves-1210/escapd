@@ -1,7 +1,8 @@
 // A mode's first-time "how this mode works" (MODES_PROMPT.md Part 2), for
 // crime scene and paranormal: one screen in the mode's palette, under the
-// same banner as its mode screen: the mode's name and tagline, three short
-// numbered steps, and Start, pinned to the foot. Start remembers it
+// same banner as its mode screen: a kicker, the mode's name and tagline,
+// three short numbered steps, and its start button ("Take the case", "Step
+// inside"; caseFiles.ts, MODE_COPY), pinned to the foot. Start remembers it
 // (introSeen.ts) and replaces itself with the mode's screen, so back from
 // there returns home. Back leaves without remembering: the intro shows again
 // next time.
@@ -24,7 +25,9 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
   const theme = modeThemes[genre];
   const insets = useSafeAreaInsets();
   const art = useModeArt();
-  const steps = MODE_COPY[genre].intro;
+  // Crime scene and paranormal always have one.
+  const intro = MODE_COPY[genre].intro!;
+  const steps = intro.steps;
   const scroll = useModeScroll();
   useModeOnFocus(genre);
 
@@ -53,7 +56,7 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
           <ModeBanner genre={genre} theme={theme} art={art} height={bannerHeight} />
         </View>
         <View style={styles.column}>
-          <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>How this mode works</Text>
+          <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>{intro.kicker}</Text>
           <Text accessibilityRole="header" style={[theme.display, { color: theme.ink }]}>
             {theme.name}
           </Text>
@@ -82,7 +85,7 @@ export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
         <FootShade theme={theme} />
         <ModeBar
           theme={theme}
-          label="Start"
+          label={intro.start}
           onPress={() => {
             start();
           }}

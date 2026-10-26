@@ -5,7 +5,7 @@ import ts from "typescript";
 import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent, waitFor } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { getMode, setMode } from "@/game/mode";
 import * as api from "@/lib/escapd-api";
@@ -42,6 +42,12 @@ jest.mock("@/components/noir/TreatedImage", () => {
     TreatedImage: (props: Record<string, unknown>) =>
       createElement(View, { testID: props.testID, photo: { source: props.source, genre: props.genre, cacheKey: props.cacheKey, maxEdge: props.maxEdge } }),
   };
+});
+// So is drawing the covers (src/screens/hub/art's tests): here it records which mode's cover shows.
+jest.mock("@/screens/hub/art/ModeCover", () => {
+  const { createElement } = jest.requireActual("react");
+  const { View } = jest.requireActual("react-native");
+  return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
 });
 jest.mock("expo-constants", () => ({ __esModule: true, default: { expoConfig: { version: "0.1.0" } } }));
 jest.mock("@/tutorial/assets", () => ({ TUTORIAL_ROOM_ID: "tutorial-room", BUNDLED_SCENES: { "tutorial/study_1.jpg": 101 } }));
@@ -126,8 +132,10 @@ const focusRings = () =>
     const style = styleOf(node);
     return node.type === "View" && style.borderColor === ref.focus.color && style.borderWidth === ref.focus.width;
   });
-/** What a card's TreatedImage was asked to show. */
+/** What a card's TreatedImage was asked to show (undefined when it shows the drawn cover). */
 const art = (genre: string) => screen.getByTestId(`hub-card-${genre}-art`, hidden).props.photo;
+/** Which mode's drawn cover a card shows (undefined when it shows a photo). */
+const cover = (genre: string) => screen.getByTestId(`hub-card-${genre}-art`, hidden).props.cover;
 
 describe("01 · Home: three mode cards", () => {
   it("renders the header and the three mode cards in reading order, each one button named by mode, tagline and count", async () => {
@@ -186,17 +194,26 @@ describe("01 · Home: three mode cards", () => {
       expect(styleOf(screen.getByTestId(`hub-card-${genre}`))).toMatchObject({ minHeight: M.minHeight, flexGrow: 1 });
     }
     expect(styleOf(screen.getByTestId("hub-card-noir-rule", hidden))).toMatchObject({ backgroundColor: modeThemes.noir.accent, width: M.rule.width });
-    expect(styleOf(screen.getByTestId("hub-card-crime_scene-tape", hidden))).toMatchObject({ backgroundColor: modeThemes.crime_scene.detail });
     expect(screen.getByTestId("hub-card-paranormal-glow", hidden)).toBeTruthy();
+    // Crime scene's drawn cover tapes off its own door: no strip over it.
+    expect(screen.queryByTestId("hub-card-crime_scene-tape", hidden)).toBeNull();
+    expect(screen.queryAllByTestId(/-rule$|-tape$|-glow$/, hidden)).toHaveLength(2);
+    await screen.unmount();
+
+    // Over the player's own room, the strip of tape across the top-right corner.
+    player({ rooms: [room("r1", "noir")], photo: { roomId: "r1", id: "p1", uri: "https://signed.example/p1.jpg" } });
+    await renderHub();
+    expect(styleOf(screen.getByTestId("hub-card-crime_scene-tape", hidden))).toMatchObject({ backgroundColor: modeThemes.crime_scene.detail });
     // Each signature appears only on its own card.
     expect(screen.queryAllByTestId(/-rule$|-tape$|-glow$/, hidden)).toHaveLength(3);
   });
 
-  it("shows The Study's photo in each mode's treatment until the player has photographed a room, then their newest room", async () => {
+  it("shows each mode's drawn cover until the player has photographed a room, then their newest room in each mode's treatment", async () => {
     await renderHub();
-    // The Study's first view (the bundled asset), baked in each card's own mode.
+    // Each card's own mode's cover, and no photo (The Study's is no longer the default).
     for (const genre of ["noir", "crime_scene", "paranormal"]) {
-      expect(art(genre)).toEqual({ source: 101, genre, cacheKey: undefined, maxEdge: M.artEdge });
+      expect(cover(genre)).toEqual({ genre });
+      expect(art(genre)).toBeUndefined();
     }
     await screen.unmount();
 
@@ -211,6 +228,7 @@ describe("01 · Home: three mode cards", () => {
     // Their own room in each mode's treatment, the bake keyed by the photo (its signed URL changes).
     for (const genre of ["noir", "crime_scene", "paranormal"]) {
       expect(art(genre)).toEqual({ source: { uri: "https://signed.example/p1.jpg" }, genre, cacheKey: "p1", maxEdge: M.artEdge });
+      expect(cover(genre)).toBeUndefined();
     }
   });
 
@@ -418,8 +436,9 @@ describe("01 · Home: Settings", () => {
     expect(mockPreferences.setHotspotAssist).toHaveBeenCalledWith(true);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
 
+    // Close slides the sheet away, then it unmounts.
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByTestId("hub-sheet")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
   });
 
   it("Settings saves Haptics and Reduce motion to the account, showing the new value at once, and flips back calmly if saving fails", async () => {

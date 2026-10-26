@@ -94,9 +94,9 @@ export function studyStamp(session: GameSession["status"] | null | undefined): C
 }
 
 const STUDY_ACTION: Record<"open" | "inProgress" | "closed", string> = {
-  open: "Play The Study",
-  inProgress: "Continue The Study",
-  closed: "Replay The Study",
+  open: "Take the case",
+  inProgress: "Back on the case",
+  closed: "Reopen the case",
 };
 
 /** The Study's meta line, which is also what a tap does. */
@@ -104,30 +104,60 @@ export function studyAction(stamp: CaseStamp): string {
   return stamp === "inProgress" || stamp === "closed" ? STUDY_ACTION[stamp] : STUDY_ACTION.open;
 }
 
-/** Announced when a building case flips while its mode screen is open. */
+/** Announced when a building case flips while its mode screen is open (the build's plain words). */
 export const READY_ANNOUNCEMENT = "Your case is ready.";
 export const FAILED_ANNOUNCEMENT = "Your case didn't build. Open it to see why.";
 
-/** Each mode's plain words on its own screens. */
-export const MODE_COPY: Record<Genre, { empty: string; intro: { title: string; body: string }[] }> = {
+/** What a mode's own screens say about it, per mode. */
+export interface ModeCopy {
+  /** The list's heading. */
+  cases: string;
+  /** No cases in this mode yet. */
+  empty: string;
+  /** The list couldn't load (a server error; offline has its own plain line). */
+  tryLater: string;
+  /** The first-time intro: its kicker, three steps, and its button (crime scene and paranormal). */
+  intro: { kicker: string; start: string; steps: { title: string; body: string }[] } | null;
+}
+
+/**
+ * Each mode's words on its own screens, in its voice (GAME_FEEL_PROMPT.md, 6):
+ * noir a dry hard-boiled narrator, crime scene clipped police procedural,
+ * paranormal hushed and eerie. Photographing a room stays in plain words.
+ */
+export const MODE_COPY: Record<Genre, ModeCopy> = {
   noir: {
-    empty: "No cases yet. Photograph a room and it becomes a case to solve.",
-    intro: [],
+    cases: "Case files",
+    empty: "Quiet week. Photograph a room and it becomes a case.",
+    tryLater: "The trail went cold. Try again.",
+    intro: null,
   },
   crime_scene: {
-    empty: "No cases yet. Photograph a room and it becomes the scene of a crime.",
-    intro: [
-      { title: "Find the evidence", body: "Search the room. Each clue can break a suspect's story." },
-      { title: "Read the alibis", body: "Open Suspects to see who says what, and whose alibi no longer holds." },
-      { title: "Accuse who, why and how", body: "Name the killer, the motive and the method. A wrong guess costs you time." },
-    ],
+    cases: "Case files",
+    empty: "No cases on file. Photograph a room and it becomes a crime scene.",
+    tryLater: "Couldn't pull the files. Try again.",
+    intro: {
+      kicker: "Briefing",
+      start: "Take the case",
+      steps: [
+        { title: "Search the scene", body: "Every clue is evidence. Some break a suspect's alibi." },
+        { title: "Check the alibis", body: "Open Suspects: who says what, and whose story no longer holds." },
+        { title: "Make the arrest", body: "Name the killer, the motive and the method. A wrong call costs you time." },
+      ],
+    },
   },
   paranormal: {
+    cases: "Your hauntings",
     empty: "No cases yet. Photograph a room and something moves in.",
-    intro: [
-      { title: "Find the anomalies", body: "Look for what flickers, moves or turns cold." },
-      { title: "Watch the presence rise", body: "Each anomaly you find makes the presence stronger." },
-      { title: "Banish it in the right order", body: "Do the right things in the right order to send it away." },
-    ],
+    tryLater: "Something interfered. Try again.",
+    intro: {
+      kicker: "Before you go in",
+      start: "Step inside",
+      steps: [
+        { title: "Find the anomalies", body: "Look for what flickers, moves or turns cold." },
+        { title: "Feel the presence grow", body: "Every anomaly you find makes it stronger." },
+        { title: "Banish it", body: "Do the right things in the right order. Then it leaves." },
+      ],
+    },
   },
 };

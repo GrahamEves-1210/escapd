@@ -1,6 +1,8 @@
-// Case closed for a custom room, per mode (src/render/CaseClosed.tsx): noir's
-// CASE CLOSED stamp, crime scene's accused under GUILTY, paranormal's room
-// back in its own colours. The player passes the mode, the case's name, the
+// Case closed for a custom room, per mode (src/render/CaseClosed.tsx): the
+// victory moment. Noir's CASE CLOSED slammed onto the case file, crime
+// scene's accused under GUILTY, paranormal's room snapping back to its own
+// colours; then the completed session's stats (time, hints, wrong answers)
+// and the magnifier rating they earn. The player passes the mode, the case's name, the
 // server's lines and the accused suspect's id as params, and the case in
 // memory (closedCase.ts); after a reload the case's name and the accused are
 // read from the completed session's definition instead. Then: a new case in
@@ -10,13 +12,12 @@ import { router, useLocalSearchParams } from "expo-router";
 import type { AccuseOption } from "@/lib/puzzle-types";
 import { getLatestSession, getPlayableDefinition } from "@/lib/escapd-api";
 import { openCapture } from "@/capture/openCapture";
-import { formatDuration } from "@/game/format";
 import { parseGenre, themeFor } from "@/game/mode";
 import { suspectById } from "@/game/selectors";
-import { PillButton } from "@/components/noir";
-import { CaseClosed, type CaseSummary } from "@/render/CaseClosed";
+import { ModePill } from "@/capture/ui/ModePill";
+import { CaseClosed } from "@/render/CaseClosed";
 import { closedCaseFor } from "@/render/closedCase";
-import { WhiteBar } from "@/render/parts";
+import { caseSummary, type CaseSummary } from "@/render/victory";
 
 export default function PlayCompleteScreen() {
   const params = useLocalSearchParams<{ roomId: string; genre?: string; title?: string; message?: string; exit?: string; suspect?: string }>();
@@ -24,7 +25,8 @@ export default function PlayCompleteScreen() {
   const [stash] = useState(() => closedCaseFor(roomId));
   const genre = parseGenre(params.genre) ?? stash?.genre ?? "noir";
   const theme = themeFor(genre);
-  const [summary, setSummary] = useState<CaseSummary | null>(null);
+  // undefined while the session loads; null when there is none to read.
+  const [summary, setSummary] = useState<CaseSummary | null | undefined>(undefined);
   const [fetched, setFetched] = useState<{ title?: string; accused?: AccuseOption & { contradicted?: boolean } } | null>(null);
   const suspect = params.suspect || undefined;
   const needsDefinition = !stash || (!!suspect && !stash.accused);
@@ -33,20 +35,17 @@ export default function PlayCompleteScreen() {
     let cancelled = false;
     getLatestSession(roomId, "completed")
       .then(async (s) => {
-        if (!s || cancelled) return;
-        if (s.completed_at) {
-          setSummary({
-            time: formatDuration(new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()),
-            hints: s.hints_used,
-          });
-        }
-        if (!needsDefinition) return;
+        if (cancelled) return;
+        setSummary(caseSummary(s));
+        if (!s || !needsDefinition) return;
         const def = await getPlayableDefinition(s.puzzle_version_id);
         const contradicted = (s.state as { contradicted?: string[] } | null)?.contradicted ?? [];
         const accused = suspectById(def, suspect);
         if (!cancelled) setFetched({ title: def.title, accused: accused && { ...accused, contradicted: contradicted.includes(accused.id) } });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setSummary((current) => current ?? null);
+      });
     return () => {
       cancelled = true;
     };
@@ -71,8 +70,8 @@ export default function PlayCompleteScreen() {
       photo={stash?.photo}
       actions={(
         <>
-          <WhiteBar label="New case" onPress={newCase} testID="complete-new-case" />
-          <PillButton
+          <ModePill variant="ghost" label="Next case" onPress={newCase} testID="complete-new-case" />
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
@@ -81,11 +80,11 @@ export default function PlayCompleteScreen() {
             onPress={() => router.dismissTo({ pathname: "/mode/[genre]", params: { genre } })}
             testID="complete-mode"
           />
-          <PillButton
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
-            label="Play this case again"
+            label="Replay the case"
             onPress={() => router.replace({ pathname: "/play/[roomId]", params: { roomId } })}
             testID="complete-replay"
           />

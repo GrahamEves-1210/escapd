@@ -3,19 +3,19 @@
 // framed word in the heavy grotesk, tilted; the frame a little short of
 // solid like ink, the word always solid so its contrast holds (11 pt
 // CONTRADICTED on a card's raised fill needs all of its 4.5:1).
-// A large stamp can slam down: it falls from slamFrom times its size to rest
-// (opacity and scale on the UI thread), with a thud as it lands; under
-// reduced motion it fades in instead. The word is the stamp's meaning, so
-// it never relies on its colour.
-import { useEffect } from "react";
+// A large stamp can slam down (slam.ts): it falls from slamFrom times its
+// size, overshoots and settles, its ink spreading out from the frame as it
+// hits, with the `stamp` cue (haptic and sound) on impact; under reduced
+// motion it fades in instead, and the cue comes as the fade ends. The word
+// is the stamp's meaning, so it never relies on its colour.
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { ref } from "@/theme/tokens";
 import { trackingPad } from "@/components/noir";
+import { useSlam } from "./slam";
 
 const P = ref.layout.play;
 const S = P.stamp;
@@ -39,28 +39,15 @@ export function Stamp({ text, size = "small", slam = false, delay = S.slamDelay,
   const large = size === "large";
   const animate = large && slam;
   // The whole stamp rests at full strength; only its frame is inked (below).
-  const opacity = useSharedValue(animate ? 0 : 1);
-  const scale = useSharedValue(animate && !reducedMotion ? S.slamFrom : 1);
-
-  useEffect(() => {
-    if (!animate) return;
-    const landed = () => {
-      feedback.thud();
+  const { opacity, scale, ink } = useSlam({
+    enabled: animate,
+    delay,
+    reducedMotion,
+    onLanded: () => {
+      feedback.stamp();
       onLanded?.();
-    };
-    if (reducedMotion) {
-      opacity.set(withDelay(delay, withTiming(1, { duration: motion.reducedFade }, (done) => {
-        if (done) scheduleOnRN(landed);
-      })));
-      return;
-    }
-    opacity.set(withDelay(delay, withTiming(1, { duration: S.slam / 2 })));
-    scale.set(withDelay(delay, withTiming(1, { duration: S.slam, easing: Easing.in(Easing.quad) }, (done) => {
-      if (done) scheduleOnRN(landed);
-    })));
-    // Once, on mount: a stamp lands once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    },
+  });
 
   const motionStyle = useAnimatedStyle(() => ({
     opacity: opacity.get(),
@@ -78,6 +65,14 @@ export function Stamp({ text, size = "small", slam = false, delay = S.slamDelay,
         style={[styles.frame, large ? styles.frameLarge : styles.frameSmall, { borderColor: theme.stamp }]}
         testID={testID ? `${testID}-frame` : undefined}
       />
+      {animate ? (
+        // The ink spreading out from the frame as the stamp hits.
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.frame, styles.frameLarge, { borderColor: theme.stamp }, ink]}
+          testID={testID ? `${testID}-ink` : undefined}
+        />
+      ) : null}
       <Text style={[type, trackingPad(type), { color: theme.stamp }]}>{text}</Text>
     </Animated.View>
   );

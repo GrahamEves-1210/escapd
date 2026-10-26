@@ -2,7 +2,7 @@
 // guide and Pro screens, and the mode photo treatment (TreatedImage). Every
 // value comes from `ref` and `modeThemes` in src/theme/tokens.ts.
 // Import from "@/components/noir".
-export { DarkSheet, type DarkSheetProps } from "./DarkSheet";
+export { DarkSheet, useSheetClose, type DarkSheetProps } from "./DarkSheet";
 export { FocusRing, focusRingStyle, useFocusRing, type FocusShape } from "./focus";
 export { GlyphStack, type GlyphLayerSpec } from "./Glyph";
 export { gradientLine, gradientStops } from "./gradient";
@@ -33,6 +33,7 @@ export {
   type PaletteTransition,
 } from "./motion";
 export { PillButton, type PillButtonProps, type PillGround, type PillVariant } from "./PillButton";
+export { SquashPressable, usePressSquash, type SquashPressableProps } from "./squash";
 export { trackingPad } from "./text";
 export { ThinkingStates, type ThinkingGround, type ThinkingStatesProps, type ThinkingVariant } from "./ThinkingStates";
 export { TreatedImage, type TreatedImageProps } from "./TreatedImage";

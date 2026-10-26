@@ -10,13 +10,14 @@ import type { SuspectCard } from "@/game/selectors";
 import { useModeTheme } from "@/game/mode";
 import { DarkSheet } from "@/components/noir";
 import { ref } from "@/theme/tokens";
-import { Card, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card } from "./parts";
 import { SuspectFile } from "./SuspectFile";
 
 const P = ref.layout.play;
 
 export function contradictedLine(count: number, total: number) {
-  if (count === 0) return "Read the alibis. A clue may break one.";
+  if (count === 0) return "No alibis broken yet.";
   return count === 1 ? `1 of ${total} alibis broken` : `${count} of ${total} alibis broken`;
 }
 
@@ -39,16 +40,17 @@ export function SuspectsSheet({ suspects, motives, methods, canAccuse, onAccuse,
       testID="suspects-sheet"
       footer={(
         <View style={styles.footer}>
-          <WhiteBar
+          <ModePill
+            variant="ghost"
             label="Accuse"
             onPress={onAccuse}
             disabled={!canAccuse}
-            accessibilityHint={canAccuse ? "Name who did it, why and how." : undefined}
+            accessibilityHint={canAccuse ? "Name the suspect, the motive and the method." : undefined}
             testID="suspects-accuse"
           />
           {!canAccuse ? (
             <Text style={[P.type.hint, styles.center, { color: theme.inkMuted }]} testID="suspects-locked">
-              Find more evidence before you accuse.
+              Not enough evidence yet. Keep searching.
             </Text>
           ) : null}
         </View>

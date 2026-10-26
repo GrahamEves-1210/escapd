@@ -20,6 +20,8 @@ import { CrimsonText_400Regular_Italic } from "@expo-google-fonts/crimson-text/4
 import { CrimsonText_600SemiBold_Italic } from "@expo-google-fonts/crimson-text/600SemiBold_Italic";
 import { Archivo_800ExtraBold } from "@expo-google-fonts/archivo/800ExtraBold";
 import { Archivo_900Black } from "@expo-google-fonts/archivo/900Black";
+import { CourierPrime_400Regular } from "@expo-google-fonts/courier-prime/400Regular";
+import { CourierPrime_700Bold } from "@expo-google-fonts/courier-prime/700Bold";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
 import { useSkiaReady } from "@/lib/skiaReady";
 import { ThemeProvider } from "@/theme/ThemeProvider";
@@ -48,6 +50,9 @@ export default function RootLayout() {
     PlayfairDisplay_900Black,
     Archivo_900Black,
     CrimsonText_600SemiBold_Italic,
+    // The play screen's typewriter face for game moments (ref.layout.play.type: notes, tags, the informant).
+    CourierPrime_400Regular,
+    CourierPrime_700Bold,
   });
   // Web only: mode photos are baked with Skia, whose CanvasKit loads first.
   // Native Skia is in the binary, so this is true at once and never waits.

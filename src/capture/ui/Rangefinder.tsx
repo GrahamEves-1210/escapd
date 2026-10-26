@@ -14,9 +14,10 @@
 // its ground, raised buttons and inks, the counter's numeral and the way-on
 // ring in the mode's stamp colour, and the last photo in the mode's baked
 // treatment. The live feed itself is never treated.
-// Haptics: thud as the shutter fires, error on a failed shot, success when
-// the 6th photo fills the set, tick on flash, grid and lens changes, press
-// on the square buttons and the thumbnail (inside those components).
+// Feedback: the shutter cue (a thud and the shutter's sound) as it fires,
+// error on a failed shot, success when the 6th photo fills the set, tick on
+// flash, grid and lens changes, press on the square buttons and the
+// thumbnail (inside those components).
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -177,8 +178,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     setNotice(null);
     try {
       const picture = await view.takePictureAsync({ quality: CAPTURE_QUALITY, exif: false });
-      // The shutter firing: the firm, physical moment.
-      feedback.thud();
+      // The shutter firing: the firm, physical moment, and its sound.
+      feedback.shutter();
       const plate = await processPhoto(picture);
       if (retakeIndex === null) {
         // The 6th photo fills the set: an outcome the prompt also states.

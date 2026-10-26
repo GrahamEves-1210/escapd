@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
-import { AccessibilityInfo, StyleSheet, Text, TextInput, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { AccessibilityInfo, Platform, StyleSheet, Text, TextInput, View } from "react-native";
+import Animated, {
+  Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming, type SharedValue,
+} from "react-native-reanimated";
 import type { Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
@@ -9,14 +11,32 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { BackspaceIcon, ICON_WEIGHT, WarningIcon } from "@/components/icons";
 import { CodeWheel } from "./CodeWheel";
-import { Card, NoticeLine, QuietToggle, RingPressable, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { FocusRing, SquashPressable, useFocusRing, type SquashPressableProps } from "@/components/noir";
+import { Card, NoticeLine, QuietToggle } from "./parts";
+import { PLAY_COPY } from "./voice";
 
 const P = ref.layout.play;
 const K = P.code;
+const LK = P.codePad.lock;
 const SQ = ref.button.square;
+const J = ref.motion.juice;
+
+// Our own reduced-motion check decides every movement here; Reanimated's system one never does.
+const NEVER = ReduceMotion.Never;
+const FADE = { duration: motion.reducedFade, reduceMotion: NEVER } as const;
+const SWING_EASING = Easing.inOut(Easing.quad);
+const OUT = Easing.out(Easing.cubic);
 
 export type CodeOutcome =
-  | { kind: "solved" }
+  /**
+   * `proceed` is what follows a correct code (the result sheet, the scene
+   * change, case closed). The pad plays its latch first and calls it once the
+   * lock is open (ref.motion.juice.latch.hold; motion.reducedFade under
+   * reduced motion), or at once if the pad goes away first. Without it the
+   * caller moves on by itself.
+   */
+  | { kind: "solved"; proceed?: () => void }
   | { kind: "wrong"; message: string }
   | { kind: "invalid"; message: string }
   | { kind: "failed"; message: string };
@@ -28,9 +48,16 @@ const MAX_FREE_LENGTH = 12;
  * Code entry for `kind: "code"`. A fixed run of digits is a tumbler: every
  * wheel is a vertical picker (CodeWheel) that always shows a numeral in 02's
  * italic, so a leading zero is sent as "0". Other codes use void slots or a
- * void field, and digits a keypad of 02's square buttons. Wrong answers keep
- * the lock open, reset the wheels, shake them, and show 02's error line
- * (white glyph and words).
+ * void field, and digits a keypad of 02's square buttons. A padlock in the
+ * mode's accent sits over the code (GAME_FEEL_PROMPT.md 1: the pad feels
+ * mechanical). A wrong answer gives `wrongCode`, rattles the pad (the lock
+ * tugs and holds), resets the wheels and shows 02's error line (white glyph
+ * and words); the pad stays open for another try. A correct one gives
+ * `unlock`: the shackle springs up and swings open, a ring in the accent
+ * lights round the code, and only then does the outcome's `proceed` run.
+ * Reduced motion: no rattle or slide; the pad dims and returns on a wrong
+ * code, the lock cross-fades open, and `proceed` runs after motion.reducedFade.
+ * Every haptic stays.
  */
 export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   puzzle: Puzzle;
@@ -51,10 +78,21 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   const [message, setMessage] = useState<{ tone: "warning" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [showItems, setShowItems] = useState(false);
+  // The latch is playing: the pad is spent, and waits for `proceed`.
+  const [unlocking, setUnlocking] = useState(false);
   const displayRef = useRef<ComponentRef<typeof View>>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
-  const shake = useSharedValue(0);
-  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shake.get() }] }));
+  const lock = useLockMotion();
+  const pending = useRef<{ timer: ReturnType<typeof setTimeout>; proceed: () => void } | null>(null);
+
+  // Gone before the latch finished (the sheet closed): the flow still goes on.
+  useEffect(() => () => {
+    const held = pending.current;
+    if (!held) return;
+    pending.current = null;
+    clearTimeout(held.timer);
+    held.proceed();
+  }, []);
 
   const max = length ?? MAX_FREE_LENGTH;
   const answer = tumbler ? digits.join("") : value;
@@ -81,24 +119,33 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
     if (!complete || busy) return;
     setBusy(true);
     const outcome = await onSubmit(answer);
-    setBusy(false);
-    if (outcome.kind === "solved") return;
-    if (outcome.kind === "wrong") {
-      const d = motion.wrongShake.distance;
-      const step = motion.wrongShake.duration / 4;
-      if (!reducedMotion) {
-        shake.set(withSequence(
-          withTiming(d, { duration: step }), withTiming(-d, { duration: step }),
-          withTiming(d, { duration: step }), withTiming(0, { duration: step }),
-        ));
+    if (outcome.kind === "solved") {
+      // Stays busy: the lock is open, there is nothing more to try.
+      setUnlocking(true);
+      feedback.unlock();
+      lock.open(reducedMotion);
+      const { proceed } = outcome;
+      if (proceed) {
+        const timer = setTimeout(() => {
+          pending.current = null;
+          proceed();
+        }, reducedMotion ? motion.reducedFade : J.latch.hold);
+        pending.current = { timer, proceed };
       }
+      return;
+    }
+    setBusy(false);
+    if (outcome.kind === "wrong") {
+      feedback.wrongCode();
+      lock.rattle(reducedMotion);
       if (tumbler) setDigits(Array.from({ length: length ?? 0 }, () => 0));
       else setValue("");
     }
     setMessage({ tone: outcome.kind === "failed" ? "error" : "warning", text: outcome.message });
     AccessibilityInfo.announceForAccessibility(outcome.message);
     if (tumbler || kind === "digits") {
-      if (displayRef.current) AccessibilityInfo.sendAccessibilityEvent(displayRef.current, "focus");
+      // The web has no sendAccessibilityEvent: its live region reads the line.
+      if (displayRef.current && Platform.OS !== "web") AccessibilityInfo.sendAccessibilityEvent(displayRef.current, "focus");
     } else {
       inputRef.current?.focus();
     }
@@ -107,7 +154,7 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   const wheels = (
     <Animated.View
       ref={displayRef}
-      style={[styles.wheels, shakeStyle]}
+      style={styles.wheels}
       accessibilityLabel={answer.length ? `Code: ${answer.split("").join(" ")}` : "Code: empty"}
     >
       {digits.map((digit, index) => (
@@ -119,7 +166,7 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   const keypad = kind === "digits" ? (
     <Animated.View
       ref={displayRef}
-      style={[styles.slots, shakeStyle]}
+      style={styles.slots}
       accessible
       accessibilityLabel={value.length ? `Code: ${value.split("").join(" ")}` : "Code: empty"}
       accessibilityHint={length ? `${length} digits` : undefined}
@@ -134,7 +181,7 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
         : <Text style={[styles.digit, { color: value ? theme.ink : theme.inkMuted }]}>{value || "—"}</Text>}
     </Animated.View>
   ) : (
-    <Animated.View style={shakeStyle}>
+    <View>
       <TextInput
         ref={inputRef}
         value={value}
@@ -151,13 +198,19 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
         placeholderTextColor={theme.inkMuted}
         style={[styles.input, { color: theme.ink }]}
       />
-    </Animated.View>
+    </View>
   );
 
   return (
     <View style={styles.root}>
       {puzzle.prompt ? <Text style={[styles.prompt, { color: theme.inkMuted }]}>{puzzle.prompt}</Text> : null}
-      {tumbler ? wheels : keypad}
+      <Animated.View style={[styles.lockGroup, lock.groupStyle]} pointerEvents={unlocking ? "none" : "auto"} testID="code-pad">
+        <Padlock lock={lock} color={theme.accent} keyhole={theme.accentInk} />
+        <View style={tumbler || (kind === "digits" && length) ? styles.frameHug : styles.frameFill}>
+          {tumbler ? wheels : keypad}
+          <Animated.View pointerEvents="none" style={[styles.ring, { borderColor: theme.accent }, lock.ringStyle]} testID="code-ring" />
+        </View>
+      </Animated.View>
       <View style={styles.messageRow} accessibilityLiveRegion="polite" testID="code-message">
         {message ? <NoticeLine icon={WarningIcon} text={message.text} /> : null}
       </View>
@@ -165,11 +218,8 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
       {!tumbler && kind === "digits" ? (
         <View style={styles.pad}>
           {KEYS.map((key) => (
-            <RingPressable
+            <KeyButton
               key={key}
-              ring="panel"
-              radius={SQ.radius}
-              edge={SQ.borderWidth}
               onPressIn={feedback.press}
               onPress={() => press(key)}
               accessibilityRole="button"
@@ -182,16 +232,19 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
                 : <Text style={key === "clear" ? [styles.clear, { color: theme.inkMuted }] : [styles.keyLabel, { color: theme.ink }]}>
                   {key === "clear" ? "Clear" : key}
                 </Text>}
-            </RingPressable>
+            </KeyButton>
           ))}
         </View>
       ) : null}
 
-      <WhiteBar
+      <ModePill
+        variant="ghost"
         label={tumbler ? "Test combination" : "Try code"}
         onPress={submit}
         disabled={!complete}
         busy={busy}
+        // The latch is the answer while it plays: no indicator.
+        spinner={!unlocking}
         // The outcome (the lock opening, or a wrong code) gives the haptic.
         haptic={false}
         testID="code-submit"
@@ -200,7 +253,7 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
       {items.length > 0 ? (
         <View style={styles.items}>
           <QuietToggle
-            label={showItems ? "Hide your items" : "Check your items"}
+            label={showItems ? PLAY_COPY.evidenceHide : PLAY_COPY.evidenceShow}
             onPress={() => setShowItems((s) => !s)}
             expanded={showItems}
             testID="code-items"
@@ -217,8 +270,143 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
   );
 }
 
+/** A keypad key: 02's square stretched, with the kit's press-in squash and the brass focus ring. */
+function KeyButton({ children, ...props }: Omit<SquashPressableProps, "children" | "onFocus" | "onBlur"> & { children: ReactNode }) {
+  const focus = useFocusRing();
+  return (
+    <SquashPressable {...props} onFocus={focus.onFocus} onBlur={focus.onBlur}>
+      {children}
+      <FocusRing visible={focus.focused} shape="panel" radius={SQ.radius} edge={SQ.borderWidth} />
+    </SquashPressable>
+  );
+}
+
+/**
+ * The pad's moving parts, all shared values on the UI thread: the group's
+ * rattle and dim, the shackle's lift and swing, the closed-to-open fade
+ * (reduced motion), and the ring's glow.
+ */
+function useLockMotion() {
+  const rattleX = useSharedValue(0);
+  const dim = useSharedValue(1);
+  const lift = useSharedValue(0);
+  const swing = useSharedValue(0);
+  const opened = useSharedValue(0);
+  const glow = useSharedValue(0);
+  const groupStyle = useAnimatedStyle(() => ({ opacity: dim.get(), transform: [{ translateX: rattleX.get() }] }));
+  const ringStyle = useAnimatedStyle(() => ({ opacity: glow.get() }));
+
+  const rattle = (reduced: boolean) => {
+    const R = J.rattle;
+    if (reduced) {
+      dim.set(withSequence(withTiming(R.dim, { duration: motion.reducedFade / 2, reduceMotion: NEVER }), withTiming(1, FADE)));
+      return;
+    }
+    const step = { duration: R.duration / R.swings.length, easing: SWING_EASING, reduceMotion: NEVER };
+    rattleX.set(withSequence(...R.swings.map((share) => withTiming(share * R.distance, step))));
+    // The shackle is tugged, and holds.
+    lift.set(withSequence(
+      withTiming(-J.latch.kick, { duration: J.latch.settle / 2, easing: OUT, reduceMotion: NEVER }),
+      withTiming(0, { duration: J.latch.settle, easing: SWING_EASING, reduceMotion: NEVER }),
+    ));
+  };
+
+  const open = (reduced: boolean) => {
+    const L = J.latch;
+    if (reduced) {
+      opened.set(withTiming(1, FADE));
+      glow.set(withTiming(1, FADE));
+      return;
+    }
+    lift.set(withSequence(
+      withTiming(-(LK.room + L.kick), { duration: L.lift, easing: OUT, reduceMotion: NEVER }),
+      withTiming(-LK.room, { duration: L.settle, easing: SWING_EASING, reduceMotion: NEVER }),
+    ));
+    swing.set(withDelay(L.lift + L.settle, withTiming(L.swing, { duration: L.swingTime, easing: OUT, reduceMotion: NEVER }), NEVER));
+    glow.set(withDelay(L.glowDelay, withTiming(1, { duration: L.glow, easing: OUT, reduceMotion: NEVER }), NEVER));
+  };
+
+  return { lift, swing, opened, groupStyle, ringStyle, rattle, open };
+}
+
+/**
+ * The padlock over the code, drawn in the mode's accent: a body with a
+ * keyhole, and a U shackle whose legs sit in it. The closed shackle moves
+ * (lift, then the swing about its left leg); under reduced motion it fades
+ * out as an open one, drawn where the swing ends, fades in. Decorative: the
+ * screen says what happened.
+ */
+function Padlock({ lock, color, keyhole }: {
+  lock: { lift: SharedValue<number>; swing: SharedValue<number>; opened: SharedValue<number> };
+  color: string;
+  keyhole: string;
+}) {
+  const { lift, swing, opened } = lock;
+  const closedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - opened.get(),
+    transform: [{ translateY: lift.get() }, { rotate: `${swing.get()}deg` }],
+  }));
+  const openStyle = useAnimatedStyle(() => ({ opacity: opened.get() }));
+  return (
+    <View style={styles.lock} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="code-lock">
+      <Animated.View style={[styles.shackle, { borderColor: color }, closedStyle]} testID="code-lock-shackle" />
+      <Animated.View style={[styles.shackle, styles.shackleOpen, { borderColor: color }, openStyle]} testID="code-lock-open" />
+      <View style={[styles.lockBody, { backgroundColor: color }]}>
+        <View style={[styles.keyhole, { backgroundColor: keyhole }]} />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { gap: ref.space.lg },
+  lockGroup: { gap: ref.space.lg },
+  lock: {
+    alignSelf: "center",
+    width: LK.body.width,
+    height: LK.room + LK.shackle.height + LK.body.height - LK.shackle.seat,
+  },
+  shackle: {
+    position: "absolute",
+    top: LK.room,
+    left: (LK.body.width - LK.shackle.width) / 2,
+    width: LK.shackle.width,
+    height: LK.shackle.height,
+    borderWidth: LK.shackle.bar,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: LK.shackle.width / 2,
+    borderTopRightRadius: LK.shackle.width / 2,
+    // The swing turns about the left leg's foot.
+    transformOrigin: "left bottom",
+  },
+  // Where the closed shackle's lift and swing end.
+  shackleOpen: { opacity: 0, transform: [{ translateY: -LK.room }, { rotate: `${J.latch.swing}deg` }] },
+  lockBody: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    width: LK.body.width,
+    height: LK.body.height,
+    borderRadius: LK.body.radius,
+    ...ref.curve,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  keyhole: { width: LK.keyhole.width, height: LK.keyhole.height, borderRadius: LK.keyhole.radius },
+  // The ring hugs fixed wheels and slots, and the free field's full width.
+  frameHug: { alignSelf: "center" },
+  frameFill: { alignSelf: "stretch" },
+  ring: {
+    position: "absolute",
+    top: -P.codePad.ringPad,
+    bottom: -P.codePad.ringPad,
+    left: -P.codePad.ringPad,
+    right: -P.codePad.ringPad,
+    borderWidth: P.codePad.ring,
+    borderRadius: SQ.radius + P.codePad.ringPad,
+    ...ref.curve,
+    opacity: 0,
+  },
   prompt: { ...P.type.hint, color: ref.color.textSecondary },
   digit: { ...P.type.digit, color: ref.color.textPrimary, textAlign: "center" },
   wheels: { flexDirection: "row", justifyContent: "center", gap: ref.space.sm },

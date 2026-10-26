@@ -55,7 +55,7 @@ const STEPS: StepDef[] = [
   },
   {
     id: "combine",
-    text: "Two torn halves. Select both notes, then close the clasp.",
+    text: "Two torn halves. Select both notes, then tap Fit together.",
     target: { kind: "inventory" },
     ready: (c) => has(c, "torn_note_left") && has(c, "torn_note_right"),
     done: (c) => solved(c, "join_notes"),

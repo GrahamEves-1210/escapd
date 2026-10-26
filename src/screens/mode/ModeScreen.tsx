@@ -1,5 +1,5 @@
 // A mode's screen, /mode/<genre> (MODES_PROMPT.md Part 2), all in the mode's
-// palette: a banner of the mode's art (the same photo as its home card) with
+// palette: a banner of the mode's art (the same picture as its home card) with
 // the camera's square back button on it; the mode's name in its display face
 // and its tagline; the player's cases in this mode as case files with their
 // stamps; on noir, The Study as a case to replay; and New case, the mode's
@@ -26,16 +26,15 @@ import { modeThemes, ref } from "@/theme/tokens";
 
 const L = ref.layout.mode;
 
+// Shared words; each mode's own are caseFiles.ts's MODE_COPY. Offline stays plain.
 const COPY = {
   newCase: "New case",
-  yourCases: "Your cases",
   firstCase: "The first case",
   study: "The Study",
   offline: "You're offline. Your cases show when you connect.",
-  tryLater: "Couldn't load your cases. Try again in a moment.",
   retry: "Try again",
   studyOffline: "You're offline. Connect to begin.",
-  studyFailed: "Couldn't start the case. Try again in a moment.",
+  studyFailed: "The trail went cold. Try again.",
 } as const;
 
 type Busy = "new" | "study";
@@ -134,7 +133,7 @@ export function ModeScreen({ genre }: { genre: Genre }) {
           <Text style={[L.type.tagline, styles.tagline, { color: theme.inkMuted }]}>{theme.tagline}</Text>
 
           <Text accessibilityRole="header" style={[L.type.section, styles.section, { color: theme.ink }]}>
-            {COPY.yourCases}
+            {MODE_COPY[genre].cases}
           </Text>
           <View style={styles.list} accessibilityState={{ busy: cases.kind === "loading" }} testID="mode-cases">
             {cases.kind === "ready" && cases.files.length > 0
@@ -161,7 +160,7 @@ export function ModeScreen({ genre }: { genre: Genre }) {
             ) : null}
             {cases.kind === "offline" || cases.kind === "tryLater" ? (
               <View style={styles.line} testID="mode-error">
-                <Text style={[L.type.body, { color: theme.inkMuted }]}>{cases.kind === "offline" ? COPY.offline : COPY.tryLater}</Text>
+                <Text style={[L.type.body, { color: theme.inkMuted }]}>{cases.kind === "offline" ? COPY.offline : MODE_COPY[genre].tryLater}</Text>
                 <TextButton theme={theme} label={COPY.retry} onPress={reload} testID="mode-retry" />
               </View>
             ) : null}

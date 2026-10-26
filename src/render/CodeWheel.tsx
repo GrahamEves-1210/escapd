@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { StyleSheet, Text, View, type AccessibilityActionEvent } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
-  Easing, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming,
+  Easing, ReduceMotion, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSequence, withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { timingFor } from "@/components/noir";
@@ -17,6 +17,23 @@ const W = P.code.wheel;
 const ROW = W.row;
 const [E1, E2, E3, E4] = P.pager.easing;
 const SETTLE_EASING = Easing.bezier(E1, E2, E3, E4);
+const D = ref.motion.juice.detent;
+const SEAT = { duration: D.back, easing: Easing.inOut(Easing.quad), reduceMotion: ReduceMotion.Never } as const;
+
+/**
+ * Worklet: roll to `dest` over `duration`, running `D.overshoot` of a row past
+ * it and seating back: the detent, so each stop reads as a mechanical click.
+ * The overshoot never reaches the next digit's middle, so it never ticks.
+ */
+function detentTo(from: number, dest: number, duration: number, done?: (finished?: boolean) => void) {
+  "worklet";
+  const dir = Math.sign(dest - from);
+  if (dir === 0) return withTiming(dest, { duration: D.back, easing: SETTLE_EASING }, done);
+  return withSequence(
+    withTiming(dest + dir * D.overshoot, { duration, easing: SETTLE_EASING }),
+    withTiming(dest, SEAT, done),
+  );
+}
 // Two turns of digits: the one in view sits on index LEAD + digit, so two
 // neighbours either side always exist.
 const LEAD = 5;
@@ -45,7 +62,8 @@ export interface CodeWheelProps {
  * (one less) and below (one more) are textDim, as the counter's. Drag it to
  * roll the digits: it follows the finger, then snaps to the nearest digit on
  * a no-overshoot ease-out matched to the release speed, wrapping 9 to 0.
- * Tapping a neighbour steps to it. Each digit passed gives a light tick.
+ * Tapping a neighbour steps to it. Every stop seats with a small detent
+ * (ref.motion.juice.detent), a mechanical click. Each digit passed gives a light tick.
  * Screen readers get one adjustable element ("Digit 1", value "4"). Reduced
  * motion: the drag steps a digit at a time, with no momentum.
  */
@@ -106,7 +124,7 @@ export function CodeWheel({ index, value, onChange, onDragChange }: CodeWheelPro
     feedback.tick();
     onChange(digit);
     live.set(false);
-    pos.set(reducedMotion ? dest : withTiming(dest, { duration: W.minDuration, easing: SETTLE_EASING }));
+    pos.set(reducedMotion ? dest : detentTo(pos.get(), dest, W.minDuration));
   }, [feedback, onChange, reducedMotion, pos, live]);
 
   const dragging = (on: boolean) => onDragChange?.(on);
@@ -141,7 +159,7 @@ export function CodeWheel({ index, value, onChange, onDragChange }: CodeWheelPro
       const speed = Math.abs(e.velocityY);
       const matched = speed > 1 ? (P.pager.slope * distance / speed) * 1000 : W.maxDuration;
       const duration = Math.min(W.maxDuration, Math.max(W.minDuration, matched));
-      pos.set(withTiming(dest, { duration, easing: SETTLE_EASING }, (finished) => {
+      pos.set(detentTo(pos.get(), dest, duration, (finished) => {
         if (finished) live.set(false);
       }));
     },

@@ -12,13 +12,13 @@ describe("the Accuse screen's cooldown line", () => {
   });
 
   it("says the wait in plain words, minutes and seconds, and nothing once it's over", () => {
-    expect(cooldownText(45)).toBe("You can accuse again in 0:45.");
-    expect(cooldownText(90)).toBe("You can accuse again in 1:30.");
-    expect(cooldownText(605)).toBe("You can accuse again in 10:05.");
+    expect(cooldownText(45)).toBe("Next accusation in 0:45.");
+    expect(cooldownText(90)).toBe("Next accusation in 1:30.");
+    expect(cooldownText(605)).toBe("Next accusation in 10:05.");
     expect(cooldownText(0)).toBeNull();
   });
 
   it("answers every wrong accusation the same way", () => {
-    expect(WRONG_ACCUSATION).toBe("That doesn't add up.");
+    expect(WRONG_ACCUSATION).toBe("The charge won't stick.");
   });
 });

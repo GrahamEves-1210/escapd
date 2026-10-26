@@ -5,8 +5,9 @@
 // grouped rows in the review screen's list style: a Bold 14 section heading
 // over a raised panel with 8 pt corners, rows at least 52 tall split by rim
 // lines. Only settings that work today:
-// - Gameplay: Show interactives (local, AsyncStorage) and Haptics (the
-//   server's haptics_enabled, which useFeedback honours).
+// - Gameplay: Show interactives and Case clock (local, AsyncStorage), Sound
+//   (the server's sound_enabled, which the sound player honours) and
+//   Haptics (the server's haptics_enabled, which useFeedback honours).
 // - Accessibility: Reduce motion (the server's reduced_motion, which drives
 //   the app's reduced motion).
 // - Account: "Add your email" for a guest (to /account), or the signed-in
@@ -41,6 +42,10 @@ export const COPY = {
   gameplay: "Gameplay",
   interactives: "Show interactives",
   interactivesDetail: "Keep the marks on objects you can use visible.",
+  caseClock: "Case clock",
+  caseClockDetail: "Show how long you've been on a case.",
+  sound: "Sound",
+  soundDetail: "Room tone and the click of locks. Follows your silent switch.",
   haptics: "Haptics",
   hapticsDetail: "A light tap when you press or find something.",
   accessibility: "Accessibility",
@@ -67,7 +72,7 @@ const WEB_THUMB: object = Platform.OS === "web" ? { activeThumbColor: SW.thumb }
 /** The app's version, from the app config (expo-constants). */
 const VERSION = Constants.expoConfig?.version ?? null;
 
-type ServerSetting = "haptics_enabled" | "reduced_motion";
+type ServerSetting = "haptics_enabled" | "sound_enabled" | "reduced_motion";
 
 /** Where a navigation row goes. */
 export type SettingsRoute = "/account" | "/pro";
@@ -154,6 +159,25 @@ export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
             prefs.setHotspotAssist(on);
           }}
           testID="hub-show-interactives"
+        />
+        <SwitchRow
+          label={COPY.caseClock}
+          detail={COPY.caseClockDetail}
+          value={prefs.caseClock}
+          onChange={(on) => {
+            feedback.tick();
+            prefs.setCaseClock(on);
+          }}
+          testID="hub-case-clock"
+        />
+        <SwitchRow
+          label={COPY.sound}
+          detail={COPY.soundDetail}
+          value={shown("sound_enabled")}
+          onChange={(on) => {
+            save("sound_enabled", on);
+          }}
+          testID="hub-sound"
         />
         <SwitchRow
           label={COPY.haptics}

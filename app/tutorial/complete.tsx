@@ -1,31 +1,34 @@
-// Tutorial result: noir's case closed (src/render/CaseClosed.tsx). The CASE
-// CLOSED stamp slams down in brass over The Study's name, the server's message
-// and the exit line, then the time and hints on 07's cards, and 07's pinned
-// band: the bar, then two quiet pills. Celebrates observation, not speed.
+// Tutorial result: noir's case closed (src/render/CaseClosed.tsx), the
+// victory moment. CASE CLOSED slams down in brass on The Study's case file,
+// then the server's message and exit line, the session's time, hints and
+// wrong codes landing one by one, the magnifier rating (observation, not
+// speed), and the pinned band: the photo guide's pill, then two quiet pills.
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { getLatestSession } from "@/lib/escapd-api";
 import { openCapture } from "@/capture/openCapture";
-import { formatDuration } from "@/game/format";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { PillButton } from "@/components/noir";
-import { CaseClosed, type CaseSummary } from "@/render/CaseClosed";
-import { WhiteBar } from "@/render/parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { CaseClosed } from "@/render/CaseClosed";
+import { caseSummary, type CaseSummary } from "@/render/victory";
 
 export default function TutorialCompleteScreen() {
   const { message, exit } = useLocalSearchParams<{ message?: string; exit?: string }>();
-  const [summary, setSummary] = useState<CaseSummary | null>(null);
+  // undefined while the session loads; null when there is none to read.
+  const [summary, setSummary] = useState<CaseSummary | null | undefined>(undefined);
 
   useEffect(() => {
+    let cancelled = false;
     getLatestSession(TUTORIAL_ROOM_ID, "completed")
       .then((s) => {
-        if (!s?.completed_at) return;
-        setSummary({
-          time: formatDuration(new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()),
-          hints: s.hints_used,
-        });
+        if (!cancelled) setSummary(caseSummary(s));
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // The next case is the player's own room, in noir: access is checked on the
@@ -45,15 +48,15 @@ export default function TutorialCompleteScreen() {
       next="The next case is your own room."
       actions={(
         <>
-          <WhiteBar label="Photograph your room" onPress={photograph} testID="complete-capture" />
-          <PillButton
+          <ModePill variant="ghost" label="Photograph your room" onPress={photograph} testID="complete-capture" />
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
             label="Back to Detective Noir"
             onPress={() => router.dismissTo({ pathname: "/mode/[genre]", params: { genre: "noir" } })}
           />
-          <PillButton variant="quiet" ground="dark" fullWidth label="Replay The Study" onPress={() => router.replace("/tutorial")} />
+          <ModePill variant="quiet" ground="dark" fullWidth label="Replay The Study" onPress={() => router.replace("/tutorial")} />
         </>
       )}
     />

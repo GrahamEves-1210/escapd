@@ -19,6 +19,7 @@ import { crimeCase, crimeReady, crimeStart, paranormalCase } from "../__fixtures
 
 const mockFeedback = {
   tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn(),
+  paper: jest.fn(), pickup: jest.fn(), wrongCode: jest.fn(), unlock: jest.fn(), stamp: jest.fn(), solved: jest.fn(),
 };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
@@ -67,6 +68,11 @@ jest.setTimeout(60_000);
 
 const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
 const press = async (testID: string) => fireEvent.press(await screen.findByTestId(testID));
+// The result sheet's continue slides the sheet away first (DarkSheet), then it closes.
+const continueResult = async () => {
+  await press("result-continue");
+  await waitFor(() => expect(screen.queryByTestId("result-sheet", { includeHiddenElements: true })).toBeNull());
+};
 const lastAction = () => mocked.submitAction.mock.calls[mocked.submitAction.mock.calls.length - 1][1];
 const action = (actionName: string) => ({ nativeEvent: { actionName } });
 
@@ -144,7 +150,7 @@ describe("Player: crime scene", () => {
     expect(screen.getByText("A push on the stairs", hidden)).toBeTruthy();
     // Accuse waits for the evidence, and says so.
     expect(screen.getByTestId("suspects-accuse").props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByText("Find more evidence before you accuse.")).toBeTruthy();
+    expect(screen.getByText("Not enough evidence yet. Keep searching.")).toBeTruthy();
   });
 
   it("says when a clue breaks an alibi, and when the evidence is enough to accuse", async () => {
@@ -155,9 +161,9 @@ describe("Player: crime scene", () => {
     }, { puzzle_id: "find_note_left", gained_items: ["torn_note_left"] }));
     await press("hotspot-bookshelf");
     await screen.findByTestId("result-sheet");
-    expect(screen.getByText("Ivy Marsh's alibi doesn't hold up.")).toBeTruthy();
-    expect(screen.getByText("You have enough to accuse. Open Suspects.")).toBeTruthy();
-    await press("result-continue");
+    expect(screen.getByText("Alibi broken: Ivy Marsh.")).toBeTruthy();
+    expect(screen.getByText("Enough evidence to accuse. Open Suspects.")).toBeTruthy();
+    await continueResult();
     expect(screen.getByTestId("player-suspects").props.accessibilityLabel).toBe("Suspects, 1 alibi broken. You can accuse");
   });
 
@@ -188,9 +194,9 @@ describe("Player: crime scene", () => {
     await press("accuse-submit");
     expect(lastAction()).toEqual({ type: "accuse", puzzle_id: "name_the_killer", suspect_id: "s_tobias", motive_id: "m_will", method_id: "x_stairs" });
     // Never the server's words: a wrong accusation never says which part was wrong.
-    expect(await screen.findByText("That doesn't add up.")).toBeTruthy();
+    expect(await screen.findByText("The charge won't stick.")).toBeTruthy();
     expect(mockFeedback.error).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("accuse-cooldown").props.children).toMatch(/^You can accuse again in 0:4[45]\.$/);
+    expect(screen.getByTestId("accuse-cooldown").props.children).toMatch(/^Next accusation in 0:4[45]\.$/);
     expect(screen.getByTestId("accuse-submit").props.accessibilityState).toMatchObject({ disabled: true });
     // The picks stay, so one can be changed.
     expect(screen.getByTestId("accuse-suspect-s_tobias-picked")).toBeTruthy();
@@ -207,9 +213,9 @@ describe("Player: crime scene", () => {
       outcome: "invalid", reason: "cooldown", message: "Wait.", retry_after: new Date(Date.now() + 90_000).toISOString(),
     });
     await press("accuse-submit");
-    await waitFor(() => expect(screen.getByTestId("accuse-cooldown").props.children).toMatch(/^You can accuse again in 1:(29|30)\.$/));
+    await waitFor(() => expect(screen.getByTestId("accuse-cooldown").props.children).toMatch(/^Next accusation in 1:(29|30)\.$/));
     expect(mockFeedback.warning).toHaveBeenCalled();
-    expect(screen.queryByText("That doesn't add up.")).toBeNull();
+    expect(screen.queryByText("The charge won't stick.")).toBeNull();
   });
 
   it("still says why when a refused attempt's wait has already run out (a clock ahead of the server's)", async () => {
@@ -224,7 +230,7 @@ describe("Player: crime scene", () => {
     });
     await press("accuse-submit");
     // No countdown to show, so the refusal says it in words instead of leaving the message area blank.
-    expect(await screen.findByText("Wait a moment before you accuse again.")).toBeTruthy();
+    expect(await screen.findByText("Stand by. You can accuse again shortly.")).toBeTruthy();
     expect(screen.queryByTestId("accuse-cooldown")).toBeNull();
     expect(mockFeedback.warning).toHaveBeenCalled();
     // Nothing is left to wait for: the button is on again.
@@ -245,7 +251,7 @@ describe("Player: crime scene", () => {
     await screen.findByTestId("accuse-reveal");
     expect(screen.getByTestId("accused-card").props.accessibilityLabel).toMatch(/^Guilty\. Ivy Marsh, The housekeeper\./);
     expect(flat(screen.getByText("Guilty"))).toMatchObject({ ...P.type.stampLarge, color: CRIME.stamp });
-    // The success haptic for the result; the stamp's thud as it lands.
+    // The success haptic for the result; the stamp cue as GUILTY lands.
     expect(mockFeedback.success).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith({
       message: "Ivy did it.", exitMessage: "The case is closed.", genre: "crime_scene", title: "The Poisoned Toast", accused: "s_ivy",

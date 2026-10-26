@@ -1,7 +1,8 @@
 import type { PuzzleDefinitionV1, SessionState } from "@/lib/puzzle-types";
 import { initialState, studyPublic } from "@/test-utils/seed";
+import { PLAY_VOICES } from "@/render/voice";
 import {
-  QUIET_COPY, accusePuzzle, anomalies, availableCodePuzzle, canAccuse, definitionProblem, exploreEntries, gainedItems,
+  accusePuzzle, anomalies, availableCodePuzzle, canAccuse, definitionProblem, exploreEntries, gainedItems,
   hotspotA11yLabel, hotspotById, hotspotsForScene, inventoryItems, isAnomalyFound, newlyContradicted, presence,
   presenceLabel, quietReason, scenesWithHotspots, suspectById, suspectCards, tapIntent,
 } from "../selectors";
@@ -105,7 +106,8 @@ describe("tapIntent", () => {
 describe("quietReason", () => {
   it("says something is missing at the locked cabinet, without naming the key", () => {
     expect(quietReason(def, start, "cabinet")).toBe("needs_item");
-    expect(QUIET_COPY.needs_item).not.toMatch(/key/i);
+    // In every mode's voice.
+    for (const voice of Object.values(PLAY_VOICES)) expect(voice.quiet.needs_item).not.toMatch(/key/i);
   });
 
   it("says the door does not open yet before the safe is solved", () => {

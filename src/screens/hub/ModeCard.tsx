@@ -1,24 +1,26 @@
 // One of home's three mode cards (MODES_PROMPT.md Part 2): a solid,
-// physical panel in its mode's palette, not glass. The mode's photo fills it
-// (the player's own room once they have photographed one, else The Study),
-// baked in the mode's treatment by TreatedImage. Over it: a small count
+// physical panel in its mode's palette, not glass. The mode's art fills it
+// (ModeArtImage): the player's own room in the mode's treatment once they
+// have photographed one, else the mode's drawn cover. Over it: a small count
 // capsule at the top left, and at the foot the mode's name in its display
 // face and its tagline on a plate of the mode's ground that fades up from
 // clear. One signature touch each, decorative and static: noir's brass rule
 // over the name, crime scene's strip of police tape across the top-right
-// corner, paranormal's soft glow. Every value is ref.layout.hub.modes or the
+// corner (over the player's own room only: the drawn cover has its own
+// tape), paranormal's soft glow. Every value is ref.layout.hub.modes or the
 // mode's theme (modeThemes).
 // The whole card is one button ("Detective Noir. Solve the case. 2 cases")
 // with the `press` haptic on press-in and the brass focus ring round it.
-// Pressed it sinks to `pressScale` at once (no animation, so nothing to
-// reduce).
+// Pressed it sinks to `pressScale` with the kit's press-in squash
+// (SquashPressable: eased in, sprung back); under reduced motion it stays still.
 import { useId } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
-import { FocusRing, TreatedImage, useFocusRing } from "@/components/noir";
+import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import type { ModeArt } from "@/screens/mode/art";
+import { ModeArtImage } from "@/screens/mode/ModeArtImage";
 import { caseCount } from "@/screens/mode/caseFiles";
 import { modeThemes, ref, type ModeTheme } from "@/theme/tokens";
 import { modeCardLabel } from "./caseStatus";
@@ -47,7 +49,8 @@ export function ModeCard({ genre, art, count, busy = false, disabled = false, on
   const feedback = useFeedback();
   const testID = `hub-card-${genre}`;
   return (
-    <Pressable
+    <SquashPressable
+      squash={busy ? false : M.pressScale}
       accessibilityRole="button"
       accessibilityLabel={modeCardLabel(theme.name, theme.tagline, count)}
       accessibilityState={{ disabled: disabled || busy, busy }}
@@ -57,21 +60,13 @@ export function ModeCard({ genre, art, count, busy = false, disabled = false, on
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
       testID={testID}
-      style={({ pressed }) => [styles.card, pressed && !busy && styles.pressed, disabled && styles.dimmed, style]}
+      style={[styles.card, disabled && styles.dimmed, style]}
     >
       <View style={[styles.face, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID={`${testID}-face`}>
-        <TreatedImage
-          source={art.source}
-          genre={genre}
-          cacheKey={art.cacheKey}
-          maxEdge={M.artEdge}
-          contentFit="cover"
-          style={StyleSheet.absoluteFill}
-          accessible={false}
-          testID={`${testID}-art`}
-        />
+        <ModeArtImage genre={genre} art={art} maxEdge={M.artEdge} testID={`${testID}-art`} />
         {genre === "paranormal" ? <Glow theme={theme} /> : null}
-        {genre === "crime_scene" ? <Tape theme={theme} /> : null}
+        {/* The drawn cover tapes its own door off: the strip is for a photo, which has none. */}
+        {genre === "crime_scene" && art.own ? <Tape theme={theme} /> : null}
         <View style={styles.top}>
           {busy || count !== undefined ? (
             <View style={[styles.chip, { backgroundColor: theme.ground, borderColor: theme.rim }]} testID={`${testID}-count`}>
@@ -91,7 +86,7 @@ export function ModeCard({ genre, art, count, busy = false, disabled = false, on
         </View>
       </View>
       <FocusRing visible={focus.focused} shape="panel" radius={M.radius} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -160,7 +155,6 @@ function Tape({ theme }: { theme: ModeTheme }) {
 
 const styles = StyleSheet.create({
   card: { minHeight: M.minHeight, borderRadius: M.radius, ...ref.curve },
-  pressed: { transform: [{ scale: M.pressScale }] },
   dimmed: { opacity: ref.button.disabledOpacity.pill },
   face: {
     flex: 1,

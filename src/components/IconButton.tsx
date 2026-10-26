@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { color, hit, radius } from "@/theme/tokens";
 import { FocusRing, useFocusRing } from "./noir/focus";
+import { SquashPressable } from "./noir/squash";
 
 export interface IconButtonProps extends Omit<PressableProps, "children" | "style"> {
   /** Required: icons never stand alone for assistive technology. */
@@ -16,7 +17,7 @@ export function IconButton({ icon, surface = "plain", style, ...rest }: IconButt
   // Keyboard, D-pad and switch focus draw the brass ring; the caller's handlers still run.
   const focus = useFocusRing({ onFocus: rest.onFocus, onBlur: rest.onBlur });
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       hitSlop={4}
       {...rest}
@@ -26,7 +27,7 @@ export function IconButton({ icon, surface = "plain", style, ...rest }: IconButt
     >
       {icon}
       <FocusRing visible={focus.focused} shape="pill" edge={surface === "raised" ? styles.raised.borderWidth : 0} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 

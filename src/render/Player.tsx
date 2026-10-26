@@ -10,16 +10,16 @@
 // paranormal adds the hotspot effects and the presence meter, and on case
 // closed the room snaps back to its own colours.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Alert, StyleSheet, Switch, Text, View } from "react-native";
+import { AccessibilityInfo, Alert, Platform, StyleSheet, Switch, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { UsersThreeIcon } from "phosphor-react-native/src/icons/UsersThree";
-import type { ActionResult, Genre, GameAction, Hotspot, Id, Puzzle } from "@/lib/puzzle-types";
+import type { ActionResult, Genre, GameAction, HintProgress, Hotspot, Id, Puzzle } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
-import { genreOf, setMode, themeFor } from "@/game/mode";
+import { genreOf, setMode, themeFor, useMode } from "@/game/mode";
 import { usePreferences } from "@/game/preferences";
 import {
-  QUIET_COPY, accusePuzzle, canAccuse, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
+  accusePuzzle, canAccuse, gainedItems, hotspotA11yLabel, hotspotById, hotspotName, hotspotsForScene,
   inventoryItems, isHotspotSolved, itemName, newlyContradicted, presence as presenceOf, quietReason,
   scenesWithHotspots, suspectCards, tapIntent, type SuspectCard,
 } from "@/game/selectors";
@@ -29,26 +29,34 @@ import { useUiMemory } from "@/game/useUiMemory";
 import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
-import { DarkSheet, PillButton } from "@/components/noir";
+import { DarkSheet } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
 import { StateScreen } from "@/components/StateScreen";
 import {
   ArrowLeftIcon, DotsThreeIcon, ICON_WEIGHT, WarningIcon, WifiSlashIcon,
 } from "@/components/icons";
 import { AccuseScreen, type Accusation, type AccuseOutcome } from "./AccuseScreen";
-import { WRONG_ACCUSATION } from "./accuse";
+import { CaseClock } from "./CaseClock";
+import type { Snapshot } from "./ClueObjects";
+import { NOT_ENOUGH_TO_ACCUSE, WRONG_ACCUSATION } from "./accuse";
 import { stashClosedCase } from "./closedCase";
 import { CodePad, type CodeOutcome } from "./CodePad";
 import { CoachCard } from "./CoachCard";
 import { EffectLayer } from "./EffectLayer";
 import { HotspotLayer, type HotspotRef, type Thread } from "./HotspotLayer";
-import { InventoryBar } from "./InventoryBar";
+import { glintTargets, useIdle } from "./idle";
+import { InformantSheet, Matchbook } from "./Informant";
+import { ladderFrom, type Ladder } from "./informantLadder";
+import { InventoryBar, type SlotRef } from "./InventoryBar";
+import { PickupFlight, measureInWindow, type Flight } from "./PickupFlight";
 import { PresenceMeter } from "./PresenceMeter";
 import { ResultSheet, type ResultContent } from "./ResultSheet";
 import { ScenePager } from "./ScenePager";
 import { SceneView, type SceneSource } from "./SceneView";
 import { SuspectsSheet } from "./SuspectsSheet";
 import { Toast } from "./Toast";
-import { Card, NoticeLine, OutlinePill, SquareButton } from "./parts";
+import { PLAY_COPY, failedLine, playVoice, type PlayVoice } from "./voice";
+import { Card, NoticeLine, SquareButton } from "./parts";
 
 const P = ref.layout.play;
 const SQ = ref.button.square;
@@ -79,9 +87,11 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
   const player = usePlayer(roomId);
   const sources = useSceneSources(roomId, player.definition);
   const ui = useUiMemory(roomId);
+  // Before the definition says the case's mode, the screen it was opened from does (noir outside a mode).
+  const voice = playVoice(useMode());
 
   if (player.phase.kind === "error") {
-    return <LoadErrorScreen error={player.phase.error} onRetry={player.reload} onExit={onExit} />;
+    return <LoadErrorScreen error={player.phase.error} voice={voice} onRetry={player.reload} onExit={onExit} />;
   }
   if (sources.kind === "error") {
     return sources.reason === "missing_asset" ? (
@@ -92,11 +102,11 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
         primary={{ label: "Back", onPress: onExit }}
       />
     ) : (
-      <LoadErrorScreen error={{ kind: "offline" }} onRetry={player.reload} onExit={onExit} />
+      <LoadErrorScreen error={{ kind: "offline" }} voice={voice} onRetry={player.reload} onExit={onExit} />
     );
   }
   if (player.phase.kind === "loading" || sources.kind === "loading" || !ui.loaded || !player.definition) {
-    return <StateScreen loading title="Opening the case" />;
+    return <StateScreen loading title={voice.loading} />;
   }
   return (
     <PlayerStage
@@ -111,13 +121,13 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
   );
 }
 
-function LoadErrorScreen({ error, onRetry, onExit }: { error: LoadError; onRetry: () => void; onExit: () => void }) {
+function LoadErrorScreen({ error, voice, onRetry, onExit }: { error: LoadError; voice: PlayVoice; onRetry: () => void; onExit: () => void }) {
   switch (error.kind) {
     case "offline":
       return (
         <StateScreen
-          title="You're offline"
-          body="Your progress is saved. Connect to continue the case."
+          title={voice.offlineTitle}
+          body={PLAY_COPY.offlineBody}
           icon={<WifiSlashIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
           primary={{ label: "Try again", onPress: onRetry }}
           secondary={{ label: "Back", onPress: onExit }}
@@ -144,8 +154,8 @@ function LoadErrorScreen({ error, onRetry, onExit }: { error: LoadError; onRetry
     default:
       return (
         <StateScreen
-          title="The case didn't open"
-          body="Something went wrong on our side. Your progress is safe."
+          title={voice.failedTitle}
+          body={PLAY_COPY.failedBody}
           icon={<WarningIcon size={STATE_ICON} weight={ICON_WEIGHT} color={ref.color.textSecondary} />}
           primary={{ label: "Try again", onPress: onRetry }}
           secondary={{ label: "Back", onPress: onExit }}
@@ -161,9 +171,11 @@ type Attempt =
   | { kind: "combine"; items: [Id, Id] };
 
 type SheetState =
-  | { kind: "result"; content: ResultContent; returnTo?: Id }
+  // `solved`: it opens on a solve's success haptic, so its paper cue waits a beat.
+  | { kind: "result"; content: ResultContent; returnTo?: Id; solved?: boolean }
   | { kind: "code"; puzzle: Puzzle; hotspotId: Id }
   | { kind: "menu" }
+  | { kind: "informant" }
   | { kind: "suspects" }
   // Opened from the Suspects sheet (closing goes back to it) or from a case-board hotspot.
   | { kind: "accuse"; puzzle: Puzzle; from: "suspects" | { hotspotId: Id } }
@@ -190,6 +202,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   // The case's mode. Set before paint, so no part ever draws in the last mode's colours.
   const genre = genreOf(def);
   const theme = themeFor(genre);
+  const voice = playVoice(genre);
   useLayoutEffect(() => setMode(genre), [genre]);
 
   const sceneCount = def.photos.length;
@@ -210,6 +223,21 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   // A finger on a code wheel: the code sheet holds its scroll.
   const [wheelDrag, setWheelDrag] = useState(false);
   const hotspotRefs = useRef(new Map<Id, HotspotRef>());
+  // The evidence tray's slots and the player's root, for the pickup's flight.
+  const slotRefs = useRef(new Map<Id, SlotRef>());
+  const rootRef = useRef<HotspotRef>(null);
+  // Items granted but not in the tray yet: they land when the clue is pocketed (the sheet closes).
+  const [arriving, setArriving] = useState<ReadonlySet<Id>>(() => new Set());
+  const pendingPickup = useRef<{ ids: Id[]; hotspotId?: Id } | null>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
+  // Hotspots tapped on this visit: the idle glint passes over them.
+  const [tapped, setTapped] = useState<ReadonlySet<Id>>(() => new Set());
+  // The informant's tips so far, from the session row until he is asked (then from his answers).
+  const [ladderState, setLadderState] = useState<{ sessionId: string; ladder: Ladder } | null>(null);
+  const sessionId = player.session?.id ?? null;
+  const ladder = ladderState && ladderState.sessionId === sessionId
+    ? ladderState.ladder
+    : ladderFrom(player.session?.hint_progress as HintProgress | undefined);
   // False while the view in view is zoomed, so a pan moves the photo, not the pager.
   const pageable = useSharedValue(true);
   const lastAttempt = useRef<Attempt | null>(null);
@@ -262,6 +290,64 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     else hotspotRefs.current.delete(id);
   }, []);
 
+  const registerSlot = useCallback((id: Id, node: SlotRef | null) => {
+    if (node) slotRefs.current.set(id, node);
+    else slotRefs.current.delete(id);
+  }, []);
+
+  /** An item reaches the tray: its tile bounces in, with the pickup cue. */
+  const land = useCallback((ids: Id[]) => {
+    if (!ids.length) return;
+    feedback.pickup();
+    setArriving((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, [feedback]);
+
+  const onLanded = useCallback((key: number) => {
+    setFlights((all) => {
+      const done = all.filter((f) => f.key === key);
+      if (done.length) land(done.map((f) => f.item.id));
+      return all.filter((f) => f.key !== key);
+    });
+  }, [land]);
+
+  /**
+   * The pocketed items fly from the object into their tray slots. Under
+   * reduced motion, or when a position can't be measured, they simply land.
+   */
+  const launchPickup = useCallback(async () => {
+    const pending = pendingPickup.current;
+    pendingPickup.current = null;
+    if (!pending) return;
+    const source = pending.hotspotId ? hotspotRefs.current.get(pending.hotspotId) : undefined;
+    if (reducedMotion || !source) {
+      land(pending.ids);
+      return;
+    }
+    const [root, from, ...slots] = await Promise.all([
+      measureInWindow(rootRef.current),
+      measureInWindow(source),
+      ...pending.ids.map((id) => measureInWindow(slotRefs.current.get(id))),
+    ]);
+    const launched: Flight[] = [];
+    const grounded: Id[] = [];
+    pending.ids.forEach((id, i) => {
+      const to = slots[i];
+      const item = inventoryItems(def, player.state).find((it) => it.id === id);
+      if (!root || !from || !to || !item) {
+        grounded.push(id);
+        return;
+      }
+      const local = (r: typeof to) => ({ ...r, x: r.x - root.x, y: r.y - root.y });
+      launched.push({ key: Date.now() + i, item, from: local(from), to: local(to) });
+    });
+    land(grounded);
+    if (launched.length) setFlights((all) => [...all, ...launched]);
+  }, [reducedMotion, land, def, player.state]);
+
   const goToScene = useCallback((index: number) => {
     if (index === sceneIndex) return;
     setThread(null);
@@ -281,13 +367,16 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     setSheet(null);
     setThread(null);
     setIrisId(null);
+    // Pocketing the clue: what it gave up goes into the tray.
+    launchPickup();
     if (!returnTo) return;
     // Focus goes back to the hotspot the action came from.
     setTimeout(() => {
       const node = hotspotRefs.current.get(returnTo);
-      if (node) AccessibilityInfo.sendAccessibilityEvent(node, "focus");
+      // The web has no sendAccessibilityEvent.
+      if (node && Platform.OS !== "web") AccessibilityInfo.sendAccessibilityEvent(node, "focus");
     }, reducedMotion ? 120 : 360);
-  }, [sheet, reducedMotion]);
+  }, [sheet, reducedMotion, launchPickup]);
 
   /**
    * The case is closed. Noir pulls the photo back and hands off; crime scene
@@ -334,7 +423,13 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     if (hotspotId) setFlash({ id: hotspotId, key: Date.now() });
     const gained = gainedItems(def, next, result.gained_items);
     if (gained.length) {
-      AccessibilityInfo.announceForAccessibility(`${gained.map((g) => g.name).join(", ")} added to your items.`);
+      AccessibilityInfo.announceForAccessibility(`${gained.map((g) => g.name).join(", ")} added to your evidence.`);
+      if (!result.completed) {
+        // Held off the tray until the clue is pocketed; then they fly in from the object.
+        const ids = gained.map((g) => g.id);
+        pendingPickup.current = { ids: [...(pendingPickup.current?.ids ?? []), ...ids], hotspotId };
+        setArriving((prev) => new Set([...prev, ...ids]));
+      }
     }
     const revealedScenes = scenesWithHotspots(def, result.revealed_hotspots);
     const revealedId = result.revealed_hotspots?.[0];
@@ -371,14 +466,29 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     return outcome.kind === "result" ? outcome.result : null;
   }, [player]);
 
+  /** The object as a polaroid on its clue: the room photo cropped to it, in the mode's treatment. */
+  const snapshotOf = useCallback((hotspot: Hotspot): Snapshot | undefined => {
+    const source = sources[hotspot.photo_index];
+    if (source === undefined) return undefined;
+    return {
+      source,
+      cacheKey: photoKey(def.photos[hotspot.photo_index]),
+      genre,
+      treated: !cleared,
+      shape: hotspot.shape,
+      caption: hotspotName(hotspot),
+    };
+  }, [sources, def, genre, cleared]);
+
   const inspect = useCallback(async (hotspot: Hotspot) => {
     const result = await act({ type: "inspect", hotspot_id: hotspot.id }, { kind: "inspect", hotspot });
     if (!result) return;
     const title = hotspotName(hotspot);
+    const snapshot = snapshotOf(hotspot);
     if (result.outcome === "solved") {
       const after = afterSolved(result, hotspot.id);
       if (after) {
-        setSheet({ kind: "result", returnTo: hotspot.id, content: { title, objectLabel: hotspot.object_label, message: result.message, ...after } });
+        setSheet({ kind: "result", solved: true, returnTo: hotspot.id, content: { title, objectLabel: hotspot.object_label, message: result.message, snapshot, ...after } });
       }
     } else if (result.outcome === "nothing") {
       setSheet({
@@ -388,15 +498,16 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           title,
           objectLabel: hotspot.object_label,
           description: hotspot.description,
-          quiet: QUIET_COPY[quietReason(def, state, hotspot.id)],
+          quiet: voice.quiet[quietReason(def, state, hotspot.id)],
           gained: [],
           revealed: "none",
+          snapshot,
         },
       });
     } else {
-      showToast(result.message ?? "That isn't possible yet.");
+      showToast(result.message ?? PLAY_COPY.notYet);
     }
-  }, [act, afterSolved, def, state, showToast]);
+  }, [act, afterSolved, def, state, showToast, snapshotOf, voice]);
 
   const applyItem = useCallback(async (itemId: Id, hotspot: Hotspot) => {
     const result = await act({ type: "use_item", item_id: itemId, hotspot_id: hotspot.id }, { kind: "use", itemId, hotspot });
@@ -405,18 +516,23 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       setPicked([]);
       const after = afterSolved(result, hotspot.id);
       if (after) {
-        setSheet({ kind: "result", returnTo: hotspot.id, content: { title: hotspotName(hotspot), objectLabel: hotspot.object_label, message: result.message, ...after } });
+        setSheet({
+          kind: "result",
+          solved: true,
+          returnTo: hotspot.id,
+          content: { title: hotspotName(hotspot), objectLabel: hotspot.object_label, message: result.message, snapshot: snapshotOf(hotspot), ...after },
+        });
       }
     } else if (result.outcome === "nothing") {
       // Stay in Use mode so the player can try somewhere else.
       feedback.warning();
-      showToast("That doesn't work here.");
+      showToast(voice.useNothing);
     } else {
       setPicked([]);
       feedback.warning();
-      showToast(result.message ?? "You can't do that.");
+      showToast(result.message ?? PLAY_COPY.wontWork);
     }
-  }, [act, afterSolved, feedback, showToast]);
+  }, [act, afterSolved, feedback, showToast, snapshotOf, voice]);
 
   const combineItems = useCallback(async (items: [Id, Id]) => {
     const result = await act({ type: "combine", item_ids: items }, { kind: "combine", items });
@@ -425,15 +541,15 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     if (result.outcome === "solved") {
       const after = afterSolved(result);
       const title = def.puzzles.find((p) => p.id === result.puzzle_id)?.title ?? "Combined";
-      if (after) setSheet({ kind: "result", content: { title, objectLabel: "note", message: result.message, ...after } });
+      if (after) setSheet({ kind: "result", solved: true, content: { title, objectLabel: "note", message: result.message, ...after } });
     } else if (result.outcome === "nothing") {
       feedback.warning();
-      showToast("These don't fit together.");
+      showToast(voice.combineNothing);
     } else {
       feedback.warning();
-      showToast(result.message ?? "You can't combine those.");
+      showToast(result.message ?? PLAY_COPY.wontCombine);
     }
-  }, [act, afterSolved, def, feedback, showToast]);
+  }, [act, afterSolved, def, feedback, showToast, voice]);
 
   const combine = useCallback(() => {
     if (selected.length === 2) combineItems([selected[0], selected[1]]);
@@ -448,14 +564,15 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   }, [inspect, applyItem, combineItems]);
 
   const onHotspotPress = useCallback((hotspot: Hotspot) => {
-    // The press haptic came on press-in (HotspotLayer's onPressIn).
+    // The tick came on press-in (HotspotLayer's onPressIn); the outcome brings its own.
     if (player.pending || completing) return;
+    setTapped((prev) => (prev.has(hotspot.id) ? prev : new Set([...prev, hotspot.id])));
     if (selected.length === 1) {
       applyItem(selected[0], hotspot);
       return;
     }
     if (selected.length === 2) {
-      showToast("Combine the two items, or cancel.");
+      showToast(PLAY_COPY.twoPicked);
       return;
     }
     const intent = tapIntent(def, state, hotspot.id);
@@ -471,51 +588,53 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   }, [player.pending, completing, selected, applyItem, showToast, def, state, inspect]);
 
   const submitCode = useCallback(async (answer: string): Promise<CodeOutcome> => {
-    if (sheet?.kind !== "code") return { kind: "invalid", message: "That puzzle is not available." };
+    if (sheet?.kind !== "code") return { kind: "invalid", message: PLAY_COPY.notYet };
     const { puzzle, hotspotId } = sheet;
     const outcome = await player.send({ type: "solve", puzzle_id: puzzle.id, answer });
     if (outcome.kind !== "result") {
       player.dismissFailure();
-      return {
-        kind: "failed",
-        message: outcome.kind === "failed" && outcome.offline
-          ? "No connection. Your progress is safe. Try again."
-          : "That didn't go through. Try again.",
-      };
+      return { kind: "failed", message: failedLine(voice, outcome.kind === "failed" && outcome.offline, "retry") };
     }
     const result = outcome.result;
     if (result.outcome === "wrong") {
-      feedback.error();
-      return { kind: "wrong", message: result.message ?? "Nothing happens." };
+      // CodePad gives the wrongCode cue (the thud and the buzz) itself.
+      return { kind: "wrong", message: result.message ?? voice.codeWrong };
     }
     if (result.outcome === "solved") {
-      const hotspot = hotspotById(def, hotspotId);
-      const after = afterSolved(result, hotspotId);
-      if (after) {
-        setSheet({
-          kind: "result",
-          returnTo: hotspotId,
-          content: { title: puzzle.title ?? (hotspot ? hotspotName(hotspot) : "Solved"), objectLabel: hotspot?.object_label, message: result.message, ...after },
-        });
-      }
-      return { kind: "solved" };
+      // CodePad plays its unlock latch first, then runs this (the success haptic, the result, the scene change).
+      return {
+        kind: "solved",
+        proceed: () => {
+          const hotspot = hotspotById(def, hotspotId);
+          const after = afterSolved(result, hotspotId);
+          if (after) {
+            setSheet({
+              kind: "result",
+              solved: true,
+              returnTo: hotspotId,
+              content: {
+                title: puzzle.title ?? (hotspot ? hotspotName(hotspot) : "Solved"),
+                objectLabel: hotspot?.object_label,
+                message: result.message,
+                snapshot: hotspot ? snapshotOf(hotspot) : undefined,
+                ...after,
+              },
+            });
+          }
+        },
+      };
     }
-    return { kind: "invalid", message: result.message ?? "That doesn't work right now." };
-  }, [sheet, player, feedback, def, afterSolved]);
+    return { kind: "invalid", message: result.message ?? PLAY_COPY.notYet };
+  }, [sheet, player, def, afterSolved, snapshotOf, voice]);
 
   /** Crime scene's accusation, as submitCode: failures stay inline on the Accuse screen. */
   const submitAccuse = useCallback(async ({ suspect, motive, method }: Accusation): Promise<AccuseOutcome> => {
-    if (sheet?.kind !== "accuse") return { kind: "invalid", message: "You can't accuse anyone yet." };
+    if (sheet?.kind !== "accuse") return { kind: "invalid", message: NOT_ENOUGH_TO_ACCUSE };
     const { puzzle } = sheet;
     const outcome = await player.send({ type: "accuse", puzzle_id: puzzle.id, suspect_id: suspect, motive_id: motive, method_id: method });
     if (outcome.kind !== "result") {
       player.dismissFailure();
-      return {
-        kind: "failed",
-        message: outcome.kind === "failed" && outcome.offline
-          ? "No connection. Your progress is safe. Try again."
-          : "That didn't go through. Try again.",
-      };
+      return { kind: "failed", message: failedLine(voice, outcome.kind === "failed" && outcome.offline, "retry") };
     }
     const result = outcome.result;
     if (result.outcome === "wrong") {
@@ -532,12 +651,12 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       if (result.completed && accused) setRevealed(accused);
       const after = afterSolved(result, undefined, accused);
       if (after) {
-        setSheet({ kind: "result", content: { title: puzzle.title ?? "The accusation", message: result.message, ...after } });
+        setSheet({ kind: "result", solved: true, content: { title: puzzle.title ?? "The accusation", message: result.message, ...after } });
       }
       return { kind: "solved" };
     }
-    return { kind: "invalid", message: result.message ?? "You can't accuse anyone yet." };
-  }, [sheet, player, feedback, suspects, afterSolved]);
+    return { kind: "invalid", message: result.message ?? NOT_ENOUGH_TO_ACCUSE };
+  }, [sheet, player, feedback, suspects, afterSolved, voice]);
 
   const toggleItem = useCallback((id: Id) => {
     feedback.tick();
@@ -549,13 +668,17 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   }, [feedback, state.inventory]);
 
   const confirmRestart = useCallback(() => {
-    Alert.alert("Restart this case?", "Your progress in this case will be cleared. You can replay it any time.", [
+    Alert.alert(PLAY_COPY.restartTitle, PLAY_COPY.restartBody, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Restart",
         style: "destructive",
         onPress: () => {
           setSheet(null);
+          pendingPickup.current = null;
+          setArriving(new Set());
+          setFlights([]);
+          setTapped(new Set());
           ui.reset();
           player.restart().catch(() => showToast("Couldn't restart. Check your connection."));
         },
@@ -568,6 +691,19 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   ), [def, state, useItemName]);
 
   const modal = sheet !== null;
+  // The idle glint: after a quiet spell, the visible objects still to find catch the light once.
+  const idle = useIdle(P.glint.idle, !modal && !completing && !player.pending);
+  const glint = idle.idleKey !== null ? { key: idle.idleKey, ids: glintTargets(sceneHotspots, solvedIds, tapped) } : undefined;
+  const idleTouch = idle.touch;
+  const idleCapture = useCallback(() => {
+    idleTouch();
+    return false;
+  }, [idleTouch]);
+  const startedAt = player.session?.started_at ? Date.parse(player.session.started_at) : NaN;
+  const openInformant = useCallback(() => {
+    feedback.paper();
+    setSheet({ kind: "informant" });
+  }, [feedback]);
   const codeHotspot = sheet?.kind === "code" ? hotspotById(def, sheet.hotspotId) : undefined;
   const suspectsLabel = [
     "Suspects",
@@ -576,7 +712,13 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   ].join("");
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.ground }]} testID={`player-${genre}`}>
+    <View
+      ref={rootRef}
+      collapsable={false}
+      // Any touch (a mouse press on the web) restarts the idle glint's wait; it never takes the touch.
+      onTouchStart={idle.touch}
+      onStartShouldSetResponderCapture={idleCapture}
+      style={[styles.root, { backgroundColor: theme.ground }]} testID={`player-${genre}`}>
       <Animated.View
         style={[styles.topBar, { paddingTop: insets.top + P.top, backgroundColor: theme.ground }, chromeStyle]}
         importantForAccessibility={modal ? "no-hide-descendants" : "auto"}
@@ -586,15 +728,19 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           <Text numberOfLines={1} accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>
             {def.title ?? "Untitled case"}
           </Text>
-          {genre === "paranormal" && presence.total > 0 ? (
-            // The presence takes the view line's place: the page dots already say which view this is.
-            <PresenceMeter presence={presence} gone={cleared} />
-          ) : (
-            // The photo's own label and the page dots say which view this is.
-            <Text numberOfLines={1} style={[styles.meta, { color: theme.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-              {`View ${sceneIndex + 1} of ${sceneCount}`}
-            </Text>
-          )}
+          <View style={styles.metaRow}>
+            {genre === "paranormal" && presence.total > 0 ? (
+              // The presence takes the view line's place: the page dots already say which view this is.
+              <PresenceMeter presence={presence} gone={cleared} />
+            ) : (
+              // The photo's own label and the page dots say which view this is.
+              <Text numberOfLines={1} style={[styles.meta, { color: theme.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                {`View ${sceneIndex + 1} of ${sceneCount}`}
+              </Text>
+            )}
+            {/* The case clock: its own component, so its tick re-renders only itself. */}
+            {prefs.caseClock && Number.isFinite(startedAt) ? <CaseClock since={startedAt} /> : null}
+          </View>
         </View>
         {accuse ? (
           <View style={styles.squares}>
@@ -653,8 +799,9 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
                     thread={thread ?? undefined}
                     labelFor={labelFor}
                     onPress={onHotspotPress}
-                    onPressIn={feedback.press}
+                    onPressIn={feedback.tick}
                     registerRef={registerRef}
+                    glint={glint}
                   />
                 </>
               )}
@@ -670,6 +817,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       >
         {player.failed ? (
           <FailureBanner
+            text={failedLine(voice, player.failed.offline, "safe")}
             offline={player.failed.offline}
             onRetry={retryLastAttempt}
             onDismiss={player.dismissFailure}
@@ -686,10 +834,27 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           onCombine={combine}
           onCancel={() => setPicked([])}
           busy={player.pending?.type === "combine"}
+          arriving={arriving}
+          registerSlot={registerSlot}
+          lip={prefs.hints_enabled && sessionId ? <Matchbook genre={genre} onPress={openInformant} /> : null}
         />
       </Animated.View>
 
-      {sheet?.kind === "result" ? <ResultSheet content={sheet.content} onClose={closeSheet} /> : null}
+      {flights.map((flight) => <PickupFlight key={flight.key} flight={flight} onLanded={onLanded} />)}
+
+      {sheet?.kind === "result" ? (
+        <ResultSheet content={sheet.content} onClose={closeSheet} paperDelay={sheet.solved ? P.clue.paperDelay : 0} />
+      ) : null}
+      {sheet?.kind === "informant" ? (
+        <InformantSheet
+          genre={genre}
+          sessionId={sessionId}
+          solved={state.solved}
+          ladder={ladder}
+          onLadder={(next) => sessionId && setLadderState({ sessionId, ladder: next })}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
       {sheet?.kind === "code" ? (
         <DarkSheet
           title={sheet.puzzle.title ?? (codeHotspot ? hotspotName(codeHotspot) : "Enter the code")}
@@ -762,18 +927,18 @@ function PresenceGone() {
   );
 }
 
-/** 02's error line on 07's card, with 07's outlined pill to retry and a quiet Dismiss. */
-function FailureBanner({ offline, onRetry, onDismiss }: { offline: boolean; onRetry: () => void; onDismiss: () => void }) {
+/** 02's error line on 07's card, with the guide's pill (the mode's accent, hugging its label) to retry and a quiet Dismiss. */
+function FailureBanner({ text, offline, onRetry, onDismiss }: { text: string; offline: boolean; onRetry: () => void; onDismiss: () => void }) {
   return (
     <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.edge} accessibilityLiveRegion="polite">
       <Card style={styles.banner} testID="failure-banner">
         <NoticeLine
           icon={offline ? WifiSlashIcon : WarningIcon}
-          text={offline ? "No connection. Your progress is safe." : "That didn't go through. Your progress is safe."}
+          text={text}
         />
         <View style={styles.bannerActions}>
-          <OutlinePill label="Try again" onPress={onRetry} testID="failure-retry" />
-          <PillButton variant="quiet" ground="dark" label="Dismiss" onPress={onDismiss} padX={ref.space.sm} />
+          <ModePill variant="ghost" fullWidth={false} label="Try again" onPress={onRetry} testID="failure-retry" />
+          <ModePill variant="quiet" ground="dark" label="Dismiss" onPress={onDismiss} padX={ref.space.sm} />
         </View>
       </Card>
     </Animated.View>
@@ -806,7 +971,7 @@ function CaseOptions({ hotspotAssist, onHotspotAssist, onRestart, onClose }: {
           testID="options-show-interactives"
         />
       </View>
-      <PillButton variant="quiet" ground="dark" label="Restart this case" onPress={onRestart} testID="options-restart" />
+      <ModePill variant="quiet" ground="dark" label="Restart this case" onPress={onRestart} testID="options-restart" />
     </DarkSheet>
   );
 }
@@ -825,6 +990,7 @@ const styles = StyleSheet.create({
   prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: P.promptTop, alignItems: "center", gap: P.metaGap },
   title: { ...ref.type.serifTitle, color: ref.color.textPrimary, textAlign: "center" },
   meta: { ...ref.type.meta, color: ref.color.textSecondary, textAlign: "center" },
+  metaRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: P.clock.gap },
   // Crime scene: Suspects, then Case options, the squares' slop apart.
   squares: { flexDirection: "row", gap: ref.space.sm },
   // The photo area: full width, from band.photo under the squares.

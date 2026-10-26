@@ -1,9 +1,9 @@
 import { memo, useEffect, type ComponentRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
-  Easing, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming,
+  Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming,
 } from "react-native-reanimated";
-import Svg, { Line, Path } from "react-native-svg";
+import Svg, { Circle, Defs, Line, Path, RadialGradient, Stop } from "react-native-svg";
 import { CheckIcon } from "@/components/icons";
 import { FocusRing, useFocusRing } from "@/components/noir";
 import type { Hotspot, Id } from "@/lib/puzzle-types";
@@ -20,6 +20,7 @@ const SEAL = ref.layout.play.seal;
 const TRACE = ref.layout.play.trace;
 const THREAD = ref.layout.play.thread;
 const SUBTLE = B.subtle;
+const GLINT = ref.layout.play.glint;
 
 export type HotspotRef = ComponentRef<typeof View>;
 
@@ -52,6 +53,11 @@ export interface HotspotLayerProps {
   /** A finger came down on a hotspot (after the press delay, so a swipe doesn't count). */
   onPressIn?: () => void;
   registerRef?: (id: Id, node: HotspotRef | null) => void;
+  /**
+   * The idle glint: these hotspots catch a flashlight pulse once per `key`
+   * (Player picks only visible, unfound ones: src/render/idle.ts).
+   */
+  glint?: { key: number; ids: readonly Id[] };
 }
 
 const nativeIdFor = (id: Id) => `hotspot-${id}`;
@@ -68,7 +74,7 @@ export function readingOrder(hotspots: readonly Hotspot[]): Id[] {
 }
 
 export function HotspotLayer({
-  hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, onPressIn, registerRef,
+  hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, onPressIn, registerRef, glint,
 }: HotspotLayerProps) {
   const theme = useModeTheme();
   return (
@@ -112,6 +118,8 @@ export function HotspotLayer({
           solved={solvedIds?.has(h.id) ?? false}
           iris={h.id === irisId}
           flashKey={flash?.id === h.id ? flash.key : undefined}
+          glintKey={glint?.ids.includes(h.id) ? glint.key : undefined}
+          glintOrder={glint ? Math.max(0, glint.ids.indexOf(h.id)) : 0}
           label={labelFor(h)}
           onPress={onPress}
           onPressIn={onPressIn}
@@ -122,13 +130,17 @@ export function HotspotLayer({
   );
 }
 
-const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solved, iris, flashKey, label, onPress, onPressIn, registerRef }: {
+const HotspotTarget = memo(function HotspotTarget({
+  hotspot, stage, bright, solved, iris, flashKey, glintKey, glintOrder, label, onPress, onPressIn, registerRef,
+}: {
   hotspot: Hotspot;
   stage: Size;
   bright: boolean;
   solved: boolean;
   iris: boolean;
   flashKey?: number;
+  glintKey?: number;
+  glintOrder: number;
   label: string;
   onPress: (hotspot: Hotspot) => void;
   onPressIn?: () => void;
@@ -196,6 +208,9 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
       testID={`hotspot-${hotspot.id}`}
       style={[styles.target, rect]}
     >
+      {glintKey !== undefined ? (
+        <Glint key={glintKey} id={hotspot.id} width={rect.width} height={rect.height} order={glintOrder} />
+      ) : null}
       <Animated.View style={[StyleSheet.absoluteFill, bracketStyle]} pointerEvents="none">
         <Brackets width={rect.width} height={rect.height} tone={iris ? "iris" : solved ? "spent" : "open"} />
       </Animated.View>
@@ -210,6 +225,62 @@ const HotspotTarget = memo(function HotspotTarget({ hotspot, stage, bright, solv
     </Pressable>
   );
 });
+
+/**
+ * The idle glint: a soft flashlight pool over an object, pulsing a couple of
+ * times (opacity and scale only, on the UI thread), then gone. Reduced
+ * motion: a still, faint pool until the next touch.
+ */
+function Glint({ id, width, height, order }: Size & { id: Id; order: number }) {
+  const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
+  const size = Math.max(GLINT.min, Math.max(width, height) * GLINT.spread);
+  const opacity = useSharedValue(reducedMotion ? GLINT.rest : 0);
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    if (reducedMotion) {
+      opacity.set(GLINT.rest);
+      return;
+    }
+    const half = GLINT.pulse / 2;
+    const delay = order * GLINT.stagger;
+    opacity.set(withDelay(delay, withRepeat(withSequence(
+      withTiming(GLINT.peak, { duration: half, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: half, easing: Easing.in(Easing.quad) }),
+    ), GLINT.pulses, false)));
+    scale.set(withDelay(delay, withRepeat(withSequence(
+      withTiming(1.06, { duration: half }),
+      withTiming(0.94, { duration: half }),
+    ), GLINT.pulses, false)));
+    return () => {
+      cancelAnimation(opacity);
+      cancelAnimation(scale);
+    };
+  }, [reducedMotion, order, opacity, scale]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.get(), transform: [{ scale: scale.get() }] }));
+  const light = theme.glow ?? theme.ink;
+  const gid = `glint-${id}`;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      testID={`glint-${id}`}
+      style={[styles.glint, { width: size, height: size, left: (width - size) / 2, top: (height - size) / 2 }, style]}
+    >
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id={gid} cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor={light} stopOpacity={0.9} />
+            <Stop offset="0.45" stopColor={light} stopOpacity={0.35} />
+            <Stop offset="1" stopColor={light} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={size / 2} fill={`url(#${gid})`} />
+      </Svg>
+    </Animated.View>
+  );
+}
 
 /** Four 10 pt corner brackets, with a tick at the middle of each side, on a void halo. */
 function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "iris" }) {
@@ -243,6 +314,7 @@ function Brackets({ width, height, tone }: Size & { tone: "open" | "spent" | "ir
 
 const styles = StyleSheet.create({
   target: { position: "absolute" },
+  glint: { position: "absolute" },
   // The solve flash: a white outline round the target.
   trace: { borderWidth: TRACE.width, borderColor: ref.color.textPrimary, borderRadius: TRACE.radius },
   // Solved: a white check in a see-through void disc at the top right.

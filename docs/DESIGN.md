@@ -135,7 +135,22 @@ One vocabulary for the whole app. It follows Settings → Haptics and does nothi
 | `thud` | medium impact | the shutter, "Build the case", "Open the case" |
 | `success` / `warning` / `error` | notification | an item found, a lock opening, an escape, a case ready / a use that doesn't work, a failed build / a wrong code, a failed shot |
 
-There is one haptic per moment, never stacked, and only on discrete events. Under Jest, `jest/setup.js` mocks the module with every key.
+**The game's own moments** (GAME_FEEL, see "Game feel" below). Each is named for the moment, not the vibration, and also plays its sound when Sound is on:
+
+| Call | Feel | Used for |
+|---|---|---|
+| `paper` | light impact | a clue note or sheet opening |
+| `pickup` | medium impact | an item landing in the evidence tray |
+| `wrongCode` | heavy impact, then the error buzz 90 ms later | a wrong code or accusation |
+| `unlock` | medium (the bolt), then light 110 ms later (the latch) | a correct code |
+| `stamp` | heavy impact | CASE CLOSED, GUILTY |
+| `solved` | success, then light at 260 ms and medium at 400 ms | the case solved |
+| `shutter` | medium impact | the camera's shutter (was `thud`) |
+| `typewriter` | none (sound only) | the informant's new tip |
+
+A pattern's later beats are skipped if haptics were off when it started.
+
+There is one haptic per moment, never stacked, and only on discrete events. Under Jest, `jest/setup.js` mocks the module with every key, and mocks expo-audio.
 
 ### Focus and accessibility
 
@@ -832,7 +847,7 @@ Haptics use the shared vocabulary in `src/game/feedback.ts`. There is one per mo
 | A photo finishes sending | `sending` count steps up | — | `tick` (each step; never on mount, never when resuming mid-send) |
 | The case is ready | `ready` | — | `success` (kept) |
 | The case failed | `failed` | — | `warning` (kept: calm, never `error`) |
-| **Open the case** (white bar, testID `open-case`) | `ready` | Clears the photos, replaces with `/play/<roomId>` | `thud` on press-in (committing to play) |
+| **Open the case** (the guide's pill, testID `open-case`) | `ready` | Clears the photos, replaces with `/play/<roomId>` | `thud` on press-in (committing to play) |
 | **Leave it building** (quiet pill) | `waiting` | `router.replace("/")` | `press` (the kit's default) |
 | StateScreen bar and quiet button | the other states | as listed under States | `press` on press-in by default |
 
@@ -877,19 +892,19 @@ Glass motion is unchanged: a figure-eight with x 56, y 8, tilt ±5°, one loop p
 Used by the player (loading, offline, unsupported, not ready, error, update needed), the build wait, and `/account/confirmed`.
 
 **Its props are unchanged** (`title`, `body`, `icon`, `primary`, `secondary`, `loading`). It also exports:
-- `StateActions`, the pinned band
+- `StateActions`, the pinned foot (the build wait's foot reuses it, so `src/screens/develop/ModeState.tsx` is gone)
 - `StateAction` = Action + optional `testID` + optional `haptic` (`"press"` by default, `"thud"`, or `false`)
 
 | Element | Spec | Tokens |
 |---|---|---|
-| Ground | Flat `ground`, the safe top as padding | `ref.color.ground` |
+| Ground | Flat `ground` in the shell; inside a mode, the mode's surface (the capture flow's page). The safe top as padding | `ref.color.ground`, `useModeTheme` |
 | Column | Centred vertically, 32 from the edges, text centred | `state.textInset` |
-| Icon (if given) | The caller's glyph centred in a 72 `void` disc with a 1 pt `rimFaint` rim; 20 to the title | `state.well`, `state.gap.title` |
-| Title / body | `ref.type.title` white / `ref.type.subtitle` grey, 8 apart | `state.gap.body` |
+| Icon (if given) | The caller's glyph centred in a 72 well with a 1 pt `rimFaint` rim (the theme's ground: `void` in the shell); 20 to the title | `state.well`, `state.gap.title` |
+| Title / body | `ref.type.title` in ink / `ref.type.subtitle` in muted ink (white and grey in the shell), 8 apart | `state.gap.body` |
 | Loading | No spinner. Kit `ThinkingStates` with the title as its one line (body size), labelled with the title; a body, if any, 8 below | — |
-| Band | 16, primary bar, 8, quiet secondary, 16 + the safe bottom; sides 20 | `state.footer` |
-| Primary | 07's white bar: at least 48 tall, radius 2, paper fill, Semibold 16/22 ground label; pressed 0.75; `press` haptic on press-in unless the action asks for `thud` or none | `state.bar` |
-| Secondary | Kit `PillButton variant="quiet" ground="dark"` (48, Semibold 17 white), `press` haptic | `ref.button.quiet` |
+| Foot | **The photo guide's foot (round 6):** 16, the primary pill, 8, the quiet secondary, then `ref.space.ctaBottom` over the safe bottom, in the guide's reading column | `state.footer` { pad 16, gap 8 } |
+| Primary | **Round 6:** the guide's pill (`ModePill variant="ghost"`): in the shell the dark hairline pill; inside a mode filled with the mode's accent, exactly as the guide's "Next". `press` haptic on press-in unless the action asks for `thud` or none. Replaces 07's white bar (`state.bar` is removed) | `ModePill`, `ref.button.ghost` |
+| Secondary | `ModePill variant="quiet" ground="dark"`, full width: a white quiet label in the shell, the mode's ink inside a mode; `press` haptic | `ref.button.quiet` |
 
 Accessibility: when not loading, the icon, title and body form one polite live region. When loading, the thinking line is the only one.
 
@@ -900,7 +915,7 @@ Accessibility: when not loading, the icon, title and body form one polite live r
 - **Calm failure titles:** "A few photos need a retake" rather than "something private", and "That took longer than it should" rather than "busy" or "closed". Every failure that keeps the photos says "Your photos are safe".
 - **"Back to your photos"** replaces "Back to the light table", matching the review screen's new title, "Photos".
 - **"Leave it building"** keeps the old button's reassurance that the case carries on in the background.
-- **Primary on dark is still 07's white bar,** shared by StateScreen. "Open the case" fires `thud`, the weighty commit; every other bar or quiet press fires `press`, matching the kit's pills.
+- **Primary is the photo guide's pill (round 6),** shared with StateScreen; 07's white bar is gone everywhere. "Open the case" fires `thud`, the weighty commit; every other bar or quiet press fires `press`, matching the kit's pills.
 - **The send tick** fires only when the count steps up from a count already shown. It never fires on mount, when resuming mid-send, or on the move to the queue.
 
 ### Shots
@@ -921,6 +936,27 @@ The harness is `darkroom06/shoot.mjs`. It shims `useDevelopment` to a canned sta
 
 ## 07 · Review screen ("Photos", formerly the light table)
 
+> **Round 6 (current): one capture flow.** "Your photos" now speaks the language of the camera (02) before it and the photo guide (04) after it, so the three capture screens read as one flow. **Where this round and the round 3/4 tables below disagree, this round wins.** The Vestiaire reference (07) still sets the order of the page: a header, the photos, a retake hint, "Add a photo", tips and one pinned action. It no longer sets the measurements. Tokens: `ref.layout.review` (round 6) in `src/theme/tokens.ts`. Code: `src/screens/review/LightTable.tsx` and its parts.
+>
+> | Element, top to bottom | Round 6 | Tokens |
+> |---|---|---|
+> | Header | The camera's own: a 44 square back button ("Back to the camera"), the serif title "Your photos" over the grey meta line "4 of 6 taken" (read as "4 of 6 photos taken"). Replaces the centred "Photos" nav row and the Bold 18 heading | `ref.layout.camera` edge, top, promptTop, metaGap; `COPY.count` / `countSpoken` |
+> | Fades | The column scrolls under the header and the foot through soft fades of the page colour (`PageFade`): `gap.top` 29 under the header, `footer.fade` 32 over the foot | `gap.top`, `footer.fade` |
+> | Whole-set note | Only when a build sent the player back with `?issue=…`: a calm raised note at the camera's nested corners, `issue.pad` 18, in `ref.type.subtitle`. No glyph, not amber. Four messages: too few objects, didn't come together, couldn't use, photo missing | `issue`, `gap.issue` 20, `COPY.issues` |
+> | Lead | "Retake anything dark, blurred, or too close to read the room." in `ref.type.subtitle`, at `ref.space.edge` | `gap.lead` 24 |
+> | Photos | The camera's last-photo thumbnail grown into **3:4 tiles** (the shot as the viewfinder framed it), **two to a row**, 13 apart with 24 between rows (about 170 × 227 on 393). Each tile is the photo at the thumbnail's inner radius inside its near-black frame, with a 1 pt faint rim. 10 under each tile: the numeral in the counter's Crimson Text Italic 22 and, 8 after it on the same baseline, its name ("From the doorway"). Was: 3 square tiles to a row with "1 · From the doorway" labels above | `grid` { columns 2, gap 13, rowGap 24, labelGap 10, numeralGap 8 }, `ref.button.thumbnail`, `type.numeral` |
+> | Remove | A bold white × 14 on a 30 disc of the palette's well at 60 %, 8 in from the photo's corner, on a 44 hit area. Replaces the thin × with a halo | `tile.remove` |
+> | Flagged photo | A 2 pt amber ring on the frame's outer edge (where the camera draws its ring), and its reason under the name in Medium 15: "Someone's in this shot", "Mail, a document, or a screen is readable", etc. Was a single "Retake this one" | `tile.flaggedRing`, `type.reason`, `COPY.reasons`, `warning` |
+> | Open slot | A removed photo leaves its slot: the tile's shape in a 1.5 dashed tertiary-grey border, with the camera glyph over "Take this photo". Tapping it takes that photo | `tile.open`, `COPY.openTile` |
+> | Retake hint | The tap glyph beside "Tap a photo to retake it", 22 under the grid, the glyph 8 from the text, muted ink | `note`, `gap.hint` |
+> | Add a photo | The guide's ghost pill (52 tall, the ghost button's hairline, in the palette's well), the camera glyph 10 from the label; 18 under the hint (24 under the lead with no photos); gone at 6 photos | `add`, `gap.add`, `ref.button.ghost` |
+> | Before you build | The guide's step title, 44 under the pill. Tips are a plain list: a 30 raised disc holding the numeral in the counter's italic, the tip in Regular 17, 12 after the disc, tips 14 apart. Then the privacy line in Regular 15, 22 under the tips | `section`, `tips`, `type.tip`, `type.tipNumber`, `type.note` |
+> | Foot | The guide's foot, pinned: 12 of padding, then the helper line (Regular 15, 12 above the pill) when the case can't build yet, then "Build the case" as the mode's primary pill in the reading column, `ref.space.ctaBottom` over the safe area. Replaces the white 48 bar with 2 pt corners | `footer` { pad 12, helperGap 12 }, `ModePill` |
+>
+> **Inside a mode**, every colour comes from the capture palette (`src/capture/ui/palette.ts`): the ground, raised discs and notes, ink, muted ink and lit numerals; "Build the case" is the mode's primary pill; every photo shows in the mode's baked treatment (`tile.bake` 720 px on the long edge, one bake shared by the tiles, the camera's last photo and the build wait's strip). The flagged amber stays in every mode.
+>
+> **Haptics** are unchanged from round 4 (`press` on tiles, ×s and open slots; `thud` on a live "Build the case").
+
 > **Round 4 (2026-10-25), the user's feedback:** "before you develop shouldnt have the scrolling 3 things jsut list them vertically, no see all button and the warning should be less threatening and dont mention AI. I also think we should drop the light table dark room thing its not very self explanatory. the step by step thing should show before you make a room every time." Plus "add some haptics too". What changed here:
 > - **Plain language** (the round 4 glossary): title "Photos", heading "Your photos", "Add a photo", "Tap a photo to retake it", labels "1 · From the doorway" (Arabic numerals), "Retake photo 2" / "Remove photo 2", "Build the case". No plate, roll, light table, darkroom, develop, AI or "never".
 > - **"Before you build"**: the three checks as friendly tips in a plain vertical list; no sideways cards, no "See all".
@@ -934,7 +970,7 @@ Reference: docs/refs/07-light-table.png (a resale app's "Photos" screen), 1179 �
 Route: `app/capture/review.tsx` (`/capture/review`, optional `?flag=0,2`) reads `flag` and renders `src/screens/review/LightTable.tsx`. Files in `src/screens/review/`:
 - `copy.ts` holds every word.
 - `ReviewHeader.tsx` is Back and the title.
-- `AddPlateButton.tsx` is the outlined pill.
+- `AddPlateButton.tsx` is "Add a photo" (round 6: the guide's ghost pill).
 - `Glyphs.tsx` is ESCAPD line art drawn to the reference's camera and tap glyphs.
 - `PlateGrid.tsx` holds the label + tile + × cells and the × halo.
 - `NoteRow.tsx` is the hint-row pattern, used for the retake hint and the privacy note.
@@ -1077,6 +1113,8 @@ Applied. Layout, type, shapes, sizes, spacing and icon style follow the referenc
 **Checks:** `npx tsc --noEmit -p .` clean; eslint clean on every file touched; `npx jest src/screens/review src/screens/guide src/capture` 205 / 205.
 
 ## 08 · In-game player (/tutorial, /play/[roomId]) and Case closed (/tutorial/complete)
+
+> **Round 6 (current): the photo guide's buttons in play.** 07's white bar (`WhiteBar`) and the outlined pill are gone from the player, its sheets, the code pad, the worktable, the suspects and accuse screens and Case closed. Every strong action is now the photo guide's pill (`ModePill variant="ghost"`: the mode's accent inside a mode, as the guide's "Next"; busy shows a small spinner), and every quiet action is `ModePill variant="quiet"`. The pinned band is the guide's foot: its reading column, the pill, then the quiet pills `ref.space.sm` apart. `ref.layout.play.bar` and `.outline` are removed; `type.action` (Semibold 16) is now only the keypad's Clear key. Haptics are unchanged. Where the tables below say "white bar" or "outlined pill", read "the guide's pill" and "a quiet pill".
 
 Reference: none. Derived from the rebuilt screens so that a player moving from the camera or the hub into a case feels no change of app: 02 Camera (Once) for the chrome (the flat `ground`, Once's 44 pt square header buttons, the Roboto Serif title over a grey meta line, near-black wells, white glyphs whose shape shows state, the italic numerals), 01's How you play sheet for every sheet (the kit's `DarkSheet`), 07 Light table for cards, hint rows, the outlined pill and the white bar, and the shared StateScreen for loading and errors. Round 4 (your feedback): no Explore as list, no photo strip, the photo full bleed and swiped photo to photo with no gap, a sliding code picker, plain words (no "plate"), and haptics. 393 × 852 pt, safe areas 59 / 34, values in pt. Room photos keep their full colour.
 
@@ -1320,10 +1358,7 @@ Only the account screens still use the round-2 look; they have no layout of thei
 **Planned, not built yet:**
 - the real purchase (RevenueCat)
 - My cases
-- the completion screen for your own rooms
-- Settings
 - account management
-- the hint UI
 - the case intro
 - the countdown after a wrong code
 - cancelling a development
@@ -1354,6 +1389,40 @@ Three modes (MODES_PROMPT.md, Part 2): Detective Noir, Crime Scene and Paranorma
 - **Web:** Skia runs on CanvasKit. The root layout waits for it (`useSkiaReady`, next to the font gate), and `public/canvaskit.wasm` is copied there by `postinstall` (`setup-skia-web public`). Native ships Skia in the binary and never waits. If CanvasKit fails to load, photos show untreated.
 - **Tests:** `jest/skia-mock.js` stands in for Skia and records what a bake draws.
 
+### Mode art (home's covers)
+
+Each mode has its own illustrated cover, drawn in code with Skia from that mode's theme colours. It uses no photographs.
+
+**When it shows:** on home's mode card, the mode screen's banner and the mode intro, whenever the player hasn't photographed a room yet. Once they have, all three show their own newest room photo in the mode's treatment (MODES_PROMPT's signature touch). This replaces The Study's photo as the default art; The Study keeps its photo as a case (its case file and the tutorial).
+
+**The covers** (`src/screens/hub/art/`):
+- **Detective Noir** (`noir.ts`): an office wall raked by light through venetian blinds, with rain on the window and smoke in the beams. A detective in a fedora stands in silhouette, the hat band and shoulder caught in brass, and his shadow falls on the wall. Monochrome, with brass only in the light.
+- **Crime Scene** (`crimeScene.ts`): a dark room at night, in one-point perspective. Through an open door, a hall is lit harsh pale from a far window and washed blood red. Crossed police tape over the doorway reads "CRIME SCENE · DO NOT CROSS". The beam falls across the floorboards onto a chalk outline and three yellow evidence markers numbered 1 to 3. No blood, body, weapon or gore, and yellow is only a detail.
+- **Paranormal** (`paranormal.ts`): an old oval mirror hung askew on damp trellis wallpaper. In it is a pale, featureless woman who isn't in the room; her cold light is the only real light. Below it are a console table with a drawer pulled out, a candle burning pale blue with smoke curling toward the glass, an empty balloon-back chair, floor mist and drifting motes. Eerie, not demonic: no symbols. Every pixel stays between 180° and 215° in hue, never mint.
+
+**Composition rules for all three:** the count chip's corner (top left) and the name plate (bottom left) stay dark and calm; the focus sits centre-right. Every colour comes from `modeThemes[genre]` via the kit's `tone()` and `mix()`, never a literal. Sizes scale with the cover's height (each has a design height of 260). Randomness is a fixed seed per mode (`draw.ts` `SEEDS`), so a cover is the same every time.
+
+**Overlays on the card:** noir's brass rule and paranormal's glow still sit over the cover. Crime scene's corner police tape shows only over the player's own photo, since the drawn cover already tapes off its door.
+
+**Baking** (`bake.ts`, `ModeCover.tsx`, `src/screens/mode/ModeArtImage.tsx`):
+- **Once per mode and size:** each cover is drawn once per mode, pixel size and scale, and kept in memory for the launch (12 entries, oldest dropped). A request for a key already baking shares that bake; a failed bake isn't kept, so the next request retries.
+- **Never in a render:** a frame asks for its cover from an effect after layout. Bakes run one at a time, each in its own idle slot (`requestIdleCallback`, 500 ms at most), so the screen paints first with each frame in its mode's `surface` colour.
+- **Showing it:** the cover fades in over `ref.motion.treatment` (instant under Reduce Motion; no fade if it was already baked). On a resize the old cover stays until the new one is ready. It is decorative and hidden from screen readers.
+- **Size and surfaces:** baked at the frame's real size times the screen's pixel ratio, capped at 2× on the web, where CanvasKit may fall back to software WebGL. Native uses Skia's GPU offscreen surface and falls back to raster (`offscreen.ts`). The web shares one WebGL context for every bake (`offscreen.web.ts`), because Skia's own web offscreen opens a context per surface and browsers drop the oldest after about 16.
+- **Lazy Skia:** Skia is required inside the bake. Without it (the web before CanvasKit loads), the frame keeps its surface colour.
+- **Font:** the police tape is set in Archivo ExtraBold (`@expo-google-fonts/archivo`). If the font fails or takes more than 3 s, the cover draws without the tape's words.
+- **Cost:** in a CPU-only headless renderer, a cover takes about 0.8 to 1.3 s; on the web build in this sandbox (software WebGL), about 2 to 2.7 s at 3×. Neither a real GPU nor a phone has been measured yet.
+
+**Tests:** `src/screens/hub/art/__tests__/bake-test.tsx` (it bakes once, at the right size, retries a failure, fades or doesn't, and keeps the old cover on a resize); hub-test and mode-test cover the cover-or-own-photo rule and the tape overlay.
+
+### Needs you (mode art)
+
+- Check the cover bake time on a real phone and in a desktop browser with hardware WebGL.
+- Crime scene's chalk outline: keep it, or drop it if it reads as a body? Removing it is one block (step 7 in `crimeScene.ts`).
+- Crime scene's doorway is strongly red against the otherwise grey image; say if it should be more desaturated.
+- On short cards (168 pt) the name plate covers most of crime scene's floor, and the tape words are too small to read below about 200 pt of card height.
+- On the mode screen's wide, short banner (about 393 × 200), crime scene's door ends up small in the top right.
+
 ### Motion: one exception
 
 The "no ambient animation" rule has one exception: paranormal's effect overlays (flicker, apparition, moved, cold, whisper) animate while their hotspot is visible on the active page. They use Reanimated on the UI thread, with opacity and transform only, and are static under reduced motion.
@@ -1367,17 +1436,173 @@ The photo guide (04), camera permission (03), camera (02), review screen (07) an
 | `page` | the camera, review and build-wait ground | `surface` |
 | `well` | the guide's ground and every well: the empty viewfinder, the counter pill, the zoom track | `ground` |
 | `raised`, `ink`, `inkMuted`, `rim` | square buttons, the zoom thumb, notes, loading tiles; text; 1 pt edges | the mode's own roles |
-| `primary` / `onPrimary` | 03's pill, 04's step button, 07's build bar, 06's bar | `accent` / `accentInk` |
+| `primary` / `onPrimary` | 03's pill, 04's step button, 07's build pill, 06's pill (round 6: all the guide's pill) | `accent` / `accentInk` |
 | `stamp`, `lit`, `cue` | 06's BUILDING / CASE READY stamp, the counter's current numeral, the camera's way-on ring | `stamp` |
 
 - **Permission (03):** pushr's white paper becomes the mode's dark sheet. The mode's `ground` sits behind a `surface` sheet with a `raised` panel, and the phone is drawn in `ground` and lit in `inkMuted`. The title is in `ink`, and the body and notices in `inkMuted`. There is no haze: `PaperHaze` belongs to the shell's paper only. The status bar's glyphs are light (`app/capture/index.tsx`), and the thinking line uses the kit's dark ground. Section 03's paper, haze, black pill and pressed fill describe the shell.
 - **Guide (04):** the mode's `ground`, `ink` and `inkMuted`. The close disc is a light `inkMuted` disc with a `ground` X, and the step button is the mode's primary. The line drawings keep their greys.
-- **Photos:** the camera's last photo, the review tiles and the build-wait strip bake at one size, `ref.layout.review.tile.bake` (360 on the long edge), so one bake per photo serves all three. Each photo shows as taken, then its treatment fades in (`TreatedImage`). The live camera feed is never treated, so you frame the real room.
+- **Photos:** the camera's last photo, the review tiles and the build-wait strip bake at one size, `ref.layout.review.tile.bake` (720 px on the long edge), so one bake per photo serves all three. Each photo shows as taken, then its treatment fades in (`TreatedImage`). The live camera feed is never treated, so you frame the real room.
 - **Pressed:** inside a mode the pills (`ModePill`: 03's pill and quiet ways out, 04's step button, the build wait's quiet button) press to 0.75 opacity (`ref.button.square.pressedOpacity`), because the kit's colour step (`raised` → `raisedPressed`) has no mode tokens. Squares, bare glyphs, the thumbnail and the bars press as they do in the shell.
-- **Calm states:** the build wait's One moment, account and access asks, and failures are `DevelopStateScreen` (`src/screens/develop/ModeState.tsx`). It uses StateScreen's layout in the mode's `surface`, `ink` and `inkMuted`, with the bar as the mode's primary.
+- **Calm states:** the build wait's One moment, account and access asks, and failures are the shared `StateScreen`, which reads the mode itself (round 6; `DevelopStateScreen` and `src/screens/develop/ModeState.tsx` are gone). Inside a mode it uses the mode's `surface`, `ink` and `inkMuted`, with the guide's pill in the mode's accent.
 - **The same in every mode:**
   - the warning amber (`ref.layout.review.warning`, #D4883A) on a marked photo's rim, its reason and the footer's helper, so a problem never changes colour;
   - the instrument greys: the shutter disk, the × halo and the framing grid;
   - the brass focus ring;
   - the build wait's painted magnifier. Its lens is clear grey glass in a brass rim, with no green, so it never tips a mode toward mint. `darkroom-test.tsx` pins every scale of the asset.
 - **Tests:** `src/capture/ui/__tests__/palette-test.ts`, plus each screen's "inside a mode" block.
+
+## Game feel (GAME_FEEL_PROMPT.md)
+
+The brief: keep the premium quality, but make Escapd feel like a noir detective game you *play*, not a productivity app. Sections 3 (hub as a desk) and 7 (cold open) were replaced by MODES_PROMPT (the three mode cards and the per-mode intros). The user excluded rank and XP from section 5. Everything below applies in all three modes, in each mode's palette (`useModeTheme()`).
+
+### 1. Every tap answers back
+
+- **Press squash** (`src/components/noir/squash.tsx`: `usePressSquash`, `SquashPressable`, a drop-in `Pressable`). Every button sinks while pressed: pills, buttons, square header buttons, keypad keys, tray items and the guide's close button go to 0.96; large panels (mode cards, case-file rows, photo tiles) go to 0.98. Press-in takes 90 ms, easing out. Release is a spring (damping 22, stiffness 420, mass 0.6) with a trace of overshoot that settles in about 220 ms. A pressed opacity or fill still applies on top. There's no squash while a button is busy. Tokens: `ref.motion.juice.press`. Settings rows don't squash, because list rows that scale read oddly.
+- **Hotspots:** pressing one in gives a `tick`, and the outcome brings its own haptic.
+- **Item pickup** (`src/render/PickupFlight.tsx`): a granted item stays out of the tray until the player taps "Pocket artifact" or closes the clue (the sheet covers the tray). It then flies from the object to its slot on an arc and bounces as it lands, with `pickup`. Positions are measured once; if they can't be measured within 160 ms, the item simply lands. A combined item lands without a flight. Tokens: `ref.layout.play.pickup`.
+- **The code pad** (`CodePad.tsx`, `CodeWheel.tsx`):
+  - A padlock in the mode's colour sits above the code.
+  - Each wheel stop overshoots by 0.08 of a row and seats back over 90 ms, like a mechanical click, with one `tick` per digit.
+  - **Wrong code:** the pad rattles for 300 ms (8 pt at the first swing, decaying), the shackle tugs, and `wrongCode` fires.
+  - **Correct code:** the shackle lifts 9 pt and swings open 24°, a ring in the mode's accent lights round the code, and `unlock` fires. After 620 ms the flow continues: CodePad returns `{ kind: "solved", proceed }` and the Player runs `proceed`, so the result sheet and the scene change wait for the latch.
+  - Tokens: `ref.motion.juice.rattle` / `.latch`, `ref.layout.play.codePad`.
+- **Reduce Motion:** nothing scales, flies, shakes or slides, and every haptic stays. A wrong code dips the pad to 0.45 opacity. A correct code cross-fades to an open lock and continues after 140 ms. A pickup fades into its slot.
+
+### 2. Sound
+
+Docs: `docs/AUDIO.md` lists every file, what it's for, how it's made, its licence, size and duration.
+- **Engine:** `src/game/sound.ts` preloads the effects once, replays them from the start and never throws; it's silent on the web.
+- **Silent switch:** the audio session is `playsInSilentMode: false` with `mixWithOthers`. Sounds follow the iOS silent switch, and on Android they don't play when the ringer is on silent or vibrate. The player's own music keeps playing at full volume, with no ducking.
+- **Settings:** Settings → Sound saves the server's `sound_enabled`. Sound and haptics are independent.
+- **The sounds:** 13 files in `assets/audio/`, about 340 KB in all, all synthesized by `scripts/audio/generate.mjs` (Node plus ffmpeg, deterministic). There's no third-party audio.
+  - Effects: press (very quiet), thud (a knock), paper, shutter, typewriter, unlock, wrong code, pickup, stamp, and the solved sting (3.3 s, timed to its haptic beats).
+  - `tick`, `success`, `warning` and `error` are silent, so the app never clicks constantly.
+- **Room tone:** `useRoomTone(active)`, mounted by `/play/[roomId]` and `/tutorial`. It loops 16 s per mode: noir rain and hum, crime scene a tense beating hum, paranormal a cold wind and pad. It fades in over 1.6 s, crossfades when the mode changes, and fades out over 0.7 s on blur, in the background, when sound is turned off or on unmount.
+- **Not yet checked on a device:** the loudness balance and how the low end comes through a phone speaker (volumes live in `sound.ts`). expo-audio restarts the loop by seeking back, which may leave a gap of a few milliseconds.
+
+### 4. The play screen as objects
+
+- **Evidence tray** (`InventoryBar.tsx`, `materials.ts`): a leather tray with a dashed stitched seam and an EVIDENCE label in the mono plate face. Items sit in felt wells as tags: a string hole, the glyph, and the name in Courier Prime. Each mode has its own leather: noir dark brown with brass stitching, crime scene oxblood with bone stitching, paranormal cold blue. Selection, Use, the worktable and combining work exactly as before. Tokens: `ref.layout.play.evidence`.
+- **Clues as objects** (`ClueObjects.tsx`): the server's text is typed on a torn, lined note. A clue from an object in the room also gets a polaroid of that object, cropped from the room photo in the mode's treatment, and a pocketed item shows as its evidence tag. Paper and ink are per mode; text contrast is 14:1, small print about 6:1. `paper` fires as the clue opens, 260 ms late after a solve so it doesn't land on top of the success haptic. At large text sizes the polaroid stacks above the note. Tokens: `ref.layout.play.clue`.
+- **Ask the informant** (`Informant.tsx`, `informantLadder.ts`):
+  - **Where:** a matchbook button in the tray's top edge, hidden when hints are off.
+  - **The sheet:** a backlit silhouette, and each tip on a paper slip under a byline ("Word on the street"), with the server's text verbatim in quotes. Opening it is free and shows the tips already given; only its button asks for the next one, with `typewriter`.
+  - **Per mode:** the informant (fedora), the beat cop (peaked cap) or the medium (veil).
+  - **New client call:** the app had no hint UI before. This calls the server's existing `use_hint` RPC, with no backend change, so a hint counts toward `hints_used` and the case-closed rating. The wrong-code cooldown is unchanged.
+  - Tokens: `ref.layout.play.informant`.
+- **Case clock** (`CaseClock.tsx`): Settings → Case clock (local, off by default). The time since the session's `started_at`, in the mono face, next to "View n of 3". It ticks once a second and only the clock re-renders. A case resumed days later shows the whole span.
+- **Idle glint** (`idle.ts`, `HotspotLayer.tsx`): after 20 s with no touch, a soft light pulses twice over objects in the current view that are visible, unsolved and not yet tapped, then waits for the next idle spell. It never touches hidden objects, so it reveals no more than Show interactives does, and it pauses while a sheet is open or a request is in flight. Under Reduce Motion it's a still, faint light. Peak 0.5 (`ref.layout.play.glint`); it's subtle on bright objects.
+- **Fonts:** Courier Prime (Google Fonts, `@expo-google-fonts/courier-prime`) is the typewriter face for game moments; Playfair stays for titles.
+
+### 5. The victory moment
+
+`CaseClosed.tsx`, `victory.ts` (pure: stats, rating, timeline), `slam.ts`, `MagnifierRating.tsx`, `Stamp.tsx`.
+- **Reversal:** this replaces case closed's earlier "celebrates observation, not speed: no ranking, no stars" rule. The rating is still about observation, not speed.
+- **The stamp:**
+  - Noir: CASE CLOSED slams onto a case folder with the title in Playfair on a paper label.
+  - Crime scene: GUILTY slams again onto the accused's card.
+  - Paranormal: the room snaps from tinted to full colour, "The presence is gone." drops with a `thud`, then CASE CLOSED slams.
+  - **Every slam** falls from 2.2×, overshoots to 0.93, settles over 140 ms and spreads its ink (the frame grows to 1.22× while fading from 0.45 over 420 ms). It fires `stamp` on impact and nudges the card 5 pt with a 3 pt shake. Stamp glyphs use the mode's `stamp` colour.
+- **Then the stats, one by one, with a `tick` each.** All three are real numbers from the `game_sessions` row the route already loads:
+  - time, `completed_at − started_at`;
+  - hints used, `hints_used`;
+  - wrong codes, `wrong_answer_count` (labelled "Wrong answers" in crime scene, where wrong accusations share the counter).
+  - A missing field is left out; with no session there are no stats and no rating.
+- **Then the rating:** 1–3 magnifiers fill in, a `tick` each, then `solved`. The row reads "Observation" and, to screen readers, "Rating: N of 3 magnifiers". The rule (`magnifierRating`):
+
+  | Rating | When |
+  |---|---|
+  | 3 | no hints and no wrong answers |
+  | 2 | at most 1 hint and at most 2 wrong answers |
+  | 1 | otherwise |
+  | none | either number missing |
+
+  Time never counts.
+- **Then the actions fade in:** "New case" and the way back.
+- **Timeline (ms after mount):**
+
+  | Beat | Noir / crime scene | Paranormal |
+  |---|---|---|
+  | Card in | 0–220 | 0–220 (colour snap at 360) |
+  | Gone line lands | — | 700 |
+  | Stamp lands (`stamp`) | 640 | 1120 |
+  | Message | 640 | 1120 |
+  | Stats | 940 / 1120 / 1300 | 1420 / 1600 / 1780 |
+  | Magnifiers | 1540 / 1760 / 1980 | 2020 / 2240 / 2460 |
+  | `solved` | 2140 | 2620 |
+  | Actions | 2300 | 2780 |
+
+  If the session arrives late, the stats start when it does; after 1200 ms, `solved` and the actions go ahead without it.
+- **Reduce Motion:** no fall, nudge or stagger. The stamp fades in by 140 ms (with `stamp`), the stats by 200, the rating appears filled at 320, and `solved` and the actions come at 420.
+- **Share hook:** the stamp, title, message, stats and rating are one `View` (`testID="case-card"`, `collapsable={false}`) held in a ref, and `onShare?: (card) => void` is declared but unused. Sharing isn't built.
+- **Open questions:** there's no tap-to-skip, and the actions can be pressed while they're still fading in.
+
+### 6. Voice
+
+A short, dry voice per mode, only where the player is playing: noir is a hard-boiled narrator, crime scene is clipped police procedural, and paranormal is hushed and eerie (never demonic). Shared lines use noir's voice.
+- **Where the words live:**
+  - `src/render/voice.ts`: `playVoice(genre)` for each mode's play-screen lines, `PLAY_COPY` for the shared ones and `failedLine()`;
+  - `MODE_COPY` in `src/screens/mode/caseFiles.ts`;
+  - `src/render/accuse.ts`;
+  - `WRONG_LABEL` in `victory.ts`.
+  - The quiet "nothing new here" lines moved from `selectors.ts` into each voice.
+- **Still plain** (round 4: "drop the light table dark room thing its not very self explanatory"):
+  - the capture flow (guide, camera, permission, Your photos, the build wait);
+  - Pro, billing, account, settings and home;
+  - offline lines (only the offline screen's title is in voice);
+  - the app-update and not-ready states;
+  - hotspot, view and digit accessibility labels, and tutorial coach marks.
+- **Never rewritten:** server text (clues, hints, case names, messages). The app's lines are only fallbacks for when the server sends none.
+- **No darkroom or film words.** GAME_FEEL's "Developing the prints…" became "Pulling the case file…".
+
+**Before → after (the main lines; noir / crime scene / paranormal where they differ):**
+
+| Where | Before | After |
+|---|---|---|
+| Mode screen list | Your cases | Case files / Case files / Your hauntings |
+| Empty list | No cases yet. Photograph a room and it becomes a case to solve. | Quiet week. Photograph a room and it becomes a case. / No cases on file. … becomes a crime scene. / (kept) |
+| Load error | Couldn't load your cases. Try again in a moment. | The trail went cold. Try again. / Couldn't pull the files. Try again. / Something interfered. Try again. |
+| The Study | Play / Continue / Replay The Study | Take the case / Back on the case / Reopen the case |
+| Intro kicker / button | How this mode works / Start | Crime scene: Briefing / Take the case · Paranormal: Before you go in / Step inside |
+| Player loading | Opening the case | Pulling the case file… / Securing the scene… / The room is waking… |
+| Player offline title | You're offline | The line's dead / No signal / Contact lost |
+| Player error title | The case didn't open | The trail went cold / Scene unavailable / The room went quiet |
+| Item on the wrong object | That doesn't work here. | No dice. / No match. / Nothing stirs. |
+| Items that don't combine | These don't fit together. | Those two don't fit. / Those don't match up. / They won't join. |
+| Wrong code (no server line) | Nothing happens. | Wrong number. / Wrong code. / Wrong code. Nothing stirs. |
+| Request failed | That didn't go through. Try again. | The trail went cold. Try again. / Request failed. Try again. / Something interfered. Try again. |
+| Nothing new: locked / spent / plain | This does not open yet. / Nothing else here. / Nothing stands out. | Noir: It won't budge. Not yet. / Picked clean. / Nothing worth a second look. (crime scene and paranormal in their own voice) |
+| Clue sheet button | Pocket artifact / Continue | Pocket it / Bag it / Take it · Move on / Proceed / Go on |
+| Items heading | Added to your items | In your pocket / Logged as evidence / You take it with you |
+| Alibi broken | {name}'s alibi doesn't hold up. | Alibi broken: {name}. |
+| Combine button | Close clasp | Fit together |
+| Empty tray | Items you find appear here. | What you find goes here. / Bagged evidence goes here. / What you take goes here. |
+| Code pad items | Check your items | Check your evidence |
+| Accuse title / submit | Make your accusation / Make the accusation | Name the killer / Make the arrest |
+| Wrong accusation | That doesn't add up. | The charge won't stick. |
+| Case closed hints stat | Hints used | Tips taken |
+| Case closed wrong stat | Wrong codes / Wrong answers / Wrong codes | Wrong codes / Wrong calls / Missteps |
+| Case closed actions | New case / Play this case again | Next case / Replay the case |
+
+### Tests
+
+- `squash-test.tsx` and `codePad-test.tsx`: the squash and Reduce Motion, `wrongCode`, the latch, and `proceed` (at most 150 ms under Reduce Motion).
+- `sound-test.tsx`: sound only when `sound_enabled`, independent of haptics, silent failures, and the room tone's lifecycle.
+- `diegetic-test.tsx` and `playScreen-test.tsx`: the hotspot tick, pickup landing, the informant's text verbatim with the cooldown unchanged, the clock hidden by default and ticking when on, and the glint only after idle and only on discoverable objects.
+- `Player-test.tsx`: the result sheet appears only after `proceed`.
+- `victory-test.ts` and `complete-test.tsx`: the rating, stats only when data exists, the cue order (`stamp`, ticks, `solved`, actions) and the Reduce Motion path.
+
+### Sheets close before they unmount
+
+`DarkSheet`'s Close, its scrim, and anything inside that asks through `useSheetClose()` or a function `footer`'s `close` now slide the sheet away while it's still mounted, then call `onClose`. Before, a sheet only animated out on unmount, and the removed view lost its stacking on the way down, so the evidence tray and the header drew over the falling sheet. Details:
+- the slide is `ref.motion.sheetFall`, or a fade over `motion.reducedFade` under Reduce Motion;
+- a second press doesn't restart it, and touches pass through while it falls;
+- a sheet unmounted mid-slide never calls `onClose` late;
+- a caller that unmounts a sheet directly (one sheet swapped for another, home's Android back) still gets the old exit animation;
+- home bumps the Settings sheet's key on every open, so a tap while it's still falling opens a fresh one, and focus returns to the chip a margin after the sheet has gone.
+
+Tests: `src/components/noir/__tests__/darkSheet-test.tsx`. The play tests wait for the sheet to leave (`continueResult`).
+
+### Web notes
+
+`AccessibilityInfo.sendAccessibilityEvent` doesn't exist on react-native-web. DarkSheet, the Player and CodePad now call it only on native.

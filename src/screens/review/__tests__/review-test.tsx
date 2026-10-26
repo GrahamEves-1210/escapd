@@ -1,17 +1,21 @@
-// The review screen (/capture/review, "Photos") in its reference layout: the
-// behaviour it had before the rebuild (remove, retake, add, flagged photos,
-// the build rules, back), round 4's plain language and tips list, its
-// haptics, and the reference geometry that matters for use (tap targets, the
-// flagged rim, the bar's states).
-import { StyleSheet } from "react-native";
-import { act, render, screen, userEvent } from "@testing-library/react-native";
+// The review screen (/capture/review, "Your photos"), round 6: the behaviour
+// it has always had (remove, retake, add, flagged photos, the build rules,
+// back), round 4's plain language and tips list, its haptics, and the
+// geometry that matters for use in the camera's (02) and the photo guide's
+// (04) language: the camera's header, 02's last photo grown into 3:4 tiles
+// two to a row with italic numerals, the guide's ghost pill to add a photo,
+// and the guide's pinned foot with its pill to build (tap targets, the
+// flagged ring, the pill's states).
+import { Dimensions, StyleSheet } from "react-native";
+import { act, render, screen, userEvent, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { addPlate, clearPlates, getPlates, getSlots, removePlate, replacePlate } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES, promptFor } from "@/capture/slots";
+import { SQUARE_SLOP } from "@/capture/ui/rangefinder/SquareButton";
 import { setMode } from "@/game/mode";
 import { modeThemes, ref } from "@/theme/tokens";
 import LightTableScreen from "../../../../app/capture/review";
-import { COPY, plateLabel } from "../copy";
+import { COPY, plateLabelSpoken, plateName } from "../copy";
 
 jest.mock("expo-router", () => ({
   router: { back: jest.fn(), replace: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) },
@@ -28,6 +32,8 @@ jest.mock("@/components/noir/treatPhoto", () => ({
 }));
 
 const L = ref.layout.review;
+const THUMB = ref.button.thumbnail;
+const GHOST = ref.button.ghost;
 const params = useLocalSearchParams as jest.Mock;
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
 /** Pressable styles are functions of the press state; read them at rest. */
@@ -35,6 +41,14 @@ const restStyleOf = (node: { props: { style?: unknown } }) => {
   const style = node.props.style;
   return StyleSheet.flatten((typeof style === "function" ? style({ pressed: false }) : style) as never) ?? {};
 };
+type Node = ReturnType<typeof screen.getByTestId>;
+/** Host views under `root` whose flattened style matches. */
+const viewsWhere = (root: Node, match: (style: Record<string, unknown>) => boolean) =>
+  root.queryAll((node) => node.type === "View" && match(styleOf(node)));
+/** The kit's ghost pill (the shell's) draws its 1 pt hairline on an inner layer. */
+const ghostEdges = (pill: Node) => viewsWhere(pill, (s) => s.borderColor === GHOST.border && s.borderWidth === GHOST.borderWidth);
+/** The header: the title and the count, read as one ("Your photos, 4 of 6 photos taken"). */
+const headerName = (count: number) => `${COPY.title}, ${COPY.countSpoken(count, MAX_PLATES)}`;
 
 function fill(count: number) {
   clearPlates();
@@ -54,23 +68,29 @@ beforeEach(() => {
 afterEach(() => clearPlates());
 
 describe("layout and copy", () => {
-  it("shows the header, the count, every photo with its prompt, the hint, the tips and the privacy note, in plain words", async () => {
+  it("shows the header, the count, every photo with its name, the hint, the tips and the privacy note, in plain words", async () => {
     fill(4);
     await renderAt();
-    expect(screen.getByRole("header", { name: COPY.title })).toBeTruthy();
-    expect(screen.getByRole("header", { name: COPY.heading })).toBeTruthy();
-    expect(screen.getByText(COPY.caption(4, MAX_PLATES))).toBeTruthy();
-    expect(screen.getByText("4 of 6. Retake anything dark, blurred, or too close to read the room.")).toBeTruthy();
-    expect(screen.getByRole("header", { name: "Photos" })).toBeTruthy();
-    expect(screen.getByRole("header", { name: "Your photos" })).toBeTruthy();
-    expect(screen.getByText("1 · From the\u00A0doorway")).toBeTruthy();
-    expect(screen.getByText("2 · Opposite\u00A0corner")).toBeTruthy();
-    expect(screen.getByText("3 · The busiest\u00A0wall")).toBeTruthy();
-    expect(screen.getByText("4 · A close\u00A0view")).toBeTruthy();
+    // The camera's header: the serif title over the grey count, one screen-reader header, read politely as it changes.
+    const header = screen.getByRole("header", { name: "Your photos, 4 of 6 photos taken" });
+    expect(header.props.accessibilityLiveRegion).toBe("polite");
+    expect(screen.getByText("Your photos")).toBeTruthy();
+    expect(screen.getByText("4 of 6 taken")).toBeTruthy();
+    expect(screen.getByText(COPY.count(4, MAX_PLATES))).toBeTruthy();
+    expect(screen.getByText("Retake anything dark, blurred, or too close to read the room.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to the camera" })).toBeTruthy();
+    // Each photo's numeral, then its name.
+    const names = ["From the\u00A0doorway", "Opposite\u00A0corner", "The busiest\u00A0wall", "A close\u00A0view"];
+    names.forEach((name, i) => {
+      const cell = within(screen.getByTestId(`plate-${i}`));
+      expect(cell.getByText(String(i + 1))).toBeTruthy();
+      expect(cell.getByText(name)).toBeTruthy();
+    });
     expect(screen.getByLabelText("Photo 1, From the doorway")).toBeTruthy();
-    // The last word is held to the one before it, so a label breaks "1 · From / the doorway".
-    expect(plateLabel(promptFor(0))).toBe("1 · From the\u00A0doorway");
-    expect(plateLabel(promptFor(5))).toBe("6 · Last\u00A0photo");
+    expect(plateLabelSpoken(promptFor(3))).toBe("Photo 4, A close view");
+    // The last word is held to the one before it, so a name breaks "From / the doorway".
+    expect(plateName(promptFor(0))).toBe("From the\u00A0doorway");
+    expect(plateName(promptFor(5))).toBe("Last\u00A0photo");
     expect(screen.getByText("Tap a photo to retake it")).toBeTruthy();
     expect(screen.getByRole("header", { name: "Before you build" })).toBeTruthy();
     for (const line of COPY.checks) expect(screen.getByText(line)).toBeTruthy();
@@ -106,16 +126,35 @@ describe("layout and copy", () => {
     expect(words).not.toMatch(/plate|light table|darkroom|develop|\bAI\b|model|never/i);
   });
 
-  it("lays the plates out three to a row, square, at the reference's spacing", async () => {
-    fill(4);
+  it("lays the photos out two to a row in 3:4 tiles, 02's last photo grown", async () => {
+    fill(5);
     await renderAt();
     const grid = screen.getByTestId("plate-grid");
-    expect(grid.children).toHaveLength(2);
-    expect(styleOf(screen.getByTestId("plate-0"))).toMatchObject({ justifyContent: "flex-end", gap: L.grid.labelGap });
-    const frame = styleOf(screen.getByTestId("plate-0-frame"));
-    expect(frame).toMatchObject({ borderWidth: L.tile.rim, borderColor: ref.color.rim, borderRadius: L.tile.radius });
-    // The rim composites over the ground, never over a fill of the frame's own.
-    expect(frame.backgroundColor).toBeUndefined();
+    expect(styleOf(grid)).toMatchObject({ marginHorizontal: ref.space.edge, gap: L.grid.rowGap });
+    // Five photos: two rows of two, then one.
+    expect(grid.children.map((row) => (typeof row === "string" ? 0 : row.children.length))).toEqual([2, 2, 1]);
+    expect(styleOf(grid.children[0] as Node)).toMatchObject({ flexDirection: "row", gap: L.grid.gap });
+    // Two columns across the screen inside ref.space.edge, the shot's 3:4 as the viewfinder framed it.
+    const tile = (Dimensions.get("window").width - ref.space.edge * 2 - L.grid.gap) / 2;
+    const cell = screen.getByTestId("plate-0");
+    expect(styleOf(cell)).toMatchObject({ width: tile, gap: L.grid.labelGap });
+    expect(viewsWhere(cell, (s) => s.width === tile && s.height === tile / ref.layout.camera.frameAspect)).toHaveLength(1);
+    // The thumbnail's near-black frame, the photo at its nested corners inside it, the faint 1 pt rim over the photo.
+    expect(restStyleOf(screen.getByTestId("plate-0-retake"))).toMatchObject({ backgroundColor: THUMB.frameFill, borderRadius: THUMB.radius });
+    expect(styleOf(screen.getByTestId("plate-0-frame"))).toMatchObject({
+      top: THUMB.frameWidth,
+      left: THUMB.frameWidth,
+      right: THUMB.frameWidth,
+      bottom: THUMB.frameWidth,
+      borderRadius: THUMB.imageRadius,
+      overflow: "hidden",
+    });
+    expect(viewsWhere(cell, (s) => s.borderColor === THUMB.imageRim && s.borderWidth === ref.layout.camera.hairline)).toHaveLength(1);
+    // No ring on a clean photo.
+    expect(screen.queryByTestId("plate-0-ring")).toBeNull();
+    // The numeral in the counter's italic, then the name in the camera's serif title.
+    expect(styleOf(within(cell).getByText("1"))).toMatchObject({ ...L.type.numeral, color: ref.color.textPrimary });
+    expect(styleOf(within(cell).getByText("From the\u00A0doorway"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
   });
 
   it("has no hint and no grid without plates", async () => {
@@ -123,22 +162,37 @@ describe("layout and copy", () => {
     await renderAt();
     expect(screen.queryByTestId("plate-grid")).toBeNull();
     expect(screen.queryByText(COPY.hint)).toBeNull();
-    expect(screen.getByText(COPY.caption(0, MAX_PLATES))).toBeTruthy();
+    expect(screen.getByText(COPY.count(0, MAX_PLATES))).toBeTruthy();
+    expect(screen.getByRole("header", { name: headerName(0) })).toBeTruthy();
   });
 
-  it("draws the reference's own glyphs: the square camera on the pill, the finger on its button by the hint", async () => {
+  it("draws the ESCAPD glyphs: the square camera on the guide's ghost pill, the finger by the hint", async () => {
     fill(1);
     await renderAt();
     expect(screen.getByTestId("camera-glyph", { includeHiddenElements: true }).props).toMatchObject({ width: L.camera.width, height: L.camera.height });
     expect(screen.getByTestId("tap-glyph", { includeHiddenElements: true }).props).toMatchObject({ width: L.tap.box, height: L.tap.box });
-    expect(restStyleOf(screen.getByTestId("add-plate"))).toMatchObject({ marginHorizontal: L.add.inset, minHeight: L.add.height, borderWidth: L.add.border });
+    // "Add a photo" is the guide's own dark hairline pill (ref.button.ghost) in its reading column.
+    expect(restStyleOf(screen.getByTestId("add-plate"))).toMatchObject({
+      marginHorizontal: ref.space.reading,
+      minHeight: GHOST.height,
+      borderWidth: GHOST.borderWidth,
+      borderColor: GHOST.border,
+      backgroundColor: GHOST.fill,
+      borderRadius: ref.radius.round,
+      gap: L.add.gap,
+    });
+    expect(styleOf(screen.getByText(COPY.add))).toMatchObject({ ...ref.type.headline, color: GHOST.label });
   });
 
   it("gives every control a 44 pt target", async () => {
     fill(1);
     await renderAt();
     expect(restStyleOf(screen.getByTestId("plate-0-remove"))).toMatchObject({ width: ref.hit.min, height: ref.hit.min });
-    expect(restStyleOf(screen.getByTestId("review-back"))).toMatchObject({ minWidth: ref.hit.min, minHeight: L.header.height });
+    // The camera's 44 square back button, its hit area grown to 48 by its slop.
+    const back = screen.getByTestId("review-back");
+    expect(restStyleOf(back)).toMatchObject({ width: ref.button.square.size, height: ref.button.square.size });
+    expect(back.props.hitSlop).toBe(SQUARE_SLOP);
+    expect(ref.button.square.size + SQUARE_SLOP * 2).toBeGreaterThanOrEqual(ref.hit.min);
     expect(restStyleOf(screen.getByTestId("add-plate")).minHeight).toBeGreaterThanOrEqual(ref.hit.min);
     expect(restStyleOf(screen.getByTestId("develop")).minHeight).toBeGreaterThanOrEqual(ref.hit.min);
   });
@@ -153,12 +207,12 @@ describe("photos", () => {
     expect(getPlates().map((p) => p.uri)).toEqual(["file:///plate-0.jpg", "file:///plate-2.jpg", "file:///plate-3.jpg"]);
     expect(getSlots().map((p) => p?.uri ?? null)).toEqual(["file:///plate-0.jpg", null, "file:///plate-2.jpg", "file:///plate-3.jpg"]);
     // The count counts filled photos; every photo stays under its own prompt.
-    expect(screen.getByText(COPY.caption(3, MAX_PLATES))).toBeTruthy();
-    expect(screen.getByText("4 · A close\u00A0view")).toBeTruthy();
+    expect(screen.getByText(COPY.count(3, MAX_PLATES))).toBeTruthy();
+    expect(within(screen.getByTestId("plate-3")).getByText("A close\u00A0view")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retake photo 3" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retake photo 4" })).toBeTruthy();
-    // Slot 2 is an open tile under its own label.
-    expect(screen.getByText("2 · Opposite\u00A0corner")).toBeTruthy();
+    // Slot 2 is an open tile under its own name.
+    expect(within(screen.getByTestId("plate-1")).getByText("Opposite\u00A0corner")).toBeTruthy();
     expect(screen.getByTestId("plate-1-open")).toBeTruthy();
     expect(screen.queryByTestId("plate-1-retake")).toBeNull();
   });
@@ -168,7 +222,7 @@ describe("photos", () => {
     removePlate(1);
     await renderAt();
     const open = screen.getByRole("button", { name: "Take photo 2, Opposite corner. This photo is open." });
-    expect(restStyleOf(open)).toMatchObject({ borderStyle: "dashed", borderWidth: L.tile.open.border, borderColor: L.tile.open.rim });
+    expect(restStyleOf(open)).toMatchObject({ borderStyle: "dashed", borderWidth: L.tile.open.border, borderColor: L.tile.open.rim, borderRadius: THUMB.radius });
     expect(screen.getByText("Take this photo")).toBeTruthy();
     expect(screen.getAllByTestId("camera-glyph", { includeHiddenElements: true }).length).toBe(2);
     await userEvent.setup().press(open);
@@ -197,7 +251,7 @@ describe("photos", () => {
     fill(3);
     removePlate(1);
     await renderAt();
-    expect(screen.getByText(COPY.caption(2, MAX_PLATES))).toBeTruthy();
+    expect(screen.getByText(COPY.count(2, MAX_PLATES))).toBeTruthy();
     expect(screen.getByTestId("develop")).toBeDisabled();
     expect(screen.getByText("Take at least 3 photos to build the case.")).toBeTruthy();
   });
@@ -211,7 +265,7 @@ describe("photos", () => {
     expect(mockFeedback.thud).not.toHaveBeenCalled();
   });
 
-  it("adds a photo from the outlined pill, which is gone once 6 are taken", async () => {
+  it("adds a photo from the ghost pill, which is gone once 6 are taken", async () => {
     fill(MAX_PLATES - 1);
     const { unmount } = await renderAt();
     await userEvent.setup().press(screen.getByRole("button", { name: COPY.add }));
@@ -230,11 +284,13 @@ describe("flagged photos", () => {
     // An older build's ?flag=1 (no reason): the general reason.
     await renderAt("1");
     expect(screen.getByTestId("plate-1-flag", { includeHiddenElements: true })).toHaveTextContent("May show a person or something private");
-    expect(styleOf(screen.getByTestId("plate-1-flag", { includeHiddenElements: true })).color).toBe(L.warning);
-    expect(styleOf(screen.getByText("2 · Opposite\u00A0corner")).color).toBe(L.warning);
-    expect(styleOf(screen.getByTestId("plate-1-frame"))).toMatchObject({ borderWidth: L.tile.flaggedRim, borderColor: L.warning });
+    expect(styleOf(screen.getByTestId("plate-1-flag", { includeHiddenElements: true }))).toMatchObject({ ...L.type.reason, color: L.warning });
+    // The name keeps its ink: the reason under it carries the warning.
+    expect(styleOf(within(screen.getByTestId("plate-1")).getByText("Opposite\u00A0corner")).color).toBe(ref.color.textPrimary);
+    // A warning ring on the frame's outer edge, where the camera draws its way-on ring.
+    expect(styleOf(screen.getByTestId("plate-1-ring"))).toMatchObject({ borderWidth: L.tile.flaggedRing, borderColor: L.warning, borderRadius: THUMB.radius });
     expect(screen.queryByTestId("plate-0-flag", { includeHiddenElements: true })).toBeNull();
-    expect(styleOf(screen.getByTestId("plate-0-frame")).borderColor).toBe(ref.color.rim);
+    expect(screen.queryByTestId("plate-0-ring")).toBeNull();
     expect(screen.getByText("Retake the marked photos, then build the case.")).toBeTruthy();
     expect(styleOf(screen.getByTestId("develop-helper")).color).toBe(L.warning);
     expect(screen.getByTestId("develop")).toBeDisabled();
@@ -261,8 +317,8 @@ describe("flagged photos", () => {
     removePlate(1);
     await renderAt("2:person");
     expect(screen.getByTestId("plate-2-flag", { includeHiddenElements: true })).toHaveTextContent("Someone's in this shot");
-    expect(styleOf(screen.getByTestId("plate-2-frame")).borderColor).toBe(L.warning);
-    expect(styleOf(screen.getByTestId("plate-3-frame")).borderColor).toBe(ref.color.rim);
+    expect(styleOf(screen.getByTestId("plate-2-ring")).borderColor).toBe(L.warning);
+    expect(screen.queryByTestId("plate-3-ring")).toBeNull();
   });
 
   it("shows a failure about the whole set as a calm note at the top", async () => {
@@ -271,7 +327,7 @@ describe("flagged photos", () => {
     expect(screen.getByTestId("review-issue")).toHaveTextContent(
       "The case needs a little more to work with. Add a close view of a desk, shelf, or table, then build again.",
     );
-    expect(styleOf(screen.getByTestId("review-issue")).backgroundColor).toBe(ref.color.raised);
+    expect(styleOf(screen.getByTestId("review-issue"))).toMatchObject({ backgroundColor: ref.color.raised, padding: L.issue.pad, borderRadius: ref.radius.nested });
     expect(screen.getByTestId("develop")).toBeEnabled();
   });
 
@@ -308,13 +364,13 @@ describe("flagged photos", () => {
   });
 });
 
-describe("build bar", () => {
+describe("build pill", () => {
   it(`needs at least ${MIN_PLATES} photos, said as a tip`, async () => {
     fill(MIN_PLATES - 1);
     await renderAt();
     expect(screen.getByText(COPY.tooFew(MIN_PLATES))).toBeTruthy();
     expect(screen.getByText("Take at least 3 photos to build the case.")).toBeTruthy();
-    expect(styleOf(screen.getByTestId("develop-helper")).color).toBe(ref.color.textSecondary);
+    expect(styleOf(screen.getByTestId("develop-helper"))).toMatchObject({ ...L.type.note, color: ref.color.textSecondary });
     const bar = screen.getByRole("button", { name: COPY.develop });
     expect(bar).toBeDisabled();
     expect(restStyleOf(bar).opacity).toBe(ref.button.disabledOpacity.pill);
@@ -323,12 +379,22 @@ describe("build bar", () => {
     expect(mockFeedback.thud).not.toHaveBeenCalled();
   });
 
-  it("builds with enough clean photos, as a paper bar with square-ish corners and a thud as it commits", async () => {
+  it("builds with enough clean photos, from the guide's pinned foot and its dark hairline pill, with a thud as it commits", async () => {
     fill(MIN_PLATES);
     await renderAt();
     expect(screen.queryByTestId("develop-helper")).toBeNull();
+    // The guide's foot: its reading column, the pill's foot ref.space.ctaBottom over the (here zero) safe area.
+    expect(styleOf(screen.getByTestId("develop-footer"))).toMatchObject({
+      backgroundColor: ref.color.ground,
+      paddingTop: L.footer.pad,
+      paddingHorizontal: ref.space.reading,
+      paddingBottom: ref.space.ctaBottom,
+    });
+    // In the shell, the guide's own ghost pill: 52 tall, the full column, its 1 pt hairline, the headline label.
     const bar = screen.getByTestId("develop");
-    expect(restStyleOf(bar)).toMatchObject({ backgroundColor: ref.color.paper, borderRadius: L.footer.radius, minHeight: L.footer.bar });
+    expect(restStyleOf(bar)).toMatchObject({ minHeight: GHOST.height, alignSelf: "stretch" });
+    expect(ghostEdges(bar)).toHaveLength(1);
+    expect(styleOf(screen.getByText(COPY.develop))).toMatchObject({ ...ref.type.headline });
     expect(restStyleOf(bar).opacity).toBeUndefined();
     await userEvent.setup().press(bar);
     expect(router.push).toHaveBeenCalledWith("/capture/develop");
@@ -361,20 +427,27 @@ describe("inside a mode", () => {
   beforeEach(() => setMode("crime_scene"));
   afterEach(() => setMode(null));
 
-  it("takes the mode's ground, inks, raised fills and rims", async () => {
+  it("takes the mode's ground, inks, raised fills, rims and lit numerals", async () => {
     fill(4);
     await renderAt(undefined, "too_few_objects");
     expect(styleOf(screen.getByTestId("review-root")).backgroundColor).toBe(theme.surface);
-    expect(styleOf(screen.getByRole("header", { name: COPY.title })).color).toBe(theme.ink);
-    expect(styleOf(screen.getByRole("header", { name: COPY.heading })).color).toBe(theme.ink);
-    expect(styleOf(screen.getByText(COPY.caption(4, MAX_PLATES))).color).toBe(theme.ink);
-    expect(styleOf(screen.getByText(COPY.back)).color).toBe(theme.ink);
+    expect(styleOf(screen.getByText(COPY.title)).color).toBe(theme.ink);
+    expect(styleOf(screen.getByTestId("review-count")).color).toBe(theme.inkMuted);
+    // The camera's square back button in the mode's raised fill and rim.
+    expect(restStyleOf(screen.getByTestId("review-back"))).toMatchObject({ backgroundColor: theme.raised, borderColor: theme.rim });
     expect(styleOf(screen.getByTestId("review-issue")).backgroundColor).toBe(theme.raised);
-    expect(styleOf(screen.getByText("1 · From the doorway")).color).toBe(theme.inkMuted);
-    expect(styleOf(screen.getByTestId("plate-0-frame")).borderColor).toBe(theme.rim);
+    expect(styleOf(screen.getByTestId("review-lead")).color).toBe(theme.inkMuted);
+    const cell = within(screen.getByTestId("plate-0"));
+    expect(styleOf(cell.getByText("1")).color).toBe(theme.stamp);
+    expect(styleOf(cell.getByText("From the\u00A0doorway")).color).toBe(theme.ink);
+    // The tile's frame in the mode's near-black ground, the photo's well raised.
+    expect(restStyleOf(screen.getByTestId("plate-0-retake")).backgroundColor).toBe(theme.ground);
+    expect(styleOf(screen.getByTestId("plate-0-frame")).backgroundColor).toBe(theme.raised);
     expect(styleOf(screen.getByText(COPY.hint)).color).toBe(theme.inkMuted);
     expect(styleOf(screen.getByTestId("privacy-note")).color).toBe(theme.inkMuted);
-    expect(restStyleOf(screen.getByTestId("add-plate")).borderColor).toBe(theme.ink);
+    // "Add a photo": the ghost pill in the mode's well, rim and ink, so the accent stays on "Build the case".
+    expect(restStyleOf(screen.getByTestId("add-plate"))).toMatchObject({ backgroundColor: theme.ground, borderColor: theme.rim });
+    expect(styleOf(screen.getByText(COPY.add)).color).toBe(theme.ink);
     expect(styleOf(screen.getByTestId("develop-footer")).backgroundColor).toBe(theme.surface);
   });
 
@@ -387,21 +460,29 @@ describe("inside a mode", () => {
     }
   });
 
-  it("makes the build bar the mode's primary button, still dimmed while blocked", async () => {
+  it("makes the build pill the mode's primary button, still dimmed while blocked", async () => {
     fill(MIN_PLATES);
-    await renderAt();
+    const { unmount } = await renderAt();
     const bar = screen.getByTestId("develop");
-    expect(restStyleOf(bar)).toMatchObject({ backgroundColor: theme.accent, borderRadius: L.footer.radius, minHeight: L.footer.bar });
-    expect(styleOf(screen.getByText(COPY.develop)).color).toBe(theme.accentInk);
+    expect(restStyleOf(bar)).toMatchObject({ backgroundColor: theme.accent, borderRadius: ref.radius.round, minHeight: GHOST.height });
+    expect(restStyleOf(bar).opacity).toBeUndefined();
+    expect(styleOf(screen.getByText(COPY.develop))).toMatchObject({ ...ref.type.headline, color: theme.accentInk });
     await userEvent.setup().press(bar);
     expect(router.push).toHaveBeenCalledWith("/capture/develop");
     expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+    await unmount();
+    fill(MIN_PLATES - 1);
+    await renderAt();
+    expect(screen.getByTestId("develop")).toBeDisabled();
+    expect(restStyleOf(screen.getByTestId("develop"))).toMatchObject({ backgroundColor: theme.accent, opacity: ref.button.disabledOpacity.pill });
+    expect(styleOf(screen.getByTestId("develop-helper")).color).toBe(theme.inkMuted);
   });
 
   it("keeps the flagged amber, which is a warning, not the mode's colour", async () => {
     fill(3);
     await renderAt("1:person");
-    expect(styleOf(screen.getByTestId("plate-1-frame")).borderColor).toBe(L.warning);
+    expect(styleOf(screen.getByTestId("plate-1-ring")).borderColor).toBe(L.warning);
+    expect(styleOf(screen.getByTestId("plate-1-flag", hidden)).color).toBe(L.warning);
     expect(styleOf(screen.getByTestId("develop-helper")).color).toBe(L.warning);
   });
 });

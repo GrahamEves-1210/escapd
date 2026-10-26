@@ -2,8 +2,9 @@
 // screen over the room, in the mode's ground. Pick who, why and how, one
 // from each list as radio cards (a stamp-coloured ring and a filled dot when
 // picked; suspects keep their CONTRADICTED stamps), then "Make the
-// accusation", which sends { type: "accuse" } through the player.
-// - Wrong: "That doesn't add up.", a shake (none under reduced motion) and
+// arrest", which sends { type: "accuse" } through the player. Its words are
+// crime scene's clipped procedural voice (accuse.ts).
+// - Wrong: "The charge won't stick.", a shake (none under reduced motion) and
 //   the error haptic from the player. The picks stay, so one can be changed.
 //   The server never says which part was wrong.
 // - Cooldown: retry_after as plain text, the button off until it passes.
@@ -24,8 +25,10 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
 import { sheetEntering, sheetExiting } from "@/components/noir";
 import { WarningIcon, XIcon } from "@/components/icons";
-import { cooldownText, secondsUntil } from "./accuse";
-import { Card, NoticeLine, QuietToggle, RingPressable, SquareButton, WhiteBar } from "./parts";
+import { COOLDOWN_FALLBACK, cooldownText, secondsUntil } from "./accuse";
+import { PLAY_COPY } from "./voice";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card, NoticeLine, QuietToggle, RingPressable, SquareButton } from "./parts";
 import { Stamp } from "./Stamp";
 import { SuspectFile, SuspectText, suspectA11yLabel } from "./SuspectFile";
 
@@ -34,7 +37,6 @@ const A = P.accuse;
 const R = P.reveal;
 const SQ = ref.button.square;
 const SLOP = (SQ.hit - SQ.size) / 2;
-const COOLDOWN_FALLBACK = "Wait a moment before you accuse again.";
 
 export interface Accusation {
   suspect: Id;
@@ -138,9 +140,9 @@ export function AccuseScreen({ puzzle, suspects, items, onSubmit, onClose, revea
         <SquareButton icon={XIcon} accessibilityLabel="Close" onPress={onClose} testID="accuse-close" />
         <View style={styles.prompt}>
           <Text numberOfLines={1} accessibilityRole="header" style={[ref.type.serifTitle, styles.centre, { color: theme.ink }]}>
-            Make your accusation
+            Name the killer
           </Text>
-          <Text numberOfLines={1} style={[ref.type.meta, styles.centre, { color: theme.inkMuted }]}>Who, why and how</Text>
+          <Text numberOfLines={1} style={[ref.type.meta, styles.centre, { color: theme.inkMuted }]}>Suspect, motive, method</Text>
         </View>
         <View style={styles.balance} />
       </View>
@@ -152,7 +154,7 @@ export function AccuseScreen({ puzzle, suspects, items, onSubmit, onClose, revea
       >
         <Animated.View style={[styles.sections, shakeStyle]}>
           <Choices
-            title="Who did it"
+            title="Suspect"
             slot="suspect"
             options={suspects}
             picked={picks.suspect}
@@ -160,14 +162,14 @@ export function AccuseScreen({ puzzle, suspects, items, onSubmit, onClose, revea
             render={(s) => <SuspectText suspect={s} stamped testID={`accuse-suspect-${s.id}`} />}
             label={(s) => suspectA11yLabel(s)}
           />
-          <Choices title="Why" slot="motive" options={puzzle.motives ?? []} picked={picks.motive} onPick={pick} />
-          <Choices title="How" slot="method" options={puzzle.methods ?? []} picked={picks.method} onPick={pick} />
+          <Choices title="Motive" slot="motive" options={puzzle.motives ?? []} picked={picks.motive} onPick={pick} />
+          <Choices title="Method" slot="method" options={puzzle.methods ?? []} picked={picks.method} onPick={pick} />
         </Animated.View>
 
         {items.length > 0 ? (
           <View style={styles.items}>
             <QuietToggle
-              label={showItems ? "Hide your evidence" : "Check your evidence"}
+              label={showItems ? PLAY_COPY.evidenceHide : PLAY_COPY.evidenceShow}
               onPress={() => setShowItems((s) => !s)}
               expanded={showItems}
               testID="accuse-items"
@@ -183,18 +185,20 @@ export function AccuseScreen({ puzzle, suspects, items, onSubmit, onClose, revea
       </ScrollView>
 
       <View
-        style={[styles.footer, { paddingBottom: insets.bottom + P.band.foot + ref.space.sm, borderTopColor: theme.rim }]}
+        style={[styles.footer, { paddingBottom: insets.bottom + ref.space.ctaBottom, borderTopColor: theme.rim }]}
         importantForAccessibility={revealed ? "no-hide-descendants" : "auto"}
       >
         <View style={styles.message} accessibilityLiveRegion="polite" testID="accuse-message">
           {message ? <NoticeLine icon={WarningIcon} text={message} /> : null}
           {waitLine ? <Text style={[P.type.hint, { color: theme.inkMuted }]} testID="accuse-cooldown">{waitLine}</Text> : null}
         </View>
-        <WhiteBar
-          label="Make the accusation"
+        <ModePill
+          variant="ghost"
+          label="Make the arrest"
           onPress={submit}
           disabled={!complete || wait > 0}
           busy={busy}
+          spinner
           // The outcome (the reveal, or a wrong accusation) gives the haptic.
           haptic={false}
           accessibilityHint={complete ? undefined : "Pick one from each list first."}
@@ -339,7 +343,8 @@ const styles = StyleSheet.create({
   optionText: { flex: 1 },
   items: { gap: ref.space.sm },
   item: { gap: ref.space.xs, paddingVertical: P.card.padY },
-  footer: { paddingHorizontal: ref.space.edge, paddingTop: P.band.tray, gap: ref.space.sm, borderTopWidth: P.hairline },
+  // The photo guide's foot: the pill in its reading column, ref.space.ctaBottom over the safe area.
+  footer: { paddingHorizontal: ref.space.reading, paddingTop: P.band.tray, gap: ref.space.sm, borderTopWidth: P.hairline },
   message: { minHeight: P.code.messageMin, gap: ref.space.xs, alignItems: "center" },
   reveal: { ...StyleSheet.absoluteFill, justifyContent: "center", paddingHorizontal: ref.space.edge },
   revealCard: { alignSelf: "stretch" },

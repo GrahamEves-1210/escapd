@@ -2,9 +2,10 @@
 // mode's surface with its rim, the case's photo as a small treated thumbnail,
 // its title and a meta line (the date, or what a tap does), and a rubber
 // stamp: OPEN, IN PROGRESS, CLOSED, BUILDING or DIDN'T BUILD. One button
-// with one label; the `press` haptic; pressed at ref.layout.mode.file.pressedOpacity.
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { FocusRing, TreatedImage, useFocusRing, type TreatSource } from "@/components/noir";
+// with one label; the `press` haptic; pressed at ref.layout.mode.file.pressedOpacity
+// and sunk to ref.motion.juice.press.panel (the kit's squash; none under reduced motion).
+import { StyleSheet, Text, View } from "react-native";
+import { FocusRing, SquashPressable, TreatedImage, useFocusRing, type TreatSource } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { ref, type ModeTheme } from "@/theme/tokens";
@@ -34,7 +35,8 @@ export function CaseFileRow({ genre, theme, title, meta, stamp, thumb, accessibi
   const focus = useFocusRing();
   const feedback = useFeedback();
   return (
-    <Pressable
+    <SquashPressable
+      squash={busy ? false : ref.motion.juice.press.panel}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled: disabled || busy, busy }}
@@ -73,7 +75,7 @@ export function CaseFileRow({ genre, theme, title, meta, stamp, thumb, accessibi
       </View>
       {stamp ? <Stamp theme={theme} stamp={stamp} testID={`${testID}-stamp`} /> : null}
       <FocusRing visible={focus.focused} shape="panel" radius={F.radius} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 

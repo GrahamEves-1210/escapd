@@ -186,8 +186,9 @@ export function isHotspotSolved(def: PuzzleDefinitionV1, state: SessionState, ho
 }
 
 /**
- * Copy for an `inspect` that came back `nothing`. Never names the missing item.
- * - needs_item: an unsolved use_item puzzle lives here ("Something is missing.")
+ * Why an `inspect` came back `nothing`; the words, per mode, are
+ * src/render/voice.ts (PlayVoice.quiet), and never name the missing item.
+ * - needs_item: an unsolved use_item puzzle lives here ("Something's missing.")
  * - locked: an unsolved puzzle here is still waiting on another step
  * - spent: everything here is already solved
  * - plain: nothing here was ever part of the case
@@ -200,13 +201,6 @@ export function quietReason(def: PuzzleDefinitionV1, state: SessionState, hotspo
   if (unsolved.some((p) => p.kind === "use_item")) return "needs_item";
   return "locked";
 }
-
-export const QUIET_COPY: Record<QuietReason, string> = {
-  needs_item: "Something is missing.",
-  locked: "This does not open yet.",
-  spent: "Nothing else here.",
-  plain: "Nothing stands out.",
-};
 
 export interface InventoryItem {
   id: Id;

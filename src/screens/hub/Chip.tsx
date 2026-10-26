@@ -7,9 +7,9 @@
 // disabled 0.4; the `press` haptic on press-in; the brass focus ring follows the disc. Also here: the How you
 // play glyph, ESCAPD's three-rail sliders drawn to Opal's numbers.
 import { useId, type ReactNode, type Ref } from "react";
-import { Pressable, StyleSheet, View, type HostInstance } from "react-native";
+import { StyleSheet, View, type HostInstance } from "react-native";
 import Svg, { Circle, Defs, G, LinearGradient, Path } from "react-native-svg";
-import { FocusRing, gradientStops, useFocusRing } from "@/components/noir";
+import { FocusRing, gradientStops, useFocusRing, SquashPressable } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 
@@ -34,7 +34,7 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
   const feedback = useFeedback();
   const id = `chip${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
-    <Pressable
+    <SquashPressable
       ref={pressableRef}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
@@ -60,7 +60,7 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
         {icon}
         <FocusRing visible={focus.focused} shape="pill" />
       </View>
-    </Pressable>
+    </SquashPressable>
   );
 }
 

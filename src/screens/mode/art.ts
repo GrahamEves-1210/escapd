@@ -1,9 +1,10 @@
-// The modes' art: home's three cards and each mode screen's banner show the
-// same photo in that mode's treatment. Once the player has photographed a
-// room, it is their own room (the newest custom room with a photo); until
-// then The Study's bundled photo. Home finds the photo on each focus and
-// keeps it here, so a mode screen shows the same, already baked, picture at
-// once. In memory only, like the mode store.
+// The modes' art: home's three cards, each mode screen's banner and the
+// modes' intros show the same picture (ModeArtImage). Once the player has
+// photographed a room, it is their own room (the newest custom room with a
+// photo) in that mode's treatment; until then the mode's drawn cover
+// (src/screens/hub/art). Home finds the photo on each focus and keeps it
+// here, so a mode screen shows the same, already baked, picture at once. In
+// memory only, like the mode store.
 import { useSyncExternalStore } from "react";
 import { BUNDLED_SCENES } from "@/tutorial/assets";
 import type { TreatSource } from "@/components/noir";
@@ -14,7 +15,7 @@ export interface OwnArt {
   uri: string;
 }
 
-/** The default art: The Study's first view (the lamp, the desk, the bookcase). */
+/** The Study's first view (the lamp, the desk, the bookcase): its picture as a case, on noir's mode screen. Not the modes' art. */
 export const STUDY_ART: number = BUNDLED_SCENES["tutorial/study_1.jpg"];
 
 let own: OwnArt | null = null;
@@ -38,16 +39,18 @@ function subscribe(listener: () => void) {
   };
 }
 
-export interface ModeArt {
-  source: TreatSource;
-  /** The bake's cache key for a signed URL; undefined for the bundled photo. */
-  cacheKey?: string;
-  /** True when it is the player's own room. */
-  own: boolean;
-}
+/** The player's own room in the mode's treatment, or (own: false) the mode's drawn cover. */
+export type ModeArt =
+  | {
+      own: true;
+      source: TreatSource;
+      /** The bake's cache key: the photo's id, since its signed URL changes. */
+      cacheKey: string;
+    }
+  | { own: false };
 
 export function artFor(art: OwnArt | null): ModeArt {
-  return art ? { source: { uri: art.uri }, cacheKey: art.id, own: true } : { source: STUDY_ART, own: false };
+  return art ? { own: true, source: { uri: art.uri }, cacheKey: art.id } : { own: false };
 }
 
 /** The art every mode shows now. */

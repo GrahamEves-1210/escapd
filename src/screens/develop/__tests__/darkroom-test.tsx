@@ -405,11 +405,18 @@ describe("the darkroom in the reference look", () => {
     for (let node = clock.parent; node; node = node.parent) expect(node.props.accessibilityLiveRegion).toBeUndefined();
   });
 
-  it("opens the case from 07's white bar", async () => {
+  it("opens the case from the photo guide's pill, in the guide's foot", async () => {
     mockStage = { kind: "ready", roomId: "r9" };
     await renderIn(<DarkroomScreen />);
+    // In the shell, the guide's own dark hairline pill (ref.button.ghost): 52 tall, the full reading column.
     const bar = screen.getByTestId("open-case");
-    expect(styleOf(bar)).toMatchObject({ backgroundColor: ref.layout.state.bar.fill, minHeight: ref.layout.state.bar.height });
+    expect(styleOf(bar)).toMatchObject({ minHeight: ref.button.ghost.height, alignSelf: "stretch" });
+    const edges = bar.queryAll(
+      (n) => n.type === "View" && styleOf(n).borderColor === ref.button.ghost.border && styleOf(n).borderWidth === ref.button.ghost.borderWidth,
+    );
+    expect(edges).toHaveLength(1);
+    expect(styleOf(screen.getByText("Open the case"))).toMatchObject({ ...ref.type.headline });
+    expect(styleOf(screen.getByTestId("state-actions"))).toMatchObject({ paddingHorizontal: ref.space.reading, paddingBottom: ref.space.ctaBottom });
     await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole("button", { name: "Open the case" }));
     expect(router.replace).toHaveBeenCalledWith("/play/r9");
   });
@@ -555,10 +562,11 @@ describe("inside a mode", () => {
     mockStage = { kind: "ready", roomId: "r9" };
     await renderIn(<DarkroomScreen />);
     const bar = screen.getByTestId("open-case");
+    // The guide's pill in the mode's accent, exactly as the guide's "Next".
     expect(styleOf(bar)).toMatchObject({
       backgroundColor: theme.accent,
-      minHeight: ref.layout.state.bar.height,
-      borderRadius: ref.layout.state.bar.radius,
+      minHeight: ref.button.ghost.height,
+      borderRadius: ref.radius.round,
     });
     expect(styleOf(screen.getByText("Open the case")).color).toBe(theme.accentInk);
     await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByRole("button", { name: "Open the case" }));

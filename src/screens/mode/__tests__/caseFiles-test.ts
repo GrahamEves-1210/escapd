@@ -61,7 +61,7 @@ describe("case files", () => {
     expect(studyStamp(null)).toBe("open");
     expect(studyStamp("active")).toBe("inProgress");
     expect(studyStamp("completed")).toBe("closed");
-    expect(["open", "inProgress", "closed"].map((s) => studyAction(s as never))).toEqual(["Play The Study", "Continue The Study", "Replay The Study"]);
+    expect(["open", "inProgress", "closed"].map((s) => studyAction(s as never))).toEqual(["Take the case", "Back on the case", "Reopen the case"]);
     expect(studyEntry(null)).toBe("unseal");
     expect(studyEntry({ status: "abandoned" })).toBe("unseal");
     expect(studyEntry({ status: "active" })).toBe("continue");

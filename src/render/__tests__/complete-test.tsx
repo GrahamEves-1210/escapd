@@ -1,12 +1,15 @@
 // Case closed per mode: The Study (/tutorial/complete, noir) and custom rooms
-// (/play/complete/<id>): noir's CASE CLOSED stamp, crime scene's accused under
-// GUILTY, paranormal's "The presence is gone." with the room in full colour.
+// (/play/complete/<id>): noir's CASE CLOSED stamp on the case file, crime
+// scene's accused under GUILTY, paranormal's "The presence is gone." with the
+// room in full colour. Then the victory moment's stats (only the session's
+// own numbers), the magnifier rating and the `stamp` then `solved` cues.
 import { StyleSheet } from "react-native";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as api from "@/lib/escapd-api";
 import { openCapture } from "@/capture/openCapture";
 import { getMode } from "@/game/mode";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
 import TutorialCompleteScreen from "../../../app/tutorial/complete";
 import PlayCompleteScreen from "../../../app/play/complete/[roomId]";
@@ -21,11 +24,18 @@ jest.mock("expo-router", () => ({
 jest.mock("@/lib/escapd-api", () => ({ getLatestSession: jest.fn(), getPlayableDefinition: jest.fn() }));
 jest.mock("@/capture/openCapture", () => ({ openCapture: jest.fn() }));
 
+const mockFeedback = {
+  tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn(),
+  paper: jest.fn(), pickup: jest.fn(), wrongCode: jest.fn(), unlock: jest.fn(), stamp: jest.fn(), solved: jest.fn(),
+};
+jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
+
 const mocked = api as jest.Mocked<typeof api>;
 const capture = openCapture as jest.Mock;
 const params = useLocalSearchParams as jest.Mock;
 const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
 const P = ref.layout.play;
+const C = P.complete;
 const NOIR = modeThemes.noir;
 const CRIME = modeThemes.crime_scene;
 const GHOST = modeThemes.paranormal;
@@ -39,40 +49,124 @@ beforeEach(() => {
     started_at: "2026-10-25T10:00:00.000Z",
     completed_at: "2026-10-25T10:08:00.000Z",
     hints_used: 1,
+    wrong_answer_count: 2,
     puzzle_version_id: "v1",
   } as Awaited<ReturnType<typeof api.getLatestSession>>);
 });
 
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 describe("Case closed: The Study (noir)", () => {
-  it("stamps CASE CLOSED in noir's brass over the case's name, the messages and 07's stat cards", async () => {
+  it("stamps CASE CLOSED in noir's brass onto the case file, then the messages, 07's stat cards and the rating", async () => {
     await render(<TutorialCompleteScreen />);
     expect(getMode()).toBe("noir");
     expect(mocked.getLatestSession).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001", "completed");
     expect(flat(screen.getByTestId("case-closed-noir"))).toMatchObject({ backgroundColor: NOIR.ground });
+    // The stamp lands on the case file, inside the case card a share button will capture.
+    const folder = screen.getByTestId("closed-folder");
+    expect(screen.getByTestId("case-card")).toBeTruthy();
     expect(screen.getByTestId("closed-stamp")).toBeTruthy();
+    expect(within(folder).getByTestId("closed-stamp")).toBeTruthy();
     expect(flat(screen.getByTestId("closed-stamp-frame"))).toMatchObject({ borderColor: NOIR.stamp, borderWidth: P.stamp.borderLarge });
     expect(flat(screen.getByText("Case closed"))).toMatchObject({ ...P.type.stampLarge, color: NOIR.stamp });
+    // The case's name typed on the folder's paper label, in Playfair.
     const title = screen.getByText("The Study");
     expect(title.props.accessibilityRole).toBe("header");
-    expect(flat(title)).toMatchObject({ ...P.type.caseTitle, color: NOIR.ink });
+    expect(flat(title)).toMatchObject({ ...C.title, color: NOIR.ground });
+    expect(C.title.fontFamily).toMatch(/^PlayfairDisplay_/);
     expect(screen.getByText("You turn the key...")).toBeTruthy();
     expect(flat(screen.getByText("The door swings open. You escaped!"))).toMatchObject({ color: NOIR.inkMuted });
     expect(await screen.findByLabelText("Time: 8 min")).toBeTruthy();
-    expect(screen.getByLabelText("Hints used: 1")).toBeTruthy();
+    expect(screen.getByLabelText("Tips taken: 1")).toBeTruthy();
+    expect(screen.getByLabelText("Wrong codes: 2")).toBeTruthy();
+    // The value in the mode's display face (Playfair for noir).
+    expect(flat(screen.getByText("8 min"))).toMatchObject({ fontFamily: NOIR.display.fontFamily, color: NOIR.ink });
+    // One hint and two wrong codes: two magnifiers of three.
+    expect(screen.getByLabelText("Rating: 2 of 3 magnifiers")).toBeTruthy();
+    expect(screen.getByTestId("closed-rating-filled-1")).toBeTruthy();
+    expect(screen.queryByTestId("closed-rating-filled-2")).toBeNull();
   });
 
-  it("falls back to the default exit line", async () => {
+  it("falls back to the default exit line, and shows no stats or rating without a session", async () => {
     params.mockReturnValue({});
     mocked.getLatestSession.mockResolvedValue(null);
     await render(<TutorialCompleteScreen />);
     expect(screen.getByText("The door swings open.")).toBeTruthy();
+    await waitFor(() => expect(mocked.getLatestSession).toHaveBeenCalled());
+    expect(screen.queryByTestId("closed-stats")).toBeNull();
     expect(screen.queryByLabelText(/^Time:/)).toBeNull();
+    expect(screen.queryByLabelText(/^Rating:/)).toBeNull();
+  });
+
+  it("shows only the stats the session holds, and no rating without both hints and wrong codes", async () => {
+    mocked.getLatestSession.mockResolvedValue({
+      started_at: "2026-10-25T10:00:00.000Z",
+      completed_at: null,
+      hints_used: 0,
+      puzzle_version_id: "v1",
+    } as unknown as Awaited<ReturnType<typeof api.getLatestSession>>);
+    await render(<TutorialCompleteScreen />);
+    expect(await screen.findByLabelText("Tips taken: 0")).toBeTruthy();
+    expect(screen.queryByLabelText(/^Time:/)).toBeNull();
+    expect(screen.queryByLabelText(/^Wrong codes:/)).toBeNull();
+    expect(screen.queryByLabelText(/^Rating:/)).toBeNull();
+  });
+
+  it("the moment: the stamp lands, then a tick per stat and per earned magnifier, then solved, then the actions", async () => {
+    jest.useFakeTimers();
+    mocked.getLatestSession.mockResolvedValue({
+      started_at: "2026-10-25T10:00:00.000Z",
+      completed_at: "2026-10-25T10:08:00.000Z",
+      hints_used: 0,
+      wrong_answer_count: 0,
+      puzzle_version_id: "v1",
+    } as Awaited<ReturnType<typeof api.getLatestSession>>);
+    await render(<TutorialCompleteScreen />);
+    expect(mockFeedback.stamp).not.toHaveBeenCalled();
+    expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 0 });
+    // The stamp falls from slamDelay and hits P.stamp.slam later.
+    await act(() => jest.advanceTimersByTime(C.beat.slam + P.stamp.slam + 20));
+    expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.solved).not.toHaveBeenCalled();
+    await act(() => jest.advanceTimersByTime(3000));
+    expect(mockFeedback.solved).toHaveBeenCalledTimes(1);
+    // Three stats and three magnifiers (a clean case): six ticks, all between the stamp and solved.
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(6);
+    const stamp = mockFeedback.stamp.mock.invocationCallOrder[0];
+    const solved = mockFeedback.solved.mock.invocationCallOrder[0];
+    for (const tick of mockFeedback.tick.mock.invocationCallOrder) {
+      expect(tick).toBeGreaterThan(stamp);
+      expect(tick).toBeLessThan(solved);
+    }
+    expect(screen.getByLabelText("Rating: 3 of 3 magnifiers")).toBeTruthy();
+    expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 1 });
+  });
+
+  it("reduced motion: no fall, everything fades in, the stamp and solved cues kept, all within 600 ms", async () => {
+    jest.useFakeTimers();
+    await render(<ThemeProvider reducedMotion><TutorialCompleteScreen /></ThemeProvider>);
+    // No fall: the stamp is at its own size from the start, only fading in.
+    expect(screen.getByTestId("closed-stamp")).toHaveAnimatedStyle({ transform: [{ rotate: `${P.stamp.tilt}deg` }, { scale: 1 }] });
+    await act(() => jest.advanceTimersByTime(600));
+    expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.solved).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.stamp.mock.invocationCallOrder[0]).toBeLessThan(mockFeedback.solved.mock.invocationCallOrder[0]);
+    // The stats' ticks are kept; the magnifiers have no beat of their own.
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("closed-stamp")).toHaveAnimatedStyle({ opacity: 1 });
+    expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 1 });
+    expect(screen.getByLabelText("Rating: 2 of 3 magnifiers")).toBeTruthy();
   });
 
   it("goes on to the player's own room in noir, back to Detective Noir, or replays The Study", async () => {
     await render(<TutorialCompleteScreen />);
     const bar = screen.getByTestId("complete-capture");
-    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: P.bar.radius });
+    // The photo guide's pill (ModePill) in noir's accent, then the quiet ways out in its ink.
+    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
+    expect(flat(screen.getByText("Photograph your room"))).toMatchObject({ ...ref.type.headline, color: NOIR.accentInk });
+    expect(flat(screen.getByText("Replay The Study")).color).toBe(NOIR.ink);
     await fireEvent.press(bar);
     expect(capture).toHaveBeenLastCalledWith({ genre: "noir", replace: true });
     await fireEvent.press(screen.getByLabelText("Back to Detective Noir"));
@@ -92,7 +186,7 @@ describe("Case closed: The Study (noir)", () => {
 describe("Case closed: custom rooms", () => {
   const ROOM = "c0220000-0000-4000-8000-000000000022";
 
-  it("crime scene: the accused's card under the GUILTY stamp, from the case the player just closed", async () => {
+  it("crime scene: the accused's card under the GUILTY stamp, slammed again, from the case the player just closed", async () => {
     stashClosedCase({ roomId: ROOM, genre: "crime_scene", title: "The Poisoned Toast", accused: crimeCase().puzzles.at(-1)!.suspects![0] });
     params.mockReturnValue({ roomId: ROOM, genre: "crime_scene", title: "The Poisoned Toast", message: "Ivy did it.", exit: "", suspect: "s_ivy" });
     await render(<PlayCompleteScreen />);
@@ -103,8 +197,11 @@ describe("Case closed: custom rooms", () => {
     expect(flat(screen.getByText("Guilty", hidden))).toMatchObject({ ...P.type.stampLarge, color: CRIME.stamp });
     // GUILTY takes CASE CLOSED's place.
     expect(screen.queryByTestId("closed-stamp")).toBeNull();
-    expect(screen.getByText("The Poisoned Toast")).toBeTruthy();
+    expect(flat(screen.getByText("The Poisoned Toast"))).toMatchObject({ ...C.title, color: CRIME.ink });
     expect(await screen.findByLabelText("Time: 8 min")).toBeTruthy();
+    // Crime scene's count includes wrong accusations.
+    expect(screen.getByLabelText("Wrong calls: 2")).toBeTruthy();
+    await waitFor(() => expect(mockFeedback.stamp).toHaveBeenCalledTimes(1));
     // Nothing to fetch: the case is in memory.
     expect(mocked.getPlayableDefinition).not.toHaveBeenCalled();
   });
@@ -129,6 +226,21 @@ describe("Case closed: custom rooms", () => {
     expect(flat(screen.getByText("Case closed"))).toMatchObject({ color: GHOST.stamp });
   });
 
+  it("paranormal: the gone line lands with a thud, then CASE CLOSED slams, then solved", async () => {
+    jest.useFakeTimers();
+    stashClosedCase({ roomId: ROOM, genre: "paranormal", title: "The Cold Room", photo: 7 });
+    params.mockReturnValue({ roomId: ROOM, genre: "paranormal", title: "The Cold Room" });
+    await render(<PlayCompleteScreen />);
+    await act(() => jest.advanceTimersByTime(4000));
+    expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.solved).toHaveBeenCalledTimes(1);
+    const [thud, stamp, solved] = [mockFeedback.thud, mockFeedback.stamp, mockFeedback.solved].map((f) => f.mock.invocationCallOrder[0]);
+    expect(thud).toBeLessThan(stamp);
+    expect(stamp).toBeLessThan(solved);
+    expect(flat(screen.getByText("The Cold Room"))).toMatchObject({ ...C.title, color: GHOST.ink });
+  });
+
   it("noir: CASE CLOSED; then a new case in the mode, back to the mode, or this case again", async () => {
     params.mockReturnValue({ roomId: "noir-room", genre: "noir", title: "The Second Drawer" });
     await render(<PlayCompleteScreen />);
@@ -137,7 +249,7 @@ describe("Case closed: custom rooms", () => {
     expect(capture).toHaveBeenLastCalledWith({ genre: "noir", replace: true });
     await fireEvent.press(screen.getByLabelText("Back to Detective Noir"));
     expect(router.dismissTo).toHaveBeenLastCalledWith({ pathname: "/mode/[genre]", params: { genre: "noir" } });
-    await fireEvent.press(screen.getByLabelText("Play this case again"));
+    await fireEvent.press(screen.getByLabelText("Replay the case"));
     expect(router.replace).toHaveBeenLastCalledWith({ pathname: "/play/[roomId]", params: { roomId: "noir-room" } });
   });
 });

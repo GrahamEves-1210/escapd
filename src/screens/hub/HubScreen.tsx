@@ -53,6 +53,8 @@ export function HubScreen() {
   const [busy, setBusy] = useState<Genre | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Bumped on every open, so a tap on Settings while the last sheet is still sliding away opens a fresh one.
+  const [sheetKey, setSheetKey] = useState(0);
   const helpRef = useRef<HostInstance>(null);
   const action = useRef<AbortController | null>(null);
   const failures = useRef(0);
@@ -143,17 +145,19 @@ export function HubScreen() {
   const openSheet = () => {
     // Reopened before the last close finished leaving: that focus return is moot.
     cancelFocusReturn();
+    setSheetKey((k) => k + 1);
     setSheetOpen(true);
   };
-  // Closing the sheet (Close, scrim, Android back) returns screen-reader focus
-  // to the Settings chip once the sheet has left: until then its modal layer
-  // is still mounted and VoiceOver ignores the move. This waits out its exit
-  // (ref.motion.sheetFall, or motion.reducedFade) plus a margin for the
-  // layer's removal.
-  const closeSheet = useCallback(() => {
+  // Closing the sheet returns screen-reader focus to the Settings chip once
+  // the sheet has left: until then its modal layer is still mounted and
+  // VoiceOver ignores the move. Close and the scrim slide the sheet away
+  // first and call this once it has gone (`exited`); Android back unmounts it
+  // at once, so this waits out its exit animation (ref.motion.sheetFall, or
+  // motion.reducedFade). Either way, plus a margin for the layer's removal.
+  const closeSheet = useCallback((exited = false) => {
     cancelFocusReturn();
     setSheetOpen(false);
-    const exit = reducedMotion ? motion.reducedFade : ref.motion.sheetFall.duration;
+    const exit = exited ? 0 : reducedMotion ? motion.reducedFade : ref.motion.sheetFall.duration;
     focusReturn.current = setTimeout(() => {
       focusReturn.current = null;
       const help = helpRef.current;
@@ -256,7 +260,7 @@ export function HubScreen() {
         </View>
       </View>
 
-      {sheetOpen ? <SettingsSheet onClose={closeSheet} onOpen={openRoute} /> : null}
+      {sheetOpen ? <SettingsSheet key={sheetKey} onClose={() => closeSheet(true)} onOpen={openRoute} /> : null}
     </View>
   );
 }

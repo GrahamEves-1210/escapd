@@ -47,6 +47,12 @@ jest.mock("@/components/noir/TreatedImage", () => {
       createElement(View, { testID: props.testID, photo: { source: props.source, genre: props.genre, cacheKey: props.cacheKey, maxEdge: props.maxEdge } }),
   };
 });
+// So is drawing the covers (src/screens/hub/art's tests): here it records which mode's cover shows.
+jest.mock("@/screens/hub/art/ModeCover", () => {
+  const { createElement } = jest.requireActual("react");
+  const { View } = jest.requireActual("react-native");
+  return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
+});
 const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
@@ -148,9 +154,35 @@ describe("A mode's screen", () => {
     });
     expect(styleOf(screen.getByRole("header", { name: "Crime Scene" }))).toMatchObject({ ...theme.display, color: theme.ink });
     expect(styleOf(screen.getByText("Find the killer"))).toMatchObject({ ...L.type.tagline, color: theme.inkMuted });
-    // The banner: the mode's art baked in the mode, decorative.
-    expect(screen.getByTestId("mode-banner-art", hidden).props.photo).toMatchObject({ source: 101, genre: "crime_scene" });
+    // The banner: the mode's art (its drawn cover until the player has photographed a room), decorative.
+    expect(screen.getByTestId("mode-banner-art", hidden).props.cover).toEqual({ genre: "crime_scene" });
+    expect(screen.getByTestId("mode-banner-art", hidden).props.photo).toBeUndefined();
     expect(screen.getByTestId("mode-banner", hidden).props.accessibilityElementsHidden).toBe(true);
+  });
+
+  it("shows the same picture as its home card: the player's own room in the mode's treatment once they have one, else the cover", async () => {
+    setOwnArt({ id: "p1", uri: "https://signed.example/p1.jpg" });
+    await renderMode("paranormal");
+    const banner = screen.getByTestId("mode-banner-art", hidden);
+    expect(banner.props.photo).toEqual({ source: { uri: "https://signed.example/p1.jpg" }, genre: "paranormal", cacheKey: "p1", maxEdge: L.artEdge });
+    expect(banner.props.cover).toBeUndefined();
+    await screen.unmount();
+
+    // The intro's banner too.
+    setOwnArt(null);
+    await renderIntro("paranormal");
+    expect(screen.getByTestId("mode-banner-art", hidden).props.cover).toEqual({ genre: "paranormal" });
+    await screen.unmount();
+    setOwnArt({ id: "p1", uri: "https://signed.example/p1.jpg" });
+    await renderIntro("paranormal");
+    expect(screen.getByTestId("mode-banner-art", hidden).props.photo).toMatchObject({ source: { uri: "https://signed.example/p1.jpg" }, genre: "paranormal" });
+  });
+
+  it("keeps The Study's own photo on its case file: only the modes' default art is drawn", async () => {
+    await renderMode("noir");
+    expect(screen.getByTestId("mode-banner-art", hidden).props.cover).toEqual({ genre: "noir" });
+    const thumbs = screen.container.queryAll((node) => (node.props as { photo?: { source?: unknown } }).photo?.source === 101);
+    expect(thumbs.length).toBeGreaterThan(0);
   });
 
   it("goes back, or home when there is nothing to go back to, with the press haptic", async () => {
@@ -169,7 +201,7 @@ describe("A mode's screen", () => {
     expect(readingOrder()).toEqual([
       "Back",
       modeThemes.noir.name,
-      "Your cases",
+      "Case files",
       expect.stringMatching(/^The Locked Room\. /),
       "The first case",
       expect.stringMatching(/^The Study\. /),
@@ -322,8 +354,8 @@ describe("A mode's screen", () => {
     player({ study: "completed" });
     await renderMode("noir");
     expect(screen.getByRole("header", { name: "The first case" })).toBeTruthy();
-    const study = button("The Study. Closed. Replay The Study.");
-    expect(screen.getByText("Replay The Study", hidden)).toBeTruthy();
+    const study = button("The Study. Closed. Reopen the case.");
+    expect(screen.getByText("Reopen the case", hidden)).toBeTruthy();
     expect(screen.getByTestId("mode-study-thumb", hidden).props.photo).toMatchObject({ source: 101, genre: "noir" });
     await fireEvent.press(study);
     await act(async () => {});
@@ -333,7 +365,7 @@ describe("A mode's screen", () => {
 
     player({ study: "active" });
     await renderMode("noir");
-    expect(button("The Study. In progress. Continue The Study.")).toBeTruthy();
+    expect(button("The Study. In progress. Back on the case.")).toBeTruthy();
     await screen.unmount();
 
     player({});
@@ -345,7 +377,7 @@ describe("A mode's screen", () => {
     player({ study: "completed" });
     mocked.ensureSession.mockRejectedValue(new Error("Network request failed"));
     await renderMode("noir");
-    await fireEvent.press(button("The Study. Closed. Replay The Study."));
+    await fireEvent.press(button("The Study. Closed. Reopen the case."));
     await act(async () => {});
     expect(screen.getByTestId("mode-notice").props.accessibilityLabel).toBe("You're offline. Connect to begin.");
     expect(screen.getByTestId("mode-notice-slot").props.accessibilityLiveRegion).toBe("polite");
@@ -400,33 +432,35 @@ describe("A mode's screen", () => {
 });
 
 describe("A mode's first-time intro", () => {
-  it("crime scene: the mode's name, three steps (evidence, alibis, accuse) and Start, in the mode's palette", async () => {
+  it("crime scene: the briefing, the mode's name, three steps (evidence, alibis, arrest) and Take the case, in the mode's palette", async () => {
     await renderIntro("crime_scene");
     const theme = modeThemes.crime_scene;
     expect(getMode()).toBe("crime_scene");
     expect(styleOf(screen.getByTestId("mode-intro"))).toMatchObject({ backgroundColor: theme.ground });
-    expect(screen.getByText("How this mode works")).toBeTruthy();
+    expect(screen.getByText("Briefing")).toBeTruthy();
     expect(styleOf(screen.getByRole("header", { name: "Crime Scene" }))).toMatchObject({ ...theme.display, color: theme.ink });
     expect([1, 2, 3].map((n) => screen.getByTestId(`mode-intro-step-${n}`).props.accessibilityLabel)).toEqual([
-      "Step 1 of 3. Find the evidence. Search the room. Each clue can break a suspect's story.",
-      "Step 2 of 3. Read the alibis. Open Suspects to see who says what, and whose alibi no longer holds.",
-      "Step 3 of 3. Accuse who, why and how. Name the killer, the motive and the method. A wrong guess costs you time.",
+      "Step 1 of 3. Search the scene. Every clue is evidence. Some break a suspect's alibi.",
+      "Step 2 of 3. Check the alibis. Open Suspects: who says what, and whose story no longer holds.",
+      "Step 3 of 3. Make the arrest. Name the killer, the motive and the method. A wrong call costs you time.",
     ]);
     // Arabic numerals in the mode's display face, in its stamp colour.
     expect(styleOf(screen.getByText("1", hidden))).toMatchObject({ fontFamily: theme.display.fontFamily, color: theme.stamp });
-    expect(styleOf(button("Start"))).toMatchObject({ backgroundColor: theme.accent });
+    expect(styleOf(button("Take the case"))).toMatchObject({ backgroundColor: theme.accent });
   });
 
-  it("paranormal: find the anomalies, watch the presence rise, banish it in the right order", async () => {
+  it("paranormal: before you go in; find the anomalies, feel the presence grow, banish it; Step inside", async () => {
     await renderIntro("paranormal");
+    expect(screen.getByText("Before you go in")).toBeTruthy();
     expect(screen.getByText("Find the anomalies")).toBeTruthy();
-    expect(screen.getByText("Watch the presence rise")).toBeTruthy();
-    expect(screen.getByText("Banish it in the right order")).toBeTruthy();
+    expect(screen.getByText("Feel the presence grow")).toBeTruthy();
+    expect(screen.getByText("Banish it")).toBeTruthy();
+    expect(button("Step inside")).toBeTruthy();
   });
 
-  it("reads Back first, then the name, the steps and Start; the header backs the top once the steps scroll under it", async () => {
+  it("reads Back first, then the name, the steps and Step inside; the header backs the top once the steps scroll under it", async () => {
     await renderIntro("paranormal");
-    expect(readingOrder()).toEqual(["Back", modeThemes.paranormal.name, "Start"]);
+    expect(readingOrder()).toEqual(["Back", modeThemes.paranormal.name, "Step inside"]);
     const steps = screen.getAllByLabelText(/^Step \d of 3\./).map((node) => node.props.testID);
     expect(steps).toEqual(["mode-intro-step-1", "mode-intro-step-2", "mode-intro-step-3"]);
     // Back before the first step in the tree.
@@ -443,7 +477,7 @@ describe("A mode's first-time intro", () => {
     expect(router.back).toHaveBeenCalled();
     expect(await AsyncStorage.getItem(introKey("paranormal"))).toBeNull();
 
-    await fireEvent.press(button("Start"));
+    await fireEvent.press(button("Step inside"));
     await act(async () => {});
     expect(await AsyncStorage.getItem(introKey("paranormal"))).toBe("1");
     expect(await AsyncStorage.getItem(introKey("crime_scene"))).toBeNull();

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
+import { ActivityIndicator, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import { color, hit, radius, space } from "@/theme/tokens";
 import { FocusRing, useFocusRing } from "./noir/focus";
+import { SquashPressable } from "./noir/squash";
 import { Text, type AppTextProps } from "./Text";
 
 type Variant = "primary" | "secondary" | "quiet" | "destructive";
@@ -21,7 +22,7 @@ export function Button({ label, variant = "primary", loading, disabled, icon, la
   // Keyboard, D-pad and switch focus draw the brass ring; the caller's handlers still run.
   const focus = useFocusRing({ onFocus: rest.onFocus, onBlur: rest.onBlur });
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
@@ -65,7 +66,7 @@ export function Button({ label, variant = "primary", loading, disabled, icon, la
           <FocusRing visible={focus.focused} shape="control" />
         </>
       )}
-    </Pressable>
+    </SquashPressable>
   );
 }
 

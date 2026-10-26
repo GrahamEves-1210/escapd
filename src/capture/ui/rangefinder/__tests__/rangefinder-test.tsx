@@ -45,7 +45,7 @@ jest.mock("expo-router", () => {
 jest.mock("expo-image-picker", () => ({ launchImageLibraryAsync: jest.fn() }));
 jest.mock("@/capture/process-photo", () => ({ processPhoto: jest.fn() }));
 // Stable spies in the full shape, so a test can see which haptic a moment gave.
-const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
+const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), shutter: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 // A bake that is ready at once ("baked/<mode>/<photo>"), and none in the shell, as the real one.
 jest.mock("@/components/noir/treatPhoto", () => ({
@@ -207,8 +207,8 @@ describe("Rangefinder: capture", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Take photo 1, From the doorway" }));
     await flush();
     expect(camera.takePictureAsync).toHaveBeenCalledWith({ quality: 0.92, exif: false });
-    // The shutter firing: one thud, nothing stacked on it.
-    expect(mockFeedback.thud).toHaveBeenCalledTimes(1);
+    // The shutter firing: one shutter cue, nothing stacked on it.
+    expect(mockFeedback.shutter).toHaveBeenCalledTimes(1);
     expect(mockFeedback.tick).not.toHaveBeenCalled();
     expect(mockFeedback.success).not.toHaveBeenCalled();
     expect(develop).toHaveBeenCalledWith(raw("shot"));
@@ -276,9 +276,9 @@ describe("Rangefinder: capture", () => {
     await flush();
     expect(prompt()).toBe(`From the doorway. ${COPY.captureError}`);
     expect(screen.getByText(COPY.captureError, hidden)).toBeTruthy();
-    // A failed shot: the error haptic, and no shutter thud (nothing was taken).
+    // A failed shot: the error haptic, and no shutter cue (nothing was taken).
     expect(mockFeedback.error).toHaveBeenCalledTimes(1);
-    expect(mockFeedback.thud).not.toHaveBeenCalled();
+    expect(mockFeedback.shutter).not.toHaveBeenCalled();
     expect(getPlates()).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
@@ -325,7 +325,7 @@ describe("Rangefinder: the photos taken", () => {
     await flush();
     expect(getPlates()).toHaveLength(MAX_PLATES);
     expect(mockFeedback.success).toHaveBeenCalledTimes(1);
-    expect(mockFeedback.thud).toHaveBeenCalledTimes(2);
+    expect(mockFeedback.shutter).toHaveBeenCalledTimes(2);
   });
 
   it("presses lightly on the square header buttons and the last-photo thumbnail", async () => {

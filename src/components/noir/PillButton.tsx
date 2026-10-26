@@ -2,7 +2,6 @@ import type { Ref } from "react";
 import {
   type HostInstance,
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   View,
   type GestureResponderEvent,
@@ -17,6 +16,7 @@ import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 import { FocusRing, useFocusRing } from "./focus";
 import { paletteColor, usePaletteTransition, usePressProgress } from "./motion";
+import { SquashPressable } from "./squash";
 
 /**
  * primary: pushr's black pill on paper (64 tall, ctaLabel). ghost: Apple
@@ -100,8 +100,9 @@ export interface PillButtonProps {
 
 /**
  * The reference look's pill button (ref.button.primary / ghost / quiet).
- * Pressed is a colour change over ref.motion.control; there is no opacity or
- * scale on press. No shadow. The label grows with the system text size and
+ * Pressed is a colour change over ref.motion.control and the kit's press-in
+ * squash (SquashPressable: ref.motion.juice.press, none under reduced motion
+ * or while busy); there is no opacity on press. No shadow. The label grows with the system text size and
  * may wrap; the pill grows with it (64, 52 and 48 are minimums). Shows the
  * brass focus ring (ref.focus) around the capsule.
  */
@@ -150,8 +151,9 @@ export function PillButton({
   const stretch = fullWidth ?? filled;
 
   return (
-    <Pressable
+    <SquashPressable
       ref={pressableRef}
+      squash={busy ? false : undefined}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={accessibilityHint}
@@ -198,7 +200,7 @@ export function PillButton({
         </View>
       ) : null}
       <FocusRing visible={focus.focused} shape="pill" />
-    </Pressable>
+    </SquashPressable>
   );
 }
 

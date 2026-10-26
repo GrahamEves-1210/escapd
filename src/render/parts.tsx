@@ -1,14 +1,17 @@
 // The player's own controls in the reference look (docs/DESIGN.md, the
-// in-game player): 02's square header button, 07's white bar and its outlined
-// pill (small), 07's card, and 02's error line. Every value is a `ref` token;
-// ref.layout.play holds the player's own geometry. Inside a mode the colours
-// are the mode's (useModeTheme): its raised fill, ink, accent and stamp.
+// in-game player): 02's square header button, the quiet toggle, 07's card,
+// and 02's error line. Every value is a `ref` token; ref.layout.play holds
+// the player's own geometry. Inside a mode the colours are the mode's
+// (useModeTheme): its raised fill, ink, accent and stamp. The player's
+// actions are the photo guide's pills (ModePill, src/capture/ui): "ghost"
+// for the one strong action (the guide's "Next": the mode's accent capsule,
+// 52 tall, the headline label), "quiet" for the ways out.
 import type { ReactNode } from "react";
 import {
-  ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions,
+  Pressable, StyleSheet, Text, View, useWindowDimensions,
   type PressableProps, type StyleProp, type ViewStyle,
 } from "react-native";
-import { FocusRing, useFocusRing, type FocusShape, type NoirIcon } from "@/components/noir";
+import { FocusRing, SquashPressable, useFocusRing, type FocusShape, type NoirIcon } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
@@ -56,7 +59,7 @@ export function SquareButton({ icon: Icon, caption, accessibilityLabel, accessib
     </>
   );
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
@@ -79,81 +82,7 @@ export function SquareButton({ icon: Icon, caption, accessibilityLabel, accessib
           </View>
         </>
       ) : inner}
-    </Pressable>
-  );
-}
-
-/**
- * 07's white bar: the strongest fill on the dark ground, the label in the
- * ground colour. Inside a mode it is the mode's accent with its accentInk
- * label (the shell's accent is still paper with the ground's label).
- * Disabled at disabledOpacity.pill; busy keeps full strength, ignores taps
- * and shows a small indicator at its right. `haptic` on press-in: "press"
- * (default), or false where an outcome haptic follows.
- */
-export function WhiteBar({ label, onPress, disabled = false, busy = false, haptic = "press", testID, accessibilityLabel, accessibilityHint }: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  busy?: boolean;
-  haptic?: "press" | false;
-  testID?: string;
-  accessibilityLabel?: string;
-  accessibilityHint?: string;
-}) {
-  const focus = useFocusRing();
-  const feedback = useFeedback();
-  const theme = useModeTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: disabled || busy, busy }}
-      disabled={disabled || undefined}
-      onPressIn={haptic && !busy ? feedback[haptic] : undefined}
-      onPress={busy ? undefined : onPress}
-      onFocus={focus.onFocus}
-      onBlur={focus.onBlur}
-      testID={testID}
-      style={({ pressed }) => [styles.bar, { backgroundColor: theme.accent }, disabled ? styles.disabled : pressed && !busy ? styles.pressed : null]}
-    >
-      <Text style={[styles.barLabel, { color: theme.accentInk }]}>{label}</Text>
-      {busy ? (
-        <View pointerEvents="none" style={styles.spinner}>
-          <ActivityIndicator size="small" color={theme.accentInk} testID={testID ? `${testID}-spinner` : undefined} />
-        </View>
-      ) : null}
-      <FocusRing visible={focus.focused} shape="panel" radius={P.bar.radius} />
-    </Pressable>
-  );
-}
-
-/** 07's outlined pill at 44: a 1 pt outline and Semibold 16 label in the mode's ink; fills raised while pressed. */
-export function OutlinePill({ label, onPress, accessibilityLabel, testID, style }: {
-  label: string;
-  onPress: () => void;
-  accessibilityLabel?: string;
-  testID?: string;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const focus = useFocusRing();
-  const feedback = useFeedback();
-  const theme = useModeTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      onPressIn={feedback.press}
-      onPress={onPress}
-      onFocus={focus.onFocus}
-      onBlur={focus.onBlur}
-      testID={testID}
-      style={({ pressed }) => [styles.outline, { borderColor: theme.ink }, pressed && { backgroundColor: theme.raised }, style]}
-    >
-      <Text style={[styles.outlineLabel, { color: theme.ink }]}>{label}</Text>
-      <FocusRing visible={focus.focused} shape="pill" edge={P.outline.border} />
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -166,7 +95,7 @@ export function QuietToggle({ label, onPress, expanded, testID }: { label: strin
   const feedback = useFeedback();
   const theme = useModeTheme();
   return (
-    <Pressable
+    <SquashPressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ expanded }}
@@ -183,7 +112,7 @@ export function QuietToggle({ label, onPress, expanded, testID }: { label: strin
           <FocusRing visible={focus.focused} shape="pill" />
         </>
       )}
-    </Pressable>
+    </SquashPressable>
   );
 }
 
@@ -263,30 +192,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   badgeText: { ...P.type.badge, textAlign: "center" },
-  disabled: { opacity: ref.button.disabledOpacity.pill },
-  bar: {
-    alignSelf: "stretch",
-    minHeight: P.bar.height,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: ref.space.xl + ref.space.lg,
-    borderRadius: P.bar.radius,
-    backgroundColor: P.bar.fill,
-    ...ref.curve,
-  },
-  barLabel: { ...P.type.action, color: P.bar.label, textAlign: "center" },
-  spinner: { position: "absolute", top: 0, bottom: 0, right: ref.space.lg, justifyContent: "center" },
-  outline: {
-    minHeight: P.outline.height,
-    paddingHorizontal: P.outline.padX,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: ref.radius.round,
-    borderWidth: P.outline.border,
-    borderColor: ref.color.textPrimary,
-    ...ref.curve,
-  },
-  outlineLabel: { ...P.type.action, color: ref.color.textPrimary, textAlign: "center" },
   quiet: { alignSelf: "center", minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignItems: "center", justifyContent: "center" },
   card: {
     padding: P.card.pad,

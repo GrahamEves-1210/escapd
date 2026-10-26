@@ -22,6 +22,7 @@ jest.setTimeout(60_000);
 // Haptics with stable spies, so a test can check which one fired (the full shape, as jest/setup.js).
 const mockFeedback = {
   tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn(),
+  paper: jest.fn(), pickup: jest.fn(), wrongCode: jest.fn(), unlock: jest.fn(), stamp: jest.fn(), solved: jest.fn(),
 };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
@@ -150,6 +151,11 @@ async function goToView(n: number) {
 }
 
 const press = async (testID: string) => fireEvent.press(await screen.findByTestId(testID));
+// The result sheet's continue slides the sheet away first (DarkSheet), then it closes.
+const continueResult = async () => {
+  await press("result-continue");
+  await waitFor(() => expect(screen.queryByTestId("result-sheet", { includeHiddenElements: true })).toBeNull());
+};
 const lastAction = () => mocked.submitAction.mock.calls[mocked.submitAction.mock.calls.length - 1][1];
 
 /** Fixed-length tumblers start at 0000. Each increment (the wheel is adjustable) rolls that wheel by one. */
@@ -184,10 +190,10 @@ describe("Player: The Study", () => {
     await screen.findByTestId("result-sheet");
     expect(screen.getByText(secret.puzzles.find_key.message!)).toBeTruthy();
     expect(screen.getAllByText("Small and a little tarnished.").length).toBeGreaterThan(0);
-    await press("result-continue");
+    await continueResult();
 
     await press("hotspot-bookshelf");
-    await press("result-continue");
+    await continueResult();
 
     // Scene switching is local; the hidden safe is absent visually and accessibly.
     await goToView(1);
@@ -196,26 +202,26 @@ describe("Player: The Study", () => {
 
     // Nothing: neutral locked copy that never names the missing item.
     await press("hotspot-cabinet");
-    expect(await screen.findByText("Something is missing.")).toBeTruthy();
-    await press("result-continue");
+    expect(await screen.findByText("Something's missing.")).toBeTruthy();
+    await continueResult();
 
     await press("hotspot-rug");
-    await press("result-continue");
+    await continueResult();
 
-    // Combine mode: two selected items, then the worktable clasp.
+    // Combine mode: two selected items, then the worktable's "Fit together".
     await press("item-torn_note_left");
     await press("item-torn_note_right");
-    await fireEvent.press(await screen.findByLabelText("Close clasp"));
+    await fireEvent.press(await screen.findByLabelText("Fit together"));
     expect(lastAction()).toEqual({ type: "combine", item_ids: ["torn_note_left", "torn_note_right"] });
     await screen.findByTestId("result-sheet");
     expect(screen.getAllByText(/0427/).length).toBeGreaterThan(0);
-    await press("result-continue");
+    await continueResult();
 
     // Use mode: one selected item, then a hotspot. The safe appears only now.
     await press("item-brass_key");
     await press("hotspot-cabinet");
     expect(lastAction()).toEqual({ type: "use_item", item_id: "brass_key", hotspot_id: "cabinet" });
-    await press("result-continue");
+    await continueResult();
     expect(await screen.findByTestId("hotspot-safe")).toBeTruthy();
 
     // Code: wrong keeps the tumblers open and resets them; the leading zero survives.
@@ -229,7 +235,7 @@ describe("Player: The Study", () => {
     await dial("0427");
     expect(lastAction()).toEqual({ type: "solve", puzzle_id: "open_safe", answer: "0427" });
     await screen.findByTestId("result-sheet");
-    await press("result-continue");
+    await continueResult();
 
     // Completion comes from the server's `completed`, then hands off.
     await goToView(2);
@@ -248,8 +254,8 @@ describe("Player: The Study", () => {
     await renderStudy();
     await goToView(2);
     await press("hotspot-door");
-    expect(await screen.findByText("This does not open yet.")).toBeTruthy();
-    await press("result-continue");
+    expect(await screen.findByText("It won't budge. Not yet.")).toBeTruthy();
+    await continueResult();
 
     mocked.submitAction.mockResolvedValueOnce({ outcome: "invalid", message: "That is not something you can interact with yet." });
     await press("hotspot-door");
@@ -360,11 +366,12 @@ describe("Player: the reference look", () => {
     await renderStudy();
     await press("hotspot-desk_drawer");
     const bar = await screen.findByTestId("result-continue");
-    // 07's bar in the mode's accent on the kit's dark sheet; finding an item is a success haptic.
+    // The photo guide's pill (ModePill) in the mode's accent on the kit's dark sheet; finding an item is a success haptic.
     expect(mockFeedback.success).toHaveBeenCalled();
-    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: P.bar.radius });
+    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
+    expect(flat(screen.getByText("Pocket it"))).toMatchObject({ ...ref.type.headline, color: NOIR.accentInk });
     expect(flat(screen.getByTestId("result-sheet"))).toMatchObject({ backgroundColor: NOIR.surface, borderTopLeftRadius: ref.radius.bottomSheet });
-    await press("result-continue");
+    await continueResult();
 
     expect(screen.queryByTestId("scene-armed")).toBeNull();
     mockFeedback.tick.mockClear();
@@ -373,26 +380,29 @@ describe("Player: the reference look", () => {
     expect(flat(screen.getByTestId("item-brass_key-selected"))).toMatchObject({ borderColor: NOIR.ink, borderWidth: P.tray.selectedRing });
     expect(flat(screen.getByTestId("scene-armed"))).toMatchObject({ borderColor: NOIR.ink, borderWidth: P.photo.armed });
     expect(screen.getByTestId("use-card")).toBeTruthy();
-    expect(screen.getByText("Select an object in the room to use this artifact.")).toBeTruthy();
+    expect(screen.getByText("Tap something in the room to use it.")).toBeTruthy();
     // The use card takes the coach's place.
     expect(screen.queryByTestId("coach-card")).toBeNull();
     // Using it where it doesn't work: a warning haptic and a toast.
     mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
     await press("hotspot-bookshelf");
-    expect(await screen.findByText("That doesn't work here.")).toBeTruthy();
+    expect(await screen.findByText("No dice.")).toBeTruthy();
     expect(mockFeedback.warning).toHaveBeenCalled();
     // Cancel leaves Use mode.
     await fireEvent.press(screen.getByLabelText("Cancel"));
     expect(screen.queryByTestId("scene-armed")).toBeNull();
   });
 
-  it("presses a hotspot after a short delay, so a swipe that starts on one doesn't buzz", async () => {
+  it("ticks once on a hotspot's press-in, after a short delay, so a swipe that starts on one doesn't buzz", async () => {
     await renderStudy();
     const drawer = screen.getByTestId("hotspot-desk_drawer");
     expect(drawer.props.unstable_pressDelay ?? P.hotspotPressDelay).toBe(P.hotspotPressDelay);
+    mockFeedback.tick.mockClear();
     mockFeedback.press.mockClear();
     await fireEvent(drawer, "pressIn");
-    expect(mockFeedback.press).toHaveBeenCalledTimes(1);
+    // A light tick, and only the tick: no press haptic on top of it.
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.press).not.toHaveBeenCalled();
   });
 
   it("opens Case options on the kit's dark sheet, with no Explore as list and a tick on the switch", async () => {
@@ -424,11 +434,11 @@ describe("code wheels", () => {
     await renderStudy();
     // Straight to the safe: the key opens the cabinet on view 2.
     await press("hotspot-desk_drawer");
-    await press("result-continue");
+    await continueResult();
     await goToView(1);
     await press("item-brass_key");
     await press("hotspot-cabinet");
-    await press("result-continue");
+    await continueResult();
     await press("hotspot-safe");
     await screen.findByTestId("code-sheet");
   }
@@ -455,13 +465,16 @@ describe("code wheels", () => {
     expect(screen.queryByLabelText(/Increase digit/)).toBeNull();
   });
 
-  it("answers a wrong code with an error haptic and the white error line, and resets the wheels", async () => {
+  it("answers a wrong code with the wrongCode cue (once, no extra error buzz) and the white error line, and resets the wheels", async () => {
     await openSafe();
     mockFeedback.error.mockClear();
+    mockFeedback.wrongCode.mockClear();
     mockFeedback.success.mockClear();
     await dial("1234");
     expect(await screen.findByText("Nothing happens.")).toBeTruthy();
-    expect(mockFeedback.error).toHaveBeenCalledTimes(1);
+    // CodePad's wrongCode carries the thud and the buzz; the player adds no error of its own.
+    expect(mockFeedback.wrongCode).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.error).not.toHaveBeenCalled();
     expect(screen.getByTestId("tumbler-0").props.accessibilityValue).toEqual({ text: "0" });
     // The right code: the lock opens with one success haptic, no press before it.
     mockFeedback.press.mockClear();
@@ -469,6 +482,22 @@ describe("code wheels", () => {
     await screen.findByTestId("result-sheet");
     expect(mockFeedback.success).toHaveBeenCalledTimes(1);
     expect(mockFeedback.press).not.toHaveBeenCalled();
+  });
+
+  it("opens the result only after the lock's latch has played (CodePad's proceed)", async () => {
+    await openSafe();
+    mockFeedback.success.mockClear();
+    mockFeedback.unlock.mockClear();
+    await dial("0427");
+    await waitFor(() => expect(mockFeedback.unlock).toHaveBeenCalledTimes(1));
+    // The latch is playing: no result, no success haptic yet, the code sheet still up.
+    expect(screen.queryByTestId("result-sheet")).toBeNull();
+    expect(mockFeedback.success).not.toHaveBeenCalled();
+    expect(screen.getByTestId("code-sheet")).toBeTruthy();
+    // Then proceed runs: the success haptic after the unlock, and the result.
+    await screen.findByTestId("result-sheet", {}, { timeout: 3000 });
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.unlock.mock.invocationCallOrder[0]).toBeLessThan(mockFeedback.success.mock.invocationCallOrder[0]);
   });
 });
 

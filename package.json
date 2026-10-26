@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@expo-google-fonts/archivo": "^0.4.2",
+    "@expo-google-fonts/courier-prime": "^0.4.1",
     "@expo-google-fonts/crimson-text": "^0.4.0",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/playfair-display": "^0.4.2",
@@ -24,6 +25,7 @@
     "@supabase/supabase-js": "^2.118.0",
     "aes-js": "^3.1.2",
     "expo": "~58.0.19",
+    "expo-audio": "~58.0.10",
     "expo-camera": "~58.0.12",
     "expo-constants": "~58.0.13",
     "expo-file-system": "~58.0.11",

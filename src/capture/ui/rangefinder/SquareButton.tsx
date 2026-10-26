@@ -5,13 +5,14 @@
 // (ref.layout.camera.headerIcon: bold 18). The hit area is 48 (hitSlop 2),
 // which the header row carries inside its own box: native hit-testing drops
 // touches outside a parent.
-// - Pressed: the whole button at ref.button.square.pressedOpacity 0.75.
+// - Pressed: the whole button at ref.button.square.pressedOpacity 0.75, and
+//   the kit's press-in squash (SquashPressable; none under reduced motion).
 // - Disabled: 0.4, eased over ref.motion.control (Dimmable).
 // - Focus: the kit's brass ring, concentric with the 14 corners.
 // - Haptic: the light `press` as it is pressed in.
 // - In a mode: the mode's raised fill, rim and ink (src/capture/ui/palette.ts).
-import { Pressable, StyleSheet } from "react-native";
-import { FocusRing, useFocusRing, type NoirIcon } from "@/components/noir";
+import { StyleSheet } from "react-native";
+import { FocusRing, SquashPressable, useFocusRing, type NoirIcon } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
 import { useCapturePalette } from "../palette";
@@ -37,7 +38,7 @@ export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled
   const palette = useCapturePalette();
   return (
     <Dimmable dimmed={disabled}>
-      <Pressable
+      <SquashPressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         accessibilityState={{ disabled }}
@@ -52,7 +53,7 @@ export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled
       >
         <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
         <FocusRing visible={focus.focused} shape="panel" edge={B.borderWidth} radius={B.radius} />
-      </Pressable>
+      </SquashPressable>
     </Dimmable>
   );
 }

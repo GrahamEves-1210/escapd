@@ -6,7 +6,9 @@
 // paint's settings, so a test can check what a bake drew and in what order;
 // `__skia.images` lists the photos decoded. An encoded image is "baked:" plus
 // its size. Set `__skia.decodeSize` to change the size a decoded photo
-// reports, or `__skia.failDecode` to make decoding fail.
+// reports, or `__skia.failDecode` to make decoding fail. `__skia.typefaces`
+// lists the typefaces made. <Canvas> and <Image> render as host elements
+// (SkiaCanvas, SkiaImage) with their props.
 const BlendMode = {
   Clear: 0, Src: 1, Dst: 2, SrcOver: 3, DstOver: 4, SrcIn: 5, DstIn: 6, SrcOut: 7, DstOut: 8, SrcATop: 9, DstATop: 10,
   Xor: 11, Plus: 12, Modulate: 13, Screen: 14, Overlay: 15, Darken: 16, Lighten: 17, ColorDodge: 18, ColorBurn: 19,
@@ -24,6 +26,7 @@ const state = {
   disposed: 0,
   decodeSize: { width: 1200, height: 1600 },
   failDecode: false,
+  typefaces: [],
   reset() {
     state.draws = [];
     state.images = [];
@@ -31,6 +34,7 @@ const state = {
     state.disposed = 0;
     state.decodeSize = { width: 1200, height: 1600 };
     state.failDecode = false;
+    state.typefaces = [];
   },
 };
 
@@ -68,6 +72,9 @@ function makeSurface(width, height) {
     drawRect: (rect, paint) => record("drawRect", paint, { rect }),
     drawImageRect: (image, src, dest, paint) => record("drawImage", paint, { image: image.from, dest }),
     drawImageRectOptions: (image, src, dest, fm, mm, paint) => record("drawImage", paint, { image: image.from, dest, fm, mm }),
+    scale: (sx, sy) => record("scale", null, { sx, sy }),
+    save: () => record("save", null),
+    restore: () => record("restore", null),
   };
   Object.assign(surface, {
     getCanvas: () => canvas,
@@ -91,6 +98,12 @@ const Skia = {
     },
   },
   Data: { fromURI: async (uri) => ({ uri }), fromBytes: (bytes) => ({ bytes }) },
+  Typeface: {
+    MakeFreeTypeFaceFromData: (data) => {
+      state.typefaces.push(data.uri);
+      return { kind: "typeface", from: data.uri };
+    },
+  },
   ColorFilter: { MakeMatrix: (matrix) => ({ kind: "matrix", matrix: [...matrix] }) },
   ImageFilter: { MakeBlur: (sigmaX, sigmaY, mode) => ({ kind: "blur", sigmaX, sigmaY, mode }) },
   Shader: {
@@ -105,8 +118,18 @@ async function loadData(source, factory) {
   return factory(await Skia.Data.fromURI(uri));
 }
 
+// <Canvas> and <Image> as host views that keep their props, so a test can see what a canvas draws.
+function element(name) {
+  const { createElement } = require("react");
+  const Component = (props) => createElement(name, props, props.children);
+  Component.displayName = name;
+  return Component;
+}
+
 module.exports = {
   __esModule: true,
+  Canvas: element("SkiaCanvas"),
+  Image: element("SkiaImage"),
   __skia: state,
   Skia,
   loadData,
