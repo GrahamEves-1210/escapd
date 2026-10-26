@@ -9,7 +9,8 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { BackspaceIcon, ICON_WEIGHT, WarningIcon } from "@/components/icons";
 import { CodeWheel } from "./CodeWheel";
-import { Card, NoticeLine, QuietToggle, RingPressable, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card, NoticeLine, QuietToggle, RingPressable } from "./parts";
 
 const P = ref.layout.play;
 const K = P.code;
@@ -187,11 +188,13 @@ export function CodePad({ puzzle, items, onSubmit, onWheelDrag }: {
         </View>
       ) : null}
 
-      <WhiteBar
+      <ModePill
+        variant="ghost"
         label={tumbler ? "Test combination" : "Try code"}
         onPress={submit}
         disabled={!complete}
         busy={busy}
+        spinner
         // The outcome (the lock opening, or a wrong code) gives the haptic.
         haptic={false}
         testID="code-submit"

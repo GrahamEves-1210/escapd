@@ -29,7 +29,8 @@ import { useUiMemory } from "@/game/useUiMemory";
 import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
-import { DarkSheet, PillButton } from "@/components/noir";
+import { DarkSheet } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
 import { StateScreen } from "@/components/StateScreen";
 import {
   ArrowLeftIcon, DotsThreeIcon, ICON_WEIGHT, WarningIcon, WifiSlashIcon,
@@ -48,7 +49,7 @@ import { ScenePager } from "./ScenePager";
 import { SceneView, type SceneSource } from "./SceneView";
 import { SuspectsSheet } from "./SuspectsSheet";
 import { Toast } from "./Toast";
-import { Card, NoticeLine, OutlinePill, SquareButton } from "./parts";
+import { Card, NoticeLine, SquareButton } from "./parts";
 
 const P = ref.layout.play;
 const SQ = ref.button.square;
@@ -762,7 +763,7 @@ function PresenceGone() {
   );
 }
 
-/** 02's error line on 07's card, with 07's outlined pill to retry and a quiet Dismiss. */
+/** 02's error line on 07's card, with the guide's pill (the mode's accent, hugging its label) to retry and a quiet Dismiss. */
 function FailureBanner({ offline, onRetry, onDismiss }: { offline: boolean; onRetry: () => void; onDismiss: () => void }) {
   return (
     <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.edge} accessibilityLiveRegion="polite">
@@ -772,8 +773,8 @@ function FailureBanner({ offline, onRetry, onDismiss }: { offline: boolean; onRe
           text={offline ? "No connection. Your progress is safe." : "That didn't go through. Your progress is safe."}
         />
         <View style={styles.bannerActions}>
-          <OutlinePill label="Try again" onPress={onRetry} testID="failure-retry" />
-          <PillButton variant="quiet" ground="dark" label="Dismiss" onPress={onDismiss} padX={ref.space.sm} />
+          <ModePill variant="ghost" fullWidth={false} label="Try again" onPress={onRetry} testID="failure-retry" />
+          <ModePill variant="quiet" ground="dark" label="Dismiss" onPress={onDismiss} padX={ref.space.sm} />
         </View>
       </Card>
     </Animated.View>
@@ -806,7 +807,7 @@ function CaseOptions({ hotspotAssist, onHotspotAssist, onRestart, onClose }: {
           testID="options-show-interactives"
         />
       </View>
-      <PillButton variant="quiet" ground="dark" label="Restart this case" onPress={onRestart} testID="options-restart" />
+      <ModePill variant="quiet" ground="dark" label="Restart this case" onPress={onRestart} testID="options-restart" />
     </DarkSheet>
   );
 }

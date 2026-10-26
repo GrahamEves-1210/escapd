@@ -1,49 +1,51 @@
-// The header row, as the reference's: a 44 row under the safe top with a text
-// button on the left (the reference's "Close", here "Back" to the camera) and
-// the screen title centred over the screen (Bold 16). Three columns, the two
-// sides flexing equally, so the title stays centred and never runs under Back
-// at large text sizes (it wraps instead). Inside a mode, the mode's ink.
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { FocusRing, useFocusRing } from "@/components/noir";
+// The header, the camera's (02, src/capture/ui/rangefinder/Header.tsx): the
+// 44 square back button `edge` from the left edge and `top` under the safe
+// top, and between it and an empty square's width on the right, the serif
+// title "Your photos" (ref.type.serifTitle) over the grey meta line ("4 of 6
+// taken", ref.type.meta), both centred, filling the square's 44 at one line
+// each. A larger text size grows the header downward. The title and the count
+// are one screen-reader header ("Your photos, 4 of 6 photos taken"), read
+// politely when the count changes. Inside a mode: the mode's raised square,
+// ink and muted ink (src/capture/ui/palette.ts).
+import { StyleSheet, Text, View } from "react-native";
+import { ArrowLeftIcon } from "@/components/icons";
+import { SquareButton } from "@/capture/ui/rangefinder/SquareButton";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { COPY } from "./copy";
 
-const L = ref.layout.review;
+const C = ref.layout.camera;
+const SQ = ref.button.square;
 
-export function ReviewHeader({ top, onBack }: { top: number; onBack: () => void }) {
-  const focus = useFocusRing();
+export function ReviewHeader({ top, count, max, onBack }: { top: number; count: number; max: number; onBack: () => void }) {
   const palette = useCapturePalette();
   return (
-    <View style={[styles.row, { marginTop: top }]}>
-      <View style={styles.side}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={COPY.backLabel}
-          onPress={onBack}
-          onFocus={focus.onFocus}
-          onBlur={focus.onBlur}
-          testID="review-back"
-          style={({ pressed }) => [styles.back, pressed ? styles.pressed : null]}
-        >
-          <Text style={[styles.backLabel, { color: palette.ink }]}>{COPY.back}</Text>
-          <FocusRing visible={focus.focused} shape="panel" radius={L.header.focusRadius} />
-        </Pressable>
+    <View style={[styles.row, { paddingTop: top + C.top }]} testID="review-header">
+      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={COPY.backLabel} onPress={onBack} testID="review-back" />
+      <View
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={`${COPY.title}, ${COPY.countSpoken(count, max)}`}
+        accessibilityLiveRegion="polite"
+        style={styles.prompt}
+        testID="review-title"
+      >
+        <Text style={[styles.title, { color: palette.ink }]}>{COPY.title}</Text>
+        <Text style={[styles.meta, { color: palette.inkMuted }]} testID="review-count">
+          {COPY.count(count, max)}
+        </Text>
       </View>
-      <Text accessibilityRole="header" style={[styles.title, { color: palette.ink }]}>
-        {COPY.title}
-      </Text>
-      <View style={styles.side} />
+      {/* The right square's place, so the title stays centred on the screen. */}
+      <View style={styles.balance} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", paddingHorizontal: L.gutter, minHeight: L.header.height },
-  side: { flex: 1, alignItems: "flex-start" },
-  back: { minWidth: ref.hit.min, minHeight: L.header.height, justifyContent: "center" },
-  // Nudged onto the title's baseline, as the reference's "Close" sits on "Photos"'s.
-  backLabel: { ...L.type.back, top: L.header.backDrop },
-  title: { ...L.type.navTitle, textAlign: "center", flexShrink: 1 },
-  pressed: { opacity: L.pressedOpacity },
+  row: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: C.edge },
+  // Between the squares, space.sm clear of each, as the camera's prompt.
+  prompt: { flex: 1, marginHorizontal: ref.space.sm, paddingTop: C.promptTop, alignItems: "center" },
+  title: { ...ref.type.serifTitle, textAlign: "center" },
+  meta: { ...ref.type.meta, textAlign: "center", marginTop: C.metaGap },
+  balance: { width: SQ.size },
 });

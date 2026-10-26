@@ -13,10 +13,9 @@ import { openCapture } from "@/capture/openCapture";
 import { formatDuration } from "@/game/format";
 import { parseGenre, themeFor } from "@/game/mode";
 import { suspectById } from "@/game/selectors";
-import { PillButton } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
 import { CaseClosed, type CaseSummary } from "@/render/CaseClosed";
 import { closedCaseFor } from "@/render/closedCase";
-import { WhiteBar } from "@/render/parts";
 
 export default function PlayCompleteScreen() {
   const params = useLocalSearchParams<{ roomId: string; genre?: string; title?: string; message?: string; exit?: string; suspect?: string }>();
@@ -71,8 +70,8 @@ export default function PlayCompleteScreen() {
       photo={stash?.photo}
       actions={(
         <>
-          <WhiteBar label="New case" onPress={newCase} testID="complete-new-case" />
-          <PillButton
+          <ModePill variant="ghost" label="New case" onPress={newCase} testID="complete-new-case" />
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
@@ -81,7 +80,7 @@ export default function PlayCompleteScreen() {
             onPress={() => router.dismissTo({ pathname: "/mode/[genre]", params: { genre } })}
             testID="complete-mode"
           />
-          <PillButton
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth

@@ -8,8 +8,8 @@
 //
 // TapGlyph: the retake hint's finger pressing inside a rounded-square button,
 // measured 12.3 x 18 ink with a ~1 line (ref.layout.review.tap): the paths are
-// in pt, offset in the hint's 20 glyph box so the ink starts at x 23 and the
-// text at x 42 on 393, as in the reference. Round caps and joins.
+// in pt, offset in the hint's 20 glyph box so the ink starts 3 in from the
+// box. Round caps and joins.
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { ref } from "@/theme/tokens";
 

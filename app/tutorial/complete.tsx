@@ -1,16 +1,16 @@
 // Tutorial result: noir's case closed (src/render/CaseClosed.tsx). The CASE
 // CLOSED stamp slams down in brass over The Study's name, the server's message
-// and the exit line, then the time and hints on 07's cards, and 07's pinned
-// band: the bar, then two quiet pills. Celebrates observation, not speed.
+// and the exit line, then the time and hints on 07's cards, and the pinned
+// band: the photo guide's pill, then two quiet pills. Celebrates
+// observation, not speed.
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { getLatestSession } from "@/lib/escapd-api";
 import { openCapture } from "@/capture/openCapture";
 import { formatDuration } from "@/game/format";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { PillButton } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
 import { CaseClosed, type CaseSummary } from "@/render/CaseClosed";
-import { WhiteBar } from "@/render/parts";
 
 export default function TutorialCompleteScreen() {
   const { message, exit } = useLocalSearchParams<{ message?: string; exit?: string }>();
@@ -45,15 +45,15 @@ export default function TutorialCompleteScreen() {
       next="The next case is your own room."
       actions={(
         <>
-          <WhiteBar label="Photograph your room" onPress={photograph} testID="complete-capture" />
-          <PillButton
+          <ModePill variant="ghost" label="Photograph your room" onPress={photograph} testID="complete-capture" />
+          <ModePill
             variant="quiet"
             ground="dark"
             fullWidth
             label="Back to Detective Noir"
             onPress={() => router.dismissTo({ pathname: "/mode/[genre]", params: { genre: "noir" } })}
           />
-          <PillButton variant="quiet" ground="dark" fullWidth label="Replay The Study" onPress={() => router.replace("/tutorial")} />
+          <ModePill variant="quiet" ground="dark" fullWidth label="Replay The Study" onPress={() => router.replace("/tutorial")} />
         </>
       )}
     />

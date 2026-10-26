@@ -1,5 +1,7 @@
 // The capture flow's pills in the active mode: 03's pill and quiet buttons,
-// 04's step button and the build wait's quiet button. In the shell it is the
+// 04's step button, and (round 6) every primary and quiet action that wears
+// the step button's look: the review's "Build the case", the build wait and
+// state screens, the player's sheets and case closed. In the shell it is the
 // kit's PillButton, unchanged. Inside a mode it takes the mode's colours
 // (src/capture/ui/palette.ts) at the kit's sizes and type:
 // - primary (64, ctaLabel) and ghost (52, headline) are the mode's primary

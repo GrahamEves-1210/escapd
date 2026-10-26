@@ -8,7 +8,8 @@ import { DarkSheet, type NoirIcon } from "@/components/noir";
 import { EyeIcon } from "@/components/icons";
 import { ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
-import { Card, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card } from "./parts";
 
 const P = ref.layout.play;
 
@@ -39,8 +40,8 @@ export interface ResultContent {
  * scene stays visible above it. The title in 02's serif (a narrative moment);
  * the text on 07's card; granted items as rows (a void well with the white
  * glyph, the name in Bold 16, the description grey); a reveal as 07's hint
- * row (white when it's in this view, grey when it's in another); 07's white
- * bar to go on. Item descriptions are shown only for items the server granted.
+ * row (white when it's in this view, grey when it's in another); the photo
+ * guide's pill (the mode's accent) to go on. Item descriptions are shown only for items the server granted.
  */
 export function ResultSheet({ content, onClose }: { content: ResultContent; onClose: () => void }) {
   const theme = useModeTheme();
@@ -55,7 +56,8 @@ export function ResultSheet({ content, onClose }: { content: ResultContent; onCl
       maxHeight="58%"
       testID="result-sheet"
       footer={(
-        <WhiteBar
+        <ModePill
+          variant="ghost"
           label={content.gained.length > 0 ? "Pocket artifact" : "Continue"}
           onPress={onClose}
           testID="result-continue"

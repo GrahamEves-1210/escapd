@@ -1,53 +1,64 @@
-// The reference's outlined "Add photos" pill: x 19.5-373.5, 49 tall, fully
-// round, a 1 pt outline in the ink colour (white here, black there) straddling
-// x 20 / 373 as the reference's does, the camera glyph (ESCAPD line art to the
-// reference's square camera, Glyphs.tsx) and a Semibold 16 label, centred as
-// one group.
-// Pressed: the inside fills with ref.color.raised (a proposal; the reference
-// shows no press). Inside a mode: the outline, glyph and label in the mode's
-// ink, pressed in its raised fill (src/capture/ui/palette.ts).
+// "Add a photo": the photo guide's ghost pill (ref.button.ghost: 52 tall, a
+// full capsule with a 1 pt hairline, the headline label), in the guide's
+// reading column, with the camera glyph (ESCAPD line art, Glyphs.tsx)
+// add.gap before its label, centred as one group. In the shell it is the
+// guide's own dark pill (shade, hairline, white label); inside a mode the
+// same pill in the mode's colours: its near-black ground as the fill, its rim
+// as the hairline, its ink for the glyph and label (src/capture/ui/palette.ts),
+// so the mode's accent stays on the one strong action, "Build the case".
+// Pressed: the fill steps up to the raised fill (the kit's ghost press).
+// Pressing in gives the light `press` haptic; the brass focus ring circles it.
 import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { FocusRing, useFocusRing } from "@/components/noir";
+import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
 import { CameraGlyph } from "./Glyphs";
 
-const L = ref.layout.review;
-const A = L.add;
+const GHOST = ref.button.ghost;
+const LABEL = ref.type.headline;
 
 export function AddPlateButton({ onPress, style }: { onPress: () => void; style?: StyleProp<ViewStyle> }) {
   const focus = useFocusRing();
+  const feedback = useFeedback();
   const palette = useCapturePalette();
+  const shell = palette.genre === null;
+  const fill = shell ? GHOST.fill : palette.well;
+  const pressedFill = shell ? GHOST.pressedFill : palette.raised;
+  const edge = shell ? GHOST.border : palette.rim;
+  const ink = shell ? GHOST.label : palette.ink;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={COPY.add}
+      onPressIn={feedback.press}
       onPress={onPress}
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
       testID="add-plate"
-      style={({ pressed }) => [styles.pill, { borderColor: palette.ink }, pressed ? { backgroundColor: palette.raised } : null, style]}
+      style={({ pressed }) => [styles.pill, { backgroundColor: pressed ? pressedFill : fill, borderColor: edge }, style]}
     >
-      <CameraGlyph color={palette.ink} />
-      <Text style={[styles.label, { color: palette.ink }]}>{COPY.add}</Text>
-      <FocusRing visible={focus.focused} shape="pill" edge={A.border} />
+      <CameraGlyph color={ink} />
+      <Text style={[styles.label, { color: ink }]}>{COPY.add}</Text>
+      <FocusRing visible={focus.focused} shape="pill" edge={GHOST.borderWidth} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   pill: {
-    marginHorizontal: A.inset,
-    minHeight: A.height,
+    marginHorizontal: ref.space.reading,
+    minHeight: GHOST.height,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: A.gap,
+    gap: ref.layout.review.add.gap,
     paddingHorizontal: ref.space.xl,
-    borderWidth: A.border,
+    paddingVertical: (GHOST.height - LABEL.lineHeight) / 2 - GHOST.borderWidth,
+    borderWidth: GHOST.borderWidth,
     borderRadius: ref.radius.round,
     ...curve,
   },
-  label: { ...L.type.action, flexShrink: 1 },
+  label: { ...LABEL, flexShrink: 1 },
 });

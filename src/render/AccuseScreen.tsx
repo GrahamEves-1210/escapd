@@ -25,7 +25,8 @@ import { motion, ref, z } from "@/theme/tokens";
 import { sheetEntering, sheetExiting } from "@/components/noir";
 import { WarningIcon, XIcon } from "@/components/icons";
 import { cooldownText, secondsUntil } from "./accuse";
-import { Card, NoticeLine, QuietToggle, RingPressable, SquareButton, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card, NoticeLine, QuietToggle, RingPressable, SquareButton } from "./parts";
 import { Stamp } from "./Stamp";
 import { SuspectFile, SuspectText, suspectA11yLabel } from "./SuspectFile";
 
@@ -183,18 +184,20 @@ export function AccuseScreen({ puzzle, suspects, items, onSubmit, onClose, revea
       </ScrollView>
 
       <View
-        style={[styles.footer, { paddingBottom: insets.bottom + P.band.foot + ref.space.sm, borderTopColor: theme.rim }]}
+        style={[styles.footer, { paddingBottom: insets.bottom + ref.space.ctaBottom, borderTopColor: theme.rim }]}
         importantForAccessibility={revealed ? "no-hide-descendants" : "auto"}
       >
         <View style={styles.message} accessibilityLiveRegion="polite" testID="accuse-message">
           {message ? <NoticeLine icon={WarningIcon} text={message} /> : null}
           {waitLine ? <Text style={[P.type.hint, { color: theme.inkMuted }]} testID="accuse-cooldown">{waitLine}</Text> : null}
         </View>
-        <WhiteBar
+        <ModePill
+          variant="ghost"
           label="Make the accusation"
           onPress={submit}
           disabled={!complete || wait > 0}
           busy={busy}
+          spinner
           // The outcome (the reveal, or a wrong accusation) gives the haptic.
           haptic={false}
           accessibilityHint={complete ? undefined : "Pick one from each list first."}
@@ -339,7 +342,8 @@ const styles = StyleSheet.create({
   optionText: { flex: 1 },
   items: { gap: ref.space.sm },
   item: { gap: ref.space.xs, paddingVertical: P.card.padY },
-  footer: { paddingHorizontal: ref.space.edge, paddingTop: P.band.tray, gap: ref.space.sm, borderTopWidth: P.hairline },
+  // The photo guide's foot: the pill in its reading column, ref.space.ctaBottom over the safe area.
+  footer: { paddingHorizontal: ref.space.reading, paddingTop: P.band.tray, gap: ref.space.sm, borderTopWidth: P.hairline },
   message: { minHeight: P.code.messageMin, gap: ref.space.xs, alignItems: "center" },
   reveal: { ...StyleSheet.absoluteFill, justifyContent: "center", paddingHorizontal: ref.space.edge },
   revealCard: { alignSelf: "stretch" },
