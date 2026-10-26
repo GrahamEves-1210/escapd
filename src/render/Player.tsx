@@ -29,7 +29,7 @@ import { useUiMemory } from "@/game/useUiMemory";
 import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
-import { DarkSheet } from "@/components/noir";
+import { DarkSheet, TreatedImage } from "@/components/noir";
 import { ModePill } from "@/capture/ui/ModePill";
 import { StateScreen } from "@/components/StateScreen";
 import {
@@ -730,10 +730,10 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           </Text>
           <View style={styles.metaRow}>
             {genre === "paranormal" && presence.total > 0 ? (
-              // The presence takes the view line's place: the page dots already say which view this is.
+              // The presence takes the view line's place: the thumbnail wheel already says which view this is.
               <PresenceMeter presence={presence} gone={cleared} />
             ) : (
-              // The photo's own label and the page dots say which view this is.
+              // The photo's own label and the thumbnail wheel say which view this is.
               <Text numberOfLines={1} style={[styles.meta, { color: theme.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                 {`View ${sceneIndex + 1} of ${sceneCount}`}
               </Text>
@@ -769,6 +769,19 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           pageable={pageable}
           disabled={completing}
           overlay={toast ? <Toast key={toast.key} text={toast.text} onHide={hideToast} /> : null}
+          renderThumb={(i) => (
+            // The wheel's thumbnail: the same treatment, baked once small.
+            <TreatedImage
+              source={sources[i]}
+              genre={genre}
+              original={cleared}
+              cacheKey={photoKey(def.photos[i])}
+              maxEdge={P.wheel.bake}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              accessible={false}
+            />
+          )}
           renderPage={(i, active, onWindow, pager) => (
             <SceneView
               source={sources[i]}

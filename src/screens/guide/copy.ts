@@ -1,7 +1,8 @@
 // The guide's words (docs/DESIGN.md 04, Steps and Tappable elements), in plain
 // language (photos, no film or darkroom words) and as friendly tips. The steps
-// paraphrase the photo plan in src/capture/slots.ts (photos 1 to 4) and the
-// review screen's tips; the camera's title and subtitle then echo them.
+// teach the 360 in src/capture/slots.ts (stand in the middle, turn a little
+// between photos, all the way round) and the review screen's tips; the
+// camera's prompts and its turn dial then echo them.
 
 export interface GuideStep {
   /** One line of ref.type.stepTitle (Bold 22) in the 317 column; two at most. */
@@ -11,9 +12,9 @@ export interface GuideStep {
 }
 
 export const STEPS: readonly GuideStep[] = [
-  { title: "Start at the doorway", body: "One wide photo. Get the floor and two walls in." },
-  { title: "Work around the room", body: "The far corner, then the busiest wall. Let photos overlap." },
-  { title: "Get one close view", body: "A desk, shelf, or table. Small things make good clues." },
+  { title: "Stand in the middle", body: "Face any wall and take the first photo." },
+  { title: "Turn right, shoot again", body: "Turn a little. Keep part of the last photo in view." },
+  { title: "All the way round", body: "The camera shows each turn until you're back at the start." },
   { title: "Just the room", body: "Leave out people, mail, and screens. Lights on, hold steady." },
 ];
 

@@ -108,6 +108,27 @@ export function lobe(centre: Point, width: number, top: number, bottom: number, 
   );
 }
 
+/**
+ * A circular arc round `c` from bearing `from` to bearing `to` (degrees
+ * clockwise from straight up; `to` above `from` runs clockwise), as cubics of
+ * at most 90 degrees each.
+ */
+export function arc(c: Point, radius: number, from: number, to: number): string {
+  const sweep = to - from;
+  const count = Math.max(1, Math.ceil(Math.abs(sweep) / 90));
+  const step = sweep / count;
+  // The control points' distance along each end's tangent.
+  const k = (4 / 3) * Math.tan((step * DEG) / 4) * radius;
+  const segments: Point[][] = [[polar(c, from, radius)]];
+  for (let i = 0; i < count; i += 1) {
+    const a = from + step * i;
+    const b = a + step;
+    const end = polar(c, b, radius);
+    segments.push([polar(polar(c, a, radius), a + 90, k), polar(end, b - 90, k), end]);
+  }
+  return pathOf(segments, false);
+}
+
 /** A circle as four cubics. */
 export function circle(c: Point, radius: number): string {
   return ellipse(c, radius, radius);

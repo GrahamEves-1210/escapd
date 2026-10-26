@@ -3,13 +3,14 @@ import path from "path";
 import { Image, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import * as api from "@/lib/escapd-api";
 import type { ActionResult, GameAction, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
 import { tutorialCoach } from "@/tutorial/coach";
 import { getMode } from "@/game/mode";
+import * as treat from "@/components/noir/treatPhoto";
 import { modeThemes, ref } from "@/theme/tokens";
 import { Player } from "../Player";
 
@@ -141,12 +142,12 @@ async function layoutScene() {
 
 const action = (actionName: string) => ({ nativeEvent: { actionName } });
 
-/** Step the pager (the page dots are its adjustable control) to view `n` (zero-based). */
+/** Step the pager (the thumbnail wheel is its adjustable control) to view `n` (zero-based). */
 async function goToView(n: number) {
-  const dots = await screen.findByTestId("view-dots");
-  const now = Number(/^(\d+)/.exec(dots.props.accessibilityValue.text)![1]) - 1;
-  for (let i = now; i < n; i++) await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("increment"));
-  for (let i = now; i > n; i--) await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("decrement"));
+  const wheel = await screen.findByTestId("view-wheel");
+  const now = Number(/^(\d+)/.exec(wheel.props.accessibilityValue.text)![1]) - 1;
+  for (let i = now; i < n; i++) await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", action("increment"));
+  for (let i = now; i > n; i--) await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", action("decrement"));
   await layoutScene();
 }
 
@@ -282,6 +283,7 @@ const P = ref.layout.play;
 describe("Player: the reference look", () => {
   it("frames the photo as 02 does in noir's colours: flat ground, Once's squares, the serif title over the view meta", async () => {
     mocked.submitAction.mockImplementation(async (_s, action) => studyServer()(action));
+    const bakes = jest.spyOn(treat, "useTreatedPhoto");
     await renderStudy();
     // The Study is noir: the player sets the active mode from its definition.
     expect(getMode()).toBe("noir");
@@ -311,10 +313,17 @@ describe("Player: the reference look", () => {
     expect(flat(screen.getByText("View 1 of 3", { includeHiddenElements: true }))).toMatchObject({ ...ref.type.meta, color: NOIR.inkMuted });
     // The coach mark is a 07 card in the mode's raised fill.
     expect(flat(screen.getByTestId("coach-card"))).toMatchObject({ backgroundColor: NOIR.raised, borderRadius: P.card.radius });
-    // No strip of thumbnails: page dots, the view in view in ink.
+    // No strip of thumbnails under the photo: a thumbnail wheel on its foot, the view in view in the middle,
+    // its neighbours round the loop either side (on view 1 the left one is view 3), each in the mode's rim.
     expect(screen.queryByTestId("scene-0")).toBeNull();
-    expect(flat(screen.getByTestId("view-dot-0-current"))).toMatchObject({ backgroundColor: NOIR.ink });
-    expect(flat(screen.getByTestId("view-dot-1"))).toMatchObject({ backgroundColor: NOIR.inkMuted });
+    const slot = (name: string) => within(screen.getByTestId(`view-wheel-${name}`));
+    expect(slot("current").getByTestId("view-thumb-0-current")).toBeTruthy();
+    expect(slot("left").getByTestId("view-thumb-2")).toBeTruthy();
+    expect(slot("right").getByTestId("view-thumb-1")).toBeTruthy();
+    expect(flat(screen.getByTestId("view-wheel-current"))).toMatchObject({ width: P.wheel.width, height: P.wheel.height, borderRadius: P.wheel.radius, boxShadow: P.wheel.shadow });
+    // Each thumbnail is the photo's own treatment, baked once at the wheel's small size.
+    expect(bakes).toHaveBeenCalledWith(expect.anything(), "noir", expect.objectContaining({ maxEdge: P.wheel.bake }));
+    bakes.mockRestore();
   });
 
   it("lays the photo full bleed: the screen's width, square edges, cropped only into hotspot-free margins", async () => {
@@ -331,24 +340,38 @@ describe("Player: the reference look", () => {
     expect(flat(screen.getByTestId("scene-window"))).toMatchObject({ width: 400 * 0.75, height: 400 });
   });
 
-  it("offers the views as an adjustable control on the page dots, with a tick as each page settles", async () => {
+  it("offers the views as an adjustable control on the thumbnail wheel, with a tick as each page settles", async () => {
     await renderStudy();
-    const dots = screen.getByTestId("view-dots");
-    expect(dots.props.accessibilityRole).toBe("adjustable");
-    expect(dots.props.accessibilityLabel).toBe("View");
-    expect(dots.props.accessibilityValue.text).toBe("1 of 3");
+    const wheel = screen.getByTestId("view-wheel");
+    expect(wheel.props.accessibilityRole).toBe("adjustable");
+    expect(wheel.props.accessibilityLabel).toBe("View");
+    expect(wheel.props.accessibilityValue.text).toBe("1 of 3");
+    // One element: the thumbnails and their tap strips are not read on their own.
+    expect(screen.queryAllByRole("adjustable")).toHaveLength(1);
+    expect(screen.getByTestId("view-wheel-next").props.accessible).toBe(false);
     mockFeedback.tick.mockClear();
     await goToView(1);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
     // The coach's target (the drawer, on view 1) is marked as something new once it's off screen.
-    expect(screen.getByTestId("view-dots").props.accessibilityValue.text).toBe("2 of 3. Something new on view 1");
-    expect(screen.getByTestId("view-dot-0-new")).toBeTruthy();
+    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toBe("2 of 3. Something new on view 1");
+    expect(within(screen.getByTestId("view-wheel-left")).getByTestId("view-thumb-0-new")).toBeTruthy();
     expect(screen.getByText("View 2 of 3", { includeHiddenElements: true })).toBeTruthy();
     expect(screen.getByLabelText("View 2 of 3")).toBeTruthy();
-    // Past the last view, nothing happens.
+    // Past the last view comes the first, round the loop, with its tick; and back again.
     await goToView(2);
-    await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("increment"));
-    expect(screen.getByTestId("view-dots").props.accessibilityValue.text).toMatch(/^3 of 3/);
+    mockFeedback.tick.mockClear();
+    await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", action("increment"));
+    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toMatch(/^1 of 3/);
+    expect(screen.getByText("View 1 of 3", { includeHiddenElements: true })).toBeTruthy();
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", action("decrement"));
+    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toMatch(/^3 of 3/);
+    expect(screen.getByText("View 3 of 3", { includeHiddenElements: true })).toBeTruthy();
+    // Tapping a neighbour on the wheel goes to it: the right one is view 1 again.
+    await fireEvent.press(screen.getByTestId("view-wheel-next"));
+    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toMatch(/^1 of 3/);
+    await layoutScene();
+    expect(screen.getByLabelText("View 1 of 3")).toBeTruthy();
   });
 
   it("reads hotspots in reading order while drawing the largest first", async () => {

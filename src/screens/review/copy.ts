@@ -1,6 +1,9 @@
 // The review screen's words (/capture/review, "Your photos"), in plain
 // language: photos, "Build the case", Arabic numerals; no film or darkroom
 // words, nothing alarming, AI never mentioned. Tips read as friendly advice.
+// The photos are one turn round the room (src/capture/slots.ts): each tile is
+// named by where it looks from the middle ("Front right"), the camera's
+// numeral before it.
 import type { RetakeReason, SetIssue } from "@/capture/failure";
 import type { PlatePrompt } from "@/capture/slots";
 
@@ -11,7 +14,7 @@ export const COPY = {
   count: (count: number, max: number) => `${count} of ${max} taken`,
   /** The same for screen readers, with the header. */
   countSpoken: (count: number, max: number) => `${count} of ${max} photos taken`,
-  lead: "Retake anything dark, blurred, or too close to read the room.",
+  lead: "Retake anything dark or blurred. Together they should go all the way round.",
   add: "Add a photo",
   hint: "Tap a photo to retake it",
   // A flagged photo's reason, under its name (and in its tile's label).
@@ -26,13 +29,14 @@ export const COPY = {
   openTile: "Take this photo",
   // A failure about the whole set, as a note at the top when the build sent the player back.
   issues: {
-    too_few_objects: "The case needs a little more to work with. Add a close view of a desk, shelf, or table, then build again.",
-    didnt_come_together: "The case didn't come together from these photos. Clear photos from different corners help.",
+    too_few_objects:
+      "The case needs a little more to work with. Turn the lights on and retake from the middle of the room. If a photo is open, use it for a close view of a busy desk or shelf.",
+    didnt_come_together: "The case didn't come together from these photos. Six clear photos, all the way round the room, help.",
     couldnt_use: "These photos couldn't be used. Try photos that leave out people, documents, and screens.",
     photo_missing: "A photo didn't come through. Retake it or choose another, then build again.",
   } satisfies Record<SetIssue, string>,
   checksTitle: "Before you build",
-  checks: ["Keep people out of the shot.", "Tuck away mail, documents, and screens.", "Turn the lights on and hold steady."],
+  checks: ["Stand in the middle and turn all the way round.", "Keep people, mail, and screens out of the shot.", "Turn the lights on and hold steady."],
   privacy: "Your photos are only used to build your case. No one else sees them.",
   develop: "Build the case",
   flaggedHelp: "Retake the marked photos, then build the case.",
@@ -40,14 +44,14 @@ export const COPY = {
 } as const;
 
 /**
- * A photo's name under its tile: "From the doorway" after its numeral. The
- * last word is held to the one before it (a no-break space), so a name that
- * wraps breaks as "From / the doorway", never leaving a lone short word.
+ * A photo's name under its tile: where it looks, "Front right", after its
+ * numeral. The last word is held to the one before it (a no-break space), so
+ * a name that wraps never leaves a lone short word.
  */
-export const plateName = (prompt: PlatePrompt) => prompt.title.replace(/ (\S+)$/, " $1");
+export const plateName = (prompt: PlatePrompt) => prompt.name.replace(/ (\S+)$/, " $1");
 /** The photo's label for screen readers, which read a lone numeral badly. */
-export const plateLabelSpoken = (prompt: PlatePrompt) => `Photo ${prompt.numeral}, ${prompt.title}`;
+export const plateLabelSpoken = (prompt: PlatePrompt) => `Photo ${prompt.numeral}, ${prompt.name}`;
 export const retakeLabel = (prompt: PlatePrompt) => `Retake photo ${prompt.numeral}`;
 export const removeLabel = (prompt: PlatePrompt) => `Remove photo ${prompt.numeral}`;
-/** An open slot's tile: "Take photo 2, Opposite corner. This photo is open." */
-export const fillLabel = (prompt: PlatePrompt) => `Take photo ${prompt.numeral}, ${prompt.title}. This photo is open.`;
+/** An open slot's tile: "Take photo 2, Front right. This photo is open." */
+export const fillLabel = (prompt: PlatePrompt) => `Take photo ${prompt.numeral}, ${prompt.name}. This photo is open.`;

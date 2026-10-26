@@ -2,17 +2,18 @@
 // in the art box's own units (ref.layout.guide.art, 240 x 266). The numbers in
 // the path data are the drawings themselves; the measured parts (strokes,
 // inks, fills, fades, the hero phone and its screen) come from tokens through
-// draw.ts. As in the reference, a mid object stands at the upper left with a
-// back object behind it to the right, and the hero phone is held in front at
-// the lower right; depth comes from brightness alone.
+// draw.ts. Steps 1 and 2 are plans of the room seen from above, the player in
+// its middle (the 360, src/capture/slots.ts); steps 3 and 4 hold the hero
+// phone in front at the lower right, as the reference does, a mid or back
+// object behind it. Depth comes from brightness alone.
 import { ref } from "@/theme/tokens";
-import { circle, polar, polyline, roundedRect, turnedRect } from "./geometry";
+import { arc, circle, polar, polyline, roundedRect, turnedRect } from "./geometry";
 import type { Mark, Point, Scene } from "./types";
 
 const PHONE = ref.layout.guide.phone;
 const PLAN = ref.layout.guide.planPhone;
 
-/** Where the hero phone is held in steps 1, 3 and 4: the reference's place (its top-left corner). */
+/** Where the hero phone is held in steps 3 and 4: the reference's place (its top-left corner). */
 const HELD: Point = [95, 108];
 
 /** The hero phone: a hero outline over the device fill, the thin bezel just inside it, and its inner screen. */
@@ -67,46 +68,24 @@ function heldPhone(): Mark[] {
   return [...HAND_BEHIND, ...heroPhone(HELD), ...HAND_FRONT];
 }
 
-// Step 1 · Start at the doorway. A door casing (mid) seen a little from the
-// left: its head and right jamb show their depth (back detail), and the door
-// stands open inward, a lit sliver at the left of the opening. Beyond it the
-// room's far corner (back): the wall join and the floor along both walls. A
-// framed picture hangs on the wall to the right (back), tucked behind the
-// casing as the reference's box is behind its bottle. The phone is held in
-// front.
-const doorway: Scene = {
-  marks: [
-    // The near wall's foot, behind everything.
-    { d: "M48 142H128", ink: "back" },
-    { d: roundedRect({ x: 116, y: 26, width: 40, height: 46 }, 2), ink: "back", fill: "void" },
-    { d: roundedRect({ x: 122, y: 32, width: 28, height: 34 }, 1.5), fill: "tag" },
-    { d: "M129 59L135.5 50.5L140 55.5L143 52.5L147 59", ink: "ridge" },
-    // Casing: the front face, then the depth of the head and the right jamb.
-    { d: "M48 142V7C48 5.3 49.3 4 51 4H121C122.7 4 124 5.3 124 7V142", ink: "mid", fill: "void" },
-    { d: "M58 14H114V142H107V19H58Z", fill: "tag" },
-    // The far corner through the opening.
-    { d: "M90 19V102", ink: "back" },
-    { d: "M58 112L90 102L107 107.4", ink: "back" },
-    // The open door, hinged out of sight behind the left jamb.
-    { d: "M58 21L72 27V128L58 134Z", ink: "mid", fill: "panel" },
-    { d: circle([68.4, 78], 1.8), ink: "back" },
-    { d: "M58 19H107V142M107 19L114 14", ink: "back" },
-    { d: "M58 142V14H114V142", ink: "back" },
-    ...heldPhone(),
-  ],
-};
-
-// Step 2 · Work around the room. A plan of the room (back): walls with their
+// Steps 1 and 2 · The plan. The room seen from above (back): walls with their
 // thickness, fading toward the near wall (no hard bottom edge, as in the
-// other steps), the doorway a gap in it, and a shelf along the busiest wall
-// (right). Three phones seen from above: plate I just inside the doorway and
-// plate III aimed at the busiest wall (back), and plate II aimed at the far
-// corner (hero, now: its view a lit wedge). Every view's rays are context
-// and fade before the walls; plate I's view overlaps both of the others.
+// other steps), the doorway a gap in it, a shelf along the right wall and a
+// table in the far left corner. The player stands on the spot in the middle
+// (a context ring) and holds the phone out a little, its view a lit wedge out
+// to the walls. Views are the ultra-wide's 90 degrees, so two photos a turn
+// apart (60) share a third; every view's rays are context and fade before the
+// walls.
 const ROOM = { left: 52, top: 18, right: 180, bottom: 246 };
 const WALL = 5;
 const DOOR_GAP = { left: 62, right: 94 };
-const HALF_VIEW = 27;
+const HALF_VIEW = 45;
+/** The middle of the room, where the player stands. */
+const MIDDLE: Point = [(ROOM.left + ROOM.right) / 2, (ROOM.top + ROOM.bottom) / 2];
+/** How far out from the middle the phone is held (to its centre). */
+const ARM = 32;
+/** One turn: the ultra-wide's 60 (src/capture/turn.ts). */
+const TURN = 60;
 
 /** Distance from `from` along `deg` to the room's inner wall. */
 function toWall(from: Point, deg: number): number {
@@ -128,6 +107,9 @@ interface PlanShot {
   centre: Point;
   deg: number;
 }
+
+/** The phone held out from the middle, facing `deg`. */
+const facing = (deg: number): PlanShot => ({ centre: polar(MIDDLE, deg, ARM), deg });
 
 /** The middle of a plan phone's far edge, where its view starts. */
 const tipOf = (shot: PlanShot) => polar(shot.centre, shot.deg, PLAN.height / 2);
@@ -159,56 +141,101 @@ function planPhone(shot: PlanShot, ink: Mark["ink"]): Mark {
   return { d: turnedRect(shot.centre, PLAN.width, PLAN.height, PLAN.radius, shot.deg), ink, fill: "device", fillAngle: shot.deg + 180 };
 }
 
-const DOOR: PlanShot = { centre: [70, 224], deg: 25 };
-const CORNER: PlanShot = { centre: [100, 150], deg: 31 };
-const SHELF: PlanShot = { centre: [108, 196], deg: 90 };
+/** The room: walls with the doorway as a gap in the near wall, the shelf and the table. */
+const ROOM_MARKS: Mark[] = [
+  {
+    d: `M${DOOR_GAP.left} ${ROOM.bottom + WALL}H${ROOM.left - WALL}V${ROOM.top - WALL}H${ROOM.right + WALL}V${ROOM.bottom + WALL}H${DOOR_GAP.right}`,
+    ink: "back",
+    fade: "down",
+  },
+  { d: `M${DOOR_GAP.left} ${ROOM.bottom}H${ROOM.left}V${ROOM.top}H${ROOM.right}V${ROOM.bottom}H${DOOR_GAP.right}`, ink: "back", fade: "down" },
+  { d: `M${DOOR_GAP.left} ${ROOM.bottom}V${ROOM.bottom + WALL}M${DOOR_GAP.right} ${ROOM.bottom}V${ROOM.bottom + WALL}`, ink: "back", fade: "down" },
+  // The shelf on the right wall, its books end on.
+  { d: roundedRect({ x: 166, y: 158, width: 14, height: 76 }, 1.5), ink: "back", fill: "tag" },
+  { d: "M169 166H177M169 173H176M169 180H177M169 190H175M169 197H177M169 207H176M169 214H177M169 224H175", ink: "ridge" },
+  // The table in the far left corner, with a lamp's round shade on it.
+  { d: roundedRect({ x: 52, y: 18, width: 30, height: 22 }, 1.5), ink: "back", fill: "tag" },
+  { d: circle([62, 28], 4.5), ink: "ridge" },
+];
 
-const plan: Scene = {
+/** The spot in the middle where the player stands. */
+const SPOT: Mark = { d: circle(MIDDLE, 9), ink: "context" };
+
+/** A clockwise arrow behind the player, turning right: from bearing 130 to 230 with its head at the end. */
+function turnArrow(): Mark[] {
+  const r = 15;
+  const end = 230;
+  const tip = polar(MIDDLE, end, r);
+  // The head's two barbs, back along the arc's direction at the tip (bearing end + 90).
+  const back = end + 90 + 180;
+  return [
+    { d: arc(MIDDLE, r, 130, end), ink: "context" },
+    { d: polyline([polar(tip, back - 40, 5), tip, polar(tip, back + 40, 5)]), ink: "context" },
+  ];
+}
+
+// Step 1 · Stand in the middle. The plan, the player on the spot in the
+// middle, the phone (hero) facing the far wall, its view lit.
+const FIRST = facing(0);
+const middle: Scene = {
+  marks: [beam(FIRST), ...rays(FIRST, "context"), ...ROOM_MARKS, SPOT, planPhone(FIRST, "hero")],
+};
+
+// Step 2 · Turn right, shoot again. The same plan one turn later: the first
+// photo's view still in place (its rays, back), the phone turned right by one
+// turn (hero, its view lit) so the two views share a third, and an arrow round
+// the spot turning clockwise.
+const SECOND = facing(TURN);
+const turn: Scene = {
   marks: [
-    beam(CORNER),
-    ...rays(DOOR, "context"),
-    ...rays(SHELF, "context"),
-    ...rays(CORNER, "context"),
-    // Walls, with the doorway as a gap in the near wall.
-    {
-      d: `M${DOOR_GAP.left} ${ROOM.bottom + WALL}H${ROOM.left - WALL}V${ROOM.top - WALL}H${ROOM.right + WALL}V${ROOM.bottom + WALL}H${DOOR_GAP.right}`,
-      ink: "back",
-      fade: "down",
-    },
-    { d: `M${DOOR_GAP.left} ${ROOM.bottom}H${ROOM.left}V${ROOM.top}H${ROOM.right}V${ROOM.bottom}H${DOOR_GAP.right}`, ink: "back", fade: "down" },
-    { d: `M${DOOR_GAP.left} ${ROOM.bottom}V${ROOM.bottom + WALL}M${DOOR_GAP.right} ${ROOM.bottom}V${ROOM.bottom + WALL}`, ink: "back", fade: "down" },
-    // The shelf on the busiest wall, its books end on.
-    { d: roundedRect({ x: 166, y: 158, width: 14, height: 76 }, 1.5), ink: "back", fill: "tag" },
-    { d: "M169 166H177M169 173H176M169 180H177M169 190H175M169 197H177M169 207H176M169 214H177M169 224H175", ink: "ridge" },
-    planPhone(DOOR, "back"),
-    planPhone(SHELF, "back"),
-    planPhone(CORNER, "hero"),
+    beam(SECOND),
+    ...rays(FIRST, "back"),
+    ...rays(SECOND, "context"),
+    ...ROOM_MARKS,
+    SPOT,
+    ...turnArrow(),
+    planPhone(SECOND, "hero"),
   ],
 };
 
-// Step 3 · Get one close view. Top down onto a desk corner (back, both edges
-// fading). An open notebook (mid) lies on it, its right page lit, a heading
-// and lines of writing on both pages; a key (back) lies beside it. The phone
-// is held flat and close above, at the same place as in steps 1 and 4.
-const desk: Scene = {
-  marks: [
-    // The desk's edges, the near one 11 below the phone.
-    { d: "M54 256C46.3 256 40 249.7 40 242V12", ink: "back", fade: "end" },
-    { d: "M54 256H198", ink: "back", fade: "end" },
-    // Notebook: left page, right page (lit), spine and writing.
-    { d: "M48 10C60 7.6 76 8.4 88 13.6V104C76 99.2 60 98.4 48 100.4Z", ink: "mid", fill: "void" },
-    { d: "M88 13.6C100 8.4 116 7.6 128 10V100.4C116 98.4 100 99.2 88 104Z", ink: "mid", fill: "panel" },
-    { d: "M56 26H80", ink: "text" },
-    { d: "M56 35H77M56 43H80M56 51H73M56 67H78M56 75H75", ink: "textDim" },
-    { d: "M96 26H120", ink: "text" },
-    { d: "M96 35H116M96 43H120M96 51H112", ink: "textDim" },
-    // Key: bow, hole, shaft and two teeth.
-    { d: circle([164, 32], 9), ink: "back", fill: "tag" },
-    { d: circle([164, 32], 2.6), ink: "ridge" },
-    { d: "M157.6 38.6L136.6 62.6M161 41.6L140 65.6M136.6 62.6C135.6 63.7 136 65.2 137.5 66.4C138.6 67.3 139.6 66.9 140 65.6", ink: "back" },
-    { d: "M144 59.2L148.4 63.1L151.2 59.9M149.8 52.9L153.6 56.2", ink: "back" },
-    ...heroPhone(HELD),
-  ],
+// Step 3 · All the way round. The phone held in front shows the camera's turn
+// dial on its screen: a ring with a stop for each photo, five taken (lit
+// dots), the next a dark ring, the turn toward it an arc. Behind the phone a
+// large clockwise arrow (back) goes round with the same six stops on it, its
+// head arriving back at the start.
+const ROUND: Point = [130, 112];
+const ROUND_R = 76;
+const DIAL: Point = [130, 172];
+const DIAL_R = 13;
+
+function roundArrow(): Mark[] {
+  const from = 20;
+  const end = 340;
+  const tip = polar(ROUND, end, ROUND_R);
+  const back = end + 90 + 180;
+  return [
+    { d: arc(ROUND, ROUND_R, from, end), ink: "back" },
+    { d: polyline([polar(tip, back - 35, 8), tip, polar(tip, back + 35, 8)]), ink: "back" },
+    // The six stops on it (the one under the phone is hidden by it).
+    ...[0, 60, 120, 180, 240, 300].map((deg): Mark => ({ d: circle(polar(ROUND, deg, ROUND_R), 3.5), ink: "back", fill: "tag" })),
+  ];
+}
+
+function dial(): Mark[] {
+  const stop = (deg: number) => polar(DIAL, deg, DIAL_R);
+  return [
+    { d: circle(DIAL, DIAL_R), ink: "back" },
+    // The turn so far, from the fifth stop toward the sixth.
+    { d: arc(DIAL, DIAL_R, 240, 286), ink: "mid" },
+    ...[0, 60, 120, 180, 240].map((deg): Mark => ({ d: circle(stop(deg), 2.6), ink: "mid", fill: "panel" })),
+    { d: circle(stop(300), 3.2), ink: "mid", fill: "tag" },
+    // "Photo 6 of 6" under it, as print.
+    { d: "M117 197H143", ink: "textDim" },
+  ];
+}
+
+const round: Scene = {
+  marks: [...roundArrow(), ...HAND_BEHIND, ...heroPhone(HELD), ...dial(), ...HAND_FRONT],
 };
 
 // Step 4 · Keep the case private. A bookcase (its silhouette and right side
@@ -250,4 +277,4 @@ const privacy: Scene = {
 };
 
 /** Steps 1 to 4, in order. */
-export const SCENES: readonly Scene[] = [doorway, plan, desk, privacy];
+export const SCENES: readonly Scene[] = [middle, turn, round, privacy];

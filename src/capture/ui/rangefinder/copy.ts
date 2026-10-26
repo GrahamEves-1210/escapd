@@ -2,8 +2,9 @@
 // (docs/DESIGN.md 02), in plain language: photos, Arabic numerals, "Review
 // your photos"; no film or darkroom words. Pure functions of the photos taken,
 // so the screen and its tests share one source. The photo prompts themselves
-// live in src/capture/slots.ts.
-import { MAX_PLATES, MIN_PLATES, promptFor } from "@/capture/slots";
+// live in src/capture/slots.ts: the 360's turns, or in retake mode the view
+// and where to aim.
+import { MAX_PLATES, MIN_PLATES, promptFor, retakePrompt } from "@/capture/slots";
 import type { LibraryImportProgress } from "@/capture/useLibraryImport";
 
 export const COPY = {
@@ -30,6 +31,8 @@ export const COPY = {
   lensMark: " ×",
   // A disabled shutter at 6 photos: it names the action without claiming a photo.
   shutterFull: "Take a photo",
+  // The turn dial: announced once a turn is far enough (the light tick's words).
+  turnReached: "Far enough. Take the photo.",
 } as const;
 
 /**
@@ -48,11 +51,31 @@ export interface RollPosition {
 const isFull = ({ index, retake }: RollPosition) => !retake && index >= MAX_PLATES;
 const takenOf = (at: RollPosition) => at.taken ?? Math.min(at.index, MAX_PLATES);
 
-/** Header title and subtitle: the photo's prompt, or the lines once 6 are taken. No "Retake." prefix: the counter carries it. */
+/**
+ * Header title and subtitle: the photo's turn prompt, or the lines once 6 are
+ * taken. In retake mode the turn prompts don't apply, so it names the view and
+ * where to aim ("Back right" / "From the middle, aim between photos 2 and 4.").
+ * No "Retake." prefix: the counter carries it.
+ */
 export function promptCopy(at: RollPosition): { title: string; detail: string } {
   if (isFull(at)) return { title: COPY.fullTitle, detail: COPY.fullDetail };
+  if (at.retake) return retakePrompt(at.index);
   const { title, detail } = promptFor(at.index);
   return { title, detail };
+}
+
+/**
+ * The turn dial's words: "Photo 2 of 6" for the photo about to be taken (the
+ * retaken one in retake mode), "6 of 6 taken" once all are. Its screen-reader
+ * label adds when a turn has gone far enough.
+ */
+export function turnCopy(at: RollPosition, shots: number, reached: boolean): { line: string; accessibilityLabel: string } {
+  if (isFull(at)) {
+    const line = `${takenOf(at)} of ${shots} taken`;
+    return { line, accessibilityLabel: `${line}, all the way round.` };
+  }
+  const line = `Photo ${promptFor(at.index).numeral} of ${shots}`;
+  return { line, accessibilityLabel: reached ? `${line}. ${COPY.turnReached}` : `${line}.` };
 }
 
 /**
@@ -68,11 +91,11 @@ export function counterCopy(at: RollPosition): { current: number; numeral: strin
   return { current, numeral, solo: false, accessibilityLabel: `Next: photo ${numeral}. ${takenOf(at)} of ${MAX_PLATES} photos taken.` };
 }
 
-/** "Take photo 3, The busiest wall"; "Retake photo 2, Opposite corner" in retake mode. */
+/** "Take photo 3, Keep turning"; "Retake photo 2, Front right" in retake mode (the view's name). */
 export function shutterLabel(at: RollPosition): string {
   if (isFull(at)) return COPY.shutterFull;
-  const { numeral, title } = promptFor(at.index);
-  return `${at.retake && !at.filling ? "Retake" : "Take"} photo ${numeral}, ${title}`;
+  const { numeral } = promptFor(at.index);
+  return `${at.retake && !at.filling ? "Retake" : "Take"} photo ${numeral}, ${promptCopy(at).title}`;
 }
 
 const photos = (count: number) => `${count} ${count === 1 ? "photo" : "photos"}`;

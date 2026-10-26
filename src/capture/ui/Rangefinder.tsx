@@ -14,10 +14,14 @@
 // its ground, raised buttons and inks, the counter's numeral and the way-on
 // ring in the mode's stamp colour, and the last photo in the mode's baked
 // treatment. The live feed itself is never treated.
+// The player turns all the way round the room, a photo at each stop: the
+// lens sets how far (src/capture/turn.ts, the ultra-wide by default where the
+// phone has one) and the turn dial on the feed shows the stops and, where the
+// phone's motion can be read, how far the player has turned.
 // Feedback: the shutter cue (a thud and the shutter's sound) as it fires,
 // error on a failed shot, success when the 6th photo fills the set, tick on
-// flash, grid and lens changes, press on the square buttons and the
-// thumbnail (inside those components).
+// flash, grid and lens changes and when a turn is far enough, press on the
+// square buttons and the thumbnail (inside those components).
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -34,18 +38,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
 import { addPlate, firstOpenSlot, getPlates, replacePlate, usePlates, useSlots } from "@/capture/roll";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
+import { turnPlan } from "@/capture/turn";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { motion, ref } from "@/theme/tokens";
 import { useCapturePalette } from "./palette";
 import { ControlRow } from "./rangefinder/ControlRow";
-import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy } from "./rangefinder/copy";
+import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "./rangefinder/copy";
 import { Header, type PromptSubtitle } from "./rangefinder/Header";
 import { LastPlate } from "./rangefinder/LastPlate";
 import { PlateCounter } from "./rangefinder/PlateCounter";
 import { Shutter } from "./rangefinder/Shutter";
 import { SQUARE_SLOP } from "./rangefinder/SquareButton";
+import { TurnDial } from "./rangefinder/TurnDial";
 import { useLenses } from "./rangefinder/useLenses";
 import { Viewfinder, viewfinderLayout } from "./rangefinder/Viewfinder";
 import type { RangefinderProps } from "./types";
@@ -111,6 +117,14 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     : { index: nextIndex, retake, filling, taken: plates.length };
   const headline = promptCopy(at);
   const counter = counterCopy(at);
+
+  // The 360 for the lens in use. Live turn tracking only between photos of
+  // one turn: not before photo 1, in retake mode, while busy or once full.
+  const plan = turnPlan(lenses.choice);
+  const turnTarget = full ? null : Math.min(at.index, plan.shots - 1);
+  const turnActive = live && !retake && !full && !busy && nextIndex > 0;
+  const taken = Array.from({ length: plan.shots }, (_, i) => slots[i] != null);
+  const onTurned = feedback.tick;
 
   // Waits under ~1 s show nothing more; past it the thinking line takes the subtitle slot.
   const showThinking = useShowAfter(busy, L.thinkingDelay);
@@ -269,6 +283,19 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             selectedLens={lenses.selectedLens}
             grid={grid}
             note={!retake && plates.length === 0}
+            overlay={
+              <TurnDial
+                shots={plan.shots}
+                step={plan.step}
+                taken={taken}
+                target={turnTarget}
+                active={turnActive}
+                resetKey={`${nextIndex}:${plates.length}`}
+                line={turnCopy(at, plan.shots, false).line}
+                accessibilityLabel={(reached) => turnCopy(at, plan.shots, reached).accessibilityLabel}
+                onReached={onTurned}
+              />
+            }
             onCameraReady={onCameraReady}
             onMountError={() => setMountFailed(true)}
             onAvailableLensesChanged={lenses.onChanged}

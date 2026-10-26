@@ -234,7 +234,7 @@ describe("Ask the informant", () => {
     // Close slides the sheet away first (DarkSheet), then it closes.
     await waitFor(() => expect(screen.queryByTestId("informant-hint", { includeHiddenElements: true })).toBeNull());
     // The safe is on view 2.
-    await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", { nativeEvent: { actionName: "increment" } });
+    await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", { nativeEvent: { actionName: "increment" } });
     await layoutScene();
     mocked.submitAction.mockResolvedValueOnce({
       outcome: "invalid", reason: "cooldown", message: "Code entry is paused for a few minutes.", retry_after: new Date(Date.now() + 60_000).toISOString(),

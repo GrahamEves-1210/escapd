@@ -1,5 +1,5 @@
 // The photos for this room, by slot. Each photo keeps its slot (its index in
-// PLATE_PROMPTS, so "2 · Opposite corner" always holds the opposite corner)
+// PLATE_PROMPTS, so "3 · Back right" always holds the view back to the right)
 // for life: removing one leaves its slot open instead of sliding the others
 // down, a retake replaces in place, and the camera's next shot fills the first
 // open slot. Photos live in memory for the session so the camera and the

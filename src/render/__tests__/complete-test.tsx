@@ -3,7 +3,7 @@
 // scene's accused under GUILTY, paranormal's "The presence is gone." with the
 // room in full colour. Then the victory moment's stats (only the session's
 // own numbers), the magnifier rating and the `stamp` then `solved` cues.
-import { StyleSheet } from "react-native";
+import { Dimensions, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as api from "@/lib/escapd-api";
@@ -70,7 +70,7 @@ describe("Case closed: The Study (noir)", () => {
     expect(screen.getByTestId("closed-stamp")).toBeTruthy();
     expect(within(folder).getByTestId("closed-stamp")).toBeTruthy();
     expect(flat(screen.getByTestId("closed-stamp-frame"))).toMatchObject({ borderColor: NOIR.stamp, borderWidth: P.stamp.borderLarge });
-    expect(flat(screen.getByText("Case closed"))).toMatchObject({ ...P.type.stampLarge, color: NOIR.stamp });
+    expect(flat(screen.getByText("Case closed"))).toMatchObject({ ...P.type.stampMedium, color: NOIR.stamp });
     // The case's name typed on the folder's paper label, in Playfair.
     const title = screen.getByText("The Study");
     expect(title.props.accessibilityRole).toBe("header");
@@ -196,7 +196,7 @@ describe("Case closed: custom rooms", () => {
     expect(flat(screen.getByTestId("case-closed-crime_scene"))).toMatchObject({ backgroundColor: CRIME.ground });
     // The card is one element for screen readers: it speaks the verdict its stamp shows.
     expect(screen.getByTestId("closed-accused").props.accessibilityLabel).toMatch(/^Guilty\. Ivy Marsh, The housekeeper\./);
-    expect(flat(screen.getByText("Guilty", hidden))).toMatchObject({ ...P.type.stampLarge, color: CRIME.stamp });
+    expect(flat(screen.getByText("Guilty", hidden))).toMatchObject({ ...P.type.stampMedium, color: CRIME.stamp });
     // GUILTY takes CASE CLOSED's place.
     expect(screen.queryByTestId("closed-stamp")).toBeNull();
     expect(flat(screen.getByText("The Poisoned Toast"))).toMatchObject({ ...C.title, color: CRIME.ink });
@@ -269,5 +269,104 @@ describe("Case closed: custom rooms", () => {
       expect(capture).toHaveBeenLastCalledWith({ genre, replace: true });
       await screen.unmount();
     }
+  });
+});
+
+// One screen with no scroll: every part of case closed, its actions included,
+// fits an iPhone SE (375 x 667, 20 safe top, no bottom inset) at the default
+// text size, in every mode, with all three stats and the rating. Jest has no
+// layout engine, so this adds the compact layout up from the tokens (the
+// case at its compact size: the folder's padding, the accused card's padding,
+// the room at photo.min), with room for two lines of message, and checks the
+// screen draws those parts and lets the case grow only into spare height.
+describe("Case closed: fits one screen", () => {
+  const ROOM = "c0220000-0000-4000-8000-000000000022";
+  const SE = { width: 375, height: 667, top: 20, bottom: 0 };
+  const T = ref.type;
+  const B = ref.button;
+  const S = ref.space;
+  const stamp = P.type.stampMedium.lineHeight + 2 * (P.stamp.padYLarge + P.stamp.borderLarge);
+  const caseStamp = stamp + 2 * C.stamp.room;
+  const folder = C.folder.tabHeight + 2 * C.folder.pad + 2 * C.folder.label.padY + C.title.lineHeight + S.sm + caseStamp;
+  // The accused: name, role, a two-line alibi, then GUILTY in its band.
+  const accused = 2 * C.accused.padY + 2 * P.hairline + (CRIME.display.lineHeight ?? 0) + S.xs + T.meta.lineHeight + S.xs + S.xs + 2 * P.type.hint.lineHeight
+    + P.stamp.tiltRoom + stamp;
+  const message = 2 * P.type.body.lineHeight + C.gap.exit + T.subtitle.lineHeight;
+  const stats = 2 * C.stat.padY + C.statValue.lineHeight + C.stat.gap + T.meta.lineHeight;
+  const rating = Math.max(T.meta.lineHeight, C.rating.size);
+  const actions = (next: boolean) =>
+    C.actions.pad + (next ? P.type.hint.lineHeight + S.sm : 0) + B.ghost.height + 2 * (S.sm + B.quiet.height) + S.ctaBottom + SE.bottom;
+  const column = (parts: number[]) =>
+    2 * C.pad + parts.reduce((a, b) => a + b, 0) + (parts.length - 1) * C.gap.head + C.gap.card + stats + C.gap.card + rating;
+  const screenHeight = (parts: number[], next = false) => SE.top + column(parts) + actions(next);
+
+  let window: ReturnType<typeof Dimensions.get>;
+  beforeEach(() => {
+    window = Dimensions.get("window");
+    Dimensions.set({ window: { ...window, width: SE.width, height: SE.height, fontScale: 1 } });
+  });
+  afterEach(() => {
+    Dimensions.set({ window });
+  });
+
+  /** The parts the screen draws, and the ones the budget counts. */
+  async function drawn() {
+    expect(await screen.findByLabelText(/^Time:/)).toBeTruthy();
+    expect(screen.getAllByLabelText(/^(Time|Tips taken|Wrong \w+|Missteps): /)).toHaveLength(3);
+    expect(screen.getByLabelText(/^Rating: /)).toBeTruthy();
+    for (const id of ["closed-stats", "closed-actions"]) expect(screen.getByTestId(id)).toBeTruthy();
+  }
+
+  it("The Study (noir): the folder, the messages, three stats, the rating and the band with its closing line", async () => {
+    await render(<TutorialCompleteScreen />);
+    await drawn();
+    expect(screen.getByText("The next case is your own room.")).toBeTruthy();
+    expect(screenHeight([folder, message], true)).toBeLessThanOrEqual(SE.height);
+    // The folder grows into spare height only, up to folder.max.
+    expect(flat(screen.getByTestId("closed-folder"))).toMatchObject({ flexGrow: 1 });
+    expect(folder).toBeLessThanOrEqual(C.folder.max);
+  });
+
+  it("noir, a custom room: the same, with Replay the case", async () => {
+    params.mockReturnValue({ roomId: "noir-room", genre: "noir", title: "The Second Drawer", message: "The drawer slides open on a letter.", exit: "Case closed." });
+    await render(<PlayCompleteScreen />);
+    await drawn();
+    expect(screen.getByLabelText("Replay the case")).toBeTruthy();
+    expect(screenHeight([folder, message])).toBeLessThanOrEqual(SE.height);
+  });
+
+  it("crime scene: the accused's card under GUILTY, the case's name, the messages, three stats, the rating and the band", async () => {
+    stashClosedCase({ roomId: ROOM, genre: "crime_scene", title: "The Poisoned Toast", accused: crimeCase().puzzles.at(-1)!.suspects![0] });
+    params.mockReturnValue({ roomId: ROOM, genre: "crime_scene", title: "The Poisoned Toast", message: "Ivy did it.", exit: "The case is closed.", suspect: "s_ivy" });
+    await render(<PlayCompleteScreen />);
+    await drawn();
+    expect(screenHeight([accused, C.title.lineHeight, message])).toBeLessThanOrEqual(SE.height);
+    expect(accused).toBeLessThanOrEqual(C.accused.max);
+    expect(flat(screen.getByTestId("closed-accused"))).toMatchObject({ flexGrow: 1, paddingVertical: C.accused.padY });
+  });
+
+  it("paranormal: the room with \"The presence is gone.\" on it, CASE CLOSED, the name, the messages, three stats, the rating and the band", async () => {
+    stashClosedCase({ roomId: ROOM, genre: "paranormal", title: "The Cold Room", photo: 7 });
+    params.mockReturnValue({ roomId: ROOM, genre: "paranormal", title: "The Cold Room", message: "The air warms.", exit: "The door gives." });
+    await render(<PlayCompleteScreen />);
+    await drawn();
+    // The gone line sits on the room, so it takes no height of its own.
+    expect(within(screen.getByTestId("closed-room")).getByText("The presence is gone.")).toBeTruthy();
+    expect(screenHeight([C.photo.min, caseStamp, C.title.lineHeight, message])).toBeLessThanOrEqual(SE.height);
+    // The room takes the spare height, from photo.min up to the column's width at its aspect.
+    expect(flat(screen.getByTestId("closed-room"))).toMatchObject({
+      flexGrow: 1,
+      minHeight: C.photo.min,
+      maxHeight: (SE.width - 2 * C.inset) / C.photo.aspect,
+    });
+    // The gone line's pill fits the smallest room.
+    expect(P.type.gone.lineHeight + 2 * P.gone.padY).toBeLessThan(C.photo.min);
+  });
+
+  it("the actions keep their size: the guide's pill and quiet pills, at least 44 tall", async () => {
+    await render(<TutorialCompleteScreen />);
+    expect(flat(screen.getByTestId("complete-capture")).minHeight).toBe(B.ghost.height);
+    expect(flat(screen.getByTestId("complete-mode")).minHeight).toBe(B.quiet.height);
+    expect(Math.min(B.ghost.height, B.quiet.height)).toBeGreaterThanOrEqual(ref.hit.min);
   });
 });

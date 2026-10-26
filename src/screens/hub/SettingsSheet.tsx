@@ -3,8 +3,10 @@
 // up on ref.motion.sheetRise with no spring, 40 pt top corners, Close
 // concentric with the corner, focus to the title, VoiceOver trapped), holding
 // grouped rows in the review screen's list style: a Bold 14 section heading
-// over a raised panel with 8 pt corners, rows at least 52 tall split by rim
-// lines. Only settings that work today:
+// over a raised panel with 8 pt corners, rows at least 48 tall split by rim
+// lines, each detail one short line. It may grow to just under the safe top,
+// so every row fits with no scroll on an iPhone SE at the default text size
+// (large text scrolls). Only settings that work today:
 // - Gameplay: Show interactives and Case clock (local, AsyncStorage), Sound
 //   (the server's sound_enabled, which the sound player honours) and
 //   Haptics (the server's haptics_enabled, which useFeedback honours).
@@ -15,7 +17,8 @@
 //   /tutorial again.
 // - Account: "Add your email" for a guest (to /account), or the signed-in
 //   email as a plain value; ESCAPD Pro (to /pro).
-// - About: the app's version.
+// - The app's version: the sheet's grey meta line under its title (a failed
+//   save's note takes its place while it shows).
 // A server-backed switch shows its new value at once and saves in the
 // background (signing a new player in as a guest first, as THE STUDY does,
 // since settings live on the account); if saving fails it flips back and a
@@ -27,8 +30,9 @@
 // kit's, which presses too.
 // Render it conditionally: it animates in on mount and out on unmount.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Switch, Text, View, useWindowDimensions } from "react-native";
 import Constants from "expo-constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
 import { DarkSheet, FocusRing, useFocusRing, useSheetClose } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
@@ -40,28 +44,28 @@ import type { StudyEntry } from "./caseStatus";
 const H = ref.layout.hub;
 const S = H.settings;
 
-// Every word in the sheet. Plain and calm; no darkroom words.
+// Every word in the sheet. Plain and calm; no darkroom words. Each detail is
+// one line beside a switch on an iPhone SE (settings.detailMax characters at most).
 export const COPY = {
   title: "Settings",
   gameplay: "Gameplay",
   interactives: "Show interactives",
-  interactivesDetail: "Keep the marks on objects you can use visible.",
+  interactivesDetail: "Keep marks on things you can use.",
   replayStudy: "Replay The Study",
   replayStudyDetail: "The first case, from the top.",
   caseClock: "Case clock",
-  caseClockDetail: "Show how long you've been on a case.",
+  caseClockDetail: "Your time on a case, as you play.",
   sound: "Sound",
-  soundDetail: "Room tone and the click of locks. Follows your silent switch.",
+  soundDetail: "Room tone and the click of locks.",
   haptics: "Haptics",
-  hapticsDetail: "A light tap when you press or find something.",
+  hapticsDetail: "A light tap as you press or find.",
   accessibility: "Accessibility",
   reduceMotion: "Reduce motion",
-  reduceMotionDetail: "Fades in place of slides and sweeps.",
+  reduceMotionDetail: "Fades in place of slides.",
   account: "Account",
   addEmail: "Add your email",
   email: "Email",
   pro: "ESCAPD Pro",
-  about: "About",
   version: "Version",
   offline: "Couldn't save that while offline. It's back as it was.",
   failed: "Couldn't save that just now. It's back as it was.",
@@ -147,83 +151,84 @@ export function SettingsSheet({ onClose, onOpen, study = null }: SettingsSheetPr
     }
   };
   const shown = (key: ServerSetting) => pending[key] ?? prefs[key];
+  // Up to S.top under the safe top: room for every row on an iPhone SE.
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const maxHeight = height - insets.top - S.top;
 
   return (
     <DarkSheet
       title={COPY.title}
-      meta={note ?? undefined}
+      meta={note ?? (VERSION ? `${COPY.version} ${VERSION}` : undefined)}
       onClose={onClose}
-      maxHeight={S.maxHeight}
+      maxHeight={maxHeight}
       testID="hub-sheet"
       closeTestID="hub-sheet-close"
     >
-      <Section title={COPY.gameplay}>
-        <SwitchRow
-          label={COPY.interactives}
-          detail={COPY.interactivesDetail}
-          value={prefs.hotspotAssist}
-          onChange={(on) => {
-            feedback.tick();
-            prefs.setHotspotAssist(on);
-          }}
-          testID="hub-show-interactives"
-        />
-        <SwitchRow
-          label={COPY.caseClock}
-          detail={COPY.caseClockDetail}
-          value={prefs.caseClock}
-          onChange={(on) => {
-            feedback.tick();
-            prefs.setCaseClock(on);
-          }}
-          testID="hub-case-clock"
-        />
-        <SwitchRow
-          label={COPY.sound}
-          detail={COPY.soundDetail}
-          value={shown("sound_enabled")}
-          onChange={(on) => {
-            save("sound_enabled", on);
-          }}
-          testID="hub-sound"
-        />
-        <SwitchRow
-          label={COPY.haptics}
-          detail={COPY.hapticsDetail}
-          value={shown("haptics_enabled")}
-          onChange={(on) => {
-            save("haptics_enabled", on);
-          }}
-          testID="hub-haptics"
-        />
-        {study === "replay" ? (
-          <LinkRow label={COPY.replayStudy} detail={COPY.replayStudyDetail} onPress={() => onOpen("/tutorial")} testID="hub-replay-study" />
-        ) : null}
-      </Section>
-      <Section title={COPY.accessibility}>
-        <SwitchRow
-          label={COPY.reduceMotion}
-          detail={COPY.reduceMotionDetail}
-          value={shown("reduced_motion")}
-          onChange={(on) => {
-            save("reduced_motion", on);
-          }}
-          testID="hub-reduce-motion"
-        />
-      </Section>
-      <Section title={COPY.account}>
-        {email ? (
-          <ValueRow label={COPY.email} value={email} testID="hub-email" />
-        ) : (
-          <LinkRow label={COPY.addEmail} onPress={() => onOpen("/account")} testID="hub-account" />
-        )}
-        <LinkRow label={COPY.pro} onPress={() => onOpen("/pro")} testID="hub-pro" />
-      </Section>
-      {VERSION ? (
-        <Section title={COPY.about}>
-          <ValueRow label={COPY.version} value={VERSION} testID="hub-version" />
+      <View style={styles.sections}>
+        <Section title={COPY.gameplay}>
+          <SwitchRow
+            label={COPY.interactives}
+            detail={COPY.interactivesDetail}
+            value={prefs.hotspotAssist}
+            onChange={(on) => {
+              feedback.tick();
+              prefs.setHotspotAssist(on);
+            }}
+            testID="hub-show-interactives"
+          />
+          <SwitchRow
+            label={COPY.caseClock}
+            detail={COPY.caseClockDetail}
+            value={prefs.caseClock}
+            onChange={(on) => {
+              feedback.tick();
+              prefs.setCaseClock(on);
+            }}
+            testID="hub-case-clock"
+          />
+          <SwitchRow
+            label={COPY.sound}
+            detail={COPY.soundDetail}
+            value={shown("sound_enabled")}
+            onChange={(on) => {
+              save("sound_enabled", on);
+            }}
+            testID="hub-sound"
+          />
+          <SwitchRow
+            label={COPY.haptics}
+            detail={COPY.hapticsDetail}
+            value={shown("haptics_enabled")}
+            onChange={(on) => {
+              save("haptics_enabled", on);
+            }}
+            testID="hub-haptics"
+          />
+          {study === "replay" ? (
+            <LinkRow label={COPY.replayStudy} detail={COPY.replayStudyDetail} onPress={() => onOpen("/tutorial")} testID="hub-replay-study" />
+          ) : null}
         </Section>
-      ) : null}
+        <Section title={COPY.accessibility}>
+          <SwitchRow
+            label={COPY.reduceMotion}
+            detail={COPY.reduceMotionDetail}
+            value={shown("reduced_motion")}
+            onChange={(on) => {
+              save("reduced_motion", on);
+            }}
+            testID="hub-reduce-motion"
+          />
+        </Section>
+        <Section title={COPY.account}>
+          {email ? (
+            <ValueRow label={COPY.email} value={email} testID="hub-email" />
+          ) : (
+            <LinkRow label={COPY.addEmail} onPress={() => onOpen("/account")} testID="hub-account" />
+          )}
+          <LinkRow label={COPY.pro} onPress={() => onOpen("/pro")} testID="hub-pro" />
+        </Section>
+      </View>
     </DarkSheet>
   );
 }
@@ -345,6 +350,8 @@ function ValueRow({ label, value, testID }: { label: string; value: string; test
 }
 
 const styles = StyleSheet.create({
+  // The sheet's content spaces its children ref.space.xl apart; these sections sit closer.
+  sections: { gap: S.section },
   heading: { ...S.heading, color: ref.color.textPrimary, marginBottom: S.headingGap },
   group: { backgroundColor: S.fill, borderRadius: S.radius, ...ref.curve },
   divider: { height: H.hairline, marginLeft: S.pad, backgroundColor: S.divider },
@@ -354,11 +361,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: S.gap,
     paddingHorizontal: S.pad,
-    paddingVertical: ref.space.sm,
+    paddingVertical: S.padY,
   },
   pressed: { opacity: S.pressedOpacity },
   // The label column wraps at large text; the switch, chevron and value keep their size.
-  rowText: { flex: 1, gap: ref.space.xs },
+  rowText: { flex: 1, gap: S.detailGap },
   label: { ...T.body, color: ref.color.textPrimary },
   detail: { ...T.meta, color: ref.color.textSecondary },
   value: { ...T.body, color: ref.color.textSecondary, flexShrink: 1 },

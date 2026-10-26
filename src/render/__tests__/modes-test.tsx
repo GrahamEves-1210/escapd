@@ -88,7 +88,7 @@ async function layoutScene() {
 }
 
 async function goToView(n: number) {
-  for (let i = 0; i < n; i++) await fireEvent(screen.getByTestId("view-dots"), "accessibilityAction", action("increment"));
+  for (let i = 0; i < n; i++) await fireEvent(screen.getByTestId("view-wheel"), "accessibilityAction", action("increment"));
   await layoutScene();
 }
 

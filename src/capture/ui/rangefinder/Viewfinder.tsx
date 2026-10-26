@@ -3,8 +3,9 @@
 // shadow or overlay, a hard edge against the ground. The box is exactly 3:4,
 // fitted by containBox into the space the header and the control row leave,
 // so it shrinks before any text does. Over the feed, ESCAPD's own: the
-// framing grid (when on) and the privacy note until plate I.
-import type { RefObject } from "react";
+// framing grid (when on), the turn dial at the top (`overlay`, TurnDial.tsx)
+// and the privacy note at the foot until photo 1.
+import type { ReactNode, RefObject } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { CameraView, type AvailableLenses, type CameraMountError, type FlashMode } from "expo-camera";
 import Animated, { FadeOut, ReduceMotion, useAnimatedStyle } from "react-native-reanimated";
@@ -41,6 +42,8 @@ export interface ViewfinderProps {
   grid: boolean;
   /** The privacy note, shown until plate I and never in retake mode. */
   note: boolean;
+  /** Drawn over the feed and the grid, before the note: the turn dial. */
+  overlay?: ReactNode;
   onCameraReady: () => void;
   onMountError: (event: CameraMountError) => void;
   onAvailableLensesChanged: (event: AvailableLenses) => void;
@@ -53,6 +56,7 @@ export function Viewfinder({
   selectedLens,
   grid,
   note,
+  overlay,
   onCameraReady,
   onMountError,
   onAvailableLensesChanged,
@@ -80,6 +84,7 @@ export function Viewfinder({
         />
       </View>
       <FramingGrid visible={grid} width={layout.width} height={layout.height} />
+      {overlay}
       {note ? (
         <Animated.View exiting={NOTE_EXIT} style={styles.noteSlot}>
           <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">

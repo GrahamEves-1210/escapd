@@ -2,10 +2,10 @@
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
-import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
+import { AccessibilityInfo, BackHandler, Dimensions, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { act, fireEvent, render, screen, userEvent, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent, waitFor, within } from "@testing-library/react-native";
 import { router } from "expo-router";
 import { openCapture } from "@/capture/openCapture";
 import { getMode, setMode } from "@/game/mode";
@@ -600,7 +600,7 @@ describe("01 · Home: Settings", () => {
       borderTopLeftRadius: ref.radius.bottomSheet,
       borderColor: ref.color.rim,
     });
-    for (const name of ["Gameplay", "Accessibility", "Account", "About"]) {
+    for (const name of ["Gameplay", "Accessibility", "Account"]) {
       expect(styleOf(screen.getByRole("header", { name }))).toMatchObject({ ...H.settings.heading, color: ref.color.textPrimary });
     }
     const interactives = screen.getByRole("switch", { name: "Show interactives" });
@@ -618,7 +618,9 @@ describe("01 · Home: Settings", () => {
     expect(screen.getByRole("switch", { name: "Reduce motion" }).props.accessibilityState).toMatchObject({ checked: false });
     expect(screen.getByRole("button", { name: "Add your email" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "ESCAPD Pro" })).toBeTruthy();
-    expect(screen.getByLabelText(/^Version, \S+/)).toBeTruthy();
+    // The version is the sheet's grey meta line under its title.
+    expect(styleOf(screen.getByText(/^Version \S+$/))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
+    expect(screen.queryByRole("header", { name: "About" })).toBeNull();
 
     await fireEvent.press(interactives);
     expect(mockPreferences.setHotspotAssist).toHaveBeenCalledWith(true);
@@ -627,6 +629,51 @@ describe("01 · Home: Settings", () => {
     // Close slides the sheet away, then it unmounts.
     await fireEvent.press(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
+  });
+
+  it("Settings fits every row with no scroll on an iPhone SE at the default text size, with Replay The Study", async () => {
+    // 375 x 667, 20 safe top. Jest has no layout engine: the rows the sheet draws are added up from the tokens.
+    const SE = { width: 375, height: 667, top: 20, bottom: 0 };
+    const window = Dimensions.get("window");
+    Dimensions.set({ window: { ...window, width: SE.width, height: SE.height, fontScale: 1 } });
+    try {
+      player({ tutorial: "completed" });
+      await renderHub();
+      await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+      const sheet = screen.getByTestId("hub-sheet");
+      const S = H.settings;
+      // The sheet may grow to S.top under the safe top (the test's safe area is 0).
+      expect(styleOf(sheet).maxHeight).toBe(SE.height - S.top);
+      const room = SE.height - SE.top - S.top;
+
+      const sections = within(sheet).getAllByRole("header").length - 1;
+      const rows = [
+        ...within(sheet).getAllByRole("switch"),
+        ...within(sheet).getAllByRole("button").filter((b) => b.props.accessibilityLabel !== "Close"),
+      ];
+      expect(rows.map((r) => r.props.accessibilityLabel)).toContain("Replay The Study");
+      expect(rows).toHaveLength(8);
+      expect(sections).toBe(3);
+      const details = rows.map((r) => r.props.accessibilityHint as string | undefined).filter(Boolean) as string[];
+      // Each detail is one line beside a switch on the SE.
+      for (const detail of details) expect(detail.length).toBeLessThanOrEqual(S.detailMax);
+      for (const row of rows) expect(styleOf(row).minHeight).toBeGreaterThanOrEqual(ref.hit.min);
+
+      const T = ref.type;
+      const chip = ref.button.chip;
+      // DarkSheet: Close's hit box sits ref.radius.bottomSheet - chip.size / 2 - (hit - size) / 2 below the top; the
+      // content has ref.space.sm above and below; ref.space.lg (over the bottom inset) under it.
+      const header = ref.radius.bottomSheet - chip.size / 2 - (chip.hit - chip.size) / 2
+        + Math.max(chip.hit, T.headline.lineHeight + ref.space.xs + T.meta.lineHeight);
+      const detailRow = Math.max(S.rowHeight, 2 * S.padY + T.body.lineHeight + S.detailGap + T.meta.lineHeight);
+      const plainRow = Math.max(S.rowHeight, 2 * S.padY + T.body.lineHeight);
+      const height = header + 2 * ref.space.sm + ref.space.lg + SE.bottom
+        + sections * (S.heading.lineHeight + S.headingGap) + (sections - 1) * S.section
+        + details.length * detailRow + (rows.length - details.length) * plainRow + (rows.length - sections) * H.hairline;
+      expect(height).toBeLessThanOrEqual(room);
+    } finally {
+      Dimensions.set({ window });
+    }
   });
 
   it("Settings saves Haptics and Reduce motion to the account, showing the new value at once, and flips back calmly if saving fails", async () => {

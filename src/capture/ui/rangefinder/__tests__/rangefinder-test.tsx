@@ -11,7 +11,7 @@ import { MAX_PLATES, PLATE_PROMPTS } from "@/capture/slots";
 import { setMode } from "@/game/mode";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import { Rangefinder } from "../../Rangefinder";
-import { COPY, counterCopy, libraryError, thinkingCopy } from "../copy";
+import { COPY, counterCopy, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "../copy";
 import { ULTRA_WIDE_LENS } from "../useLenses";
 import { viewfinderLayout } from "../Viewfinder";
 
@@ -110,11 +110,11 @@ beforeEach(() => {
 describe("Rangefinder: camera starting", () => {
   it("opens on plate I with the controls that need the camera dimmed, and back and library live", async () => {
     await renderCamera();
-    expect(prompt()).toBe("From the doorway. Wide. Include the floor and two walls.");
+    expect(prompt()).toBe("Start here. Stand in the middle. Face any wall.");
     expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
     expect(screen.getByText("1", hidden)).toBeTruthy();
     expect(screen.getByText(COPY.privacy)).toBeTruthy();
-    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, From the doorway" }))).toMatchObject({ disabled: true });
+    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, Start here" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: true, checked: false });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: true, checked: false });
     expect(stateOf(screen.getByRole("button", { name: "Close the camera" })).disabled).toBeFalsy();
@@ -149,7 +149,7 @@ describe("Rangefinder: ready", () => {
   it("brings the shutter, flash and grid live", async () => {
     await renderCamera();
     await cameraReady();
-    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, From the doorway" }))).toMatchObject({ disabled: false, busy: false });
+    expect(stateOf(screen.getByRole("button", { name: "Take photo 1, Start here" }))).toMatchObject({ disabled: false, busy: false });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: false });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: false });
   });
@@ -168,28 +168,42 @@ describe("Rangefinder: ready", () => {
     expect(mockFeedback.tick).toHaveBeenCalledTimes(3);
   });
 
-  it("offers 0.5x only when the lens list reports an ultra-wide, defaulting to 1x", async () => {
+  it("offers 0.5x only when the lens list reports an ultra-wide, and starts on it", async () => {
     camera.getAvailableLensesAsync.mockResolvedValue([
       { deviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera", localizedName: "Back Camera" },
       { deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" },
     ]);
     await renderCamera();
     expect(screen.queryByRole("radio")).toBeNull();
+    // Before the list arrives: the main lens.
+    expect(cameraProps().selectedLens).toBeUndefined();
     await cameraReady();
     expect(screen.getByTestId("lens").props).toMatchObject({ accessibilityRole: "radiogroup", accessibilityLabel: "Lens" });
-    expect(stateOf(screen.getByRole("radio", { name: "Main lens" }))).toMatchObject({ selected: true });
-    expect(stateOf(screen.getByRole("radio", { name: "Ultra-wide lens" }))).toMatchObject({ selected: false });
+    // The 360 goes round best on the ultra-wide, so it is the default.
+    expect(stateOf(screen.getByRole("radio", { name: "Ultra-wide lens" }))).toMatchObject({ selected: true });
+    expect(stateOf(screen.getByRole("radio", { name: "Main lens" }))).toMatchObject({ selected: false });
+    expect(cameraProps().selectedLens).toBe(ULTRA_WIDE_LENS);
     expect(screen.getByText("0.5")).toBeTruthy();
     expect(screen.getByText("1.0")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("radio", { name: "Ultra-wide lens" }));
-    expect(cameraProps().selectedLens).toBe(ULTRA_WIDE_LENS);
-    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
-    // The lens already chosen: nothing moves, so no tick.
-    await fireEvent.press(screen.getByRole("radio", { name: "Ultra-wide lens" }));
-    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    // The default is not a change: no tick.
+    expect(mockFeedback.tick).not.toHaveBeenCalled();
+    // The player can still switch, and back.
     await fireEvent.press(screen.getByRole("radio", { name: "Main lens" }));
     expect(cameraProps().selectedLens).toBeUndefined();
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    // The lens already chosen: nothing moves, so no tick.
+    await fireEvent.press(screen.getByRole("radio", { name: "Main lens" }));
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("radio", { name: "Ultra-wide lens" }));
+    expect(cameraProps().selectedLens).toBe(ULTRA_WIDE_LENS);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays on 1x where the phone reports no ultra-wide", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera", localizedName: "Back Camera" }]);
+    await renderCamera();
+    await cameraReady();
+    expect(cameraProps().selectedLens).toBeUndefined();
   });
 
   it("keeps the centre slot empty without an ultra-wide lens", async () => {
@@ -204,7 +218,7 @@ describe("Rangefinder: capture", () => {
   it("takes, re-encodes and keeps the plate, then advances the prompt, counter and thumbnail", async () => {
     await renderCamera();
     await cameraReady();
-    await fireEvent.press(screen.getByRole("button", { name: "Take photo 1, From the doorway" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Take photo 1, Start here" }));
     await flush();
     expect(camera.takePictureAsync).toHaveBeenCalledWith({ quality: 0.92, exif: false });
     // The shutter firing: one shutter cue, nothing stacked on it.
@@ -213,14 +227,14 @@ describe("Rangefinder: capture", () => {
     expect(mockFeedback.success).not.toHaveBeenCalled();
     expect(develop).toHaveBeenCalledWith(raw("shot"));
     expect(getPlates().map((p) => p.uri)).toEqual(["file://plate-shot.jpg"]);
-    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
     expect(counter()).toBe("Next: photo 2. 1 of 6 photos taken.");
-    expect(screen.getByRole("button", { name: "Take photo 2, Opposite corner" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Take photo 2, Turn right a little" })).toBeTruthy();
     expect(thumbnailUri()).toBe("file://plate-shot.jpg");
     // The privacy note is only for plate I.
     expect(screen.queryByText(COPY.privacy)).toBeNull();
     // Jest runs as iOS, which has no live regions: the new prompt is announced.
-    expect(announce).toHaveBeenCalledWith("Opposite corner. Overlap the first photo.");
+    expect(announce).toHaveBeenCalledWith("Turn right a little. Keep part of the last photo in view.");
   });
 
   it("is busy while the plate develops: taps ignored, library, flash and thumbnail dimmed, back and grid live", async () => {
@@ -229,7 +243,7 @@ describe("Rangefinder: capture", () => {
     await renderCamera();
     await cameraReady();
     const user = userEvent.setup();
-    await user.press(screen.getByRole("button", { name: "Take photo 2, Opposite corner" }));
+    await user.press(screen.getByRole("button", { name: "Take photo 2, Turn right a little" }));
     await flush();
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: true });
     await user.press(screen.getByTestId("shutter"));
@@ -240,9 +254,9 @@ describe("Rangefinder: capture", () => {
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: false });
     expect(stateOf(screen.getByRole("button", { name: "Close the camera" })).disabled).toBeFalsy();
     // The prompt holds the plate being developed.
-    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
     await act(async () => pending[0].finish());
-    expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
+    expect(prompt()).toBe("Keep turning. Keep part of the last photo in view.");
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: false, disabled: false });
   });
 
@@ -254,15 +268,15 @@ describe("Rangefinder: capture", () => {
       await cameraReady();
       await userEvent.setup({ advanceTimers: jest.advanceTimersByTime }).press(screen.getByTestId("shutter"));
       await flush();
-      expect(prompt()).toBe("From the doorway. Wide. Include the floor and two walls.");
+      expect(prompt()).toBe("Start here. Stand in the middle. Face any wall.");
       await act(async () => {
         jest.advanceTimersByTime(ref.layout.camera.thinkingDelay);
       });
-      expect(prompt()).toBe("From the doorway. Preparing photo 1");
+      expect(prompt()).toBe("Start here. Preparing photo 1");
       expect(screen.getByTestId("thinking", hidden)).toBeTruthy();
       await act(async () => pending[0].finish());
       expect(screen.queryByTestId("thinking", hidden)).toBeNull();
-      expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+      expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
     } finally {
       jest.useRealTimers();
     }
@@ -274,7 +288,7 @@ describe("Rangefinder: capture", () => {
     await cameraReady();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(prompt()).toBe(`From the doorway. ${COPY.captureError}`);
+    expect(prompt()).toBe(`Start here. ${COPY.captureError}`);
     expect(screen.getByText(COPY.captureError, hidden)).toBeTruthy();
     // A failed shot: the error haptic, and no shutter cue (nothing was taken).
     expect(mockFeedback.error).toHaveBeenCalledTimes(1);
@@ -282,14 +296,14 @@ describe("Rangefinder: capture", () => {
     expect(getPlates()).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
   });
 
   it("says when the camera didn't start, keeps the shutter, flash and grid dimmed and never offers a lens", async () => {
     camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
     await renderCamera();
     await act(async () => cameraProps().onMountError({ message: "no camera" }));
-    expect(prompt()).toBe(`From the doorway. ${COPY.mountError}`);
+    expect(prompt()).toBe(`Start here. ${COPY.mountError}`);
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: true });
@@ -362,7 +376,7 @@ describe("Rangefinder: the photos taken", () => {
     await flush();
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({ allowsMultipleSelection: true, selectionLimit: MAX_PLATES }));
     expect(getPlates().map((p) => p.uri)).toEqual(["file://plate-a.jpg", "file://plate-c.jpg"]);
-    expect(prompt()).toBe(`The busiest wall. ${libraryError(1)}`);
+    expect(prompt()).toBe(`Keep turning. ${libraryError(1)}`);
     expect(libraryError(1)).toBe("One photo couldn't be used.");
     expect(libraryError(2)).toBe("2 photos couldn't be used.");
   });
@@ -379,15 +393,15 @@ describe("Rangefinder: the photos taken", () => {
         jest.advanceTimersByTime(ref.layout.camera.thinkingDelay);
       });
       // A fixed status for screen readers; the visible line counts real progress.
-      expect(prompt()).toBe("From the doorway. Preparing 2 photos");
+      expect(prompt()).toBe("Start here. Preparing 2 photos");
       expect(screen.getByText("Preparing photo 1 of 2", hidden)).toBeTruthy();
       await act(async () => pending[0].finish());
       expect(getPlates()).toHaveLength(1);
-      expect(prompt()).toBe("From the doorway. Preparing 2 photos");
+      expect(prompt()).toBe("Start here. Preparing 2 photos");
       expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
       expect(screen.getByText("Preparing photo 2 of 2", hidden)).toBeTruthy();
       await act(async () => pending[1].finish());
-      expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
+      expect(prompt()).toBe("Keep turning. Keep part of the last photo in view.");
       expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
       expect(screen.queryByTestId("thinking", hidden)).toBeNull();
     } finally {
@@ -402,9 +416,9 @@ describe("Rangefinder: photos keep their slots", () => {
     removePlate(1);
     await renderCamera();
     await cameraReady();
-    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
     expect(counter()).toBe("Next: photo 2. 3 of 6 photos taken.");
-    expect(screen.getByRole("button", { name: "Take photo 2, Opposite corner" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Take photo 2, Turn right a little" })).toBeTruthy();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
     // The shot fills slot 2; the others never moved.
@@ -417,9 +431,10 @@ describe("Rangefinder: photos keep their slots", () => {
     removePlate(2);
     const { onClose } = await renderCamera(2);
     await cameraReady();
-    expect(prompt()).toBe("The busiest wall. The wall with the most objects.");
+    // Out of turn: where to aim, as for a retake.
+    expect(prompt()).toBe("Back right. From the middle, aim between photos 2 and 4.");
     expect(counter()).toBe("Taking photo 3.");
-    expect(screen.getByRole("button", { name: "Take photo 3, The busiest wall" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Take photo 3, Back right" })).toBeTruthy();
     expect(screen.getByTestId("back").props.accessibilityLabel).toBe(COPY.cancelFill);
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
@@ -434,12 +449,13 @@ describe("Rangefinder: retake mode", () => {
   it("retakes the plate's prompt with its numeral alone on the counter, no privacy note and cancel labels", async () => {
     seedRoll(3);
     const { onClose } = await renderCamera(1);
-    expect(prompt()).toBe("Opposite corner. Overlap the first photo.");
+    // Out of turn: the view's name and where to aim, between its neighbours round the circle.
+    expect(prompt()).toBe("Front right. From the middle, aim between photos 1 and 3.");
     expect(counter()).toBe("Retaking photo 2.");
     // The retaken plate's numeral shows alone: its neighbours are hidden.
     expect(flat(screen.getByText("2", hidden)).opacity).toBeUndefined();
     for (const neighbour of ["1", "3"]) expect(flat(screen.getByText(neighbour, hidden))).toMatchObject({ opacity: 0 });
-    expect(screen.getByRole("button", { name: "Retake photo 2, Opposite corner" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retake photo 2, Front right" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Choose a photo instead" })).toBeTruthy();
     expect(screen.queryByText(COPY.privacy)).toBeNull();
     // The thumbnail shows the plate being replaced, with no ring, and cancels.
@@ -542,8 +558,9 @@ describe("Rangefinder: hit areas and focus outlines", () => {
     await renderCamera();
     await cameraReady();
     const halves = [
-      { half: screen.getByRole("radio", { name: COPY.ultraWide }), label: COPY.ultraWideLabel, title: COPY.ultraWideLabel },
-      { half: screen.getByRole("radio", { name: COPY.mainLens }), label: COPY.mainLensLabel, title: `${COPY.mainLensLabel}${COPY.lensMark}` },
+      // The ultra-wide is chosen by default, so it carries the mark.
+      { half: screen.getByRole("radio", { name: COPY.ultraWide }), label: COPY.ultraWideLabel, title: `${COPY.ultraWideLabel}${COPY.lensMark}` },
+      { half: screen.getByRole("radio", { name: COPY.mainLens }), label: COPY.mainLensLabel, title: COPY.mainLensLabel },
     ];
     for (const { half, label, title } of halves) {
       expect(flat(half)).toMatchObject({ width: ref.button.segment.width / 2, height: ref.hit.comfortable });
@@ -639,13 +656,13 @@ describe("Rangefinder: Once's look", () => {
 
   it("sets the prompt in the serif over the grey system meta line", async () => {
     await renderCamera();
-    expect(flat(screen.getByText("From the doorway"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
-    const meta = flat(screen.getByText("Wide. Include the floor and two walls."));
+    expect(flat(screen.getByText("Start here"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
+    const meta = flat(screen.getByText("Stand in the middle. Face any wall."));
     expect(meta).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
     expect(meta.fontFamily).toBeUndefined();
     // One line each fills the square buttons' 44.
     expect(L.promptTop + ref.type.serifTitle.lineHeight + L.metaGap + ref.type.meta.lineHeight).toBe(ref.button.square.size);
-    expect(flat(screen.getByText("Wide. Include the floor and two walls.").parent!).marginTop ?? flat(screen.getByText("Wide. Include the floor and two walls.")).marginTop).toBe(L.metaGap);
+    expect(flat(screen.getByText("Stand in the middle. Face any wall.").parent!).marginTop ?? flat(screen.getByText("Stand in the middle. Face any wall.")).marginTop).toBe(L.metaGap);
   });
 
   it("writes errors in white beside a white warning glyph: no amber, no oxblood", async () => {
@@ -698,11 +715,11 @@ describe("Rangefinder: Once's look", () => {
     const mark = () => screen.getAllByTestId("lens-mark", hidden);
     expect(mark()).toHaveLength(1);
     expect(mark()[0].props.color).toBe(G.active);
-    // The mark sits beside the chosen label, in its thumb's box.
-    expect(screen.getByText("1.0").parent?.props).toEqual(mark()[0].parent?.parent?.props);
-    await fireEvent.press(screen.getByRole("radio", { name: COPY.ultraWide }));
-    expect(mark()).toHaveLength(1);
+    // The mark sits beside the chosen label (0.5 by default), in its thumb's box.
     expect(screen.getByText("0.5").parent?.props).toEqual(mark()[0].parent?.parent?.props);
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    expect(mark()).toHaveLength(1);
+    expect(screen.getByText("1.0").parent?.props).toEqual(mark()[0].parent?.parent?.props);
   });
 
   it("sets the counter in the italic numerals on a void pill", async () => {
@@ -755,7 +772,7 @@ describe.each([
       accessible,
       screenReaderFocusable: true,
       accessibilityRole: "header",
-      accessibilityLabel: "From the doorway. Wide. Include the floor and two walls.",
+      accessibilityLabel: "Start here. Stand in the middle. Face any wall.",
       accessibilityLiveRegion: "polite",
     });
     expect(screen.getByTestId("plate-counter").props).toMatchObject({
@@ -765,14 +782,14 @@ describe.each([
       accessibilityLabel: "Next: photo 1. 0 of 6 photos taken.",
     });
     // Their texts stay out of Android's accessibility tree: each element is read once, by its label.
-    for (const text of ["From the doorway", "Wide. Include the floor and two walls.", "1"]) {
+    for (const text of ["Start here", "Stand in the middle. Face any wall.", "1"]) {
       expect(screen.getByText(text, hidden).props.importantForAccessibility).toBe("no");
     }
     // The error line inside the prompt is not a stop either.
     await cameraReady();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(screen.getByTestId("prompt").props.accessibilityLabel).toBe(`From the doorway. ${COPY.captureError}`);
+    expect(screen.getByTestId("prompt").props.accessibilityLabel).toBe(`Start here. ${COPY.captureError}`);
     expect(screen.getByTestId("notice", hidden).props.accessible).toBeUndefined();
   });
 });
@@ -788,8 +805,69 @@ describe("copy", () => {
     expect(thinkingCopy(null, "3").line).toBe("Preparing photo 3");
   });
 
-  it("uses the one-line detail for photo 5", () => {
-    expect(PLATE_PROMPTS[4].detail).toBe("Optional. Anything still unseen.");
+  it("words the 360: start in the middle, turn right a little each time, back to the start", () => {
+    expect(PLATE_PROMPTS.map((p) => p.title)).toEqual(["Start here", "Turn right a little", "Keep turning", "Halfway round", "Nearly round", "Last turn"]);
+    expect(PLATE_PROMPTS[0].detail).toBe("Stand in the middle. Face any wall.");
+    expect(PLATE_PROMPTS[1].detail).toBe("Keep part of the last photo in view.");
+    expect(PLATE_PROMPTS[5].detail).toBe("After this one, you're back at the start.");
+    expect(PLATE_PROMPTS.map((p) => p.name)).toEqual(["Start", "Front right", "Back right", "Behind", "Back left", "Front left"]);
+    // No spot-by-spot prompts, no darkroom words.
+    const all = JSON.stringify(PLATE_PROMPTS);
+    expect(all).not.toMatch(/doorway|corner|busiest|close view|plate|roll|develop/i);
+  });
+
+  it("aims a retake between the photos either side of it, round the circle", () => {
+    expect(promptCopy({ index: 0, retake: true })).toEqual({ title: "Start", detail: "From the middle, aim between photos 6 and 2." });
+    expect(promptCopy({ index: 3, retake: true })).toEqual({ title: "Behind", detail: "From the middle, aim between photos 3 and 5." });
+    expect(promptCopy({ index: 5, retake: true })).toEqual({ title: "Front left", detail: "From the middle, aim between photos 5 and 1." });
+    expect(shutterLabel({ index: 3, retake: true })).toBe("Retake photo 4, Behind");
+    expect(shutterLabel({ index: 3, retake: true, filling: true })).toBe("Take photo 4, Behind");
+  });
+
+  it("counts the turn dial's photos, and says when all are taken", () => {
+    expect(turnCopy({ index: 1, retake: false }, 6, false)).toEqual({ line: "Photo 2 of 6", accessibilityLabel: "Photo 2 of 6." });
+    expect(turnCopy({ index: 1, retake: false }, 6, true).accessibilityLabel).toBe(`Photo 2 of 6. ${COPY.turnReached}`);
+    expect(turnCopy({ index: 6, retake: false }, 6, false)).toEqual({ line: "6 of 6 taken", accessibilityLabel: "6 of 6 taken, all the way round." });
+    expect(turnCopy({ index: 2, retake: true }, 6, false).line).toBe("Photo 3 of 6");
+  });
+});
+
+describe("Rangefinder: the turn dial", () => {
+  const dial = () => screen.getByTestId("turn-dial");
+
+  it("counts the photos round the room on the feed, and stays static with no motion sensor (as under Jest)", async () => {
+    await renderCamera();
+    await cameraReady();
+    expect(dial().props.accessibilityLabel).toBe("Photo 1 of 6.");
+    expect(screen.getByText("Photo 1 of 6", hidden)).toBeTruthy();
+    expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
+    expect(screen.queryAllByTestId("turn-dial-taken", hidden)).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(1);
+    expect(screen.queryByTestId("turn-dial-arc", hidden)).toBeNull();
+    // Its words sit in the viewfinder, after the feed and before the privacy note.
+    expect(screen.getByTestId("viewfinder-well")).toContainElement(dial());
+  });
+
+  it("plans the same 6 stops on either lens (the photo limit), and says when all are taken", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+    seedRoll(MAX_PLATES);
+    await renderCamera();
+    await cameraReady();
+    expect(screen.getByText("6 of 6 taken", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
+  });
+
+  it("marks the retaken photo's stop in retake mode", async () => {
+    seedRoll(4);
+    await renderCamera(2);
+    expect(screen.getByText("Photo 3 of 6", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(3);
+    expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
   });
 });
 
@@ -826,7 +904,7 @@ describe("Rangefinder: inside a mode", () => {
   it("bakes each new photo as it is taken, and the live feed is never treated", async () => {
     await renderCamera();
     await cameraReady();
-    await userEvent.setup().press(screen.getByRole("button", { name: "Take photo 1, From the doorway" }));
+    await userEvent.setup().press(screen.getByRole("button", { name: "Take photo 1, Start here" }));
     expect(uriOf(screen.getByTestId("last-plate-photo-treated", hidden))).toBe("baked/crime_scene/file://plate-shot.jpg");
     expect(screen.queryByTestId("camera-treated", hidden)).toBeNull();
   });

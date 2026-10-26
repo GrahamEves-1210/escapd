@@ -3,8 +3,9 @@
 // earned glass then fills one by one, in the mode's stamp colour (its accent
 // as a colour that reads on the ground: crime scene's accent red is too dark
 // to draw with), its lens tinted, popping from rating.pop to rest. Under
-// reduced motion the earned ones are simply filled as the row fades in. One
-// element for screen readers: "Rating: 2 of 3 magnifiers".
+// reduced motion the earned ones are simply filled as the row fades in. The
+// word "Observation" sits before the glasses on the same line, so the rating
+// is one compact row. One element for screen readers: "Rating: 2 of 3 magnifiers".
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path } from "react-native-svg";
@@ -78,7 +79,7 @@ export function MagnifierRating({ rating, theme, delays, reduced, testID }: {
 }
 
 const styles = StyleSheet.create({
-  rating: { alignItems: "center", gap: ref.space.sm },
+  rating: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: R.labelGap },
   row: { flexDirection: "row", gap: R.gap },
   slot: { width: R.size, height: R.size },
 });

@@ -681,24 +681,34 @@ export const ref = {
         switch: { on: refColor.textPrimary, off: refColor.textTertiary, thumb: refColor.void },
       },
       // Settings (the hub's DarkSheet), grouped rows in the review screen's
-      // list style: a Bold 14 section heading `headingGap` above its group;
-      // each group a raised panel with `radius` corners; rows at least
-      // `rowHeight` tall, `pad` in from the panel's sides, label and control
-      // `gap` apart, split by 1 pt rim lines inset `pad` from the left; a
-      // navigation row ends in a Phosphor CaretRight at `caret`. Pressed rows
-      // at `pressedOpacity` (proposal). The sheet may grow to `maxHeight`.
+      // list style: a Bold 14 section heading `headingGap` above its group,
+      // the sections `section` apart; each group a raised panel with
+      // `radius` corners; rows at least `rowHeight` tall (`padY` above and
+      // below their words), `pad` in from the panel's sides, label and
+      // control `gap` apart, a one-line detail (`detailMax` characters at most,
+      // so it stays one line beside a switch on a 375 pt screen) `detailGap`
+      // under the label,
+      // split by 1 pt rim lines inset `pad` from the left; a navigation row
+      // ends in a Phosphor CaretRight at `caret`. Pressed rows at
+      // `pressedOpacity` (proposal). The sheet may grow to `top` under the
+      // safe top, so every row fits with no scroll on an iPhone SE at the
+      // default text size; large text scrolls.
       settings: {
         heading: { fontSize: 14, lineHeight: 20, fontWeight: "700" } as const satisfies TextStyle,
         headingGap: 8,
+        section: 16,
         radius: 8,
         fill: refColor.raised,
         divider: refColor.rim,
-        rowHeight: 52,
+        rowHeight: 48,
+        padY: 6,
+        detailGap: 2,
+        detailMax: 34,
         pad: 16,
         gap: 12,
         caret: 15,
         pressedOpacity: 0.75,
-        maxHeight: "88%",
+        top: 8,
       },
     },
     // A mode's first-time intro (/mode/intro/<genre>), in the mode's theme
@@ -790,6 +800,29 @@ export const ref = {
       // Privacy note: a black pill on the feed (void at fillOpacity), its foot
       // `inset` above the viewfinder's, as wide as the copy (one line on 393).
       note: { inset: 16, padX: 12, padY: 8, fillOpacity: 0.6 },
+      // The turn dial: the privacy note's see-through black pill, `inset`
+      // below the viewfinder's top, a `dial` circle at its left end (`padLeft`
+      // in) and "Photo 2 of 6" `gap` after it. On the dial, a `ringWidth`
+      // textTertiary ring `ring` in from its edge carries each photo's stop:
+      // taken ones a white dot (`taken`), the next a white ring (`target`, its
+      // line `targetLine`, filled once the turn is far enough), the rest a
+      // small grey dot (`rest`); the live turn is a white arc (`arc`) on the
+      // ring from the last stop toward the next.
+      turn: {
+        inset: 16,
+        dial: 32,
+        padLeft: 4,
+        padRight: 12,
+        padY: 4,
+        gap: 8,
+        ring: 4,
+        ringWidth: 1,
+        taken: 2.75,
+        target: 3.25,
+        targetLine: 1.5,
+        rest: 1.5,
+        arc: 2,
+      },
       // The counter's void pill (radius.nested): numerals `gap` apart, the
       // current one centred and nudged by dx / dy (the italic's slant, the
       // caps' centre). A new plate rolls the strip over motion.counterRoll.
@@ -1132,7 +1165,9 @@ export const ref = {
       // it is contained (narrower). Use mode: a white `armed` ring inside its edge.
       photo: { armed: 1.5, maxCrop: 0.1 },
       // Swiping photo to photo: pages one screen wide with no gap, following
-      // the finger; past the first or last page it moves at `edgeResistance`.
+      // the finger, round a loop (past the last view comes the first, before
+      // the first the last), like turning round in the room. With one view
+      // nothing loops: the page moves at `edgeResistance` and springs back.
       // On release the page projects `projection` s of velocity ahead and snaps
       // to the nearest page (one at most), settling on an ease-out with no
       // overshoot (`easing`, initial slope `slope`), its duration matched to the
@@ -1154,13 +1189,44 @@ export const ref = {
         // Until a photo reports its size: the camera's 3:4.
         fallbackAspect: 0.75,
       },
-      // Page dots at the photo's foot: `size` dots `gap` apart in 02's
-      // see-through void pill (`padX` / `padY`, void at `fillOpacity`), `inset`
-      // above the photo's foot. On view white, others textSecondary; a view
-      // with something new: a white ring (`ring` thick, `marked` across). The
-      // control's hit area is `ref.hit.min` tall; tapping left of centre goes
-      // back, right goes on.
-      dots: { size: 6, gap: 8, padX: 10, padY: 7, inset: 12, fillOpacity: 0.6, marked: 8, ring: 1.5 },
+      // The thumbnail wheel at the photo's foot (in place of page dots): the
+      // views as small photos in the mode's treatment (baked once at `bake` pt
+      // on the long edge) round a drum seen from the front. The view in view
+      // faces you in the middle, `width` x `height` (3:4), fully lit; each view
+      // round the loop is `step` degrees further round a drum `drum` pt in
+      // radius, so the neighbours sit drum x sin(step) to each side, turned
+      // away by `tilt` of that angle (slightly, so they stay legible), shrunk to `neighbourScale` (`farScale` one further) and dimmed
+      // by void at `dim`; past `fadeFrom` views off centre a thumbnail fades
+      // out by `fadeTo`. The drum turns with the pager's own swipe (one shared
+      // position), so it moves with the finger. Corners `radius` (02's last
+      // photo's, scaled), a `rim` pt edge in the mode's rim, a soft `shadow`;
+      // a view with something new: a white dot `marked` across with a void
+      // `markedRing`. The control is `span` x `slot`, `inset` above the
+      // photo's foot; the strip each side of the middle thumbnail
+      // ((span - width) / 2, at least ref.hit.min) is the tap target for that
+      // neighbour. Reduced motion: no turning, the drum just updates.
+      wheel: {
+        width: 36,
+        height: 48,
+        radius: 10,
+        rim: 1,
+        step: 38,
+        drum: 64,
+        tilt: 0.6,
+        perspective: 320,
+        neighbourScale: 0.76,
+        farScale: 0.58,
+        dim: 0.5,
+        fadeFrom: 1,
+        fadeTo: 1.6,
+        shadow: "0px 3px 10px 0px rgba(0, 0, 0, 0.55)",
+        marked: 7,
+        markedRing: 1.5,
+        span: 124,
+        slot: 56,
+        inset: 8,
+        bake: 144,
+      },
       // Hotspot brackets, white on a void halo (02's privacy-note black):
       // `arm` long, `inset` from the target's edge, a `tick` at each side's
       // middle; idle ones rest at `subtle`. Solved ones are textSecondary with
@@ -1225,8 +1291,20 @@ export const ref = {
         ring: 1.5,
         ringPad: 6,
       },
-      // Case closed: the column's inset, the tag pill (01's), the gaps;
-      // paranormal's room back in full colour as a `photo` (aspect, corners).
+      // Case closed fits one screen with no scroll at the default text size,
+      // down to an iPhone SE (667 tall, 20 safe top), its actions included:
+      // the column `inset` from the sides and `pad` from the top and from the
+      // actions (whose band starts `actions.pad` above its pill). The case
+      // card's parts sit `gap.head` apart (the exit line `gap.exit` under the
+      // message; the stats and the rating `gap.card` apart). The case itself
+      // takes the column's spare height: noir's folder (compact `pad`, up to
+      // `folder.max`), crime scene's accused card (`accused.padY`, up to
+      // `accused.max`) or paranormal's room (from `photo.min` to the column's
+      // width at `photo.aspect`, `photo.radius` corners, "The presence is
+      // gone." on it); what is left is shared above and below. CASE CLOSED
+      // keeps `stamp.room` clear above and below for its tilt. The stats are
+      // a compact row of 07's cards (`stat` padding, value over label).
+      // Large text scrolls.
       // The victory moment (GAME_FEEL_PROMPT.md, 5; src/render/victory.ts):
       // - beat: ms. The case enters over `enter`; a stamp starts its fall at
       //   `slam` (P.stamp.slam ms to impact); paranormal snaps to colour at
@@ -1245,17 +1323,25 @@ export const ref = {
       //   down and `nudge.x` across, `nudge.step` ms a beat.
       // - folder: noir's case file, a raised folder with a `tab`, its title
       //   typed on a paper `label`. title: case titles in Playfair.
-      // - rating: three magnifiers `size` across, `gap` apart, `stroke` line
-      //   art; an earned one fills its lens at `lens` and pops from `pop`.
+      // - rating: "Observation" then, `labelGap` along the same line, three
+      //   magnifiers `size` across, `gap` apart, `stroke` line art; an earned
+      //   one fills its lens at `lens` and pops from `pop`.
       complete: {
-        inset: 24, tagHeight: 26, tagPadX: 9, gap: { tag: 16, title: 8, stats: 28, next: 28 }, photo: { aspect: 2, radius: 8, width: "100%" },
+        inset: 24,
+        pad: 12,
+        gap: { head: 8, exit: 4, card: 12 },
+        photo: { aspect: 2, radius: 8, min: 96 },
+        accused: { padY: 12, max: 260 },
+        stamp: { room: 8 },
+        stat: { padX: 8, padY: 10, gap: 2 },
+        actions: { pad: 12 },
         beat: { enter: 220, slam: 420, snap: 360, gone: 480, goneStamp: 900, statsGap: 300, stat: 180, rise: 10, ratingGap: 240, magnifier: 220, solved: 160, cta: 160, wait: 1200 },
         reduced: { stats: 200, tick: 60, rating: 320, solved: 420 },
         slam: { overshoot: 0.93, settle: 140, inkTo: 1.22, inkPeak: 0.45, ink: 420, goneFrom: 1.45, nudge: { x: 3, y: 5, step: 50 } },
-        folder: { radius: 8, pad: 20, tabWidth: 120, tabHeight: 16, tabRadius: 6, label: { padX: 14, padY: 8, radius: 2, tilt: -1 } },
-        title: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 28, lineHeight: 34 } as const satisfies TextStyle,
-        statValue: { fontSize: 22, lineHeight: 28 },
-        rating: { size: 34, gap: 14, stroke: 2.25, lens: 0.3, pop: 1.35 },
+        folder: { radius: 8, pad: 12, max: 220, tabWidth: 120, tabHeight: 12, tabRadius: 6, label: { padX: 14, padY: 6, radius: 2, tilt: -1 } },
+        title: { fontFamily: "PlayfairDisplay_700Bold", fontSize: 24, lineHeight: 30 } as const satisfies TextStyle,
+        statValue: { fontSize: 20, lineHeight: 24 },
+        rating: { size: 28, gap: 12, labelGap: 12, stroke: 2.25, lens: 0.3, pop: 1.35 },
       },
       // ---- The modes in the player (MODES_PROMPT.md, Part 2). Every colour is
       // the mode's (modeThemes, read through useModeTheme); these are shapes and times.
@@ -1342,8 +1428,10 @@ export const ref = {
       type: {
         /** A stamp on a card (CONTRADICTED): pushr's grotesk, small and tracked. */
         stamp: { fontFamily: refFont.grotesk, fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: "uppercase" },
-        /** Case closed's stamps (CASE CLOSED, GUILTY): Archivo Black, tracked wide. */
+        /** The accusation's GUILTY: Archivo Black, tracked wide. */
         stampLarge: { fontFamily: refFont.crimeDisplay, fontSize: 34, lineHeight: 40, letterSpacing: 4, textTransform: "uppercase" },
+        /** Case closed's stamps (CASE CLOSED, GUILTY), sized to its card: Archivo Black, tracked. */
+        stampMedium: { fontFamily: refFont.crimeDisplay, fontSize: 28, lineHeight: 32, letterSpacing: 3, textTransform: "uppercase" },
         /** A suspect's name on a card: Bold 18. */
         suspect: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
         /** A count on a badge: Bold 11. */

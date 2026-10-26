@@ -52,6 +52,12 @@
         }
       ],
       [
+        "expo-sensors",
+        {
+          "motionPermission": false
+        }
+      ],
+      [
         "expo-audio",
         {
           "microphonePermission": false,

@@ -9,6 +9,7 @@ import { openCapture, type CaptureDestination } from "@/capture/openCapture";
 import { setMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { color, modeThemes, motion, ref } from "@/theme/tokens";
+import { STEPS } from "../copy";
 import { PhotoGuide } from "../PhotoGuide";
 import { swipeStep } from "../swipe";
 
@@ -31,7 +32,7 @@ const navigation = { setOptions: jest.fn(), addListener: jest.fn(() => jest.fn()
 type BackListener = Parameters<typeof BackHandler.addEventListener>[1];
 let backHandlers: BackListener[] = [];
 
-const TITLES = ["Start at the doorway", "Work around the room", "Get one close view", "Just the room"];
+const TITLES = ["Stand in the middle", "Turn right, shoot again", "All the way round", "Just the room"];
 
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
 type Node = ReturnType<typeof screen.getByTestId>;
@@ -93,7 +94,7 @@ describe("photo guide: after openCapture's check (every new room)", () => {
   it("opens on step 1 with the title, body, Next and a Close that skips the guide, and no step label on screen", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     expect(titleOnScreen(0)).toBeTruthy();
-    expect(screen.getByText("One wide photo. Get the floor and two walls in.")).toBeTruthy();
+    expect(screen.getByText("Face any wall and take the first photo.")).toBeTruthy();
     // The reference shows no step count: screen readers get it from the button's hint.
     expect(screen.queryByText(/OF 4|of 4/, hidden)).toBeNull();
     expect(screen.getByRole("button", { name: "Next" }).props.accessibilityHint).toBe("Step 1 of 4");
@@ -109,7 +110,7 @@ describe("photo guide: after openCapture's check (every new room)", () => {
     const title = screen.getByRole("header", { name: TITLES[0] });
     expect(styleOf(title)).toMatchObject({ ...ref.type.stepTitle, color: ref.color.textPrimary });
     expect(styleOf(title).fontFamily).toBeUndefined();
-    expect(styleOf(screen.getByText("One wide photo. Get the floor and two walls in."))).toMatchObject({
+    expect(styleOf(screen.getByText("Face any wall and take the first photo."))).toMatchObject({
       ...ref.type.stepBody,
       color: ref.layout.guide.bodyText,
       marginTop: ref.layout.guide.titleGap,
@@ -511,7 +512,7 @@ describe("photo guide: inside a mode", () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     expect(styleOf(screen.getByTestId("guide-root")).backgroundColor).toBe(theme.ground);
     expect(styleOf(screen.getByRole("header", { name: TITLES[0] }))).toMatchObject({ ...ref.type.stepTitle, color: theme.ink });
-    expect(styleOf(screen.getByText("One wide photo. Get the floor and two walls in.")).color).toBe(theme.inkMuted);
+    expect(styleOf(screen.getByText("Face any wall and take the first photo.")).color).toBe(theme.inkMuted);
   });
 
   it("keeps the light glass disc with a dark X, in the mode's muted ink and ground", async () => {
@@ -558,5 +559,16 @@ describe("swipeStep", () => {
     expect(swipeStep(-1, -S.commitVelocity)).toBe(1);
     expect(swipeStep(1, S.commitVelocity)).toBe(-1);
     expect(swipeStep(-(S.commitDistance - 1), -(S.commitVelocity - 1))).toBe(0);
+  });
+});
+
+describe("photo guide: the 360", () => {
+  it("teaches standing in the middle and turning all the way round, then keeping the shots private and steady", () => {
+    expect(STEPS.map((step) => step.title)).toEqual(["Stand in the middle", "Turn right, shoot again", "All the way round", "Just the room"]);
+    expect(STEPS[1].body).toBe("Turn a little. Keep part of the last photo in view.");
+    expect(STEPS[2].body).toBe("The camera shows each turn until you're back at the start.");
+    expect(STEPS[3].body).toBe("Leave out people, mail, and screens. Lights on, hold steady.");
+    // No spot-by-spot photos, no darkroom words.
+    expect(JSON.stringify(STEPS)).not.toMatch(/doorway|corner|busiest|close view|plate|develop|darkroom/i);
   });
 });

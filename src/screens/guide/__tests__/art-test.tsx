@@ -121,9 +121,9 @@ describe("guide line art", () => {
     expect(ends).toBeGreaterThan(0);
   });
 
-  it("holds the hero phone in the same place on steps 1, 3 and 4: 70 x 137 at corners 10.5, the device fill, a thin inner screen darkening downward", () => {
+  it("holds the hero phone in the same place on steps 3 and 4: 70 x 137 at corners 10.5, the device fill, a thin inner screen darkening downward", () => {
     const P = G.phone;
-    const boxes = [0, 2, 3].map((i) => {
+    const boxes = [2, 3].map((i) => {
       const list = drawList(SCENES[i], "t");
       const hero = heroOps(list);
       // The phone is the only hero shape.
@@ -154,10 +154,9 @@ describe("guide line art", () => {
       return box;
     });
     expect(boxes[1]).toEqual(boxes[0]);
-    expect(boxes[2]).toEqual(boxes[0]);
   });
 
-  it.each([1, 4])("step %i's fingertips are drawn over the phone, void-filled, and hide its right edge from y 181 to 242", (n) => {
+  it.each([3, 4])("step %i's fingertips are drawn over the phone, void-filled, and hide its right edge from y 181 to 242", (n) => {
     const list = drawList(SCENES[n - 1], "t");
     const phone = list.ops.findIndex((op) => op.stroke === INKS.hero);
     const front = list.ops.slice(phone + 1).filter((op) => op.fill === ref.color.void);
@@ -171,14 +170,52 @@ describe("guide line art", () => {
     expect(Math.max(...spans.map((b) => b.y + b.height))).toBeGreaterThanOrEqual(242);
   });
 
-  it("step 2 is a plan: three device-filled phones, one of them hero, and one lit view", () => {
-    const list = drawList(SCENES[1], "t");
+  it.each([1, 2])("step %i is a plan of the 360: one device-filled phone held out from the middle, hero, and its lit view", (n) => {
+    const list = drawList(SCENES[n - 1], "t");
     const phones = list.ops.filter((op) => op.strokeWidth > 0 && gradientOf(list, op.fill)?.stops === ref.gradient.deviceFill.stops);
-    expect(phones).toHaveLength(3);
+    expect(phones).toHaveLength(1);
     expect(heroOps(list)).toHaveLength(1);
     // The hero's view: a device-filled shape with no stroke.
     const beams = list.ops.filter((op) => op.strokeWidth === 0 && gradientOf(list, op.fill)?.stops === ref.gradient.deviceFill.stops);
     expect(beams).toHaveLength(1);
+  });
+
+  it("turns the phone in place: facing the far wall in step 1, one 60 degree turn right in step 2, the same distance from the middle", () => {
+    const middle = [116, 132];
+    const at = (n: number) => {
+      const list = drawList(SCENES[n - 1], "t");
+      const b = pathBounds(heroOps(list)[0].d);
+      const [x, y] = [b.x + b.width / 2 - middle[0], b.y + b.height / 2 - middle[1]];
+      return { bearing: ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360, arm: Math.hypot(x, y) };
+    };
+    expect(at(1).bearing).toBeCloseTo(0, 2);
+    expect(at(2).bearing).toBeCloseTo(60, 2);
+    expect(at(2).arm).toBeCloseTo(at(1).arm, 2);
+  });
+
+  it("keeps the first view's rays in step 2 so the overlap shows: two pairs, the first in back ink", () => {
+    const list = drawList(SCENES[1], "t");
+    const rays = SCENES[1].marks.filter((m) => m.fade === "end");
+    expect(rays).toHaveLength(4);
+    expect(rays.filter((m) => m.ink === "back")).toHaveLength(2);
+    expect(list.ops.length).toBe(SCENES[1].marks.length);
+  });
+
+  it("step 3 shows the camera's turn dial on the held phone's screen: five lit stops and the next one dark", () => {
+    const list = drawList(SCENES[2], "t");
+    const phone = pathBounds(heroOps(list)[0].d);
+    const P = G.phone;
+    const screen = { left: phone.x + P.screen.insetX, right: phone.x + P.width - P.screen.insetX, top: phone.y + P.screen.insetTop, bottom: phone.y + P.height - P.screen.insetBottom };
+    // Drawn over the phone (the big arrow's stop under it is hidden by it).
+    const over = list.ops.slice(list.ops.indexOf(heroOps(list)[0]) + 1);
+    const onScreen = over.filter((op) => {
+      const b = pathBounds(op.d);
+      return op.fill !== "none" && b.x >= screen.left && b.x + b.width <= screen.right && b.y >= screen.top && b.y + b.height <= screen.bottom;
+    });
+    const lit = onScreen.filter((op) => gradientOf(list, op.fill)?.stops === G.fill.panel.stops);
+    const dark = onScreen.filter((op) => gradientOf(list, op.fill)?.stops === G.fill.tag.stops);
+    expect(lit).toHaveLength(5);
+    expect(dark).toHaveLength(1);
   });
 
   it("renders every step as SVG", async () => {

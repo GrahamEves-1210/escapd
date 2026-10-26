@@ -77,25 +77,25 @@ describe("layout and copy", () => {
     expect(screen.getByText("Your photos")).toBeTruthy();
     expect(screen.getByText("4 of 6 taken")).toBeTruthy();
     expect(screen.getByText(COPY.count(4, MAX_PLATES))).toBeTruthy();
-    expect(screen.getByText("Retake anything dark, blurred, or too close to read the room.")).toBeTruthy();
+    expect(screen.getByText("Retake anything dark or blurred. Together they should go all the way round.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back to the camera" })).toBeTruthy();
     // Each photo's numeral, then its name.
-    const names = ["From the\u00A0doorway", "Opposite\u00A0corner", "The busiest\u00A0wall", "A close\u00A0view"];
+    const names = ["Start", "Front\u00A0right", "Back\u00A0right", "Behind"];
     names.forEach((name, i) => {
       const cell = within(screen.getByTestId(`plate-${i}`));
       expect(cell.getByText(String(i + 1))).toBeTruthy();
       expect(cell.getByText(name)).toBeTruthy();
     });
-    expect(screen.getByLabelText("Photo 1, From the doorway")).toBeTruthy();
-    expect(plateLabelSpoken(promptFor(3))).toBe("Photo 4, A close view");
-    // The last word is held to the one before it, so a name breaks "From / the doorway".
-    expect(plateName(promptFor(0))).toBe("From the\u00A0doorway");
-    expect(plateName(promptFor(5))).toBe("Last\u00A0photo");
+    expect(screen.getByLabelText("Photo 1, Start")).toBeTruthy();
+    expect(plateLabelSpoken(promptFor(3))).toBe("Photo 4, Behind");
+    // Named by where each looks from the middle; the last word is held to the one before it.
+    expect(plateName(promptFor(1))).toBe("Front\u00A0right");
+    expect(plateName(promptFor(5))).toBe("Front\u00A0left");
     expect(screen.getByText("Tap a photo to retake it")).toBeTruthy();
     expect(screen.getByRole("header", { name: "Before you build" })).toBeTruthy();
     for (const line of COPY.checks) expect(screen.getByText(line)).toBeTruthy();
-    expect(screen.getByLabelText("1. Keep people out of the shot.")).toBeTruthy();
-    expect(screen.getByLabelText("2. Tuck away mail, documents, and screens.")).toBeTruthy();
+    expect(screen.getByLabelText("1. Stand in the middle and turn all the way round.")).toBeTruthy();
+    expect(screen.getByLabelText("2. Keep people, mail, and screens out of the shot.")).toBeTruthy();
     expect(screen.getByLabelText("3. Turn the lights on and hold steady.")).toBeTruthy();
     expect(screen.getByText("Your photos are only used to build your case. No one else sees them.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add a photo" })).toBeTruthy();
@@ -154,7 +154,7 @@ describe("layout and copy", () => {
     expect(screen.queryByTestId("plate-0-ring")).toBeNull();
     // The numeral in the counter's italic, then the name in the camera's serif title.
     expect(styleOf(within(cell).getByText("1"))).toMatchObject({ ...L.type.numeral, color: ref.color.textPrimary });
-    expect(styleOf(within(cell).getByText("From the\u00A0doorway"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
+    expect(styleOf(within(cell).getByText("Start"))).toMatchObject({ ...ref.type.serifTitle, color: ref.color.textPrimary });
   });
 
   it("has no hint and no grid without plates", async () => {
@@ -208,11 +208,11 @@ describe("photos", () => {
     expect(getSlots().map((p) => p?.uri ?? null)).toEqual(["file:///plate-0.jpg", null, "file:///plate-2.jpg", "file:///plate-3.jpg"]);
     // The count counts filled photos; every photo stays under its own prompt.
     expect(screen.getByText(COPY.count(3, MAX_PLATES))).toBeTruthy();
-    expect(within(screen.getByTestId("plate-3")).getByText("A close\u00A0view")).toBeTruthy();
+    expect(within(screen.getByTestId("plate-3")).getByText("Behind")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retake photo 3" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retake photo 4" })).toBeTruthy();
     // Slot 2 is an open tile under its own name.
-    expect(within(screen.getByTestId("plate-1")).getByText("Opposite\u00A0corner")).toBeTruthy();
+    expect(within(screen.getByTestId("plate-1")).getByText("Front\u00A0right")).toBeTruthy();
     expect(screen.getByTestId("plate-1-open")).toBeTruthy();
     expect(screen.queryByTestId("plate-1-retake")).toBeNull();
   });
@@ -221,7 +221,7 @@ describe("photos", () => {
     fill(4);
     removePlate(1);
     await renderAt();
-    const open = screen.getByRole("button", { name: "Take photo 2, Opposite corner. This photo is open." });
+    const open = screen.getByRole("button", { name: "Take photo 2, Front right. This photo is open." });
     expect(restStyleOf(open)).toMatchObject({ borderStyle: "dashed", borderWidth: L.tile.open.border, borderColor: L.tile.open.rim, borderRadius: THUMB.radius });
     expect(screen.getByText("Take this photo")).toBeTruthy();
     expect(screen.getAllByTestId("camera-glyph", { includeHiddenElements: true }).length).toBe(2);
@@ -286,7 +286,7 @@ describe("flagged photos", () => {
     expect(screen.getByTestId("plate-1-flag", { includeHiddenElements: true })).toHaveTextContent("May show a person or something private");
     expect(styleOf(screen.getByTestId("plate-1-flag", { includeHiddenElements: true }))).toMatchObject({ ...L.type.reason, color: L.warning });
     // The name keeps its ink: the reason under it carries the warning.
-    expect(styleOf(within(screen.getByTestId("plate-1")).getByText("Opposite\u00A0corner")).color).toBe(ref.color.textPrimary);
+    expect(styleOf(within(screen.getByTestId("plate-1")).getByText("Front\u00A0right")).color).toBe(ref.color.textPrimary);
     // A warning ring on the frame's outer edge, where the camera draws its way-on ring.
     expect(styleOf(screen.getByTestId("plate-1-ring"))).toMatchObject({ borderWidth: L.tile.flaggedRing, borderColor: L.warning, borderRadius: THUMB.radius });
     expect(screen.queryByTestId("plate-0-flag", { includeHiddenElements: true })).toBeNull();
@@ -325,7 +325,7 @@ describe("flagged photos", () => {
     fill(4);
     await renderAt("", "too_few_objects");
     expect(screen.getByTestId("review-issue")).toHaveTextContent(
-      "The case needs a little more to work with. Add a close view of a desk, shelf, or table, then build again.",
+      "The case needs a little more to work with. Turn the lights on and retake from the middle of the room. If a photo is open, use it for a close view of a busy desk or shelf.",
     );
     expect(styleOf(screen.getByTestId("review-issue"))).toMatchObject({ backgroundColor: ref.color.raised, padding: L.issue.pad, borderRadius: ref.radius.nested });
     expect(screen.getByTestId("develop")).toBeEnabled();
@@ -439,7 +439,7 @@ describe("inside a mode", () => {
     expect(styleOf(screen.getByTestId("review-lead")).color).toBe(theme.inkMuted);
     const cell = within(screen.getByTestId("plate-0"));
     expect(styleOf(cell.getByText("1")).color).toBe(theme.stamp);
-    expect(styleOf(cell.getByText("From the\u00A0doorway")).color).toBe(theme.ink);
+    expect(styleOf(cell.getByText("Start")).color).toBe(theme.ink);
     // The tile's frame in the mode's near-black ground, the photo's well raised.
     expect(restStyleOf(screen.getByTestId("plate-0-retake")).backgroundColor).toBe(theme.ground);
     expect(styleOf(screen.getByTestId("plate-0-frame")).backgroundColor).toBe(theme.raised);

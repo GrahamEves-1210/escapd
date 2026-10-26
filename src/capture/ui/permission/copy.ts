@@ -14,7 +14,7 @@ export const PERMISSION_COPY: Record<PermissionCopyKey, { title: string; body: s
     // title sets as "let escapd use / the camera" and never strands "camera".
     title: "Let ESCAPD use the camera",
     body:
-      "You'll take 3 to 6 photos of one room. Each photo's location is removed on your phone first, and nothing is sent until you build the case.",
+      "You'll take up to 6 photos, turning round one room. Each photo's location is removed on your phone first, and nothing is sent until you build the case.",
     action: "Allow the camera",
   },
   denied: {

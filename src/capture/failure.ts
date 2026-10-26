@@ -129,7 +129,7 @@ export function describeFailure(job: Pick<GenerationJob, "error_code" | "error_m
     case "too_few_objects":
       return {
         title: "Not enough to build a case from",
-        body: "The photos need at least four clear objects, like a desk, a shelf, a cabinet, or a lamp. Add a close view or two and build again.",
+        body: "The photos need at least four clear objects, like a desk, a shelf, a cabinet, or a lamp. Turn the lights on and retake from the middle of the room, or add a close photo of a busy desk or shelf.",
         action: "retake",
         ...none,
         issue: "too_few_objects",
@@ -150,7 +150,7 @@ export function describeFailure(job: Pick<GenerationJob, "error_code" | "error_m
     case "spend_cap":
       return {
         title: "The case didn't come together",
-        body: "These photos didn't give the puzzle enough to work with. Try four clear photos from different corners.",
+        body: "These photos didn't give the puzzle enough to work with. Try six clear photos, turning all the way round the room.",
         action: "retake",
         ...none,
         issue: "didnt_come_together",

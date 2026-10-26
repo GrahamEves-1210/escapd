@@ -3,7 +3,8 @@
 // framed word in the heavy grotesk, tilted; the frame a little short of
 // solid like ink, the word always solid so its contrast holds (11 pt
 // CONTRADICTED on a card's raised fill needs all of its 4.5:1).
-// A large stamp can slam down (slam.ts): it falls from slamFrom times its
+// A large stamp (or a medium one: case closed's, sized to its card) can
+// slam down (slam.ts): it falls from slamFrom times its
 // size, overshoots and settles, its ink spreading out from the frame as it
 // hits, with the `stamp` cue (haptic and sound) on impact; under reduced
 // motion it fades in instead, and the cue comes as the fade ends. The word
@@ -22,8 +23,9 @@ const S = P.stamp;
 
 export interface StampProps {
   text: string;
-  size?: "small" | "large";
-  /** Large only: fall onto the page after `delay` ms (default S.slamDelay). False: it is simply there (or fades in). */
+  /** "medium": case closed's CASE CLOSED and GUILTY (a large stamp's frame, smaller type). */
+  size?: "small" | "medium" | "large";
+  /** Large and medium only: fall onto the page after `delay` ms (default S.slamDelay). False: it is simply there (or fades in). */
   slam?: boolean;
   delay?: number;
   /** Called once it has landed (after the fade under reduced motion). */
@@ -36,7 +38,7 @@ export function Stamp({ text, size = "small", slam = false, delay = S.slamDelay,
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
-  const large = size === "large";
+  const large = size !== "small";
   const animate = large && slam;
   // The whole stamp rests at full strength; only its frame is inked (below).
   const { opacity, scale, ink } = useSlam({
@@ -54,7 +56,7 @@ export function Stamp({ text, size = "small", slam = false, delay = S.slamDelay,
     transform: [{ rotate: `${S.tilt}deg` }, { scale: scale.get() }],
   }));
 
-  const type = large ? P.type.stampLarge : P.type.stamp;
+  const type = size === "large" ? P.type.stampLarge : size === "medium" ? P.type.stampMedium : P.type.stamp;
   return (
     <Animated.View
       style={[styles.stamp, large ? styles.large : styles.small, motionStyle, style]}
