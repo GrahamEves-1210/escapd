@@ -1,18 +1,20 @@
-// The review screen's words (/capture/review, titled "Photos"), in plain
+// The review screen's words (/capture/review, "Your photos"), in plain
 // language: photos, "Build the case", Arabic numerals; no film or darkroom
 // words, nothing alarming, AI never mentioned. Tips read as friendly advice.
 import type { RetakeReason, SetIssue } from "@/capture/failure";
 import type { PlatePrompt } from "@/capture/slots";
 
 export const COPY = {
-  back: "Back",
   backLabel: "Back to the camera",
-  title: "Photos",
-  heading: "Your photos",
-  caption: (count: number, max: number) => `${count} of ${max}. Retake anything dark, blurred, or too close to read the room.`,
+  title: "Your photos",
+  /** The header's grey meta line, under the title (the camera's plate detail). */
+  count: (count: number, max: number) => `${count} of ${max} taken`,
+  /** The same for screen readers, with the header. */
+  countSpoken: (count: number, max: number) => `${count} of ${max} photos taken`,
+  lead: "Retake anything dark, blurred, or too close to read the room.",
   add: "Add a photo",
   hint: "Tap a photo to retake it",
-  // A flagged photo's reason, under its label (and in its tile's label).
+  // A flagged photo's reason, under its name (and in its tile's label).
   reasons: {
     person: "Someone's in this shot",
     private_text: "Mail, a document, or a screen is readable",
@@ -38,12 +40,12 @@ export const COPY = {
 } as const;
 
 /**
- * The label over a tile: "1 · From the doorway". The last word is held to the
- * one before it (a no-break space), so a two-line label breaks as the
- * reference's do ("1 · From / the doorway"), never leaving a lone short word.
+ * A photo's name under its tile: "From the doorway" after its numeral. The
+ * last word is held to the one before it (a no-break space), so a name that
+ * wraps breaks as "From / the doorway", never leaving a lone short word.
  */
-export const plateLabel = (prompt: PlatePrompt) => `${prompt.numeral} · ${prompt.title.replace(/ (\S+)$/, " $1")}`;
-/** The same label for screen readers, which read "·" badly. */
+export const plateName = (prompt: PlatePrompt) => prompt.title.replace(/ (\S+)$/, " $1");
+/** The photo's label for screen readers, which read a lone numeral badly. */
 export const plateLabelSpoken = (prompt: PlatePrompt) => `Photo ${prompt.numeral}, ${prompt.title}`;
 export const retakeLabel = (prompt: PlatePrompt) => `Retake photo ${prompt.numeral}`;
 export const removeLabel = (prompt: PlatePrompt) => `Remove photo ${prompt.numeral}`;

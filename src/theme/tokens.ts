@@ -1113,38 +1113,31 @@ export const ref = {
       drift: { x: 56, y: 8, tilt: 5, duration: 4000, easing: "linear" },
     },
     // The shared state screen (src/components/StateScreen.tsx): loading,
-    // offline, error and access states for the player, the darkroom and
-    // /account/confirmed. No reference: 07's flat ground and pinned white bar,
-    // 01's centred title (ref.type.title) and subtitle (ref.type.subtitle,
-    // grey), 02's void wells. Loading is the kit's ThinkingStates (body size)
-    // instead of a spinner.
+    // offline, error and access states for the player, the build wait and
+    // /account/confirmed. No reference: 07's flat ground, 01's centred title
+    // (ref.type.title) and subtitle (ref.type.subtitle, grey), 02's void
+    // wells, and the photo guide's foot (its pill, then a quiet button, in the
+    // reading column). Loading is the kit's ThinkingStates (body size) instead
+    // of a spinner. Colours are the mode's (useModeTheme): the shell's are
+    // the reference look's.
     state: {
       // The centred text column's inset from the screen edges (controls sit at ref.space.edge).
       textInset: 32,
-      // A caller's glyph sits in a void well with a 1 pt faint rim, as 02's wells.
-      well: { size: 72, fill: refColor.void, rim: 1, rimColor: refColor.rimFaint },
+      // A caller's glyph sits in a well (the theme's ground: void in the shell) with a 1 pt faint rim, as 02's wells.
+      well: { size: 72, rim: 1, rimColor: refColor.rimFaint },
       // The well to the title, the title to the body.
       gap: { title: 20, body: 8 },
-      // The pinned actions, as 07's band: `pad` above and below (plus the
-      // bottom safe area), the quiet secondary `gap` under the bar.
+      // The pinned actions, as the guide's foot: `pad` above the pill, the
+      // quiet secondary `gap` under it (ref.space.ctaBottom over the safe area).
       footer: { pad: 16, gap: 8 },
-      // 07's develop bar: the strongest fill on this ground (paper) with the
-      // label in the ground colour, 48 tall, 2 corners. Pressed dims (proposal).
-      bar: {
-        height: 48,
-        radius: 2,
-        fill: refColor.paper,
-        label: refColor.ground,
-        pressedOpacity: 0.75,
-        type: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
-      },
     },
     // The in-game player (/tutorial, /play/[roomId]) and Case closed
     // (/tutorial/complete). No reference: derived from 02 (the photo in a
     // rounded well on the flat ground, Once's square header buttons, the serif
     // title over a grey meta line, near-black wells, white glyphs whose shape
-    // shows state), 01's dark sheet (kit DarkSheet) and 07's cards, hint rows,
-    // outlined pill and white bar. Room photos keep their full colour.
+    // shows state), 01's dark sheet (kit DarkSheet) and 07's cards and hint
+    // rows; its actions are the photo guide's pills (ModePill). Room photos
+    // keep their full colour.
     play: {
       // Header: the squares (ref.button.square, 02's measured rim and bold 18
       // glyphs) `edge` from the screen edges, `top` below the safe top, one
@@ -1223,10 +1216,6 @@ export const ref = {
       // text; `padY` for one-line rows; the glyph `icon`; an item's void
       // `well` (ref.radius.knob corners).
       card: { radius: 8, pad: 16, padY: 12, gap: 12, icon: 18, well: 40 },
-      // 07's outlined pill, small: rows' actions (Inspect, Try again).
-      outline: { height: 44, padX: 16, border: 1, pressedFill: refColor.raised },
-      // 07's white bar: the one strong action (paper, label in ground, 48, 2 corners).
-      bar: { height: 48, radius: 2, fill: refColor.paper, label: refColor.ground },
       // The toast: 02's privacy note (a see-through void pill) at the top of the photo area.
       toast: { top: 12, padX: 12, padY: 8, fillOpacity: 0.6, maxWidth: "86%" },
       // The code pad. Tumbler wheels: vertical pickers in void wells (02's
@@ -1358,7 +1347,7 @@ export const ref = {
         section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
         /** Hint and detail lines: 07's Regular 14. */
         hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** The white bar's and the outlined pill's labels: Semibold 16. */
+        /** The keypad's Clear key: Semibold 16. */
         action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
         /** Case closed: the case's name in 02's serif, larger. */
         caseTitle: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
@@ -1370,61 +1359,70 @@ export const ref = {
       // Presses other than the pills' (proposal; nothing in the references).
       pressedOpacity: 0.75,
     },
-    // 07 · The review screen, "Photos" (/capture/review): Vestiaire's photo
-    // review layout (docs/refs/07-light-table.png, 393 x 852 @3x, measured
-    // above its tab bar) in 02's dark palette. Its white page is
-    // ref.color.ground, its black ink textPrimary, its greys textSecondary, the
-    // tiles' grey edge ref.color.rim, the black bar paper. System font.
-    // Measured baselines on 852 (safe 59 / 34): header 87, title 139, body
-    // 176 / 199, labels 304.7 / 322. Round 4: the tips are a plain list.
+    // 07 · Your photos (/capture/review), round 6: the camera's (02) and the
+    // photo guide's (04) language, so the three capture screens read as one
+    // flow. The header is the camera's (ref.layout.camera edge, top,
+    // promptTop and metaGap: a 44 square back button, the serif title over the
+    // grey meta line). The column sits at ref.space.edge; the photos are 02's
+    // last-photo thumbnail grown into 3:4 tiles (camera.frameAspect: the shot
+    // as the viewfinder framed it) in a 2-column grid; the pinned foot is the
+    // guide's (its pill in the reading column, ctaBottom over the safe area).
+    // Inside a mode every colour is the capture palette's (src/capture/ui/palette.ts).
     review: {
-      // Text gutter (header, title, body). Controls, tiles and cards sit at ref.space.edge 20.
-      gutter: 16,
-      // The header row under the safe top; Back's label `backDrop` below centre,
-      // on the title's baseline (both at y 87); Back's focus ring corners.
-      header: { height: 44, backDrop: 1, focusRadius: 8 },
+      // Vertical gaps: the header to the first block (the camera's header to
+      // its viewfinder), a whole-set note to the lead, the lead to the grid,
+      // the grid to the hint, the hint to "Add a photo", the pill to "Before
+      // you build", and the column's end over the foot.
+      gap: { top: 29, issue: 20, lead: 24, hint: 22, add: 18, section: 44, end: 28 },
       type: {
-        /** "Back" (the reference's "Close"): Regular 14. */
-        back: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** The centred title: Bold 16. */
-        navTitle: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
-        /** "Your photos": Bold 18. */
-        title: { fontSize: 18, lineHeight: 24, fontWeight: "700" },
-        /** The count line: Regular 16/23, the title's colour. */
-        body: { fontSize: 16, lineHeight: 23, fontWeight: "400" },
-        /** The add pill's and the build bar's labels: Semibold 16. */
-        action: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
-        /** Photo labels over the tiles: Regular 12/17, grey. */
-        label: { fontSize: 12, lineHeight: 17, fontWeight: "400" },
-        /** The retake hint, the build helper and the privacy line: Regular 14, grey. */
-        hint: { fontSize: 14, lineHeight: 20, fontWeight: "400" },
-        /** "Before you build": Bold 14. */
-        section: { fontSize: 14, lineHeight: 20, fontWeight: "700" },
-        /** A tip's number in its disc: Bold 16. */
-        tipNumber: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
-        /** A tip: Regular 16, a friendly line rather than a rule. */
-        tip: { fontSize: 16, lineHeight: 22, fontWeight: "400" },
+        /** A photo's numeral, before its name: 02's counter face (Crimson Text Italic), smaller. */
+        numeral: { fontFamily: refFont.italic, fontSize: 22, lineHeight: 24, letterSpacing: 0.5 },
+        /** A flagged photo's reason under its name, and the open tile's line: Medium 15. */
+        reason: { fontSize: 15, lineHeight: 20, fontWeight: "500" },
+        /** A tip: Regular 17, a friendly line rather than a rule. */
+        tip: { fontSize: 17, lineHeight: 22, fontWeight: "400" },
+        /** A tip's numeral in its disc: the counter's italic. */
+        tipNumber: { fontFamily: refFont.italic, fontSize: 18, lineHeight: 22, letterSpacing: 0 },
+        /** The privacy line and the build helper over the pill: Regular 15. */
+        note: { fontSize: 15, lineHeight: 20, fontWeight: "400" },
       } as const satisfies Record<string, TextStyle>,
-      // Vertical gaps between blocks: header to title, title to body, body to
-      // the add pill, the pill to the grid (its label box), the grid to the
-      // hint, the hint to the section heading (where round 3's heading sat,
-      // 24 under the hint), the end of the column.
-      gap: { title: 18, body: 14, add: 23.5, grid: 14.5, hint: 17, section: 24, end: 24 },
-      // The count line's right margin: the reference wraps its body at least 44 short of the edge.
-      captionInsetEnd: 48,
-      // The outlined pill: x 19.5-373.5, y 228.5-277.5 (49), its 1 pt outline
-      // straddling x 20 / 373 as the reference's does; the camera glyph 11
-      // from the label (ink to ink); pressed fill (proposal).
-      add: { inset: 19.5, height: 49, border: 1, gap: 11, pressedFill: refColor.raised },
-      // The add pill's camera, ESCAPD line art to the reference's: 19.7 x 16.7
-      // overall, square corners, a ~1.2 line; a bump `bump` wide and `bodyTop`
-      // tall centred on the top edge; a lens `lens` across (outer), its centre
+      // Two columns `gap` apart (170 pt tiles on 393), rows `rowGap` apart;
+      // the name `labelGap` under its tile, a reason `reasonGap` under the name.
+      grid: { columns: 2, gap: 13, rowGap: 24, labelGap: 10, reasonGap: 2, numeralGap: 8 },
+      // A tile is 02's last photo (ref.button.thumbnail) grown: the photo at
+      // thumbnail.imageRadius inside a thumbnail.frameWidth frame of the
+      // palette's near-black at thumbnail.radius, its 1 pt imageRim over it.
+      // A flagged photo: a `flaggedRing` warning ring on the frame's outer
+      // edge (where the camera draws its way-on ring). The ×: Phosphor X bold
+      // `icon` in white on a `disc` of the palette's well at `fillOpacity`
+      // (02's privacy-note black), `inset` in from the photo's corner, on a
+      // 44 hit area.
+      tile: {
+        flaggedRing: 2,
+        remove: { disc: 30, icon: 14, weight: "bold", inset: 8, fillOpacity: 0.6 },
+        // A slot the player emptied: the tile's shape in a dashed `border`
+        // of the tertiary grey (clearly a gap, not a photo), the camera glyph
+        // and "Take this photo" `gap` apart.
+        open: { border: 1.5, rim: refColor.textTertiary, gap: 10 },
+        // Inside a mode, the capture flow's photos (these tiles, the
+        // camera's last photo, the build wait's strip) bake the mode's
+        // treatment at this long edge (px): a tile is 170 x 227 pt, 681 px
+        // tall at 3x. One size for all three, so one bake per photo serves them all.
+        bake: 720,
+      },
+      // The hint row: the tap glyph's box beside its line, `gap` apart.
+      note: { icon: 20, gap: 8 },
+      // "Add a photo": the guide's ghost pill (52, ref.button.ghost's
+      // hairline) in the palette's well, the camera glyph `gap` from its label.
+      add: { gap: 10 },
+      // The add pill's camera, ESCAPD line art to 07's: 19.7 x 16.7 overall,
+      // square corners, a ~1.2 line; a bump `bump` wide and `bodyTop` tall
+      // centred on the top edge; a lens `lens` across (outer), its centre
       // `lensY` below the top.
       camera: { width: 19.7, height: 16.7, line: 1.2, bodyTop: 2, bump: 7.3, lens: 9.6, lensY: 8.8 },
-      // The retake hint's glyph, ESCAPD line art to the reference's: a finger
-      // pressing inside a rounded-square button, 12.3 x 18 ink, 1 line, round
-      // caps. Paths in pt (stroke centres), offset x / y in the `box` glyph box
-      // so the ink starts 3 in from the edge (x 23 on 393) and the text at 42.
+      // The retake hint's glyph, ESCAPD line art: a finger pressing inside a
+      // rounded-square button, 12.3 x 18 ink, 1 line, round caps. Paths in pt
+      // (stroke centres), offset x / y in the `box` glyph box.
       tap: {
         box: 20,
         x: 3,
@@ -1439,45 +1437,21 @@ export const ref = {
           "M 5.67 8.9 V 9.9 M 7.67 8.9 V 9.9 M 9.67 9.2 V 10.1",
         ],
       },
-      // Three columns, 8 apart both ways (tiles 112.3 on 393); a label's box 2 above its tile.
-      grid: { columns: 3, gap: 8, labelGap: 2 },
-      // Tiles: 5 corners, a 1 pt rim (2 when flagged). The ×: Phosphor X
-      // regular 16 (1 pt line, 9.7 ink), its centre `centre` from the top and
-      // right edges, on a 44 hit area; under it a void halo `halo` wide at
-      // `haloOpacity`, along X's strokes (haloFrom to haloTo of its haloBox).
-      tile: {
-        radius: 5,
-        rim: 1,
-        flaggedRim: 2,
-        remove: { icon: 16, weight: "regular", centre: 21, halo: 3, haloOpacity: 0.45, haloFrom: 56, haloTo: 200, haloBox: 256 },
-        // A slot the player emptied: a 1 pt dashed rim in the tertiary grey
-        // (clearly a gap, not a photo), the camera glyph and "Take this photo" `gap` apart.
-        open: { border: 1, rim: refColor.textTertiary, gap: 6 },
-        // Inside a mode, the capture flow's thumbnails (these tiles, the
-        // camera's last photo, the build wait's strip) bake the mode's
-        // treatment at this long edge (px): a tile is 112 pt, 336 px at 3x.
-        // One size for all three, so one bake per photo serves them all.
-        bake: 360,
-      },
-      // The retake hint's row: a 20 glyph box at the edge (the tap art), the text 2 from it.
-      note: { icon: 20, gap: 2 },
       // A failure about the whole set: a raised note at the top, `pad` inside,
-      // `radius` corners, `gap` above "Your photos".
-      issue: { pad: 16, radius: 8, gap: 18 },
-      // "Before you build": the heading `inset` from the left edge (the
-      // reference's section heading), the tips `listGap` under it, the privacy
-      // line `noteGap` under the tips.
-      section: { inset: 24, listGap: 16, noteGap: 16 },
-      // The tips, a plain vertical list at ref.space.edge: a 24 disc (raised,
-      // its number centred), the line 8 after it, tips 12 apart.
-      tips: { disc: 24, discGap: 8, gap: 12 },
-      // The pinned band: 16 above and below the 48 bar (2 corners), the helper
-      // line 8 over it. Bar fill paper, label in the page colour.
-      footer: { pad: 16, bar: 48, radius: 2, helperGap: 8, fill: refColor.paper, label: refColor.ground },
+      // at the camera's nested corners (ref.radius.nested).
+      issue: { pad: 18 },
+      // "Before you build" (04's step title), the tips `listGap` under it, the
+      // privacy line `noteGap` under the tips.
+      section: { listGap: 18, noteGap: 22 },
+      // The tips, a plain vertical list: a `disc` (raised, its numeral in the
+      // counter's italic), the line `discGap` after it, tips `gap` apart.
+      tips: { disc: 30, discGap: 12, gap: 14 },
+      // The pinned foot (the guide's): `pad` over the helper or the pill, the
+      // helper `helperGap` over the pill, and a `fade` of the page colour over
+      // the column's last points so the photos slip under it.
+      footer: { pad: 12, helperGap: 12, fade: 32 },
       // Flagged photos and their helper: the live warning amber (6.7:1 on ground).
       warning: color.warning,
-      // Every press here but the add pill's (proposal; the reference shows none).
-      pressedOpacity: 0.75,
     },
   },
   // Control feedback and the few movements the reference look adds. Functional

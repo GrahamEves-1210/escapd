@@ -4,12 +4,12 @@
 // a real wait runs, the painted glass drifts over the plates with a thinking
 // line under it (src/screens/develop, ref.layout.develop). Reference look:
 // 07's ground and tiles in miniature, 01's tag pill, title and subtitle, and
-// the state screen's pinned band (white bar, quiet text button).
+// the photo guide's foot (StateActions: its pill, then a quiet text button).
 // Inside a mode (openCapture({ genre }) sets it) every state takes the mode's
-// colours (src/capture/ui/palette.ts, src/screens/develop/ModeState.tsx):
-// its ground, ink and muted ink, the stamp in the mode's stamp colour, the
-// bar as the mode's primary button, and the photos in the mode's baked
-// treatment.
+// colours (src/capture/ui/palette.ts; the calm states are StateScreen, which
+// reads the mode too): its ground, ink and muted ink, the stamp in the mode's
+// stamp colour, the pill as the mode's primary button (its accent, as the
+// guide's "Next"), and the photos in the mode's baked treatment.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -22,11 +22,10 @@ import { useFeedback } from "@/game/feedback";
 import { formatDuration } from "@/game/format";
 import { waitingCopy, type WaitLine } from "@/screens/develop/copy";
 import { DarkroomHero } from "@/screens/develop/DarkroomHero";
-import { DevelopActions, DevelopStateScreen } from "@/screens/develop/ModeState";
 import { PlateStrip } from "@/screens/develop/PlateStrip";
 import { ref } from "@/theme/tokens";
 import { trackingPad } from "@/components/noir";
-import type { StateAction } from "@/components/StateScreen";
+import { StateActions, StateScreen, type StateAction } from "@/components/StateScreen";
 
 const L = ref.layout.develop;
 const S = ref.layout.state;
@@ -72,10 +71,10 @@ export default function DarkroomScreen() {
 
   switch (stage.kind) {
     case "checking":
-      return <DevelopStateScreen title="One moment" loading />;
+      return <StateScreen title="One moment" loading />;
     case "account":
       return (
-        <DevelopStateScreen
+        <StateScreen
           title="Keep your cases on an account"
           body="Cases you build are saved to your account so they're never lost. Add an email and confirm it, then build."
           primary={{ label: "Add your email", onPress: addEmail }}
@@ -84,14 +83,14 @@ export default function DarkroomScreen() {
       );
     case "access":
       return stage.reason === "entitlement" ? (
-        <DevelopStateScreen
+        <StateScreen
           title="Your own rooms are part of ESCAPD Pro"
           body="Pro isn't on sale in this test build. If you're testing, ask for test access for your account, then try again."
           primary={{ label: "Try again", onPress: () => retry() }}
           secondary={{ label: "Back to your photos", onPress: back }}
         />
       ) : (
-        <DevelopStateScreen
+        <StateScreen
           title="You've built every case this month allows"
           body="Your allowance comes back over the next few days. Your photos stay on this phone until you close the app."
           primary={{ label: "Back to home", onPress: home }}
@@ -99,7 +98,7 @@ export default function DarkroomScreen() {
       );
     case "error":
       return (
-        <DevelopStateScreen
+        <StateScreen
           title="The case didn't go through"
           body={stage.message}
           primary={{ label: "Try again", onPress: () => retry() }}
@@ -122,7 +121,7 @@ export default function DarkroomScreen() {
         }
       };
       return (
-        <DevelopStateScreen
+        <StateScreen
           title={copy.title}
           body={copy.body}
           primary={copy.action === "retake" ? { label: plates.length ? "Retake photos" : "Take the photos again", onPress: retake }
@@ -179,7 +178,7 @@ function Darkroom({ stamp, title, body, plates, sent, developed, since, wait, pr
   since?: string;
   /** Only during a real wait: the drifting glass over the plates and this thinking line under it (they replace the spinner). */
   wait?: WaitLine;
-  /** The white bar (Open the case). */
+  /** The guide's pill (Open the case). */
   primary?: StateAction;
   /** The quiet text button (Leave it building). */
   secondary?: StateAction;
@@ -203,7 +202,7 @@ function Darkroom({ stamp, title, body, plates, sent, developed, since, wait, pr
         {/* Outside the live region, so the clock's ticks aren't read out (TalkBack). */}
         {since ? <Elapsed since={since} /> : null}
       </View>
-      <DevelopActions primary={primary} secondary={secondary} bottom={insets.bottom} />
+      <StateActions primary={primary} secondary={secondary} bottom={insets.bottom} />
     </View>
   );
 }

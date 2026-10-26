@@ -10,7 +10,8 @@ import type { SuspectCard } from "@/game/selectors";
 import { useModeTheme } from "@/game/mode";
 import { DarkSheet } from "@/components/noir";
 import { ref } from "@/theme/tokens";
-import { Card, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card } from "./parts";
 import { SuspectFile } from "./SuspectFile";
 
 const P = ref.layout.play;
@@ -39,7 +40,8 @@ export function SuspectsSheet({ suspects, motives, methods, canAccuse, onAccuse,
       testID="suspects-sheet"
       footer={(
         <View style={styles.footer}>
-          <WhiteBar
+          <ModePill
+            variant="ghost"
             label="Accuse"
             onPress={onAccuse}
             disabled={!canAccuse}

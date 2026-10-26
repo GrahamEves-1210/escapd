@@ -1,11 +1,11 @@
-// "Before you build": three friendly tips in a plain vertical list, then one
-// calm line on what happens to the photos. The heading is Bold 14 (the
-// reference's section heading, section.inset from the edge); each tip is a
-// numbered disc (24, raised) and a Regular 16 line beside it, its first line
-// centred on the disc, tips.gap apart. The note under them is Regular 14 grey,
-// with no glyph: it reassures, it doesn't warn. Nothing here is a control.
-// Inside a mode: the mode's ink, muted ink and raised discs
-// (src/capture/ui/palette.ts).
+// "Before you build": the photo guide's step title (Bold 22), then three
+// friendly tips in a plain vertical list, then one calm line on what happens
+// to the photos. Each tip is a raised disc holding its numeral in 02's
+// counter italic and a Regular 17 line beside it, its first line centred on
+// the disc. The note under them is Regular 15 in the muted ink, with no
+// glyph: it reassures, it doesn't warn. Nothing here is a control.
+// Inside a mode: the mode's ink, muted ink and raised discs, the numerals in
+// its lit colour (src/capture/ui/palette.ts).
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useCapturePalette, type CapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
@@ -18,7 +18,7 @@ const T = L.tips;
 export function ChecksSection({ style }: { style?: StyleProp<ViewStyle> }) {
   const palette = useCapturePalette();
   return (
-    <View style={style}>
+    <View style={[styles.root, style]}>
       <Text accessibilityRole="header" style={[styles.heading, { color: palette.ink }]}>
         {COPY.checksTitle}
       </Text>
@@ -34,13 +34,13 @@ export function ChecksSection({ style }: { style?: StyleProp<ViewStyle> }) {
   );
 }
 
-// The disc's number is drawn only; the tip reads with its number
+// The disc's numeral is drawn only; the tip reads with its number
 // ("1. Keep people out of the shot.") as one text element.
 function Tip({ mark, text, palette }: { mark: string; text: string; palette: CapturePalette }) {
   return (
     <View style={styles.tip} testID="tip">
       <View style={[styles.disc, { backgroundColor: palette.raised }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Text style={[styles.mark, { color: palette.ink }]}>{mark}</Text>
+        <Text style={[styles.mark, { color: palette.lit }]}>{mark}</Text>
       </View>
       <Text style={[styles.tipText, { color: palette.ink }]} accessibilityLabel={`${mark}. ${text}`}>
         {text}
@@ -50,8 +50,9 @@ function Tip({ mark, text, palette }: { mark: string; text: string; palette: Cap
 }
 
 const styles = StyleSheet.create({
-  heading: { ...L.type.section, marginHorizontal: S.inset },
-  list: { marginTop: S.listGap, marginHorizontal: ref.space.edge, gap: T.gap },
+  root: { marginHorizontal: ref.space.edge },
+  heading: { ...ref.type.stepTitle },
+  list: { marginTop: S.listGap, gap: T.gap },
   tip: { flexDirection: "row", alignItems: "flex-start", gap: T.discGap },
   disc: {
     minWidth: T.disc,
@@ -63,5 +64,5 @@ const styles = StyleSheet.create({
   mark: { ...L.type.tipNumber, textAlign: "center" },
   // The first line centred on the disc.
   tipText: { ...L.type.tip, flex: 1, marginTop: (T.disc - L.type.tip.lineHeight) / 2 },
-  note: { ...L.type.hint, marginTop: S.noteGap, marginHorizontal: ref.space.edge },
+  note: { ...L.type.note, marginTop: S.noteGap },
 });

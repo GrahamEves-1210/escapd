@@ -13,8 +13,8 @@
 //   viewfinder, the counter, the zoom track) on its `ground` (the shell's
 //   black), so the shell's one step between them stays;
 // - raised controls on `raised`, text in `ink` and `inkMuted`, edges `rim`;
-// - the primary button (03's pill, 04's step button, 07's build bar, 06's
-//   bar) in `accent` with `accentInk`;
+// - the primary button (03's pill, 04's step button, and the same pill on
+//   07 and 06) in `accent` with `accentInk`;
 // - stamps (06's BUILDING / CASE READY), the counter's current numeral and
 //   the camera's way-on ring in `stamp`;
 // - 03's white paper sheet becomes the mode's dark sheet (`surface` over
@@ -102,8 +102,9 @@ const SHELL: CapturePalette = {
   squareRim: ref.layout.camera.squareRim,
   thumb: ref.button.segment.thumbFill,
   frame: C.well,
-  primary: ref.layout.review.footer.fill,
-  onPrimary: ref.layout.review.footer.label,
+  // The guide's dark hairline pill (ref.button.ghost; ModePill draws the kit's own PillButton in the shell).
+  primary: ref.button.ghost.fill,
+  onPrimary: ref.button.ghost.label,
   stamp: C.textLabel,
   stampRim: C.rim,
   lit: C.textPrimary,

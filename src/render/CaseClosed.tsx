@@ -43,7 +43,7 @@ export interface CaseClosedProps {
   photo?: SceneSource | null;
   /** A closing line under the stats. */
   next?: string;
-  /** 07's pinned band: the white bar, then quiet pills. */
+  /** The pinned band, as the photo guide's foot: its pill (ModePill "ghost", the mode's accent), then quiet pills (ModePill "quiet"). */
   actions: ReactNode;
 }
 
@@ -130,7 +130,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
           </Animated.View>
         ) : null}
       </ScrollView>
-      <View style={[styles.actions, { paddingBottom: ref.space.lg + insets.bottom }]}>{actions}</View>
+      <View style={[styles.actions, { paddingBottom: insets.bottom + ref.space.ctaBottom }]}>{actions}</View>
     </View>
   );
 }
@@ -150,5 +150,6 @@ const styles = StyleSheet.create({
   stats: { flexDirection: "row", gap: ref.space.sm },
   stat: { flex: 1 },
   statInner: { gap: ref.space.xs },
-  actions: { paddingTop: ref.space.lg, paddingHorizontal: ref.space.edge, gap: ref.space.xs },
+  // The photo guide's foot: its reading column, the pill to the quiet buttons ref.space.sm apart.
+  actions: { paddingTop: ref.space.lg, paddingHorizontal: ref.space.reading, gap: ref.space.sm },
 });

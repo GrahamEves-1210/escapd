@@ -1,21 +1,19 @@
-// The reference's pinned "Next" bar, here "Build the case": a band in the page colour over the
-// scrolling content (footer.pad above and below the bar, then the bottom safe
-// area), holding a full control-width bar footer.bar tall with footer.radius
-// corners in the strongest fill on this ground (paper, as the reference's
-// black on white) and a Semibold 16 label in the page colour. When the case
-// can't be built yet, the reason sits over the bar (Regular 14, centred:
-// warning colour for marked photos, grey for too few) and the bar dims to
-// ref.button.disabledOpacity.pill. Pressing in on the live bar gives the
-// medium `thud` haptic: committing to build a case (as PillButton haptic="thud").
-// Inside a mode the band is the mode's ground, the helper its muted ink, and
-// the bar the mode's primary button: its accent with the accent's ink
-// (src/capture/ui/palette.ts).
-import { Pressable, StyleSheet, Text, View } from "react-native";
+// The pinned foot, as the photo guide's (04): "Build the case" is the
+// guide's own pill (ModePill "ghost": 52 tall, a full capsule, the headline
+// label; the guide's dark hairline pill in the shell, the mode's accent with
+// its accent ink inside a mode, exactly as the guide's "Next"), in the
+// guide's reading column, its foot ref.space.ctaBottom over the bottom safe
+// area. The band is the page colour, with a fade above it so the photos slip
+// under it. When the case can't be built yet, the reason sits over the pill
+// (Regular 15, centred: the warning colour for marked photos, the muted ink
+// for too few) and the pill dims to ref.button.disabledOpacity.pill. Pressing
+// in on the live pill gives the medium `thud` haptic: committing to build a case.
+import { StyleSheet, Text, View } from "react-native";
+import { ModePill } from "@/capture/ui/ModePill";
 import { useCapturePalette } from "@/capture/ui/palette";
-import { FocusRing, useFocusRing } from "@/components/noir";
-import { useFeedback } from "@/game/feedback";
-import { curve, ref } from "@/theme/tokens";
+import { ref } from "@/theme/tokens";
 import { COPY } from "./copy";
+import { PageFade } from "./PageFade";
 
 const L = ref.layout.review;
 const F = L.footer;
@@ -28,53 +26,33 @@ export interface DevelopFooterProps {
 }
 
 export function DevelopFooter({ bottom, blocked, onDevelop }: DevelopFooterProps) {
-  const focus = useFocusRing();
-  const disabled = blocked !== null;
-  const feedback = useFeedback();
   const palette = useCapturePalette();
   return (
-    <View style={[styles.footer, { backgroundColor: palette.page, paddingBottom: F.pad + bottom }]} testID="develop-footer">
+    <View style={[styles.footer, { backgroundColor: palette.page, paddingBottom: bottom + ref.space.ctaBottom }]} testID="develop-footer">
+      <PageFade color={palette.page} height={F.fade} solidAt="bottom" style={styles.fade} />
       {blocked ? (
-        <Text style={[styles.helper, { color: palette.inkMuted }, blocked.kind === "flagged" && styles.warning]} testID="develop-helper">
+        <Text
+          style={[styles.helper, { color: blocked.kind === "flagged" ? L.warning : palette.inkMuted }]}
+          accessibilityLiveRegion="polite"
+          testID="develop-helper"
+        >
           {blocked.kind === "flagged" ? COPY.flaggedHelp : COPY.tooFew(blocked.min)}
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={COPY.develop}
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPressIn={disabled ? undefined : feedback.thud}
+      <ModePill
+        variant="ghost"
+        label={COPY.develop}
+        disabled={blocked !== null}
+        haptic="thud"
         onPress={onDevelop}
-        onFocus={focus.onFocus}
-        onBlur={focus.onBlur}
         testID="develop"
-        style={({ pressed }) => [styles.bar, { backgroundColor: palette.primary }, disabled ? styles.disabled : pressed ? styles.pressed : null]}
-      >
-        <Text style={[styles.label, { color: palette.onPrimary }]}>{COPY.develop}</Text>
-        <FocusRing visible={focus.focused} shape="panel" radius={F.radius} />
-      </Pressable>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  footer: {
-    paddingTop: F.pad,
-    paddingHorizontal: ref.space.edge,
-    gap: F.helperGap,
-  },
-  helper: { ...L.type.hint, textAlign: "center" },
-  warning: { color: L.warning },
-  bar: {
-    minHeight: F.bar,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: ref.space.lg,
-    borderRadius: F.radius,
-    ...curve,
-  },
-  label: { ...L.type.action, textAlign: "center" },
-  pressed: { opacity: L.pressedOpacity },
-  disabled: { opacity: ref.button.disabledOpacity.pill },
+  footer: { paddingTop: F.pad, paddingHorizontal: ref.space.reading, gap: F.helperGap },
+  fade: { top: -F.fade },
+  helper: { ...L.type.note, textAlign: "center" },
 });

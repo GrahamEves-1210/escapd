@@ -35,8 +35,8 @@ describe("capture palette", () => {
       squareRim: ref.layout.camera.squareRim,
       thumb: ref.button.segment.thumbFill,
       frame: ref.button.shutter.ringFill,
-      primary: ref.layout.review.footer.fill,
-      onPrimary: ref.layout.review.footer.label,
+      primary: ref.button.ghost.fill,
+      onPrimary: ref.button.ghost.label,
       stamp: ref.color.textLabel,
       lit: ref.color.textPrimary,
       cue: ref.layout.camera.cue.color,
@@ -51,9 +51,8 @@ describe("capture palette", () => {
       phone: ref.color.inkDisplay,
       phoneLight: ref.color.illustrationBevel,
     });
-    // The build wait's bar and the review bar are the same strongest fill.
-    expect(shell.primary).toBe(ref.layout.state.bar.fill);
-    expect(shell.onPrimary).toBe(ref.layout.state.bar.label);
+    // The shell's primary is the photo guide's own pill everywhere (round 6).
+    expect(shell.primary).toBe(ref.button.ghost.fill);
   });
 
   it.each(GENRES)("takes %s's colours from its theme only", (genre) => {

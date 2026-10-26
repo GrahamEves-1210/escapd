@@ -3,12 +3,13 @@ import Animated, { FadeIn, LinearTransition, withTiming } from "react-native-rea
 import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
 import type { Id } from "@/lib/puzzle-types";
 import type { InventoryItem } from "@/game/selectors";
-import { FocusRing, PillButton, useFocusRing } from "@/components/noir";
+import { FocusRing, useFocusRing } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
-import { Card, WhiteBar } from "./parts";
+import { ModePill } from "@/capture/ui/ModePill";
+import { Card } from "./parts";
 
 const P = ref.layout.play;
 const T = P.tray;
@@ -64,7 +65,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
               {picked[0].description ? <Text style={[styles.detail, { color: theme.inkMuted }]}>{picked[0].description}</Text> : null}
               <Text style={[styles.instruction, { color: theme.inkMuted }]}>Select an object in the room to use this artifact.</Text>
             </View>
-            <PillButton variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
+            <ModePill variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
           </Card>
         </Animated.View>
       ) : null}
@@ -79,9 +80,9 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
               <Socket label="B" item={picked[1]} />
             </View>
             <View style={styles.matActions}>
-              <PillButton variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
+              <ModePill variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
               <View style={styles.flex}>
-                <WhiteBar label="Close clasp" onPress={onCombine} busy={busy} haptic={false} testID="combine" />
+                <ModePill variant="ghost" label="Close clasp" onPress={onCombine} busy={busy} spinner haptic={false} testID="combine" />
               </View>
             </View>
           </Card>

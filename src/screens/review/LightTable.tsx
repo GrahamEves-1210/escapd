@@ -1,24 +1,28 @@
-// The review screen (/capture/review, titled "Photos"), laid out as the
-// reference's photo review (docs/refs/07-light-table.png) on the camera's
-// dark palette: check the photos before the case is built. Nothing is
-// uploaded until "Build the case". Photos keep their slots: removing one
-// leaves an open tile in its place. When a build fails and sends the player
-// back, ?flag=0:person,2:private_text marks those photos with their reasons
-// until they are retaken (plain ?flag=0,2 from older builds reads as the
-// general reason), and ?issue=too_few_objects (a failure about the whole set)
-// shows its note at the top.
+// The review screen (/capture/review, "Your photos"), in the language of the
+// camera (02) and the photo guide (04) on either side of it: check the photos
+// before the case is built. Nothing is uploaded until "Build the case".
+// Photos keep their slots: removing one leaves an open tile in its place.
+// When a build fails and sends the player back, ?flag=0:person,2:private_text
+// marks those photos with their reasons until they are retaken (plain
+// ?flag=0,2 from older builds reads as the general reason), and
+// ?issue=too_few_objects (a failure about the whole set) shows its note at
+// the top.
 //
-// Top to bottom: the header (Back, the title), "Your photos" and the count
-// line, "Add a photo" (gone at MAX_PLATES), the photo grid, the retake hint,
-// "Before you build" with its tips and the privacy note; then the pinned
-// build bar. The
-// column scrolls under the bar; text follows the system size.
+// Top to bottom: the camera's header (the square back button, the serif
+// title "Your photos" over the grey count "4 of 6 taken"); then a scrolling
+// column: the whole-set note (if any), the lead line, the photos (02's last
+// photo grown into 3:4 tiles, two to a row), the retake hint, "Add a photo"
+// (the guide's ghost pill; gone at MAX_PLATES), and "Before you build" with
+// its tips and the privacy line; then the guide's pinned foot with "Build
+// the case". The column slips under the foot and the header through soft
+// fades of the page colour; text follows the system size.
 //
 // Inside a mode (openCapture({ genre }) sets it) the screen takes the mode's
-// colours (src/capture/ui/palette.ts): its ground, raised notes and discs,
-// ink and muted ink, the build bar as the mode's primary button, and every
-// photo in the mode's baked treatment (TreatedImage), so the player sees the
-// room as the case will show it. The flagged amber stays.
+// colours (src/capture/ui/palette.ts), as the camera and the guide do: its
+// ground, raised discs and notes, ink, muted ink and lit numerals, "Build the
+// case" as the mode's primary pill, and every photo in the mode's baked
+// treatment (TreatedImage), so the player sees the room as the case will
+// show it. The flagged amber stays.
 import { useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
@@ -34,6 +38,7 @@ import { COPY } from "./copy";
 import { DevelopFooter, type DevelopFooterProps } from "./DevelopFooter";
 import { TapGlyph } from "./Glyphs";
 import { NoteRow } from "./NoteRow";
+import { PageFade } from "./PageFade";
 import { PlateGrid } from "./PlateGrid";
 import { ReviewHeader } from "./ReviewHeader";
 
@@ -69,31 +74,33 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
 
   return (
     <View style={[styles.root, { backgroundColor: palette.page }]} testID="review-root">
-      <ReviewHeader top={insets.top} onBack={back} />
-      <ScrollView contentContainerStyle={styles.content} testID="review-scroll">
-        {issue ? (
-          <View style={[styles.issue, { backgroundColor: palette.raised }]} testID="review-issue">
-            <Text style={[styles.issueText, { color: palette.ink }]}>{COPY.issues[issue]}</Text>
-          </View>
-        ) : null}
-        <Text accessibilityRole="header" style={[styles.heading, { color: palette.ink }]}>
-          {COPY.heading}
-        </Text>
-        <Text style={[styles.caption, { color: palette.ink }]}>{COPY.caption(plates.length, MAX_PLATES)}</Text>
-        {plates.length < MAX_PLATES ? <AddPlateButton onPress={() => router.push("/capture")} style={styles.add} /> : null}
-        {hasPlates ? (
-          <View style={styles.grid}>
-            <PlateGrid
-              slots={slots}
-              marks={marks}
-              onRetake={(slot) => router.push({ pathname: "/capture", params: { retake: String(slot) } })}
-              onRemove={(slot) => removePlate(slot)}
-            />
-          </View>
-        ) : null}
-        {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
-        <ChecksSection style={hasPlates ? styles.checksAfterHint : styles.checks} />
-      </ScrollView>
+      <ReviewHeader top={insets.top} count={plates.length} max={MAX_PLATES} onBack={back} />
+      <View style={styles.body}>
+        <ScrollView contentContainerStyle={styles.content} testID="review-scroll">
+          {issue ? (
+            <View style={[styles.issue, { backgroundColor: palette.raised }]} testID="review-issue">
+              <Text style={[styles.issueText, { color: palette.ink }]}>{COPY.issues[issue]}</Text>
+            </View>
+          ) : null}
+          <Text style={[styles.lead, { color: palette.inkMuted }]} testID="review-lead">
+            {COPY.lead}
+          </Text>
+          {hasPlates ? (
+            <View style={styles.grid}>
+              <PlateGrid
+                slots={slots}
+                marks={marks}
+                onRetake={(slot) => router.push({ pathname: "/capture", params: { retake: String(slot) } })}
+                onRemove={(slot) => removePlate(slot)}
+              />
+            </View>
+          ) : null}
+          {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
+          {plates.length < MAX_PLATES ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
+          <ChecksSection style={styles.checks} />
+        </ScrollView>
+        <PageFade color={palette.page} height={GAP.top} solidAt="top" style={styles.topFade} />
+      </View>
       <DevelopFooter bottom={insets.bottom} blocked={blocked} onDevelop={() => router.push("/capture/develop")} />
     </View>
   );
@@ -102,21 +109,22 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
 const styles = StyleSheet.create({
   // The flat ground: the palette's page.
   root: { flex: 1 },
-  content: { paddingTop: GAP.title, paddingBottom: GAP.end },
-  heading: { ...L.type.title, marginHorizontal: L.gutter },
-  // A failure about the whole set: a calm raised note above the heading (no glyph, not amber).
+  body: { flex: 1 },
+  content: { paddingTop: GAP.top, paddingBottom: GAP.end },
+  topFade: { top: 0 },
+  // A failure about the whole set: a calm raised note at the camera's nested corners (no glyph, not amber).
   issue: {
     marginHorizontal: ref.space.edge,
-    marginBottom: L.issue.gap,
+    marginBottom: GAP.issue,
     padding: L.issue.pad,
-    borderRadius: L.issue.radius,
+    borderRadius: ref.radius.nested,
     ...ref.curve,
   },
-  issueText: { ...L.type.hint },
-  caption: { ...L.type.body, marginLeft: L.gutter, marginRight: L.captionInsetEnd, marginTop: GAP.body },
-  add: { marginTop: GAP.add },
-  grid: { marginTop: GAP.grid },
+  issueText: { ...ref.type.subtitle },
+  lead: { ...ref.type.subtitle, marginHorizontal: ref.space.edge },
+  grid: { marginTop: GAP.lead },
   hint: { marginTop: GAP.hint },
-  checks: { marginTop: GAP.add },
-  checksAfterHint: { marginTop: GAP.section },
+  add: { marginTop: GAP.add },
+  addFirst: { marginTop: GAP.lead },
+  checks: { marginTop: GAP.section },
 });
