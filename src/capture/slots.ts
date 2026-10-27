@@ -79,7 +79,8 @@ export function promptFor(index: number, prompts: readonly PlatePrompt[]): Plate
 export function placePrompt(index: number, prompts: readonly PlatePrompt[], filled?: readonly boolean[]): { title: string; detail: string } {
   const count = prompts.length;
   const at = Math.min(Math.max(index, 0), count - 1);
-  const { name } = prompts[at];
+  // Named by its number, never "Left" or "Behind".
+  const name = `Photo ${prompts[at].numeral}`;
   const beforeAt = (at - 1 + count) % count;
   const afterAt = (at + 1) % count;
   const before = prompts[beforeAt].numeral;

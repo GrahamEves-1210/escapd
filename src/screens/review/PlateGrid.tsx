@@ -213,12 +213,11 @@ function OpenCell({ index, prompt, size, onTake }: { index: number; prompt: Plat
   );
 }
 
-/** "1  From the doorway": the numeral in the counter's italic, then the name in the camera's serif. */
+/** The photo's number only, in the counter's italic: no "Left" or "Behind" (they meant nothing to players). */
 function PlateName({ prompt, palette }: { prompt: PlatePrompt; palette: CapturePalette }) {
   return (
-    <View style={styles.name} accessible accessibilityLabel={plateLabelSpoken(prompt)}>
+    <View style={styles.name} accessible accessibilityLabel={`Photo ${prompt.numeral}`}>
       <Text style={[styles.numeral, { color: palette.lit }]}>{prompt.numeral}</Text>
-      <Text style={[styles.title, { color: palette.ink }]}>{plateName(prompt)}</Text>
     </View>
   );
 }
