@@ -3,7 +3,7 @@
 // screen, and the ending's lines come up in it. "Close the case" goes on to
 // case closed.
 import { useEffect } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { Canvas, Circle, RadialGradient, vec } from "@shopify/react-native-skia";
@@ -64,6 +64,8 @@ export function Ending({ text, door, genre, onDone }: {
       </Canvas>
       <Animated.View style={[StyleSheet.absoluteFill, styles.wash, wash]} pointerEvents="none" />
       <Animated.View style={[styles.words, { paddingBottom: insets.bottom + ref.space.lg }, lines]}>
+        {/* The cat saw you out. */}
+        <Image source={CAT_SIT} style={styles.cat} resizeMode="contain" accessibilityLabel="The black cat, sitting in the doorway light" />
         <Text style={[ref.type.serifTitle, styles.center, styles.dark]} accessibilityRole="header">You're out.</Text>
         <Text style={[ref.type.body, styles.center, styles.dark]}>{text}</Text>
         <Pressable onPress={onDone} accessibilityRole="button" accessibilityLabel="Close the case" testID="v2-ending-done" style={styles.button}>
@@ -74,7 +76,10 @@ export function Ending({ text, door, genre, onDone }: {
   );
 }
 
+const CAT_SIT = require("../../assets/characters/cat_sit.png") as number;
+
 const styles = StyleSheet.create({
+  cat: { alignSelf: "center", width: 104, height: 150 },
   root: { zIndex: 80, overflow: "hidden" },
   wash: { backgroundColor: "rgb(255,244,226)" },
   words: { position: "absolute", left: ref.space.lg, right: ref.space.lg, bottom: 0, gap: ref.space.lg, alignItems: "stretch" },

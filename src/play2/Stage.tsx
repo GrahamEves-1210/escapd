@@ -49,6 +49,8 @@ export interface StageProps {
   marks?: { object: string; box: Box; text: string }[];
   /** The object under the beam's centre as it moves (UV checks it after a moment). */
   onHover?: (objectId: string | null) => void;
+  /** Where the beam points (photo fractions), owned by the parent so others can follow it. */
+  beam?: { x: SharedValue<number>; y: SharedValue<number> };
   /** An object being looked at closely: the light swings onto it. */
   focus?: Box | null;
   /** The photo's frame in window points, once laid out (drops from the tray are hit-tested against it). */
@@ -73,7 +75,7 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], onHover, onFrame, focus = null,
+  uv = false, marks = [], onHover, onFrame, focus = null, beam,
 }: StageProps) {
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -82,8 +84,11 @@ export function Stage({
   const W = frame?.width ?? 0;
   const H = frame?.height ?? 0;
 
-  const tx = useSharedValue<number>(V2.torch.rest.x);
-  const ty = useSharedValue<number>(V2.torch.rest.y);
+  // The beam, in photo fractions: the parent's when given (the cat's eyes follow it).
+  const ownX = useSharedValue<number>(V2.torch.rest.x);
+  const ownY = useSharedValue<number>(V2.torch.rest.y);
+  const tx = beam?.x ?? ownX;
+  const ty = beam?.y ?? ownY;
   const size = useSharedValue({ w: 0, h: 0 });
   useEffect(() => size.set({ w: W, h: H }), [size, W, H]);
 

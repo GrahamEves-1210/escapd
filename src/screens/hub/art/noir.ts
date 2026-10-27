@@ -38,7 +38,7 @@ const TYPE_UP = 10;
 const REPORT = [
   "At 11:40 p.m. the night clerk of the Starlight Hotel heard one shot from Room 6. The door was locked from the inside, the key still in it, the window painted shut.",
   "The guest, a Mr. [Halloran], lay by the bed. No weapon was found in the room. The clerk swears no one used the stairs. The house cat sat in the hall all night and made no sound.",
-  "One set of prints on the brass doorknob. They are not the guest's. They are not the clerk's. Whoever closed that door is still in the building.",
+  "One set of prints on the brass doorknob, and they match no one on the register. Whoever closed that door is still in the building.",
 ];
 /** The word the lens rests on. */
 const CLUE = "prints";

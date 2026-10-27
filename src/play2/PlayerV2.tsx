@@ -29,6 +29,7 @@ import { InspectView, type Content } from "./InspectView";
 import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
+import { PeekingCat } from "./PeekingCat";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 
@@ -40,6 +41,9 @@ export interface PlayerV2Props {
 }
 
 type Open = { kind: "object"; id: string } | { kind: "item"; id: string };
+
+/** The cat's width on the ledge (points). */
+const CAT_W = 104;
 
 /** The magnifier's id while it is dragged (never an item id: those are minted "prop_…", "key_…"). */
 const LENS = "__lens__";
@@ -78,6 +82,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [frame, setFrame] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const drag = { x: useSharedValue(0), y: useSharedValue(0) };
+  // The beam (photo fractions), shared by the room and the cat watching it.
+  const beam = { x: useSharedValue<number>(V2.torch.rest.x), y: useSharedValue<number>(V2.torch.rest.y) };
   const { height: windowHeight } = useWindowDimensions();
   const [note, setNote] = useState<string | null>(null);
   const [toasts, setToasts] = useState<string[]>([]);
@@ -412,6 +418,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             uv={uvOn}
             marks={marks}
             focus={targetObject && targetObject.photo_index === view ? targetObject.box : null}
+            beam={beam}
             onHover={onHover}
             onFrame={setFrame}
             onLook={look}
@@ -482,7 +489,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
               <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
             </Pressable>
           ) : null}
-          <View style={styles.footRow} pointerEvents="box-none">
+          <View style={[styles.footRow, styles.ledge, { borderTopColor: theme.rim }]} pointerEvents="box-none">
+            {/* The cat, peering over the ledge, eyes on your light. */}
+            <View style={styles.cat} pointerEvents="none">
+              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} />
+            </View>
             <Magnifier drag={drag} onDragStart={() => { feedback.tick(); setDragging(LENS); }} onDrop={(x, y) => drop(LENS, x, y)} />
             <View style={styles.trayWrap}>{heldItems.length ? tray : null}</View>
           </View>
@@ -615,6 +626,8 @@ const styles = StyleSheet.create({
   edgeRight: { right: 0, borderTopLeftRadius: 16, borderBottomLeftRadius: 16 },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: ref.space.lg, gap: ref.space.sm },
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
+  ledge: { marginHorizontal: -ref.space.lg, paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: "rgba(12,12,16,0.82)" },
+  cat: { position: "absolute", left: ref.space.lg + 64, bottom: "100%" },
   trayWrap: { flex: 1, paddingRight: 96 },
   lens: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)" },
   lensGhost: { position: "absolute", left: 0, top: 0, width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.12)", zIndex: 200 },

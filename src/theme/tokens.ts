@@ -153,17 +153,17 @@ export interface GradientStop {
 const refColor = {
   // Grounds, darkest first, then the light screen.
   /** Pure black: 01 and 04's ground; the inset wells (empty viewfinder, zoom track, counter pill). */
-  void: "#000000",
+  void: "#0B0B0E",
   /** The camera screen's ground (02); fill of 01's round header chips. */
-  ground: "#101010",
+  ground: "#17171B",
   /** Faintest fill above black: the ghost pill. */
   shade: "#0A0A0A",
   /** Near-black rims on 02: the shutter ring and the last-photo frame (measured #070707). */
   well: "#070707",
   /** 02's zoom thumb (measured #1A1A1A to #1B1B1B). */
-  thumb: "#1B1B1B",
+  thumb: "#26262A",
   /** Raised controls on dark (square buttons); the primary pill on paper; glyphs and quiet labels on paper. */
-  raised: "#1E1E1E",
+  raised: "#2A2A2F",
   /** The light permission screen and its sheet (03). */
   paper: "#FFFFFF",
   /** The cool grey illustration panel at the top of 03's sheet. */
@@ -175,7 +175,7 @@ const refColor = {
   /** Tag text on 01's game cards (white 82 %). */
   textLabel: "rgba(255, 255, 255, 0.82)",
   /** Subtitles, meta lines and one-line instructions (6.3 to 6.9:1). */
-  textSecondary: "#949494",
+  textSecondary: "#ADADB2",
   /** The same grey as white 60 %, for a glyph over 01's glow (the dismiss X). */
   textSecondaryAlpha: "rgba(255, 255, 255, 0.60)",
   /** Inactive segment label only (2.8:1). */
@@ -1900,11 +1900,11 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     genre: "noir",
     name: "Detective Noir",
     tagline: "Solve the case",
-    ground: "#0D0D0D",
-    surface: "#171717",
-    raised: "#222222",
+    ground: "#17171A",
+    surface: "#232327",
+    raised: "#303035",
     ink: "#F2EFE9",
-    inkMuted: "#A19C93",
+    inkMuted: "#BDB8AF",
     accent: color.accent,
     accentInk: color.onAccent,
     stamp: color.accent,
@@ -1925,11 +1925,11 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     genre: "crime_scene",
     name: "Crime Scene",
     tagline: "Find the killer",
-    ground: "#0E0B0A",
-    surface: "#181211",
-    raised: "#221917",
+    ground: "#19130F",
+    surface: "#261D19",
+    raised: "#332621",
     ink: "#ECE4D3",
-    inkMuted: "#ACA191",
+    inkMuted: "#C2B8A8",
     // The user's range (#8E1B1B to #A3201F), at its brightest: a fill under bone text (6.5:1).
     accent: "#A3201F",
     accentInk: "#F3EDE1",
@@ -1954,11 +1954,11 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     genre: "paranormal",
     name: "Paranormal",
     tagline: "Face the unknown",
-    ground: "#0A0E10",
-    surface: "#111A1D",
-    raised: "#1A2529",
+    ground: "#111A1D",
+    surface: "#1B272B",
+    raised: "#26353A",
     ink: "#EDF3F5",
-    inkMuted: "#93A8AF",
+    inkMuted: "#AFC2C8",
     accent: "#A7C7CE",
     accentInk: "#0A1316",
     stamp: "#B8D7DD",
