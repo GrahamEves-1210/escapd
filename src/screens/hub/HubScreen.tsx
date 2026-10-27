@@ -22,12 +22,11 @@
 // goes busy while it waits for it. A failure shows the notice.
 // Home is the shell, so it clears the active mode each time it gains focus.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AccessibilityInfo, BackHandler, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance } from "react-native";
+import { AccessibilityInfo, BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect } from "react-native-svg";
 import { openCapture } from "@/capture/openCapture";
-import { Wordmark } from "@/components/Wordmark";
 import { gradientLine, gradientStops } from "@/components/noir";
 import { GENRES, setMode } from "@/game/mode";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
@@ -52,6 +51,9 @@ const DIVIDER = ref.gradient.divider;
 /** The 6 between a chip's 48 hit box and its 36 disc. */
 const CHIP_PAD = (ref.button.chip.hit - ref.button.chip.size) / 2;
 /** The header's height under the safe top: the chip row and the divider under it. */
+/** The ESCAPD logo cut from the brand art (docs/DESIGN.md, 01 · Home). */
+const WORDMARK = require("../../../assets/brand/wordmark.png");
+
 const HEADER = H.header.top - CHIP_PAD + ref.button.chip.hit + ref.space.lg - CHIP_PAD + H.hairline;
 
 interface Notice {
@@ -316,10 +318,10 @@ export function HubScreen() {
         <View style={[styles.header, { paddingTop: insets.top + H.header.top - CHIP_PAD }]}>
           {/* Opal's dismiss chevron: left out (home is the root). Its place keeps the wordmark centred. */}
           <View style={styles.chipSlot} />
-          {/* The ESCAPD wordmark in white, its doorway edge grey (no brass), centred: the screen's name (the shell keeps its look). */}
+          {/* The ESCAPD logo, large and centred: the brand art's cream letters with the lit keyhole, keyed onto the black. */}
           <View style={styles.titleGroup}>
             <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo">
-              <Wordmark height={H.header.logo} tint={ref.color.textPrimary} edgeColor={ref.color.textSecondary} />
+              <Image source={WORDMARK} style={styles.logo} resizeMode="contain" accessibilityIgnoresInvertColors />
             </View>
           </View>
           <Chip
@@ -416,6 +418,7 @@ const styles = StyleSheet.create({
   chipSlot: { width: ref.button.chip.hit, height: ref.button.chip.hit },
   // Centred between the two 48 slots, so on the screen's axis.
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
+  logo: { height: H.header.logo, width: H.header.logo * H.header.logoAspect },
   divider: { height: H.hairline, marginTop: ref.space.lg - CHIP_PAD },
   column: { flex: 1 },
   cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge },

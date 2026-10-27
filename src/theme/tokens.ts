@@ -570,9 +570,13 @@ export const ref = {
     hub: {
       // The 1 pt lines: the divider, the card rims, the tag pills, the notice's and the sheet's edges.
       hairline: 1,
-      // The chip row's top below the safe top (y 71); the ESCAPD wordmark's
-      // height (its letters' full height: a little over Opal's 16 pt title cap, 11.3).
-      header: { top: 12, logo: 14 },
+      // The chip row's top below the safe top (y 71), and the ESCAPD logo
+      // (assets/brand/wordmark.png, cut from the brand art: cream letters, the
+      // A's keyhole lit amber, a soft glow keyed onto clear): `logo` tall
+      // including its glow (the letters about 29 pt), `logoAspect` its
+      // width / height. It stays inside the chips' 48 pt row, so the deck
+      // below keeps its place.
+      header: { top: 12, logo: 40, logoAspect: 890 / 161 },
       // The chips' diagonal 1 pt ring, as a gradient from their top right to
       // their bottom left. On the circle it spans only 0.146-0.854 of the
       // line, so: nothing at 45° / 225°, white 10.5 % at the cardinals, 15 %

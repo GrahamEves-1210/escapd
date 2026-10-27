@@ -163,7 +163,7 @@ There is one haptic per moment, never stacked, and only on discrete events. Unde
 
 ## 01 · Home (the mode cards at /)
 
-Round 6 (MODES_PROMPT.md Part 2, the user's round 6 note). Home is the shell: the reference look's black ground, Opal's header (the ESCAPD wordmark centred, the Settings chip at the right) and the faint divider, then a deck of three mode cards, DETECTIVE NOIR, CRIME SCENE and PARANORMAL, each solid and in its own mode's palette. There is no case list anywhere: a card's tap goes into the mode (Entering a mode, below). The old Opal fan (THE STUDY, YOUR ROOM, YOUR CASE, the glass cards and the floor glow) is gone.
+Round 6 (MODES_PROMPT.md Part 2, the user's round 6 note). Home is the shell: the reference look's black ground, Opal's header (the ESCAPD logo centred, the Settings chip at the right) and the faint divider, then a deck of three mode cards, DETECTIVE NOIR, CRIME SCENE and PARANORMAL, each solid and in its own mode's palette. There is no case list anywhere: a card's tap goes into the mode (Entering a mode, below). The old Opal fan (THE STUDY, YOUR ROOM, YOUR CASE, the glass cards and the floor glow) is gone.
 
 Route: `app/index.tsx` (`/`) re-exports `src/screens/hub/HubScreen.tsx`. Files in `src/screens/hub/`: `HubScreen.tsx` (header, divider, the deck, a card's tap, the notice, the two sheets, focus return, Android back), `ModeCard.tsx` (one card), `deck.ts` (the deck's geometry, pure), `caseStatus.ts` (The Study's entry, a case to go back to, where Continue goes, labels and notice copy, pure), `useHubData.ts` (`loadHub`, `fetchHub` and the focus fetch), `ResumeSheet.tsx` (the continue prompt), `SettingsSheet.tsx`, `HubNotice.tsx`, `Chip.tsx`, and the covers in `art/` (Modes · Mode art). The prompt's words are in `src/screens/mode/copy.ts`. Tests: `src/screens/hub/__tests__/hub-test.tsx`, `caseStatus-test.ts`, `art/__tests__/bake-test.tsx`.
 
@@ -194,7 +194,7 @@ Three case files dealt down a dark desk. Each card is solid and lit by its own c
 | Element | Position and size (pt) | Style |
 |---|---|---|
 | Ground | full screen | `ref.color.void`. No glow, no grain |
-| Header | chip row at safe top + 12 (discs 36 in 48 hit boxes, 16 from the edges); the divider 16 under the discs | Opal's header as before: the left slot empty (home is the root), the ESCAPD wordmark (white, its doorway edge grey) centred as the screen's header, the Settings chip (sliders glyph) at the right |
+| Header | chip row at safe top + 12 (discs 36 in 48 hit boxes, 16 from the edges); the divider 16 under the discs | Opal's header as before: the left slot empty (home is the root), the ESCAPD logo centred as the screen's header (round 8: `assets/brand/wordmark.png`, cut from the user's brand art: cream letters, the A's keyhole lit amber, its soft glow keyed onto clear so it sits on the black; 40 pt tall including the glow, `ref.layout.hub.header.logo` / `logoAspect`), the Settings chip (sliders glyph) at the right |
 | Deck | a scroll view from the divider to the screen's foot; content `top` 16 under the divider, `edge` 16 from the sides, `foot` 12 + the safe bottom at the end | Three cards in reading order, later cards on top (tree order; no zIndex) |
 | Card size | card = column / (1 + 2 × (1 − cover)), at least the tallest card's words + `peek` divided by (1 − cover), at least 168. Each card after the first starts `overlap` = round(card × 0.36) above the previous card's foot | 375 × 667 (column 554): cards 242, overlap 87, 155 of each upper card showing; 393 × 852: 292 / 105 / 187; 430 × 932: 327 / 118 / 209. All three fit with no scrolling at the default text size |
 | Card face | the card's full size, turned `tilt` | the mode's drawn cover full bleed (`ModeCover`, baked at the card's real size); 1 pt rim in the mode's `rim`; corners 20, continuous; the `deck.shadow` and the top `deck.edge` |
@@ -1329,7 +1329,7 @@ Each screen section has its own "Decisions" with the reasoning. These are the on
 | "the warning should be less threatening and dont mention AI" | "Your photos are only used to build your case. No one else sees them." Grey, no lock glyph |
 | "drop the light table dark room thing" | Plain words everywhere players see or hear: photos, "Photos", "Build the case", "Building your case", "Your case is ready", "home screen", Arabic numerals. Routes and file names unchanged |
 | "the step by step thing should show before you make a room every time" | `openCapture()` always opens the guide. Coming back to the camera for the same room (add or retake) doesn't repeat it |
-| Home: "just the escapd logo" | The ESCAPD wordmark in white with a grey doorway edge. No magnifier, no "Case files" |
+| Home: "just the escapd logo" | The ESCAPD logo from the brand art (round 8), large and centred. No magnifier, no "Case files" |
 | Case screen: no photos at the bottom, taller, "no side bars", swipe "with 0 margins" | Full-bleed photo pager, square-edged with 0 gap, follow-the-finger with a no-overshoot settle, page dots on the photo's foot (round 7: the photos loop and a thumbnail wheel replaces the dots), "View 1 of 3" |
 | "unlock box should let you slide up number" | Drag-to-roll picker wheels with dimmed neighbours, wrapping 9 → 0, a tick per digit |
 | Settings: "more than 2 things" | A Settings sheet: Show interactives, Haptics, Reduce motion, Add your email, ESCAPD Pro, Version |
@@ -1391,6 +1391,14 @@ Only the account screens still use the round-2 look; they have no layout of thei
 - the case intro
 - the countdown after a wrong code
 - cancelling a development
+
+## Brand (round 8)
+
+The user's brand art (a lit doorway in a purple rounded square, a cat peering round the door, and ESCAPD in cream with the A's keyhole lit amber) is cut into the app's assets by `scripts/brand/make.py` (the source image isn't kept in the repo):
+- **App icon** (`assets/icon.png`, 1024): the art inside the rounded square, cropped clear of its rim and corners, so it fills the icon and the platform's own mask rounds it.
+- **Android adaptive icon:** `android-icon-background.png` is the art's edge purple (#2F121F); `android-icon-foreground.png` is the art at 70 % in the middle, feathered into that purple so no square edge shows inside the launcher's circle or squircle; `android-icon-monochrome.png` is the lit doorway as the shape (the door and cat cut out of it), for themed icons.
+- **Splash** (`assets/splash-icon.png`): the rounded icon with its orange glow, the dark page keyed to clear and the glow faded out before the crop's edge, on the existing #090807.
+- **Logo** (`assets/brand/wordmark.png`): ESCAPD with its glow, the dark page keyed to clear (alpha from the brightest channel, the colour un-blended from black), on home's header. The old drawn `Wordmark` component is removed.
 
 ## Modes
 
