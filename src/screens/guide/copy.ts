@@ -31,7 +31,7 @@ export const COPY = {
   next: "Next",
   openCamera: "Open the camera",
   // The X: like the last step, it continues to the camera.
-  skip: "Skip to the camera",
+  skip: "Back to the menu",
   // The access check when the guide was opened directly (one non-rotating
   // thinking line, after ~1 s), and its error.
   checkingLines: ["Getting the camera ready"],

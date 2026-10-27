@@ -1,7 +1,8 @@
-// The music: mounted once, at the app's root (app/_layout.tsx), so it follows
-// the active mode across every screen rather than starting and stopping with
-// each one. The shell (home, Pro, account) and noir play the main theme,
-// Crime Scene and Paranormal their own tracks (trackFor in music.ts).
+// The music: mounted once, at the app's root (app/_layout.tsx), so it plays
+// across every screen rather than starting and stopping with each one. The
+// main theme plays everywhere until the player is in an escape room
+// (/play/…, the room and its case closed): there Crime Scene and Paranormal
+// switch to their own tracks (trackFor in music.ts); noir keeps the theme.
 //
 // It plays while music is on (the server's music_enabled, the Music switch in
 // Settings) and the app is in the foreground; turning it off, or the app
@@ -11,6 +12,7 @@
 // the web (where a browser would want one) plays no audio at all.
 import { useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
+import { usePathname } from "expo-router";
 import { useMode } from "./mode";
 import { setMusic, trackFor } from "./music";
 import { usePreferences } from "./preferences";
@@ -25,9 +27,11 @@ const appState = (): string | null => AppState.currentState ?? null;
 export function useMusic() {
   const { music_enabled } = usePreferences();
   const mode = useMode();
+  // A mode's own music only inside its escape room; the theme on home, the camera, the build wait.
+  const inRoom = usePathname().startsWith("/play/");
   const state = useSyncExternalStore(subscribeAppState, appState, appState);
   const foreground = state !== "background" && state !== "inactive";
-  const track = music_enabled && foreground ? trackFor(mode) : null;
+  const track = music_enabled && foreground ? trackFor(inRoom ? mode : null) : null;
 
   useEffect(() => {
     setMusic(track, { immediate: state === "background" });

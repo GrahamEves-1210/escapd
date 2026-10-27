@@ -1,90 +1,95 @@
-# The home screen's backdrop: a rainy night through a window whose frame and
-# sill run round the screen's edges. Static layer; rain and lightning are
-# animated over it in the app.
+# Home's backdrop: a four-pane window filling the phone, its frame and sill
+# on the screen's edges and a cross of mullions; behind the glass a deep blue
+# rainy dusk over dark pines; rain beaded and running on the glass. The app
+# animates more drops landing and running over it.
 import sys, numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 W, H = 1290, 2796
-rng = np.random.default_rng(7)
+rng = np.random.default_rng(11)
+F = 64            # frame on the sides and top (px)
+SILL = 150        # the sill at the foot
+M = 46            # mullion width
+MY = int(H * 0.50)  # the cross's height
 
-# Sky: deep storm blue-grey, lighter low on the horizon (city glow).
-y = np.linspace(0, 1, H)[:, None]
-top = np.array([10, 13, 20]); mid = np.array([22, 28, 40]); low = np.array([44, 44, 52])
-sky = np.where(y < 0.6, top + (mid - top) * (y / 0.6), mid + (low - mid) * ((y - 0.6) / 0.4))
-sky = np.repeat(sky[:, None, :].reshape(H, 1, 3), W, axis=1).astype(float)
-# Clouds: soft noise, brighter under a far-off glow.
+# Sky: deep blue at the top, a brighter blue band low behind the trees.
+y = np.linspace(0, 1, H)[:, None, None]
+c0 = np.array([14, 22, 70]); c1 = np.array([40, 66, 150]); c2 = np.array([92, 120, 196])
+sky = np.where(y < 0.55, c0 + (c1 - c0) * (y / 0.55), c1 + (c2 - c1) * np.clip((y - 0.55) / 0.2, 0, 1))
+sky = np.broadcast_to(sky, (H, W, 3)).astype(float).copy()
 def noise(scale):
     small = rng.random((H // scale + 2, W // scale + 2))
     return np.array(Image.fromarray((small * 255).astype(np.uint8)).resize((W, H), Image.BICUBIC)) / 255.0
-clouds = 0.55 * noise(220) + 0.3 * noise(90) + 0.15 * noise(35)
-clouds = np.clip((clouds - 0.45) * 1.8, 0, 1) * (1 - y[:, :]) * 0.9
-sky += clouds[..., None] * np.array([26, 30, 40])
+clouds = np.clip((0.6 * noise(260) + 0.4 * noise(110) - 0.5) * 2.2, 0, 1)
+sky += clouds[..., None] * np.array([18, 24, 40]) * (1 - y[..., 0][..., None])
 img = Image.fromarray(np.clip(sky, 0, 255).astype(np.uint8))
 
-# A distant skyline: dark blocks along the lower third, a few warm windows.
+# Pines: layered silhouettes across the lower part, the far row lighter.
 d = ImageDraw.Draw(img)
-base = int(H * 0.80)
-x = -40
-while x < W + 40:
-    bw = int(rng.integers(60, 230)); bh = int(rng.integers(90, 640)) if rng.random() < 0.85 else int(rng.integers(700, 900))
-    shade = int(rng.integers(12, 22))
-    d.rectangle([x, base - bh, x + bw, H], fill=(shade, shade + 2, shade + 6))
-    for _ in range(int(rng.integers(2, 9))):
-        wx = x + int(rng.integers(8, max(9, bw - 16))); wy = base - bh + int(rng.integers(10, max(11, bh - 20)))
-        warm = rng.random() < 0.8
-        d.rectangle([wx, wy, wx + 7, wy + 10], fill=(214, 172, 96) if warm else (150, 180, 200))
-    x += bw + int(rng.integers(0, 20))
-img = img.filter(ImageFilter.GaussianBlur(9))   # the glass is wet: everything outside is soft
+def pine(cx, base, h, w, colour):
+    tiers = 6
+    for t in range(tiers):
+        top = base - h + t * h / tiers * 0.9
+        bot = top + h / tiers * 1.6
+        half = w * (t + 1) / tiers / 2
+        d.polygon([(cx, top), (cx - half, bot), (cx + half, bot)], fill=colour)
+    d.rectangle([cx - w * 0.04, base - h * 0.12, cx + w * 0.04, base + 40], fill=colour)
+for row, (base, colour, n, hmin, hmax) in enumerate([
+    (int(H * 0.78), (24, 34, 72), 14, 380, 700),
+    (int(H * 0.86), (10, 14, 32), 11, 520, 980),
+]):
+    for _ in range(n):
+        cx = int(rng.integers(-60, W + 60)); h = int(rng.integers(hmin, hmax))
+        pine(cx, base, h, h * 0.42, colour)
+    d.rectangle([0, base, W, H], fill=colour)
+img = img.filter(ImageFilter.GaussianBlur(7))   # seen through wet glass
 
-# Raindrops on the glass: small lenses, a bright rim low and a dark one high.
+# Rain on the glass: beads with a bright lower rim and a dark upper one, and runs.
 glass = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 g = ImageDraw.Draw(glass)
-for _ in range(900):
-    cx, cy = rng.integers(0, W), rng.integers(0, H)
-    r = float(rng.choice([2, 3, 3, 4, 5, 6, 8, 10], p=[.2, .2, .2, .15, .1, .07, .05, .03]))
-    g.ellipse([cx - r, cy - r * 1.1, cx + r, cy + r * 1.1], fill=(200, 210, 230, 26))
-    g.arc([cx - r, cy - r * 1.1, cx + r, cy + r * 1.1], 20, 160, fill=(230, 236, 248, 120), width=max(1, int(r / 3)))
-    g.arc([cx - r, cy - r * 1.1, cx + r, cy + r * 1.1], 200, 340, fill=(0, 0, 0, 70), width=max(1, int(r / 3)))
-# A few trickles: drops that ran, leaving a clear trail.
-for _ in range(14):
-    cx = int(rng.integers(0, W)); y0 = int(rng.integers(0, H - 600)); L = int(rng.integers(120, 520))
-    amp = rng.uniform(2, 14); per = rng.uniform(25, 70); ph = rng.uniform(0, 6)
-    pts = [(cx + amp * np.sin(t / per + ph) + t * rng.uniform(-0.02, 0.02), y0 + t) for t in range(0, L, 6)]
-    g.line(pts, fill=(210, 220, 240, 34), width=4)
-    ex, ey = pts[-1]; g.ellipse([ex - 6, ey - 7, ex + 6, ey + 7], fill=(220, 230, 245, 60))
-img = Image.alpha_composite(img.convert("RGBA"), glass.filter(ImageFilter.GaussianBlur(0.6)))
+for _ in range(1400):
+    cx, cy = int(rng.integers(0, W)), int(rng.integers(0, H))
+    r = float(rng.choice([2, 3, 4, 5, 6, 8, 11], p=[.22, .22, .2, .14, .1, .08, .04]))
+    g.ellipse([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], fill=(170, 190, 240, 40))
+    g.arc([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], 15, 165, fill=(235, 242, 255, 170), width=max(1, int(r / 2.5)))
+    g.arc([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], 195, 345, fill=(4, 8, 24, 110), width=max(1, int(r / 3)))
+for _ in range(34):
+    cx = int(rng.integers(0, W)); y0 = int(rng.integers(0, H - 300)); L = int(rng.integers(140, 760))
+    amp = rng.uniform(2, 12); per = rng.uniform(20, 60); ph = rng.uniform(0, 6); wdt = int(rng.integers(3, 7))
+    pts = [(cx + amp * np.sin(t / per + ph), y0 + t) for t in range(0, L, 5)]
+    g.line(pts, fill=(200, 215, 250, 70), width=wdt)
+    g.line([(x + wdt / 2, yy) for x, yy in pts], fill=(240, 246, 255, 90), width=1)
+    ex, ey = pts[-1]; r = wdt + 3
+    g.ellipse([ex - r, ey - r * 1.2, ex + r, ey + r * 1.2], fill=(200, 215, 250, 90))
+    g.arc([ex - r, ey - r * 1.2, ex + r, ey + r * 1.2], 15, 165, fill=(245, 248, 255, 200), width=2)
+img = Image.alpha_composite(img.convert("RGBA"), glass)
 
-# The window: frame round every edge, a deeper sill at the foot, painted wood with a bevel.
+# The window: frame round the screen, a cross of mullions, a sill at the foot.
 frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 f = ImageDraw.Draw(frame)
-T, S = 104, 250   # side/top frame, sill
-wood = (46, 34, 28)
-f.rectangle([0, 0, W, T], fill=wood); f.rectangle([0, 0, T, H], fill=wood)
-f.rectangle([W - T, 0, W, H], fill=wood); f.rectangle([0, H - S, W, H], fill=wood)
-# bevels: a lit inner edge on the top/left of the opening's frame, shadow on the lower/right
-# an inner moulding: a raised strip just inside the frame, lit top-left, shaded bottom-right
-f.rectangle([T - 24, T - 24, W - T + 24, H - S + 24], outline=(60, 46, 38), width=24)
-f.line([(T - 24, T - 24), (W - T + 24, T - 24)], fill=(96, 76, 62), width=4)
-f.line([(T - 24, T - 24), (T - 24, H - S + 24)], fill=(84, 66, 54), width=4)
-f.line([(T, T), (W - T, T)], fill=(20, 15, 12), width=6)
-f.line([(T, T), (T, H - S)], fill=(20, 15, 12), width=6)
-f.line([(W - T, T), (W - T, H - S)], fill=(10, 7, 6), width=8)
-f.line([(T, H - S), (W - T, H - S)], fill=(10, 7, 6), width=10)
-# the sill's lip catches the light
-f.rectangle([0, H - S + 24, W, H - S + 70], fill=(66, 50, 41)); f.line([(0, H - S + 24), (W, H - S + 24)], fill=(118, 94, 76), width=5)
-f.rectangle([0, H - S + 70, W, H - S + 84], fill=(24, 18, 15))
-# wood grain
-for _ in range(240):
-    gx = int(rng.integers(0, W)); gy = int(rng.integers(0, H)); L = int(rng.integers(60, 260))
-    tone = (int(rng.integers(26, 44)),) * 1
-    on_side = gx < T or gx > W - T
-    if on_side:
-        f.line([(gx, gy), (gx, gy + L)], fill=(44, 34, 28, 120), width=2)
-    elif gy < T or gy > H - S:
-        f.line([(gx, gy), (gx + L, gy)], fill=(44, 34, 28, 120), width=2)
+dark, mid, lit = (20, 16, 15), (40, 32, 29), (78, 64, 56)
+def bar(x0, y0, x1, y1):
+    f.rectangle([x0, y0, x1, y1], fill=mid)
+    # a rounded profile: lit on the top/left edge, dark on the bottom/right
+    if x1 - x0 > y1 - y0:
+        f.line([(x0, y0 + 2), (x1, y0 + 2)], fill=lit, width=4)
+        f.line([(x0, y1 - 3), (x1, y1 - 3)], fill=dark, width=6)
+    else:
+        f.line([(x0 + 2, y0), (x0 + 2, y1)], fill=lit, width=4)
+        f.line([(x1 - 3, y0), (x1 - 3, y1)], fill=dark, width=6)
+bar(0, 0, W, F); bar(0, 0, F, H); bar(W - F, 0, W, H)
+cx = W // 2
+bar(cx - M // 2, F, cx + M // 2, H - SILL); bar(F, MY - M // 2, W - F, MY + M // 2)
+# the sill: a deeper ledge, its lip catching the light
+f.rectangle([0, H - SILL, W, H], fill=mid)
+f.rectangle([0, H - SILL, W, H - SILL + 26], fill=(56, 46, 41)); f.line([(0, H - SILL), (W, H - SILL)], fill=(104, 88, 78), width=5)
+f.rectangle([0, H - SILL + 26, W, H - SILL + 36], fill=dark)
 img = Image.alpha_composite(img, frame)
-# a shadow the frame casts on the glass, inside the opening
+# the frame's shadow on the glass, round each pane
 shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0)); sd = ImageDraw.Draw(shadow)
-sd.rectangle([T, T, W - T, T + 40], fill=(0, 0, 0, 110)); sd.rectangle([T, T, T + 30, H - S], fill=(0, 0, 0, 90))
-img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(18)))
+for (x0, y0, x1, y1) in [(F, F, cx - M // 2, MY - M // 2), (cx + M // 2, F, W - F, MY - M // 2),
+                         (F, MY + M // 2, cx - M // 2, H - SILL), (cx + M // 2, MY + M // 2, W - F, H - SILL)]:
+    sd.rectangle([x0, y0, x1, y0 + 26], fill=(0, 0, 0, 120)); sd.rectangle([x0, y0, x0 + 20, y1], fill=(0, 0, 0, 90))
+img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(14)))
 img.convert("RGB").save(sys.argv[1], quality=88)
 img.convert("RGB").resize((W // 4, H // 4)).save("preview.png")
+print("panes", F / W, F / H, SILL / H, M / W, MY / H)

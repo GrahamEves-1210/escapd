@@ -5,7 +5,7 @@
 // hairline pill. No step label on screen (the reference has none): screen
 // readers hear "Step n of 4" when a step opens and in the button's hint.
 // It shows before every new room (openCapture always opens it), and both the
-// last step and the X continue to the camera. Opened directly
+// last step continues to the camera; the X goes back to the menu. Opened directly
 // (/capture/guide?replay=1, with no access check behind it), that continue
 // runs the access check first (useReplayCheck).
 //
@@ -140,11 +140,11 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   };
 
   // Taps during a step transition are ignored (never shown as disabled). The
-  // X skips the rest of the guide and continues to the camera, as step 4
-  // does; while the access check runs it waits, as the step button does.
+  // X leaves: back to the menu. The camera is only ever reached by the steps.
   const onClose = () => {
-    if (gone.current || isMoving() || check.busy) return;
-    continueToCamera();
+    if (gone.current || isMoving()) return;
+    gone.current = true;
+    router.dismissTo("/");
   };
 
   const onStepButton = () => {
