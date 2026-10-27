@@ -31,10 +31,10 @@ const audio = require("expo-audio") as {
 
 // Jest turns every asset into the same number; these get their own names so a test can tell the players apart.
 jest.mock("../../../assets/music/theme.m4a", () => "theme.m4a");
-jest.mock("../../../assets/music/crime.mp3", () => "crime.mp3");
+jest.mock("../../../assets/music/crime.m4a", () => "crime.m4a");
 jest.mock("../../../assets/music/paranormal.mp3", () => "paranormal.mp3");
 jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
-const SOURCE = { theme: "theme.m4a", crime: "crime.mp3", paranormal: "paranormal.mp3", roomNoir: "room-noir.m4a" };
+const SOURCE = { theme: "theme.m4a", crime: "crime.m4a", paranormal: "paranormal.mp3", roomNoir: "room-noir.m4a" };
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
 const loadsOf = (source: unknown) => audio.createAudioPlayer.mock.calls.filter(([s]) => s === source).length;

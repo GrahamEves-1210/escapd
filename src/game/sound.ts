@@ -76,8 +76,9 @@ export const MUSIC = {
     // head and 1.9 s tail cut on frame boundaries; nothing re-encoded): the shell and noir. -27.6 LUFS,
     // the reference the other trims match.
     theme: { source: require("../../assets/music/theme.m4a"), trim: 1 },
-    // Crime Scene's track (the user's jazz.mp3).
-    crime: { source: require("../../assets/music/crime.mp3"), trim: 1 },
+    // Crime Scene's track: the user's Jazz.wav (16-bit 44.1 kHz), its silent 4.2 s tail cut and encoded to
+    // AAC 256 kbit/s (.m4a loops gaplessly on iOS; an MP3 adds a gap). -16.9 LUFS: trimmed 10.7 dB down to the theme.
+    crime: { source: require("../../assets/music/crime.m4a"), trim: 0.29 },
     // Paranormal's track (the user's atmoseerie01.mp3, as supplied). -26.0 LUFS: trimmed 1.6 dB down to the theme.
     paranormal: { source: require("../../assets/music/paranormal.mp3"), trim: 0.83 },
   } satisfies Record<TrackName, { source: number; trim: number }>,

@@ -55,16 +55,10 @@ Three looping tracks in `assets/music/`, one per mode. They are the user's own a
 | File | Plays in | Source | Licence |
 |---|---|---|---|
 | `theme.m4a` | The shell (home, Pro, account) and Detective Noir: its mode screens, intro, capture flow, build wait and play screen | The main theme: the audio of the user's screen recording (AAC-LC, 44.1 kHz stereo, about 130 kbit/s), **stream-copied** with no re-encode, its silent 1.6 s head and 1.9 s tail cut on frame boundaries: `ffmpeg -i video.mp4 -vn -c:a copy raw.m4a`, then `ffmpeg -ss 1.6 -to 214.2 -i raw.m4a -c copy -movflags +faststart assets/music/theme.m4a`. 212.6 s, 3.4 MB, -27.6 LUFS integrated | Supplied and licensed by the user |
-| `crime.mp3` | Crime Scene ("murder mystery") | The user's `jazz.mp3`, as supplied | Supplied and licensed by the user |
+| `crime.m4a` | Crime Scene ("murder mystery") | The user's `Jazz.wav` (PCM 16-bit, 44.1 kHz stereo, 107.1 s), its silent 4.2 s tail cut, encoded to AAC-LC 256 kbit/s: `ffmpeg -i Jazz.wav -t 102.9 -c:a aac -b:a 256k -movflags +faststart assets/music/crime.m4a`. 102.9 s, 3.2 MB, -16.9 LUFS (`trim` 0.29 brings it to the theme). AAC in .m4a rather than MP3 so the loop is gapless on iOS | Supplied and licensed by the user |
 | `paranormal.mp3` | Paranormal | The user's `atmoseerie01.mp3`, as supplied (MP3 44.1 kHz stereo, 20.1 s, 400 KB, -26.0 LUFS; `trim` 0.83 brings it to the theme) | Supplied and licensed by the user |
 
-**Placeholder:** `crime.mp3` is still **4 s of silence** until the user's jazz track arrives (`theme.m4a` and `paranormal.mp3` are the real tracks). The placeholders were made with ffmpeg in the right container (`theme.m4a` AAC-LC 44.1 kHz stereo; the others MP3 44.1 kHz stereo, 64 kbit/s), so the whole music system builds and runs against them. Replace each file in place under the same name; no code changes are needed (only `trim`, below, if a track is louder or quieter than the others).
-
-```sh
-ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a aac -b:a 64k -movflags +faststart assets/music/theme.m4a
-ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a libmp3lame -b:a 64k assets/music/crime.mp3
-ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a libmp3lame -b:a 64k assets/music/paranormal.mp3
-```
+**All three are the user's real tracks** (the silent placeholders the system was first built against are gone).
 
 ### Levels
 
