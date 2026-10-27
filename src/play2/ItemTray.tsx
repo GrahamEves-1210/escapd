@@ -42,7 +42,7 @@ export interface DragState {
   y: SharedValue<number>;
 }
 
-export function ItemTray({ items, selected, equipped, drag, width, onTap, onExamine, onDragStart, onDrop }: {
+export function ItemTray({ items, selected, equipped, drag, width, onTap, onExamine, onDragStart, onDrop, slots = 0 }: {
   items: ItemDef[];
   selected: string[];
   /** The UV flashlight is switched on. */
@@ -55,10 +55,13 @@ export function ItemTray({ items, selected, equipped, drag, width, onTap, onExam
   onDragStart: (id: string) => void;
   /** Where it was let go, in window points. */
   onDrop: (id: string, x: number, y: number) => void;
+  /** A game hotbar: this many slots, the empty ones shown recessed. */
+  slots?: number;
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const room = (width ?? windowWidth - 2 * ref.space.lg);
-  const size = Math.max(28, Math.min(MAX, Math.floor((room - GAP * Math.max(0, items.length - 1)) / Math.max(1, items.length))));
+  const count = Math.max(items.length, slots);
+  const size = Math.max(28, Math.min(MAX, Math.floor((room - GAP * Math.max(0, count - 1)) / Math.max(1, count))));
   return (
     <View style={[styles.row, { gap: GAP, minHeight: MAX }]} testID="v2-tray">
       {items.map((item) => (
@@ -74,6 +77,9 @@ export function ItemTray({ items, selected, equipped, drag, width, onTap, onExam
           onDragStart={onDragStart}
           onDrop={onDrop}
         />
+      ))}
+      {Array.from({ length: Math.max(0, slots - items.length) }, (_, i) => (
+        <EmptySlot key={`empty-${i}`} size={size} />
       ))}
     </View>
   );
@@ -143,6 +149,17 @@ function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onD
         <Glyph size={size * 0.56} weight={on ? "fill" : "regular"} color={uv ? "rgb(200,170,255)" : theme.ink} />
       </View>
     </GestureDetector>
+  );
+}
+
+/** An empty hotbar slot: recessed, waiting. */
+function EmptySlot({ size }: { size: number }) {
+  const theme = useModeTheme();
+  return (
+    <View
+      accessible={false}
+      style={[styles.icon, { width: size, height: size, borderRadius: size * 0.28, backgroundColor: theme.ground, borderColor: theme.rim, borderWidth: StyleSheet.hairlineWidth }]}
+    />
   );
 }
 

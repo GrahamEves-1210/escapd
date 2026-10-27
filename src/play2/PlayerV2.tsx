@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon } from "phosphor-react-native";
-import { Canvas, RadialGradient, Rect as SkRect, vec } from "@shopify/react-native-skia";
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
@@ -49,6 +48,9 @@ function tint(hex: string, alpha: number): string {
   return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : hex;
 }
 
+/** The hotbar's slots: held items fill them from the left, the rest show empty. */
+const HOTBAR_SLOTS = 6;
+
 /** The cat's width on the ledge (points). */
 const CAT_W = 58;
 
@@ -80,6 +82,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const sources = useSceneSources(roomId, scene);
 
   const [view, setView] = useState(0);
+  // Which way the player last turned (the next view slides in from that side).
+  const [turnDir, setTurnDir] = useState<1 | -1 | 0>(0);
   const [open, setOpen] = useState<Open | null>(null);
   // What each object turned out to hold (notes to read, items not yet picked up), shown in it when it's open.
   const [contents, setContents] = useState<Record<string, Content[]>>({});
@@ -405,21 +409,24 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       onExamine={openItem}
       onDragStart={(id) => { feedback.tick(); setDragging(id); }}
       onDrop={drop}
+      slots={HOTBAR_SLOTS}
     />
   );
 
   const selectedItem = selected.length === 1 ? itemById(selected[0]) : undefined;
   const SelectedGlyph = selectedItem ? itemIcon(selectedItem) : null;
   const unread = Math.max(0, casebookCards.length - cluesRead);
-  const glass = { backgroundColor: tint(theme.ground, 0.72), borderColor: theme.rim };
+  const glass = { backgroundColor: theme.raised, borderColor: theme.rim };
+  // The top HUD band's height: under the status bar, one row of controls.
+  const hudTop = insets.top + 58;
   const middle = frame ? frame.y + frame.height / 2 : null;
   const toolTop = frame ? Math.min(frame.y + frame.height, ledgeTop ?? windowHeight) - TOOL - ref.space.sm : 0;
   const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
 
   return (
     <View style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player">
-      {/* The room fills the screen; the controls sit over it. */}
-      <View style={StyleSheet.absoluteFill}>
+      {/* The game view: the room, between the HUD's top band and its hotbar. */}
+      <View style={[styles.view, { top: hudTop, bottom: ledgeTop !== null ? windowHeight - ledgeTop : 112 }]}>
         {source ? (
           <Stage
             key={view}
@@ -438,29 +445,19 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             onHover={onHover}
             onFrame={setFrame}
             onLook={look}
-            onPage={(dir) => setView((v) => (v + dir + photos) % photos)}
+            onPage={(dir) => { setTurnDir(dir); setView((v) => (v + dir + photos) % photos); }}
+            enter={turnDir}
             accessibilityLabel={`View ${view + 1} of ${photos}`}
           />
         ) : null}
       </View>
-      {/* A vignette: the room's edges fall away into the dark. */}
-      <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-        <SkRect x={0} y={0} width={screenW} height={windowHeight}>
-          <RadialGradient
-            c={vec(screenW / 2, windowHeight * 0.45)}
-            r={Math.max(screenW, windowHeight) * 0.72}
-            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
-            positions={[0, 0.55, 1]}
-          />
-        </SkRect>
-      </Canvas>
 
-      <View style={[styles.top, { paddingTop: insets.top + ref.space.xs }]} pointerEvents="box-none">
+      <View style={[styles.top, styles.band, { height: hudTop, paddingTop: insets.top + ref.space.xs, backgroundColor: theme.ground, borderBottomColor: tint(theme.ink, 0.12) }]} pointerEvents="box-none">
         <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.glass, glass]} testID="v2-back">
           <ArrowLeftIcon size={20} weight="bold" color={theme.ink} />
         </Pressable>
         {/* The case: a label in the mode's display face over one quiet line; tap for all of it. */}
-        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={[styles.objective, glass]} testID="v2-objective">
+        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
           <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>The case</Text>
           <Text style={[styles.objectiveText, { color: theme.ink }]} numberOfLines={objectiveOpen ? undefined : 1}>{def.objective}</Text>
           {def.mode === "paranormal" && progress.total > 0 ? (
@@ -488,7 +485,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       {photos > 1 && !open ? (
         <>
           <Pressable
-            onPress={() => { feedback.tick(); setView((v) => (v - 1 + photos) % photos); }}
+            onPress={() => { feedback.tick(); setTurnDir(-1); setView((v) => (v - 1 + photos) % photos); }}
             accessibilityRole="button"
             accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
             hitSlop={12}
@@ -498,7 +495,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             <CaretLeftIcon size={28} weight="bold" color={theme.ink} />
           </Pressable>
           <Pressable
-            onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }}
+            onPress={() => { feedback.tick(); setTurnDir(1); setView((v) => (v + 1) % photos); }}
             accessibilityRole="button"
             accessibilityLabel={`Next view (${view + 1} of ${photos})`}
             hitSlop={12}
@@ -509,7 +506,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           </Pressable>
         </>
       ) : null}
-      <View style={[styles.toasts, { top: insets.top + 64 }]} pointerEvents="none">
+      <View style={[styles.toasts, { top: hudTop + ref.space.sm }]} pointerEvents="none">
         {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
       </View>
 
@@ -552,7 +549,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             </Pressable>
           ) : null}
           <View
-            style={[styles.footRow, styles.ledge, { backgroundColor: tint(theme.surface, 0.96), borderTopColor: tint(theme.ink, 0.14), paddingBottom: insets.bottom + ref.space.sm }]}
+            style={[styles.footRow, styles.ledge, { backgroundColor: theme.ground, borderTopColor: tint(theme.ink, 0.12), paddingBottom: insets.bottom + ref.space.sm }]}
             pointerEvents="box-none"
             onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
           >
@@ -560,7 +557,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             <View style={styles.cat} pointerEvents="none">
               <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} />
             </View>
-            <View style={styles.trayWrap}>{heldItems.length ? tray : null}</View>
+            <View style={styles.trayWrap}>{tray}</View>
           </View>
         </View>
       ) : null}
@@ -636,12 +633,11 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", gap: ref.space.lg },
   back: { minHeight: ref.hit.min, justifyContent: "center" },
-  top: { position: "absolute", left: 0, right: 0, top: 0, flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm, paddingHorizontal: ref.space.lg },
-  glass: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
-  objective: {
-    flex: 1, minHeight: 42, borderRadius: 14, paddingHorizontal: ref.space.lg, paddingVertical: 6, justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth, gap: 1,
-  },
+  top: { position: "absolute", left: 0, right: 0, top: 0, flexDirection: "row", alignItems: "center", gap: ref.space.sm, paddingHorizontal: ref.space.lg },
+  band: { borderBottomWidth: 1, zIndex: 20 },
+  view: { position: "absolute", left: 0, right: 0, overflow: "hidden" },
+  glass: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
+  objective: { flex: 1, minHeight: 42, paddingHorizontal: ref.space.sm, justifyContent: "center", gap: 1 },
   caseLabel: { fontSize: 10, lineHeight: 12, letterSpacing: 1.6, textTransform: "uppercase", textAlign: "center" },
   objectiveText: { ...ref.type.meta, textAlign: "center" },
   badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },

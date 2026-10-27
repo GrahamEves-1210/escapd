@@ -9,13 +9,13 @@
 // Touch is one pan (the beam) racing one tap (look); both are hit-tested here.
 // Screen readers get one button per visible object instead (accessibilityTap).
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
   BlurMask, Canvas, Circle, Group, Oval, Paint, Path, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { Overlay, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
@@ -52,6 +52,8 @@ export interface StageProps {
   onHover?: (objectId: string | null) => void;
   /** Where the beam points (photo fractions), owned by the parent so others can follow it. */
   beam?: { x: SharedValue<number>; y: SharedValue<number> };
+  /** Turned to from this side (1: from the right, -1: from the left, 0: no slide). */
+  enter?: 1 | -1 | 0;
   /** An object being looked at closely: the light swings onto it. */
   focus?: Box | null;
   /** The photo's frame in window points, once laid out (drops from the tray are hit-tested against it). */
@@ -76,12 +78,22 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], onHover, onFrame, focus = null, beam,
+  uv = false, marks = [], onHover, onFrame, focus = null, beam, enter = 0,
 }: StageProps) {
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
-  const frame = useMemo(() => (aspect ? containBox(viewport, aspect) : null), [viewport, aspect]);
+  // The room fills the view's width, edge to edge like a game's viewport, its
+  // top and bottom trimmed a little if it's taller than the view (at most
+  // FILL_CROP); a photo much taller or wider sits whole in the middle.
+  const frame = useMemo(() => {
+    if (!aspect || viewport.width <= 0) return null;
+    const h = viewport.width / aspect;
+    if (h >= viewport.height && (h - viewport.height) / h <= FILL_CROP) {
+      return { x: 0, y: (viewport.height - h) / 2, width: viewport.width, height: h };
+    }
+    return containBox(viewport, aspect);
+  }, [viewport, aspect]);
   const W = frame?.width ?? 0;
   const H = frame?.height ?? 0;
 
@@ -148,12 +160,46 @@ export function Stage({
       ty.set(withTiming(e.y / s.h, { duration: 160 }));
     },
   });
-  // The close-up's object: the light swings onto it while its sheet is up.
+  // Looking closer: the light swings onto the object and the view pushes in on
+  // it, as if stepping up to it, into the part of the view above the sheet.
+  const zoom = useSharedValue(1);
+  const panX = useSharedValue(0);
+  const panY = useSharedValue(0);
   useEffect(() => {
-    if (!focus) return;
+    const t = { duration: 460, easing: Easing.inOut(Easing.cubic) };
+    if (!focus || !frame) {
+      zoom.set(withTiming(1, t));
+      panX.set(withTiming(0, t));
+      panY.set(withTiming(0, t));
+      return;
+    }
     tx.set(withTiming(focus.x + focus.w / 2, { duration: 380 }));
     ty.set(withTiming(focus.y + focus.h / 2, { duration: 380 }));
-  }, [focus, tx, ty]);
+    const fw = frame.width, fh = frame.height;
+    const scale = Math.max(1, Math.min(2.4, (viewport.width * 0.7) / (focus.w * fw), (viewport.height * 0.34) / (focus.h * fh)));
+    const cx = (focus.x + focus.w / 2) * fw;
+    const cy = (focus.y + focus.h / 2) * fh;
+    // The object's centre to the middle of the view's upper part (the sheet covers the rest).
+    zoom.set(withTiming(scale, t));
+    panX.set(withTiming(viewport.width / 2 - frame.x - cx * scale, t));
+    panY.set(withTiming(viewport.height * 0.26 - frame.y - cy * scale, t));
+  }, [focus, frame, viewport, tx, ty, zoom, panX, panY]);
+  const zoomStyle = useAnimatedStyle(() => ({
+    transformOrigin: "0% 0%",
+    transform: zoom.get() === 1 && panX.get() === 0 && panY.get() === 0
+      ? []
+      : [{ translateX: panX.get() }, { translateY: panY.get() }, { scale: zoom.get() }],
+  }));
+
+  // Turning to another view: the room slides in from the side turned to.
+  const { width: windowW } = useWindowDimensions();
+  const slide = useSharedValue(enter * windowW * 0.6);
+  const slideIn = useSharedValue(enter === 0 ? 1 : 0);
+  useEffect(() => {
+    slide.set(withTiming(0, { duration: 340, easing: Easing.out(Easing.cubic) }));
+    slideIn.set(withTiming(1, { duration: 260 }));
+  }, [slide, slideIn]);
+  const slideStyle = useAnimatedStyle(() => ({ opacity: slideIn.get(), transform: [{ translateX: slide.get() }] }));
   const gesture = useCompetingGestures(pan, tap);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -166,12 +212,13 @@ export function Stage({
   const lamps = overlays.filter((o) => o.overlay === "light_on");
 
   return (
-    <View style={styles.root} onLayout={onLayout} testID="v2-stage">
+    <Animated.View style={[styles.root, slideStyle]} onLayout={onLayout} testID="v2-stage">
       {frame ? (
+        <Animated.View style={[styles.frame, { left: frame.x, top: frame.y, width: W, height: H }, zoomStyle]}>
         <GestureDetector gesture={gesture}>
           <View
             ref={frameRef}
-            style={[styles.frame, { left: frame.x, top: frame.y, width: W, height: H }]}
+            style={StyleSheet.absoluteFill}
             collapsable={false}
             onLayout={() => measureInWindow(frameRef.current).then((rect) => rect && onFrame?.(rect))}
           >
@@ -243,6 +290,7 @@ export function Stage({
             ))}
           </View>
         </GestureDetector>
+        </Animated.View>
       ) : (
         // Measure the photo first: the frame is laid out once its aspect is known.
         <TreatedImage
@@ -255,7 +303,7 @@ export function Stage({
           onLoad={(e) => setAspect(aspectOf(e.source.width, e.source.height) ?? 0.75)}
         />
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -359,6 +407,9 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
       return null;
   }
 }
+
+/** How much of a photo's height the view may trim to fill its width. */
+const FILL_CROP = 0.16;
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
