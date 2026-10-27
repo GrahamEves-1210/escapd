@@ -77,9 +77,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   const doze = useSharedValue(0);
   const think = useSharedValue(0);
   // When the light last moved (ms), for dozing off.
-  const lastMove = useSharedValue(Date.now());
+  const lastMove = useSharedValue(0);
   const [asleep, setAsleep] = useState(false);
-  const [burst, setBurst] = useState<number | null>(null);
 
   /** A pop: crouch, stretch up, land with a squash, settle. */
   const pop = (up: number) => {
@@ -145,7 +144,6 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     if (reducedMotion) return;
     if (reaction.kind === "found") {
       pop(0.2);
-      setBurst(reaction.at);
     } else {
       // Flinch: squashed down behind the ledge, a shiver, then back up.
       hop.set(withSequence(withTiming(height * 0.22, { duration: 90 }), withDelay(450, withSpring(0, { damping: 9, stiffness: 120 }))));
@@ -219,6 +217,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     };
   });
 
+  // A find's sparkles play once per find (they end invisible).
+  const burst = reaction?.kind === "found" ? reaction.at : null;
   const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
   return (
     <View pointerEvents="none" style={{ width: width * 1.3, height: height * 1.25 }}>
