@@ -11,7 +11,7 @@ import * as api from "@/lib/escapd-api";
 import { supabase } from "@/lib/supabase";
 import type { ActionResult, HintResult, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
-import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
+import { FIXTURE_ROOM_ID as TUTORIAL_ROOM_ID } from "@/test-utils/seed";
 import { PreferencesProvider } from "@/game/preferences";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
@@ -30,10 +30,7 @@ const mockFeedback = {
 };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
-jest.mock("@/tutorial/assets", () => ({
-  TUTORIAL_ROOM_ID: "00000000-0000-4000-8000-000000000001",
-  bundledScene: () => 1,
-}));
+jest.mock("@/render/bundledScenes", () => ({ bundledScene: () => 1 }));
 
 jest.mock("@/lib/supabase", () => ({
   supabase: {

@@ -14,6 +14,9 @@ function extract(variable: string) {
   return JSON.parse(match[1]);
 }
 
+/** The fixture room's id (the old bundled tutorial's seed, kept as test data only). */
+export const FIXTURE_ROOM_ID = "00000000-0000-4000-8000-000000000001";
+
 export const studyPublic = (): PuzzleDefinitionV1 => extract("v_public");
 
 /** The secret solution. Tests may read it to script server responses; the app never sees it. */

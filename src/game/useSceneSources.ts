@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { getRoomPhotos, signedPhotoUrl } from "@/lib/escapd-api";
 import type { PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import type { SceneSource } from "@/render/SceneView";
-import { bundledScene } from "@/tutorial/assets";
+import { bundledScene } from "@/render/bundledScenes";
 
 // Signed URLs last 15 minutes; refresh with margin.
 const REFRESH_MS = 12 * 60 * 1000;

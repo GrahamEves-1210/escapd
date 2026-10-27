@@ -11,6 +11,7 @@ import { openCapture } from "@/capture/openCapture";
 import { getMode, setMode } from "@/game/mode";
 import * as api from "@/lib/escapd-api";
 import { introKey } from "@/screens/mode/introSeen";
+import { introHref } from "@/screens/mode/routes";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
 import { deckLayout, deckTilt } from "../deck";
@@ -52,7 +53,6 @@ jest.mock("@/screens/hub/art/ModeCover", () => {
   return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
 });
 jest.mock("expo-constants", () => ({ __esModule: true, default: { expoConfig: { version: "0.1.0" } } }));
-jest.mock("@/tutorial/assets", () => ({ TUTORIAL_ROOM_ID: "tutorial-room", BUNDLED_SCENES: { "tutorial/study_1.jpg": 101 } }));
 
 const mockPreferences = {
   hotspotAssist: false,
@@ -97,12 +97,12 @@ async function renderHub({ reducedMotion = false } = {}) {
   await act(async () => {});
 }
 
-/** A signed-in player with The Study's session, these sent rooms (newest first) and each room's latest session. */
-function player({ tutorial = null, rooms = [], sessions = {} }: { tutorial?: Status | null; rooms?: Room[]; sessions?: Record<string, Status> }) {
+/** A signed-in player with these sent rooms (newest first) and each room's latest session. */
+function player({ rooms = [], sessions = {} }: { rooms?: Room[]; sessions?: Record<string, Status> }) {
   mocked.currentSession.mockResolvedValue({} as Awaited<ReturnType<typeof api.currentSession>>);
   mocked.listMyRooms.mockResolvedValue(rooms);
   mocked.getLatestSession.mockImplementation(async (id) => {
-    const status = id === "tutorial-room" ? tutorial : sessions[id];
+    const status = sessions[id];
     return status ? ({ status } as Session) : null;
   });
   mocked.getLatestCustomRoom.mockResolvedValue(room("d1", "noir", "draft"));
@@ -110,6 +110,7 @@ function player({ tutorial = null, rooms = [], sessions = {} }: { tutorial?: Sta
 
 /** Both intros already seen: the crime scene and paranormal cards go past them. */
 async function introsSeen() {
+  await AsyncStorage.setItem(introKey("noir"), "1");
   await AsyncStorage.setItem(introKey("crime_scene"), "1");
   await AsyncStorage.setItem(introKey("paranormal"), "1");
 }
@@ -264,7 +265,7 @@ describe("01 · Home: the deck of mode cards", () => {
 
   it("every card is tappable, overlap or not: each one's own tap runs its own mode", async () => {
     await introsSeen();
-    player({ tutorial: "completed" });
+    player({});
     await renderHub();
     for (const [name, genre] of [
       [NOIR, "noir"],
@@ -299,7 +300,7 @@ describe("01 · Home: the deck of mode cards", () => {
   });
 
   it("always shows each mode's drawn cover, never a room photo, even once the player has photographed rooms", async () => {
-    // A guest: each card's own mode's cover (The Study's photo is not the default).
+    // A guest: each card's own mode's cover.
     await renderHub();
     expectCovers();
     await screen.unmount();
@@ -321,7 +322,7 @@ describe("01 · Home: the deck of mode cards", () => {
 
   it("never tags a card, even when its mode has a case to go back to (the prompt says so instead)", async () => {
     player({
-      tutorial: "completed",
+      
       rooms: [room("n1", "noir"), room("p1", "paranormal", "generating"), room("c1", "crime_scene")],
       sessions: { n1: "active", c1: "active" },
     });
@@ -359,28 +360,18 @@ describe("01 · Home: the deck of mode cards", () => {
 });
 
 describe("01 · Home: entering a mode", () => {
-  it("Detective Noir: the first tap runs The Study while it has never been played, with the press haptic", async () => {
-    player({ tutorial: null });
+  it("Detective Noir: the first tap shows its intro, like every mode, with the press haptic", async () => {
+    player({});
     await renderHub();
     await userEvent.setup().press(card(NOIR));
     expect(mockFeedback.press).toHaveBeenCalledTimes(1);
-    expect(mocked.ensureSession).toHaveBeenCalledTimes(1);
-    expect(push).toHaveBeenCalledWith("/tutorial");
+    expect(push).toHaveBeenCalledWith(introHref("noir"));
     expect(capture).not.toHaveBeenCalled();
-    await screen.unmount();
-
-    // An abandoned run unseals again, as the title screen did. A guest too.
-    push.mockClear();
-    player({ tutorial: "abandoned" });
-    await renderHub();
-    await fireEvent.press(card(NOIR));
-    await act(async () => {});
-    expect(push).toHaveBeenCalledWith("/tutorial");
   });
 
   it("after the first time, with no case to go back to: a new case straight away (openCapture with the mode); no case list", async () => {
     await introsSeen();
-    player({ tutorial: "completed", rooms: [room("n1", "noir")], sessions: { n1: "completed" } });
+    player({ rooms: [room("n1", "noir")], sessions: { n1: "completed" } });
     await renderHub();
     let finish: () => void = () => {};
     capture.mockReturnValueOnce(new Promise((resolve) => (finish = () => resolve("guide"))));
@@ -431,7 +422,7 @@ describe("01 · Home: entering a mode", () => {
 
   it("with a case to go back to: the continue prompt over home, in the mode's colours, and nothing opens yet", async () => {
     await introsSeen();
-    player({ tutorial: "completed", rooms: [room("c1", "crime_scene")], sessions: { c1: "active" } });
+    player({ rooms: [room("c1", "crime_scene")], sessions: { c1: "active" } });
     await renderHub();
     await fireEvent.press(card(CRIME));
     await act(async () => {});
@@ -457,7 +448,7 @@ describe("01 · Home: entering a mode", () => {
 
   it("Continue resumes the case in the player, and closes the prompt", async () => {
     await introsSeen();
-    player({ tutorial: "completed", rooms: [room("p1", "paranormal")], sessions: {} });
+    player({ rooms: [room("p1", "paranormal")], sessions: {} });
     await renderHub();
     await fireEvent.press(card(GHOST));
     await act(async () => {});
@@ -469,7 +460,8 @@ describe("01 · Home: entering a mode", () => {
   });
 
   it("Continue on a case still building opens the build wait, in the mode's look", async () => {
-    player({ tutorial: "completed", rooms: [room("n1", "noir", "queued")] });
+    await introsSeen();
+    player({ rooms: [room("n1", "noir", "queued")] });
     await renderHub();
     await fireEvent.press(card(NOIR));
     await act(async () => {});
@@ -479,19 +471,9 @@ describe("01 · Home: entering a mode", () => {
     expect(push).toHaveBeenCalledWith({ pathname: "/capture/develop", params: { roomId: "n1" } });
   });
 
-  it("The Study part-played (and no case of the player's own): the prompt's Continue resumes The Study", async () => {
-    player({ tutorial: "active" });
-    await renderHub();
-    await fireEvent.press(card(NOIR));
-    await act(async () => {});
-    expect(screen.getByText("The Study is still waiting for you.")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
-    expect(push).toHaveBeenCalledWith("/tutorial");
-  });
-
   it("Start a new case runs openCapture with the mode, busy while it checks access, then the prompt goes; /capture when the check can't run", async () => {
     await introsSeen();
-    player({ tutorial: "completed", rooms: [room("c1", "crime_scene")] });
+    player({ rooms: [room("c1", "crime_scene")] });
     await renderHub();
     await fireEvent.press(card(CRIME));
     await act(async () => {});
@@ -526,7 +508,8 @@ describe("01 · Home: entering a mode", () => {
     });
     const back = () => handlers[handlers.length - 1]({} as Parameters<BackListener>[0]);
     const focus = jest.spyOn(AccessibilityInfo, "sendAccessibilityEvent").mockImplementation(() => {});
-    player({ tutorial: "active" });
+    await introsSeen();
+    player({ rooms: [room("n1", "noir")], sessions: { n1: "active" } });
     await renderHub();
 
     await fireEvent.press(card(NOIR));
@@ -553,7 +536,7 @@ describe("01 · Home: entering a mode", () => {
 
   it("a tap before this focus's fetch has landed waits for it (busy), then chooses", async () => {
     await introsSeen();
-    player({ tutorial: "completed", rooms: [room("p1", "paranormal", "generating")] });
+    player({ rooms: [room("p1", "paranormal", "generating")] });
     let release: () => void = () => {};
     mocked.listMyRooms.mockReturnValueOnce(new Promise((resolve) => (release = () => resolve([room("p1", "paranormal", "generating")]))));
     await renderHub();
@@ -581,14 +564,7 @@ describe("01 · Home: entering a mode", () => {
     expect(push).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
 
-    // The Study failing to start for another reason.
     mocked.listMyRooms.mockResolvedValue([]);
-    mocked.ensureSession.mockRejectedValue(new Error("boom"));
-    await fireEvent.press(card(NOIR));
-    await act(async () => {});
-    expect(screen.getByTestId("hub-notice").props.accessibilityLabel).toBe("Couldn't start the case. Try again in a moment.");
-
-    mocked.ensureSession.mockResolvedValue({} as never);
     await fireEvent.press(card(GHOST));
     await act(async () => {});
     expect(screen.queryByTestId("hub-notice")).toBeNull();
@@ -636,13 +612,13 @@ describe("01 · Home: Settings", () => {
     await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
   });
 
-  it("Settings fits every row with no scroll on an iPhone SE at the default text size, with Replay The Study", async () => {
+  it("Settings fits every row with no scroll on an iPhone SE at the default text size", async () => {
     // 375 x 667, 20 safe top. Jest has no layout engine: the rows the sheet draws are added up from the tokens.
     const SE = { width: 375, height: 667, top: 20, bottom: 0 };
     const window = Dimensions.get("window");
     Dimensions.set({ window: { ...window, width: SE.width, height: SE.height, fontScale: 1 } });
     try {
-      player({ tutorial: "completed" });
+      player({});
       await renderHub();
       await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
       const sheet = screen.getByTestId("hub-sheet");
@@ -656,19 +632,18 @@ describe("01 · Home: Settings", () => {
         ...within(sheet).getAllByRole("switch"),
         ...within(sheet).getAllByRole("button").filter((b) => b.props.accessibilityLabel !== "Close"),
       ];
-      expect(controls.map((r) => r.props.accessibilityLabel)).toContain("Replay The Study");
-      expect(controls).toHaveLength(9);
+      expect(controls).toHaveLength(8);
       expect(sections).toBe(3);
-      // Sound and Music share one row, side by side: nine controls in eight rows.
+      // Sound and Music share one row, side by side: eight controls in seven rows.
       const pair = within(sheet).getByTestId("hub-sound-music");
       expect(within(pair).getAllByRole("switch").map((r) => r.props.accessibilityLabel)).toEqual(["Sound", "Music"]);
       const rows = controls.length - 1;
-      expect(rows).toBe(8);
+      expect(rows).toBe(7);
       // A detail line is a hint shown under the label (the pair's hints are read, not shown).
       const details = controls
         .map((r) => r.props.accessibilityHint as string | undefined)
         .filter((hint): hint is string => !!hint && within(sheet).queryByText(hint) !== null);
-      expect(details).toHaveLength(5);
+      expect(details).toHaveLength(4);
       // Each detail is one line beside a switch on the SE.
       for (const detail of details) expect(detail.length).toBeLessThanOrEqual(S.detailMax);
       // Every control, the pair's halves included, is at least a 44 pt target (48 tall).
@@ -756,26 +731,6 @@ describe("01 · Home: Settings", () => {
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
   });
 
-  it("Settings: Replay The Study once it has been solved, which closes the sheet and runs it again", async () => {
-    await renderHub();
-    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
-    expect(screen.queryByRole("button", { name: "Replay The Study" })).toBeNull();
-    await fireEvent.press(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
-    await screen.unmount();
-
-    player({ tutorial: "completed" });
-    await renderHub();
-    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
-    const row = screen.getByRole("button", { name: "Replay The Study" });
-    expect(row.props.accessibilityHint).toBe("The first case, from the top.");
-    await userEvent.setup().press(row);
-    expect(mockFeedback.press).toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith("/tutorial");
-    // The route opens, then the sheet slides away on its own close.
-    await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
-  });
-
   it("Settings' account rows: Add your email for a guest, the email when signed in, and ESCAPD Pro", async () => {
     await renderHub();
     await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
@@ -837,7 +792,8 @@ describe("01 · Home: Settings", () => {
     });
     const back = () => handlers[handlers.length - 1]({} as Parameters<BackListener>[0]);
 
-    mocked.ensureSession.mockReturnValue(new Promise(() => {}));
+    await introsSeen();
+    capture.mockReturnValueOnce(new Promise(() => {}));
     await renderHub();
     expect(back()).toBe(false);
 

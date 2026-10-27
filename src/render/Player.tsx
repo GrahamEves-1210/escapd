@@ -1,4 +1,4 @@
-// The immersive player, shared by the tutorial and custom rooms.
+// The immersive player for every room.
 //
 // It renders schema v1, sends GameActions, and trusts ActionResults. It never
 // computes progress: usePlayer replaces state only from a solved result.
@@ -26,7 +26,6 @@ import {
 import { usePlayer, type LoadError, type Player as PlayerModel } from "@/game/usePlayer";
 import { useSceneSources } from "@/game/useSceneSources";
 import { useUiMemory } from "@/game/useUiMemory";
-import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
 import { DarkSheet, TreatedImage, useFadeIn } from "@/components/noir";
@@ -41,7 +40,6 @@ import type { Snapshot } from "./ClueObjects";
 import { NOT_ENOUGH_TO_ACCUSE, WRONG_ACCUSATION } from "./accuse";
 import { stashClosedCase } from "./closedCase";
 import { CodePad, type CodeOutcome } from "./CodePad";
-import { CoachCard } from "./CoachCard";
 import { EffectLayer } from "./EffectLayer";
 import { HotspotLayer, type HotspotRef, type Thread } from "./HotspotLayer";
 import { glintTargets, useIdle } from "./idle";
@@ -79,13 +77,11 @@ export interface CompletionSummary {
 
 export interface PlayerProps {
   roomId: string;
-  /** Tutorial coach marks, derived from server state. */
-  coach?: (context: CoachContext) => CoachStep | null;
   onExit: () => void;
   onComplete: (summary: CompletionSummary) => void;
 }
 
-export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
+export function Player({ roomId, onExit, onComplete }: PlayerProps) {
   const player = usePlayer(roomId);
   const sources = useSceneSources(roomId, player.definition);
   const ui = useUiMemory(roomId);
@@ -116,7 +112,6 @@ export function Player({ roomId, coach, onExit, onComplete }: PlayerProps) {
       player={player}
       sources={sources.sources}
       ui={ui}
-      coach={coach}
       onExit={onExit}
       onComplete={onComplete}
     />
@@ -199,12 +194,11 @@ interface PendingPickup {
   hotspotId?: Id;
 }
 
-function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }: {
+function PlayerStage({ roomId, player, sources, ui, onExit, onComplete }: {
   roomId: string;
   player: PlayerModel;
   sources: SceneSource[];
   ui: ReturnType<typeof useUiMemory>;
-  coach?: PlayerProps["coach"];
   onExit: () => void;
   onComplete: (summary: CompletionSummary) => void;
 }) {
@@ -326,11 +320,6 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   const accuseOpen = canAccuse(def, state);
   const broken = suspects.filter((s) => s.contradicted).length;
   const presence = useMemo(() => presenceOf(def, state), [def, state]);
-  const coachStep = coach?.({ state, visitedScenes: ui.memory.visited }) ?? null;
-  const coachHighlight = coachStep?.target.kind === "hotspot" && coachStep.target.photoIndex === sceneIndex
-    ? coachStep.target.hotspotId : undefined;
-  const coachScene = coachStep && coachStep.target.kind !== "inventory" ? coachStep.target.photoIndex : undefined;
-  const markedScenes = uniq(coachScene !== undefined ? [...fresh, coachScene] : fresh);
   const useItemName = selected.length === 1 ? itemName(def, state, selected[0]) : undefined;
 
   const chromeOpacity = useSharedValue(1);
@@ -855,7 +844,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
           count={sceneCount}
           index={sceneIndex}
           onIndexChange={goToScene}
-          marked={markedScenes}
+          marked={fresh}
           pageable={pageable}
           disabled={completing}
           overlay={toast ? <Toast key={toast.key} text={toast.text} onHide={hideToast} /> : null}
@@ -898,7 +887,6 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
                     hotspots={sceneHotspots}
                     stage={stage}
                     persistent={prefs.hotspotAssist || selected.length === 1}
-                    highlightId={coachHighlight}
                     flash={flash}
                     solvedIds={solvedIds}
                     goneIds={goneIds}
@@ -929,10 +917,6 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
             onRetry={retryLastAttempt}
             onDismiss={player.dismissFailure}
           />
-        ) : coachStep && selected.length === 0 ? (
-          // The use card or the worktable takes the coach's place while an item is chosen,
-          // so the photo keeps its height; the coach's target stays highlighted on the photo.
-          <CoachCard text={coachStep.text} />
         ) : null}
         <InventoryBar
           items={items}

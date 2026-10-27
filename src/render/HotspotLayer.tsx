@@ -38,8 +38,6 @@ export interface HotspotLayerProps {
   stage: Size;
   /** Keep brackets bright: hotspot assistance, Use mode. */
   persistent: boolean;
-  /** A coach mark points here, so keep this one bright. */
-  highlightId?: Id;
   /** Draw the solved trace on this hotspot once per key. */
   flash?: { id: Id; key: number };
   /** Hotspots whose puzzles are already solved: grey brackets and a check seal. */
@@ -79,7 +77,7 @@ export function readingOrder(hotspots: readonly Hotspot[]): Id[] {
 }
 
 export function HotspotLayer({
-  hotspots, stage, persistent, highlightId, flash, solvedIds, goneIds, irisId, thread, labelFor, onPress, onPressIn, registerRef, glint,
+  hotspots, stage, persistent, flash, solvedIds, goneIds, irisId, thread, labelFor, onPress, onPressIn, registerRef, glint,
 }: HotspotLayerProps) {
   const theme = useModeTheme();
   return (
@@ -119,7 +117,7 @@ export function HotspotLayer({
           key={h.id}
           hotspot={h}
           stage={stage}
-          bright={persistent || h.id === highlightId || h.id === irisId}
+          bright={persistent || h.id === irisId}
           solved={solvedIds?.has(h.id) ?? false}
           gone={goneIds?.has(h.id) ?? false}
           iris={h.id === irisId}

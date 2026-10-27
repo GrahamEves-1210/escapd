@@ -1,5 +1,4 @@
-// Case closed per mode: The Study (/tutorial/complete, noir) and custom rooms
-// (/play/complete/<id>): noir's CASE CLOSED stamp on the case file, crime
+// Case closed per mode (/play/complete/<id>): noir's CASE CLOSED stamp on the case file, crime
 // scene's accused under GUILTY, paranormal's "The presence is gone." with the
 // room in full colour. Then the victory moment's stats (only the session's
 // own numbers), the magnifier rating and the `stamp` then `solved` cues.
@@ -11,7 +10,6 @@ import { openCapture } from "@/capture/openCapture";
 import { getMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
-import TutorialCompleteScreen from "../../../app/tutorial/complete";
 import PlayCompleteScreen from "../../../app/play/complete/[roomId]";
 import { stashClosedCase } from "../closedCase";
 import { crimeCase } from "../__fixtures__/modeCases";
@@ -58,9 +56,19 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("Case closed: The Study (noir)", () => {
+// A noir case, from the player's own room.
+const NOIR_ROOM = { roomId: "00000000-0000-4000-8000-000000000001", genre: "noir", title: "The Study" };
+const noirParams = (extra: Record<string, string> = { message: "You turn the key...", exit: "The door swings open. You escaped!" }) =>
+  params.mockReturnValue({ ...NOIR_ROOM, ...extra });
+function NoirCompleteScreen() {
+  return <PlayCompleteScreen />;
+}
+
+describe("Case closed: noir", () => {
+  beforeEach(() => noirParams());
+
   it("stamps CASE CLOSED in noir's brass onto the case file, then the messages, 07's stat cards and the rating", async () => {
-    await render(<TutorialCompleteScreen />);
+    await render(<NoirCompleteScreen />);
     expect(getMode()).toBe("noir");
     expect(mocked.getLatestSession).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001", "completed");
     expect(flat(screen.getByTestId("case-closed-noir"))).toMatchObject({ backgroundColor: NOIR.ground });
@@ -89,11 +97,10 @@ describe("Case closed: The Study (noir)", () => {
     expect(screen.queryByTestId("closed-rating-filled-2")).toBeNull();
   });
 
-  it("falls back to the default exit line, and shows no stats or rating without a session", async () => {
-    params.mockReturnValue({});
+  it("shows no stats or rating without a session", async () => {
+    noirParams({});
     mocked.getLatestSession.mockResolvedValue(null);
-    await render(<TutorialCompleteScreen />);
-    expect(screen.getByText("The door swings open.")).toBeTruthy();
+    await render(<NoirCompleteScreen />);
     await waitFor(() => expect(mocked.getLatestSession).toHaveBeenCalled());
     expect(screen.queryByTestId("closed-stats")).toBeNull();
     expect(screen.queryByLabelText(/^Time:/)).toBeNull();
@@ -107,7 +114,7 @@ describe("Case closed: The Study (noir)", () => {
       hints_used: 0,
       puzzle_version_id: "v1",
     } as unknown as Awaited<ReturnType<typeof api.getLatestSession>>);
-    await render(<TutorialCompleteScreen />);
+    await render(<NoirCompleteScreen />);
     expect(await screen.findByLabelText("Tips taken: 0")).toBeTruthy();
     expect(screen.queryByLabelText(/^Time:/)).toBeNull();
     expect(screen.queryByLabelText(/^Wrong codes:/)).toBeNull();
@@ -123,7 +130,7 @@ describe("Case closed: The Study (noir)", () => {
       wrong_answer_count: 0,
       puzzle_version_id: "v1",
     } as Awaited<ReturnType<typeof api.getLatestSession>>);
-    await render(<TutorialCompleteScreen />);
+    await render(<NoirCompleteScreen />);
     expect(mockFeedback.stamp).not.toHaveBeenCalled();
     expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 0 });
     // The stamp falls from slamDelay and hits P.stamp.slam later.
@@ -146,7 +153,7 @@ describe("Case closed: The Study (noir)", () => {
 
   it("reduced motion: no fall, everything fades in, the stamp and solved cues kept, all within 600 ms", async () => {
     jest.useFakeTimers();
-    await render(<ThemeProvider reducedMotion><TutorialCompleteScreen /></ThemeProvider>);
+    await render(<ThemeProvider reducedMotion><NoirCompleteScreen /></ThemeProvider>);
     // No fall: the stamp is at its own size from the start, only fading in.
     expect(screen.getByTestId("closed-stamp")).toHaveAnimatedStyle({ transform: [{ rotate: `${P.stamp.tilt}deg` }, { scale: 1 }] });
     await act(() => jest.advanceTimersByTime(600));
@@ -160,27 +167,10 @@ describe("Case closed: The Study (noir)", () => {
     expect(screen.getByLabelText("Rating: 2 of 3 magnifiers")).toBeTruthy();
   });
 
-  it("Start a new case (the player's own room, in noir), Back to Detective Noir (home), or Replay The Study", async () => {
-    await render(<TutorialCompleteScreen />);
-    const bar = screen.getByTestId("complete-capture");
-    // The photo guide's pill (ModePill) in noir's accent, then the quiet ways out in its ink.
-    expect(flat(bar)).toMatchObject({ backgroundColor: NOIR.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
-    expect(flat(screen.getByText("Start a new case"))).toMatchObject({ ...ref.type.headline, color: NOIR.accentInk });
-    expect(screen.getByText("The next case is your own room.")).toBeTruthy();
-    expect(flat(screen.getByText("Replay The Study")).color).toBe(NOIR.ink);
-    await fireEvent.press(bar);
-    expect(capture).toHaveBeenLastCalledWith({ genre: "noir", replace: true });
-    // Back to the mode is home now: there is no mode screen.
-    await fireEvent.press(screen.getByLabelText("Back to Detective Noir"));
-    expect(router.dismissTo).toHaveBeenLastCalledWith("/");
-    await fireEvent.press(screen.getByLabelText("Replay The Study"));
-    expect(router.replace).toHaveBeenLastCalledWith("/tutorial");
-  });
-
   it("still opens the camera when the access check can't run", async () => {
     capture.mockRejectedValueOnce(new TypeError("Network request failed"));
-    await render(<TutorialCompleteScreen />);
-    await fireEvent.press(screen.getByTestId("complete-capture"));
+    await render(<NoirCompleteScreen />);
+    await fireEvent.press(screen.getByTestId("complete-new-case"));
     await waitFor(() => expect(router.replace).toHaveBeenLastCalledWith("/capture"));
   });
 });
@@ -317,10 +307,10 @@ describe("Case closed: fits one screen", () => {
     for (const id of ["closed-stats", "closed-actions"]) expect(screen.getByTestId(id)).toBeTruthy();
   }
 
-  it("The Study (noir): the folder, the messages, three stats, the rating and the band with its closing line", async () => {
-    await render(<TutorialCompleteScreen />);
+  it("noir: the folder, the messages, three stats, the rating and the band with its closing line", async () => {
+    noirParams();
+    await render(<NoirCompleteScreen />);
     await drawn();
-    expect(screen.getByText("The next case is your own room.")).toBeTruthy();
     expect(screenHeight([folder, message], true)).toBeLessThanOrEqual(SE.height);
     // The folder grows into spare height only, up to folder.max.
     expect(flat(screen.getByTestId("closed-folder"))).toMatchObject({ flexGrow: 1 });
@@ -364,8 +354,9 @@ describe("Case closed: fits one screen", () => {
   });
 
   it("the actions keep their size: the guide's pill and quiet pills, at least 44 tall", async () => {
-    await render(<TutorialCompleteScreen />);
-    expect(flat(screen.getByTestId("complete-capture")).minHeight).toBe(B.ghost.height);
+    noirParams();
+    await render(<NoirCompleteScreen />);
+    expect(flat(screen.getByTestId("complete-new-case")).minHeight).toBe(B.ghost.height);
     expect(flat(screen.getByTestId("complete-mode")).minHeight).toBe(B.quiet.height);
     expect(Math.min(B.ghost.height, B.quiet.height)).toBeGreaterThanOrEqual(ref.hit.min);
   });

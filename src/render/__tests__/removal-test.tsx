@@ -9,7 +9,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import * as api from "@/lib/escapd-api";
 import type { ActionResult, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
-import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
+import { FIXTURE_ROOM_ID as TUTORIAL_ROOM_ID } from "@/test-utils/seed";
 import { Player } from "../Player";
 import type { RemovalPatch } from "../removalPatch";
 
@@ -40,10 +40,7 @@ const mockPatch: RemovalPatch = {
 };
 jest.mock("../removalPatch", () => ({ useRoomRemoval: () => mockPatch }));
 
-jest.mock("@/tutorial/assets", () => ({
-  TUTORIAL_ROOM_ID: "00000000-0000-4000-8000-000000000001",
-  bundledScene: () => 1,
-}));
+jest.mock("@/render/bundledScenes", () => ({ bundledScene: () => 1 }));
 
 jest.mock("@/lib/supabase", () => ({
   supabase: {

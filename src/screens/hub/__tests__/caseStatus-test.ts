@@ -1,16 +1,14 @@
-// What home knows about each mode (round 6): The Study's entry, the case the
-// player can go back to in each mode (from the existing API only), where
+// What home knows about each mode (round 6): the case the player can go back to in each mode (from the existing API only), where
 // Continue goes, the cards' labels, and the intro's flag and route.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as api from "@/lib/escapd-api";
-import { hasIntro, hasSeenIntro, introKey, markIntroSeen } from "@/screens/mode/introSeen";
+import { hasSeenIntro, introKey, markIntroSeen } from "@/screens/mode/introSeen";
 import { introHref } from "@/screens/mode/routes";
-import { caseToContinue, continueHref, modeCardLabel, newestByGenre, noirCase, studyEntry } from "../caseStatus";
+import { caseToContinue, continueHref, modeCardLabel, newestByGenre } from "../caseStatus";
 import { fetchHub, loadHub } from "../useHubData";
 
 jest.mock("expo-router", () => ({ useFocusEffect: jest.fn() }));
 jest.mock("@/lib/escapd-api", () => ({ currentSession: jest.fn(), getLatestSession: jest.fn(), listMyRooms: jest.fn() }));
-jest.mock("@/tutorial/assets", () => ({ TUTORIAL_ROOM_ID: "tutorial-room" }));
 
 const mocked = api as jest.Mocked<typeof api>;
 type Room = Awaited<ReturnType<typeof api.listMyRooms>>[number];
@@ -37,25 +35,9 @@ describe("a case to go back to", () => {
     expect(newestByGenre(rooms)).toEqual({ crime_scene: rooms[0], noir: rooms[1] });
   });
 
-  it("noir: the player's own case first, else The Study while it is part-way through", () => {
-    const own = { kind: "play", roomId: "n1" } as const;
-    expect(noirCase(own, "continue")).toBe(own);
-    expect(noirCase(null, "continue")).toEqual({ kind: "study" });
-    expect(noirCase(null, "replay")).toBeNull();
-    expect(noirCase(null, "unseal")).toBeNull();
-  });
-
-  it("Continue resumes the case in the player, the build wait, or The Study", () => {
+  it("Continue resumes the case in the player or the build wait", () => {
     expect(continueHref({ kind: "play", roomId: "r1" })).toEqual({ pathname: "/play/[roomId]", params: { roomId: "r1" } });
     expect(continueHref({ kind: "build", roomId: "r2" })).toEqual({ pathname: "/capture/develop", params: { roomId: "r2" } });
-    expect(continueHref({ kind: "study" })).toBe("/tutorial");
-  });
-
-  it("The Study's entry, from its latest session", () => {
-    expect(studyEntry(null)).toBe("unseal");
-    expect(studyEntry({ status: "abandoned" })).toBe("unseal");
-    expect(studyEntry({ status: "active" })).toBe("continue");
-    expect(studyEntry({ status: "completed" })).toBe("replay");
   });
 
   it("a card's label: its name and tagline only; never a status or a count", () => {
@@ -67,7 +49,7 @@ describe("a case to go back to", () => {
 describe("loadHub: only existing API functions", () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it("reads The Study's session and the sent rooms, then the latest session of each mode's newest ready room", async () => {
+  it("reads the sent rooms, then the latest session of each mode's newest ready room", async () => {
     mocked.currentSession.mockResolvedValue({} as never);
     mocked.listMyRooms.mockResolvedValue([
       room("n2", "noir", "ready"),
@@ -76,28 +58,20 @@ describe("loadHub: only existing API functions", () => {
       room("n1", "noir", "ready"),
       room("p1", "paranormal", "ready"),
     ]);
-    const sessions: Record<string, Session["status"]> = { "tutorial-room": "completed", n2: "active", c2: "completed" };
+    const sessions: Record<string, Session["status"]> = { n2: "active", c2: "completed" };
     mocked.getLatestSession.mockImplementation(async (id) => (sessions[id] ? ({ status: sessions[id] } as Session) : null));
     expect(await loadHub()).toEqual({
-      study: "replay",
       cases: { noir: { kind: "play", roomId: "n2" }, crime_scene: null, paranormal: { kind: "build", roomId: "p2" } },
     });
     expect(mocked.listMyRooms).toHaveBeenCalledTimes(1);
     expect(mocked.listMyRooms).toHaveBeenCalledWith();
-    // The tutorial's and the two newest ready rooms' sessions; none for a building room or an older one.
-    expect(mocked.getLatestSession.mock.calls.map(([id]) => id).sort()).toEqual(["c2", "n2", "tutorial-room"]);
+    // The newest ready rooms' sessions; none for a building room or an older one.
+    expect(mocked.getLatestSession.mock.calls.map(([id]) => id).sort()).toEqual(["c2", "n2"]);
   });
 
-  it("noir's part-played Study is its case when the player has none of their own", async () => {
-    mocked.currentSession.mockResolvedValue({} as never);
-    mocked.listMyRooms.mockResolvedValue([room("n1", "noir", "failed")]);
-    mocked.getLatestSession.mockImplementation(async (id) => (id === "tutorial-room" ? ({ status: "active" } as Session) : null));
-    expect(await loadHub()).toEqual({ study: "continue", cases: { noir: { kind: "study" }, crime_scene: null, paranormal: null } });
-  });
-
-  it("no stored session: The Study unseals and nothing is read (no guest made just to look)", async () => {
+  it("no stored session: nothing is read (no guest made just to look)", async () => {
     mocked.currentSession.mockResolvedValue(null);
-    expect(await loadHub()).toEqual({ study: "unseal", cases: { noir: null, crime_scene: null, paranormal: null } });
+    expect(await loadHub()).toEqual({ cases: { noir: null, crime_scene: null, paranormal: null } });
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
     expect(mocked.getLatestSession).not.toHaveBeenCalled();
   });
@@ -114,11 +88,9 @@ describe("loadHub: only existing API functions", () => {
 describe("the first-time intro", () => {
   beforeEach(() => AsyncStorage.clear());
 
-  it("has its own route, one flag per mode, and none for noir", async () => {
+  it("has its own route and one flag per mode", async () => {
     expect(introHref("paranormal")).toEqual({ pathname: "/mode/intro/[genre]", params: { genre: "paranormal" } });
-    expect(hasIntro("noir")).toBe(false);
-    expect(hasIntro("crime_scene")).toBe(true);
-    expect(await hasSeenIntro("noir")).toBe(true);
+    expect(await hasSeenIntro("noir")).toBe(false);
     expect(await hasSeenIntro("crime_scene")).toBe(false);
     await markIntroSeen("crime_scene");
     expect(await AsyncStorage.getItem(introKey("crime_scene"))).toBe("1");

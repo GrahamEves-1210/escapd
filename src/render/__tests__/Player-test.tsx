@@ -7,8 +7,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import * as api from "@/lib/escapd-api";
 import type { ActionResult, GameAction, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
-import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { tutorialCoach } from "@/tutorial/coach";
+import { FIXTURE_ROOM_ID as TUTORIAL_ROOM_ID } from "@/test-utils/seed";
 import { getMode } from "@/game/mode";
 import * as treat from "@/components/noir/treatPhoto";
 import { modeThemes, ref } from "@/theme/tokens";
@@ -28,10 +27,7 @@ const mockFeedback = {
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 // Jest turns image requires into objects; the player needs numeric asset ids.
-jest.mock("@/tutorial/assets", () => ({
-  TUTORIAL_ROOM_ID: "00000000-0000-4000-8000-000000000001",
-  bundledScene: () => 1,
-}));
+jest.mock("@/render/bundledScenes", () => ({ bundledScene: () => 1 }));
 
 jest.mock("@/lib/supabase", () => ({
   supabase: { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) } },
@@ -170,19 +166,18 @@ async function dial(code: string) {
 }
 
 async function renderStudy(onComplete = jest.fn()) {
-  await render(<Player roomId={TUTORIAL_ROOM_ID} coach={tutorialCoach} onExit={jest.fn()} onComplete={onComplete} />, { wrapper: GestureHandlerRootView });
+  await render(<Player roomId={TUTORIAL_ROOM_ID} onExit={jest.fn()} onComplete={onComplete} />, { wrapper: GestureHandlerRootView });
   await layoutScene();
   return onComplete;
 }
 
 describe("Player: The Study", () => {
-  it("plays the whole tutorial through submit_action only", async () => {
+  it("plays the whole case through submit_action only", async () => {
     const respond = studyServer();
     mocked.submitAction.mockImplementation(async (_session, action) => respond(action));
     const onComplete = await renderStudy();
 
-    // Coach mark, and no item text on screen before the server grants anything.
-    expect(screen.getByText("Tap the desk drawer to search it.")).toBeTruthy();
+    // No item text on screen before the server grants anything.
     expect(screen.queryByText("Small and a little tarnished.")).toBeNull();
 
     // Inspect -> solved: result sheet shows the granted item and its description.
@@ -311,8 +306,6 @@ describe("Player: the reference look", () => {
     expect(screen.getByLabelText("Case options")).toBeTruthy();
     expect(flat(screen.getByText("The Study"))).toMatchObject({ ...ref.type.serifTitle, color: NOIR.ink });
     expect(flat(screen.getByText("View 1 of 3", { includeHiddenElements: true }))).toMatchObject({ ...ref.type.meta, color: NOIR.inkMuted });
-    // The coach mark is a 07 card in the mode's raised fill.
-    expect(flat(screen.getByTestId("coach-card"))).toMatchObject({ backgroundColor: NOIR.raised, borderRadius: P.card.radius });
     // No strip of thumbnails under the photo: a thumbnail wheel on its foot, the view in view in the middle,
     // its neighbours round the loop either side (on view 1 the left one is view 3), each in the mode's rim.
     expect(screen.queryByTestId("scene-0")).toBeNull();
@@ -352,9 +345,7 @@ describe("Player: the reference look", () => {
     mockFeedback.tick.mockClear();
     await goToView(1);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
-    // The coach's target (the drawer, on view 1) is marked as something new once it's off screen.
-    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toBe("2 of 3. Something new on view 1");
-    expect(within(screen.getByTestId("view-wheel-left")).getByTestId("view-thumb-0-new")).toBeTruthy();
+    expect(screen.getByTestId("view-wheel").props.accessibilityValue.text).toBe("2 of 3");
     expect(screen.getByText("View 2 of 3", { includeHiddenElements: true })).toBeTruthy();
     expect(screen.getByLabelText("View 2 of 3")).toBeTruthy();
     // Past the last view comes the first, round the loop, with its tick; and back again.
@@ -404,8 +395,6 @@ describe("Player: the reference look", () => {
     expect(flat(screen.getByTestId("scene-armed"))).toMatchObject({ borderColor: NOIR.ink, borderWidth: P.photo.armed });
     expect(screen.getByTestId("use-card")).toBeTruthy();
     expect(screen.getByText("Tap something in the room to use it.")).toBeTruthy();
-    // The use card takes the coach's place.
-    expect(screen.queryByTestId("coach-card")).toBeNull();
     // Using it where it doesn't work: a warning haptic and a toast.
     mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
     await press("hotspot-bookshelf");
@@ -529,8 +518,6 @@ describe("tokens only", () => {
   const APP = path.join(__dirname, "../../../app");
   const files = [
     ...fs.readdirSync(ROOT).filter((f) => /\.tsx?$/.test(f)).map((f) => path.join(ROOT, f)),
-    path.join(APP, "tutorial/index.tsx"),
-    path.join(APP, "tutorial/complete.tsx"),
     path.join(APP, "play/[roomId].tsx"),
     path.join(APP, "play/complete/[roomId].tsx"),
     path.join(__dirname, "../../components/noir/DarkSheet.tsx"),

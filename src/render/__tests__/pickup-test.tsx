@@ -10,8 +10,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import * as api from "@/lib/escapd-api";
 import type { ActionResult, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
-import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { tutorialCoach } from "@/tutorial/coach";
+import { FIXTURE_ROOM_ID as TUTORIAL_ROOM_ID } from "@/test-utils/seed";
 import { ref, z } from "@/theme/tokens";
 import { Player } from "../Player";
 
@@ -34,10 +33,7 @@ jest.mock("../PickupFlight", () => {
   return { ...actual, measureInWindow: (node: unknown) => mockMeasure(node) };
 });
 
-jest.mock("@/tutorial/assets", () => ({
-  TUTORIAL_ROOM_ID: "00000000-0000-4000-8000-000000000001",
-  bundledScene: () => 1,
-}));
+jest.mock("@/render/bundledScenes", () => ({ bundledScene: () => 1 }));
 
 jest.mock("@/lib/supabase", () => ({
   supabase: {
@@ -98,9 +94,9 @@ async function layoutScene() {
   for (const scene of await screen.findAllByTestId("scene-view")) await fireEvent(scene, "layout", { nativeEvent: { layout: AREA } });
 }
 
-async function renderStudy({ coach = false }: { coach?: boolean } = {}) {
+async function renderStudy() {
   const view = await render(
-    <Player roomId={TUTORIAL_ROOM_ID} coach={coach ? tutorialCoach : undefined} onExit={jest.fn()} onComplete={jest.fn()} />,
+    <Player roomId={TUTORIAL_ROOM_ID} onExit={jest.fn()} onComplete={jest.fn()} />,
     { wrapper: GestureHandlerRootView },
   );
   await layoutScene();
@@ -229,17 +225,15 @@ function layoutAnimationsOutsideSheets(): string[] {
 }
 
 describe("no layout animations on the pickup path", () => {
-  it("the tutorial's first pickup, through the coach card's change, the tray filling and the landing", async () => {
+  it("the first pickup, through the tray filling and the landing", async () => {
     mocked.submitAction.mockResolvedValueOnce(found(["brass_key"]));
-    await renderStudy({ coach: true });
-    expect(screen.getByText("Tap the desk drawer to search it.")).toBeTruthy();
+    await renderStudy();
     expect(layoutAnimationsOutsideSheets()).toEqual([]);
     await press("hotspot-desk_drawer");
     await screen.findByTestId("result-sheet");
     // The check sees layout animations where there are some: the sheet's own slide and scrim.
     expect(layoutAnimated().length).toBeGreaterThan(0);
-    // The coach moved on and the tray filled in the commit that opened the clue.
-    expect(screen.getByText("Books hide things. Try the shelf.", hidden)).toBeTruthy();
+    // The tray filled in the commit that opened the clue.
     expect(screen.getByTestId("item-brass_key-arriving", hidden)).toBeTruthy();
     expect(layoutAnimationsOutsideSheets()).toEqual([]);
     await press("result-continue");
@@ -248,13 +242,12 @@ describe("no layout animations on the pickup path", () => {
     expect(layoutAnimationsOutsideSheets()).toEqual([]);
     await waitFor(() => expect(screen.queryByTestId("pickup-flight-brass_key", hidden)).toBeNull());
     expect(mockFeedback.pickup).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByTestId("coach-card")).toHaveLength(1);
     expect(layoutAnimationsOutsideSheets()).toEqual([]);
   });
 
   it("choosing pocketed items (the use card, the worktable) and a toast", async () => {
     mocked.submitAction.mockResolvedValueOnce(found(["brass_key", "torn_note_left"]));
-    await renderStudy({ coach: true });
+    await renderStudy();
     await press("hotspot-desk_drawer");
     await press("result-continue");
     await sheetGone();

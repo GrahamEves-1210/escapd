@@ -6,14 +6,12 @@
 // lies partly over the one above, turned a little, casting a soft shadow up
 // onto it (deck.ts). A short screen or large text scrolls them.
 // A card's tap (one at a time):
-// - First time: noir runs The Study (/tutorial) while it has never been
-//   played (studyEntry's Unseal); crime scene and paranormal show their
-//   one-screen intro (/mode/intro/<genre>), whose button starts a new case.
+// - First time: each mode shows its one-screen intro (/mode/intro/<genre>),
+//   whose button starts a new case.
 // - After that, with a case to go back to in that mode (caseStatus.ts,
-//   caseToContinue; noir's part-played Study counts when the player has no
-//   case of their own): the continue prompt (ResumeSheet) over home in the
-//   mode's colours: Continue resumes it (/play/<id>, the build wait, or The
-//   Study); Start a new case runs openCapture({ genre }).
+//   caseToContinue): the continue prompt (ResumeSheet) over home in the
+//   mode's colours: Continue resumes it (/play/<id> or the build wait);
+//   Start a new case runs openCapture({ genre }).
 // - Otherwise a new case straight away: openCapture({ genre }) (guide,
 //   camera, photos, build; a guest to /account, no Pro to /pro). If the
 //   access check can't run it carries on to /capture, whose backstop shows
@@ -30,9 +28,9 @@ import { openCapture } from "@/capture/openCapture";
 import { gradientLine, gradientStops } from "@/components/noir";
 import { GENRES, setMode } from "@/game/mode";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
-import { ensureSession, isNetworkError } from "@/lib/escapd-api";
+import { isNetworkError } from "@/lib/escapd-api";
 import type { Genre } from "@/lib/puzzle-types";
-import { hasIntro, hasSeenIntro } from "@/screens/mode/introSeen";
+import { hasSeenIntro } from "@/screens/mode/introSeen";
 import { introHref } from "@/screens/mode/routes";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
@@ -154,7 +152,7 @@ export function HubScreen() {
     const run: { signal: AbortSignal | null } = { signal: null };
     const working = () => (run.signal ??= begin(genre));
     try {
-      if (hasIntro(genre) && !(await hasSeenIntro(genre))) {
+      if (!(await hasSeenIntro(genre))) {
         router.push(introHref(genre));
         return;
       }
@@ -163,12 +161,6 @@ export function HubScreen() {
         const signal = working();
         data = await hub.entry();
         if (signal.aborted) return;
-      }
-      if (genre === "noir" && data.study === "unseal") {
-        const signal = working();
-        await ensureSession();
-        if (!signal.aborted) router.push("/tutorial");
-        return;
       }
       const target = data.cases[genre];
       if (target) {
@@ -259,8 +251,8 @@ export function HubScreen() {
   );
   // Continue: the route opens and the sheet slides away on its own (the
   // sheet's close; it stays mounted, and on top, until it has gone). The
-  // build wait takes the mode's look from the store (the player and The
-  // Study set their own). Returns whether it went.
+  // build wait takes the mode's look from the store (the player sets its
+  // own). Returns whether it went.
   const resume = (open: Prompt) => {
     cancelFocusReturn();
     if (action.current) return false;
@@ -389,7 +381,7 @@ export function HubScreen() {
       </View>
 
       {sheetOpen ? (
-        <SettingsSheet key={sheetKey} study={hub.study} onClose={() => closeSheet(true)} onOpen={openRoute} />
+        <SettingsSheet key={sheetKey} onClose={() => closeSheet(true)} onOpen={openRoute} />
       ) : null}
       {prompt ? (
         <ResumeSheet

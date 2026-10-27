@@ -15,18 +15,15 @@
 //   Haptics (the server's haptics_enabled, which useFeedback honours).
 // - Accessibility: Reduce motion (the server's reduced_motion, which drives
 //   the app's reduced motion).
-// - Gameplay also holds "Replay The Study" once The Study has been solved
-//   (the mode screens that listed it are gone): it closes the sheet and runs
-//   /tutorial again.
 // - Account: "Add your email" for a guest (to /account), or the signed-in
 //   email as a plain value; ESCAPD Pro (to /pro).
 // - The app's version: the sheet's grey meta line under its title (a failed
 //   save's note takes its place while it shows).
 // A server-backed switch shows its new value at once and saves in the
-// background (signing a new player in as a guest first, as THE STUDY does,
-// since settings live on the account); if saving fails it flips back and a
-// quiet grey line under the title says why. Each switch row is one
-// accessible switch; each navigation row a button ending in a chevron.
+// background (signing a new player in as a guest first, since settings live
+// on the account); if saving fails it flips back and a quiet grey line under
+// the title says why. Each switch row is one accessible switch; each
+// navigation row a button ending in a chevron.
 // Haptics: a switch ticks when its value changes (Haptics itself ticks once
 // just after it turns on, so the player feels it start, and not when it
 // turns off); a navigation row gives the `press` on press-in; Close is the
@@ -42,7 +39,6 @@ import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import { currentSession, ensureSession, isNetworkError } from "@/lib/escapd-api";
 import { ref } from "@/theme/tokens";
-import type { StudyEntry } from "./caseStatus";
 
 const H = ref.layout.hub;
 const S = H.settings;
@@ -54,8 +50,6 @@ export const COPY = {
   gameplay: "Gameplay",
   interactives: "Show interactives",
   interactivesDetail: "Keep marks on things you can use.",
-  replayStudy: "Replay The Study",
-  replayStudyDetail: "The first case, from the top.",
   caseClock: "Case clock",
   caseClockDetail: "Your time on a case, as you play.",
   sound: "Sound",
@@ -91,18 +85,16 @@ const VERSION = Constants.expoConfig?.version ?? null;
 type ServerSetting = "haptics_enabled" | "sound_enabled" | "music_enabled" | "reduced_motion";
 
 /** Where a navigation row goes. */
-export type SettingsRoute = "/account" | "/pro" | "/tutorial";
+export type SettingsRoute = "/account" | "/pro";
 
 export interface SettingsSheetProps {
   /** Close, scrim and Android back. Focus returns to the Settings chip once the sheet has left. */
   onClose: () => void;
   /** A navigation row: closes the sheet, then opens the route. */
   onOpen: (route: SettingsRoute) => void;
-  /** The Study's entry, from home's fetch: "replay" (solved) adds Replay The Study. */
-  study?: StudyEntry | null;
 }
 
-export function SettingsSheet({ onClose, onOpen, study = null }: SettingsSheetProps) {
+export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
   const prefs = usePreferences();
   const feedback = useFeedback();
   // Haptics just switched on: tick once the setting has taken (feedback follows it).
@@ -225,9 +217,6 @@ export function SettingsSheet({ onClose, onOpen, study = null }: SettingsSheetPr
             }}
             testID="hub-haptics"
           />
-          {study === "replay" ? (
-            <LinkRow label={COPY.replayStudy} detail={COPY.replayStudyDetail} onPress={() => onOpen("/tutorial")} testID="hub-replay-study" />
-          ) : null}
         </Section>
         <Section title={COPY.accessibility}>
           <SwitchRow
@@ -338,7 +327,7 @@ function SwitchRow({
 
 /** A button row ending in a chevron. */
 /** A row that opens a route: the route opens, then the sheet slides away on its own close (on top as it falls). */
-function LinkRow({ label, detail, onPress, testID }: { label: string; detail?: string; onPress: () => void; testID: string }) {
+function LinkRow({ label, onPress, testID }: { label: string; onPress: () => void; testID: string }) {
   const focus = useFocusRing();
   const feedback = useFeedback();
   const close = useSheetClose();
@@ -346,7 +335,6 @@ function LinkRow({ label, detail, onPress, testID }: { label: string; detail?: s
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint={detail}
       onPress={() => {
         onPress();
         close?.();
@@ -357,7 +345,7 @@ function LinkRow({ label, detail, onPress, testID }: { label: string; detail?: s
       testID={testID}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <RowText label={label} detail={detail} />
+      <RowText label={label} />
       <CaretRightIcon size={S.caret} weight="regular" color={ref.color.textSecondary} />
       <FocusRing visible={focus.focused} shape="panel" radius={S.radius} />
     </Pressable>

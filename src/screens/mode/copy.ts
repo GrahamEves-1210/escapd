@@ -5,14 +5,23 @@
 // they do. Photographing a room stays in plain words.
 import type { Genre } from "@/lib/puzzle-types";
 
-/** A mode's first-time intro: its kicker, three steps, and its button (crime scene and paranormal). */
+/** A mode's first-time intro: its kicker, three steps, and its button. */
 export interface ModeIntroCopy {
   kicker: string;
   start: string;
   steps: { title: string; body: string }[];
 }
 
-export const MODE_INTRO: Record<"crime_scene" | "paranormal", ModeIntroCopy> = {
+export const MODE_INTRO: Record<Genre, ModeIntroCopy> = {
+  noir: {
+    kicker: "The job",
+    start: "Take the job",
+    steps: [
+      { title: "Work the room", body: "Search everything. Every room keeps something back." },
+      { title: "Put it together", body: "Pick up what you find. Some pieces fit; some open things." },
+      { title: "Find the way out", body: "Crack the last lock and the case is closed." },
+    ],
+  },
   crime_scene: {
     kicker: "Briefing",
     start: "Take the case",
@@ -36,20 +45,17 @@ export const MODE_INTRO: Record<"crime_scene" | "paranormal", ModeIntroCopy> = {
 /**
  * Home's continue prompt (a mode card tapped while it has a case to go back
  * to): the line under the mode's name, by what is waiting. `building` is a
- * case still being built (Continue opens the build wait); `study` is noir's
- * The Study, left part-way.
+ * case still being built (Continue opens the build wait).
  */
 export interface ResumeCopy {
   inProgress: string;
   building: string;
-  study?: string;
 }
 
 export const RESUME_COPY: Record<Genre, ResumeCopy> = {
   noir: {
     inProgress: "You've still got a case open.",
     building: "Your next case is still coming together.",
-    study: "The Study is still waiting for you.",
   },
   crime_scene: {
     inProgress: "You have an open case on file.",

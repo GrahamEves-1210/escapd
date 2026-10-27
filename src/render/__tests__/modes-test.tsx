@@ -23,10 +23,7 @@ const mockFeedback = {
 };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
-jest.mock("@/tutorial/assets", () => ({
-  TUTORIAL_ROOM_ID: "00000000-0000-4000-8000-000000000001",
-  bundledScene: () => 1,
-}));
+jest.mock("@/render/bundledScenes", () => ({ bundledScene: () => 1 }));
 
 jest.mock("@/lib/supabase", () => ({
   supabase: { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) } },

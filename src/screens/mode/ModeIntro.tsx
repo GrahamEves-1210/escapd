@@ -1,9 +1,9 @@
 // A mode's first-time "how this mode works" (MODES_PROMPT.md Part 2), for
-// crime scene and paranormal: one screen in the mode's palette, under the
-// banner of its drawn cover: a kicker, the mode's name and tagline, three
-// short numbered steps, and its start button ("Take the case", "Step
-// inside"; copy.ts, MODE_INTRO) pinned to the foot as the photo guide's pill
-// in the mode's accent (ModePill). Start remembers it (introSeen.ts) and
+// every mode: one screen in the mode's palette, under the banner of its drawn
+// cover: a kicker, the mode's name and tagline, three short numbered steps,
+// and its start button ("Take the job", "Take the case", "Step inside";
+// copy.ts, MODE_INTRO) pinned to the foot as the photo guide's pill in the
+// mode's accent (ModePill). Start remembers it (introSeen.ts) and
 // starts the mode's first case: openCapture({ genre }) in place of the intro
 // (a guest to /account, no Pro to /pro, else the guide), so back from there
 // returns home; if the access check can't run it carries on to /capture,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { openCapture } from "@/capture/openCapture";
 import { ModePill } from "@/capture/ui/ModePill";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
+import type { Genre } from "@/lib/puzzle-types";
 import { modeThemes, ref } from "@/theme/tokens";
 import { MODE_INTRO } from "./copy";
 import { markIntroSeen } from "./introSeen";
@@ -25,7 +26,7 @@ import { FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
 const L = ref.layout.mode;
 const I = L.intro;
 
-export function ModeIntro({ genre }: { genre: "crime_scene" | "paranormal" }) {
+export function ModeIntro({ genre }: { genre: Genre }) {
   const theme = modeThemes[genre];
   const insets = useSafeAreaInsets();
   const intro = MODE_INTRO[genre];

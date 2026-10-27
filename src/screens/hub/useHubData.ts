@@ -1,27 +1,23 @@
-// Home's data (MODES_PROMPT.md Part 2, round 6): The Study's entry (noir's
-// first tap) and, for each mode, the case the player can go back to (its
-// card's "In progress" tag, and what its tap offers to continue). Fetched on
-// every focus, and only with a stored session: a guest is never created just
-// to label a card. Calls only exported API functions (src/lib/escapd-api.ts):
-// the tutorial's latest session and the sent rooms in parallel, then the
-// latest session of each mode's newest ready room (three at most).
+// Home's data (MODES_PROMPT.md Part 2, round 6): for each mode, the case the
+// player can go back to (its card's "In progress" tag, and what its tap
+// offers to continue). Fetched on every focus, and only with a stored
+// session: a guest is never created just to label a card. Calls only exported
+// API functions (src/lib/escapd-api.ts): the sent rooms, then the latest
+// session of each mode's newest ready room (three at most).
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { GENRES } from "@/game/mode";
 import { currentSession, getLatestSession, listMyRooms } from "@/lib/escapd-api";
-import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { NO_CASES, caseToContinue, newestByGenre, noirCase, studyEntry, type ModeCases, type StudyEntry } from "./caseStatus";
+import { NO_CASES, caseToContinue, newestByGenre, type ModeCases } from "./caseStatus";
 
 export interface HubEntry {
-  study: StudyEntry;
   cases: ModeCases;
 }
 
 /** What a card's tap needs. Rejects when it can't be read (offline, a server error). */
 export async function loadHub(): Promise<HubEntry> {
-  if (!(await currentSession())) return { study: "unseal", cases: NO_CASES };
-  const [tutorial, rooms] = await Promise.all([getLatestSession(TUTORIAL_ROOM_ID), listMyRooms()]);
-  const newest = newestByGenre(rooms);
+  if (!(await currentSession())) return { cases: NO_CASES };
+  const newest = newestByGenre(await listMyRooms());
   const found = await Promise.all(
     GENRES.map(async (genre) => {
       const room = newest[genre];
@@ -29,9 +25,7 @@ export async function loadHub(): Promise<HubEntry> {
       return [genre, caseToContinue(room, session)] as const;
     }),
   );
-  const study = studyEntry(tutorial);
-  const cases = Object.fromEntries(found) as ModeCases;
-  return { study, cases: { ...cases, noir: noirCase(cases.noir, study) } };
+  return { cases: Object.fromEntries(found) as ModeCases };
 }
 
 /** One focus fetch. Never rejects: a failure is {} and the cards keep what they showed. */
@@ -44,8 +38,6 @@ export async function fetchHub(): Promise<Partial<HubEntry>> {
 }
 
 export interface HubData {
-  /** Null until known (still loading, or the fetch failed). */
-  study: StudyEntry | null;
   /** Undefined until known: no tags. The last known stays through a failed fetch. */
   cases: ModeCases | undefined;
   /** This focus's data once it has landed (a tap can use it at once), else null. */
@@ -61,7 +53,6 @@ interface FocusFetch {
 
 /** Home's card data, fetched on each focus. */
 export function useHubData(): HubData {
-  const [study, setStudy] = useState<StudyEntry | null>(null);
   const [cases, setCases] = useState<ModeCases | undefined>(undefined);
   // Only the newest focus fetch applies to home's own state.
   const fetches = useRef(0);
@@ -75,7 +66,6 @@ export function useHubData(): HubData {
         (next) => {
           if (fetches.current !== id) return next;
           fetch.landed = next;
-          setStudy(next.study);
           setCases(next.cases);
           return next;
         },
@@ -93,5 +83,5 @@ export function useHubData(): HubData {
   const fresh = useCallback(() => current.current?.landed ?? null, []);
   const entry = useCallback(async () => (await current.current?.promise) ?? (await loadHub()), []);
 
-  return { study, cases, fresh, entry };
+  return { cases, fresh, entry };
 }

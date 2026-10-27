@@ -3,25 +3,14 @@ import type { Href } from "expo-router";
 import type { GameSession, Room } from "@/lib/escapd-api";
 import type { Genre } from "@/lib/puzzle-types";
 
-/** The Study's entry, from the latest tutorial session (an abandoned one unseals again, as the title screen did). */
-export type StudyEntry = "unseal" | "continue" | "replay";
-
-export function studyEntry(session: Pick<GameSession, "status"> | null): StudyEntry {
-  if (session?.status === "active") return "continue";
-  if (session?.status === "completed") return "replay";
-  return "unseal";
-}
-
 /**
  * A case the player can go back to in a mode, which home's continue prompt
  * resumes:
  * - play: a ready room not completed (never played, in progress, or its last
  *   run abandoned by "Restart this case"): /play/<id>;
- * - build: a room still building (queued or generating): the build wait;
- * - study: noir only, The Study left part-way (its session active) while the
- *   player has no case of their own to go back to: /tutorial.
+ * - build: a room still building (queued or generating): the build wait.
  */
-export type CaseToContinue = { kind: "play"; roomId: string } | { kind: "build"; roomId: string } | { kind: "study" };
+export type CaseToContinue = { kind: "play"; roomId: string } | { kind: "build"; roomId: string };
 
 /** Each mode's case to go back to; null for none. */
 export type ModeCases = Record<Genre, CaseToContinue | null>;
@@ -54,20 +43,13 @@ export function caseToContinue(
   return null;
 }
 
-/** Noir's case: the player's own first; else The Study while it is part-way through. */
-export function noirCase(own: CaseToContinue | null, study: StudyEntry): CaseToContinue | null {
-  return own ?? (study === "continue" ? { kind: "study" } : null);
-}
-
-/** Where Continue goes: the player, the build wait (as the old case files did), or The Study. */
+/** Where Continue goes: the player, or the build wait (as the old case files did). */
 export function continueHref(target: CaseToContinue): Href {
   switch (target.kind) {
     case "play":
       return { pathname: "/play/[roomId]", params: { roomId: target.roomId } };
     case "build":
       return { pathname: "/capture/develop", params: { roomId: target.roomId } };
-    case "study":
-      return "/tutorial";
   }
 }
 
@@ -76,6 +58,6 @@ export function modeCardLabel(name: string, tagline: string): string {
   return `${name}. ${tagline}.`;
 }
 
-// A card's tap failing before it could choose (offline, or the server): plain words, as the old Study notice.
+// A card's tap failing before it could choose (offline, or the server): in plain words.
 export const NOTICE_OFFLINE = "You're offline. Connect to begin.";
 export const NOTICE_FAILED = "Couldn't start the case. Try again in a moment.";

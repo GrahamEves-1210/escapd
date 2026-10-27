@@ -33,9 +33,7 @@ export interface ResumeSheetProps {
 /** The prompt's line, by what is waiting. */
 export function resumeLine(genre: Genre, target: CaseToContinue): string {
   const copy = RESUME_COPY[genre];
-  if (target.kind === "build") return copy.building;
-  if (target.kind === "study") return copy.study ?? copy.inProgress;
-  return copy.inProgress;
+  return target.kind === "build" ? copy.building : copy.inProgress;
 }
 
 export function ResumeSheet({ genre, target, busy, onContinue, onStartNew, onClose }: ResumeSheetProps) {
