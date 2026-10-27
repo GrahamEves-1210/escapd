@@ -57,7 +57,7 @@ export interface TurnDialProps {
    * drawn see-through where that part of the room now is, with a line where
    * the photo ended. Null hides it (no photo to follow, retake mode, busy).
    */
-  ghost?: { uri: string; fov: number; width: number; height: number } | null;
+  ghost?: { uri: string; overlap: number; width: number; height: number } | null;
   /** The light tick. */
   onReached: () => void;
 }
@@ -78,7 +78,7 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
 
   return (
     <>
-    {ghost && turn.tracking && active ? <GhostEdge {...ghost} turned={turn.turned} step={step} /> : null}
+    {ghost && active ? <GhostEdge {...ghost} /> : null}
     <View
       style={styles.slot}
       pointerEvents="none"
@@ -134,29 +134,22 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
 const GHOST_STRIP = 14;
 
 /**
- * The last photo's right edge, moved by the turn sensor in step with the dial:
- * it starts on the right edge of the frame, where that photo ended, and
- * slides left as the player turns, reaching the left edge exactly as the dial
- * says the turn is far enough (TURN_REACHED of the step). Line it up and
- * shoot. The strip to its left is that part of the photo, see-through, to
- * match against the live feed.
+ * The last photo's right edge, held still on the left of the frame: the
+ * strip of it the next photo should share (the plan's overlap), see-through,
+ * with a line where the last photo ended. Turn until the room lines up with
+ * it, and shoot. It doesn't move with the phone: the room is matched to it.
  */
-function GhostEdge({ uri, fov, width, height, turned, step }: {
-  uri: string; fov: number; width: number; height: number; turned: SharedValue<number>; step: number;
-}) {
-  const stripW = width * Math.min(0.3, GHOST_STRIP / fov);
-  const style = useAnimatedStyle(() => {
-    const p = Math.min(1, Math.max(0, turned.get() / Math.max(1, step * TURN_REACHED)));
-    const right = width * (1 - p);
-    return { left: right - stripW, width: stripW, opacity: p >= 1 ? 0.6 : 1 };
-  });
+function GhostEdge({ uri, overlap, width, height }: { uri: string; overlap: number; width: number; height: number }) {
+  // Photos that only just meet (1x) still get a thin edge to meet.
+  const share = Math.min(0.3, Math.max(0.06, overlap));
+  const stripW = width * share;
   return (
-    <Animated.View pointerEvents="none" style={[styles.ghost, { height }, style]} testID="turn-ghost">
-      <View style={[styles.ghostImage, { height, width: stripW / Math.min(0.3, GHOST_STRIP / fov) }]}>
+    <View pointerEvents="none" style={[styles.ghost, { left: 0, width: stripW, height }]} testID="turn-ghost">
+      <View style={[styles.ghostImage, { height, width }]}>
         <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} transition={0} />
       </View>
       <View style={styles.ghostLine} />
-    </Animated.View>
+    </View>
   );
 }
 

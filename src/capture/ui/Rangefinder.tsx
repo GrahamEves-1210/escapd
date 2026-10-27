@@ -46,7 +46,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
 import { addPlate, firstOpenSlot, getPlates, getRollPlan, getRollPlanState, replacePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
 import { MIN_PLATES, platePrompts } from "@/capture/slots";
-import { LENS_FOV } from "@/capture/turn";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
@@ -233,7 +232,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
         shutterCount.current += 1;
         setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}` });
       }
-      const plate = await processPhoto(picture);
+      const plate = await processPhoto(picture, lenses.choice === "wide" ? ref.layout.camera.frameAspectWide : undefined);
       if (retakeIndex === null) {
         // The plan's last photo fills the set: an outcome the prompt also states.
         if (addPlate(plate) && getPlates().length >= getRollPlan().shots) feedback.success();
@@ -293,7 +292,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     setArea((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
   };
   // The viewfinder exactly 3:4, fitted into the space left and centred: it shrinks before any text does.
-  const viewfinder = viewfinderLayout(area);
+  // 0.5x shoots tall (9:16): the frame, and the photo cropped to it.
+  const tall = lenses.choice === "wide";
+  const viewfinder = viewfinderLayout(area, tall ? ref.layout.camera.frameAspectWide : ref.layout.camera.frameAspect);
 
   return (
     <View
@@ -322,6 +323,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             cameraRef={camera}
             flash={flash ? "on" : "off"}
             selectedLens={lenses.selectedLens}
+            tall={tall}
             grid={grid}
             note={!retake && plates.length === 0}
             lensNote={lensNote}
@@ -334,7 +336,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
                 active={turnActive}
                 resetKey={anchor?.key ?? "none"}
                 ghost={turnActive && anchor && slots[anchor.slot]?.uri
-                  ? { uri: slots[anchor.slot]!.uri, fov: LENS_FOV[lenses.choice], width: viewfinder.width, height: viewfinder.height }
+                  ? { uri: slots[anchor.slot]!.uri, overlap: plan.overlap, width: viewfinder.width, height: viewfinder.height }
                   : null}
                 line={turnCopy(at, false).line}
                 accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}

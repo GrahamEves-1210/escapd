@@ -801,6 +801,9 @@ export const ref = {
       // sensor's 4:3 held upright (CameraView `ratio`, Android).
       frameAspect: 0.75,
       feedRatio: "4:3",
+      // 0.5x shoots tall: 9:16 upright, so the room fills more of the game's screen.
+      frameAspectWide: 0.5625,
+      feedRatioWide: "16:9",
       // Framing grid: rule of thirds in 1 pt white lines at this opacity.
       grid: { divisions: 3, line: 1, opacity: 0.4 },
       // Privacy note: a black pill on the feed (void at fillOpacity), its foot

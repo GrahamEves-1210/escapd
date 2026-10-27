@@ -12,16 +12,20 @@ import type { LensChoice } from "./ui/rangefinder/useLenses";
 import { MAX_PLATES, MIN_PLATES } from "./slots";
 
 /**
- * Each lens's horizontal field of view in degrees with the phone upright and
- * the 3:4 frame (the sensor's short side across). The iPhone ultra-wide is
- * sold as 120 degrees across the diagonal (13 mm full-frame equivalent): on a
- * 4:3 sensor the short side is 0.6 of the diagonal, so 2 atan(0.6 tan 60) =
- * 92. The main lens is 24 to 26 mm, 2 atan(13 / 26 to 24) = 53 to 57. Typical
- * phones; close enough to plan the turns.
+ * Each lens's horizontal field of view in degrees with the phone upright, for
+ * the frame it shoots. The ultra-wide (13 mm full-frame equivalent) shoots
+ * tall, 9:16: the 4:3 sensor's long side kept, its short side cut to 9/16 of
+ * it, so across: 2 atan(9.75 / 13) = 74 (it would be 90 at 3:4). The main
+ * lens (26 mm) shoots 3:4: 2 atan(13 / 26) = 53. Typical phones; close
+ * enough to plan the turns.
  */
-export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 92, main: 55 };
+export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 74, main: 53 };
 
 /**
+ * How much of their width neighbouring photos should share: enough to line
+ * one up against the last (the camera's ghost strip shows exactly this
+ * share). 0.5x (74) takes 6 photos 60 apart, sharing 14 degrees. Below, the
+ * history of this number.
  * How much of their width neighbouring photos should share. 0: the fewest
  * photos that still go all the way round. 0.5x (92) takes 4 photos 90 apart,
  * which just meet (2 degrees shared): the ultra-wide sees enough that four
@@ -30,7 +34,7 @@ export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 92, main: 
  * leaving thin gaps, so its prompts word the turn edge to edge. 0.2 gave 0.5x
  * 5 photos 72 apart.
  */
-export const TARGET_OVERLAP = 0;
+export const TARGET_OVERLAP = 0.15;
 
 /**
  * Neighbours that share any of the view overlap: "keep part of the last photo

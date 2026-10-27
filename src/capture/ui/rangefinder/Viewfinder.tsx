@@ -50,8 +50,8 @@ export interface Size {
 }
 
 /** The viewfinder: the largest 3:4 box in `area`, centred. */
-export function viewfinderLayout(area: Size): Box {
-  return containBox(area, L.frameAspect);
+export function viewfinderLayout(area: Size, aspect: number = L.frameAspect): Box {
+  return containBox(area, aspect);
 }
 
 export interface ViewfinderProps {
@@ -60,6 +60,8 @@ export interface ViewfinderProps {
   flash: FlashMode;
   /** iOS deviceType of the chosen lens; undefined for the default main lens. */
   selectedLens: string | undefined;
+  /** 0.5x: the frame is tall (9:16). */
+  tall?: boolean;
   /** The framing grid's toggle. */
   grid: boolean;
   /** The privacy note, shown until plate I and never in retake mode. */
@@ -78,6 +80,7 @@ export function Viewfinder({
   cameraRef,
   flash,
   selectedLens,
+  tall = false,
   grid,
   note,
   lensNote = null,
@@ -99,7 +102,7 @@ export function Viewfinder({
           style={StyleSheet.absoluteFill}
           facing="back"
           mode="picture"
-          ratio={L.feedRatio}
+          ratio={tall ? L.feedRatioWide : L.feedRatio}
           flash={flash}
           selectedLens={selectedLens}
           onCameraReady={onCameraReady}

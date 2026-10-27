@@ -102,8 +102,11 @@ interface Job {
   edge: number;
 }
 
+/** Mode photo filters are off: every photo shows as the player took it, in every mode. */
+const TREAT_PHOTOS = false;
+
 function jobFor(source: TreatSource | null | undefined, genre: Genre | null | undefined, options: TreatOptions): Job | null {
-  if (source == null || !genre) return null;
+  if (!TREAT_PHOTOS || source == null || !genre) return null;
   const treatment = modeThemes[genre].treatment;
   if (!treatment) return null;
   const edge = edgeFor(options);
