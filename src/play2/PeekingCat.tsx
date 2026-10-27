@@ -85,16 +85,15 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     "worklet";
     hop.set(withSequence(
       withTiming(height * 0.05, { duration: 90, easing: Easing.out(Easing.quad) }),
-      withTiming(-height * up, { duration: 150, easing: Easing.out(Easing.quad) }),
-      withSpring(0, { damping: 7, stiffness: 170 }),
+      withSpring(0, { damping: 12, stiffness: 200 }),
     ));
-    sy.set(withSequence(withTiming(0.84, { duration: 90 }), withTiming(1.14, { duration: 150 }), withTiming(0.9, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
+    sy.set(withSequence(withTiming(0.84, { duration: 90 }), withTiming(1 + up, { duration: 150, easing: Easing.out(Easing.quad) }), withTiming(0.9, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
     sx.set(withSequence(withTiming(1.12, { duration: 90 }), withTiming(0.9, { duration: 150 }), withTiming(1.08, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
   };
 
   useEffect(() => {
     if (reducedMotion) return;
-    rise.set(withDelay(500, withSpring(0, { damping: 9, stiffness: 120, mass: 0.8 })));
+    rise.set(withDelay(500, withSpring(0, { damping: 14, stiffness: 140, mass: 0.8 })));
     // Stretched as it springs up, squashed as it lands on its paws.
     sy.set(withDelay(500, withSequence(withTiming(1.12, { duration: 180 }), withTiming(0.92, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
     sx.set(withDelay(500, withSequence(withTiming(0.92, { duration: 180 }), withTiming(1.07, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
@@ -118,7 +117,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           // Duck behind the ledge, then peek back up.
           rise.set(withSequence(
             withTiming(height * 0.55, { duration: 220, easing: Easing.in(Easing.quad) }),
-            withDelay(700, withSpring(0, { damping: 9, stiffness: 130, mass: 0.8 })),
+            withDelay(700, withSpring(0, { damping: 14, stiffness: 150, mass: 0.8 })),
           ));
           sy.set(withDelay(920, withSequence(withTiming(1.1, { duration: 160 }), withSpring(1, { damping: 6, stiffness: 160 }))));
         } else {
@@ -208,10 +207,11 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     const deep = 1 + z * 1.6;
     return {
       transform: [
-        { translateY: rise.get() + hop.get() + (1 - b) * 1.5 + z * height * 0.14 - t * height * 0.05 },
+        // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
+        { translateY: Math.max(0, rise.get() + hop.get() + (1 - b) * 1.5 + z * height * 0.14) },
         { rotate: `${lean * (1 - z) + idleTilt.get() + t * 8 - z * 5}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
-        { scaleY: sy.get() * (1 + b * 0.025 * deep) },
+        { scaleY: sy.get() * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
         { scaleX: sx.get() * (1 - b * 0.012 * deep) },
       ],
     };
@@ -223,7 +223,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   return (
     <View pointerEvents="none" style={{ width: width * 1.3, height: height * 1.25 }}>
     {/* Its marks float above its head, outside the ledge's clip. */}
-    <View style={[styles.marks, { left: width * 0.7, bottom: height * 0.75, width: width * 1.2, height: height * 1.1 }]}>
+    <View style={[styles.marks, { left: width * 0.55, bottom: height * 0.8, width: width, height: height }]}>
       {mood === "thinking" && !reducedMotion ? (
         <>
           <Mark glyph="?" size={width * 0.34} dx={0} delay={250} style={mark} still={false} />
@@ -237,7 +237,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Mark glyph="z" size={width * 0.3} dx={width * 0.1} delay={1100} style={mark} drift still={reducedMotion} />
         </>
       ) : null}
-      {burst !== null && !reducedMotion ? <Burst key={burst} size={width} color={theme.ink} glyph={mark} /> : null}
+      {burst !== null && !reducedMotion ? <View style={{ transform: [{ translateX: -width * 0.35 }] }}><Burst key={burst} size={width} color={theme.ink} glyph={mark} /></View> : null}
     </View>
     {/* The ledge hides what's below it: the cat rises from behind it. */}
     <View style={[styles.clip, StyleSheet.absoluteFill]}>
@@ -249,7 +249,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
         accessibilityLabel="A black cat watches your light"
         testID="v2-cat"
       >
-        <Image source={ART} style={StyleSheet.absoluteFill} resizeMode="contain" />
+        <Image source={ART} style={{ position: "absolute", left: 0, top: 0, width, height }} resizeMode="contain" />
         {EYES.map((eye, i) => (
           <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} beamX={beamX} beamY={beamY} lid={lid} doze={doze} think={think} />
         ))}
@@ -277,8 +277,8 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
     return {
       opacity: fade,
       transform: [
-        { translateX: dx + (drift ? p * size * 1.4 : Math.sin(p * Math.PI * 2) * size * 0.15) },
-        { translateY: -p * size * (drift ? 2.6 : 2.2) },
+        { translateX: dx + (drift ? p * size * 0.9 : Math.sin(p * Math.PI * 2) * size * 0.15) },
+        { translateY: -p * size * (drift ? 2.2 : 1.6) },
         { rotate: `${drift ? -12 : Math.sin(p * Math.PI * 3) * 14}deg` },
         { scale: grow },
       ],
@@ -307,10 +307,10 @@ function Burst({ size, color, glyph }: { size: number; color: string; glyph: { c
   return (
     <>
       {[-0.9, -0.35, 0.35, 0.9].map((a, i) => (
-        <Spark key={i} t={t} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.2 : 0.26)} color={color} />
+        <Spark key={i} t={t} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.24 : 0.32)} color={color} />
       ))}
       <Animated.View style={[styles.mark, bang]}>
-        <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.42, lineHeight: size * 0.5 }]}>!</Text>
+        <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.6, lineHeight: size * 0.7 }]}>!</Text>
       </Animated.View>
     </>
   );
@@ -344,8 +344,8 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: 
 }) {
   const cx = eye.x * width;
   const cy = eye.y * height;
-  const ew = EYE_R.x * width * 2.1;
-  const eh = EYE_R.y * height * 2.2;
+  const ew = EYE_R.x * width * 2.35;
+  const eh = EYE_R.y * height * 2.45;
   const ph = height * PUPIL.h;
   const rangeX = width * EYE_R.x * 0.55;
   const rangeY = height * EYE_R.y * 0.35;
@@ -371,11 +371,19 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: 
   });
   // Dozing, the lids sit shut (a blink can't open them).
   const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(lid.get(), doze.get()) }] }));
+  // Shut (asleep, or mid-blink), a curved lash line where the eye was.
+  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (Math.max(doze.get(), lid.get()) - 0.7) / 0.3) }));
   return (
     <>
       <Animated.View style={[styles.pupil, { top: cy - ph / 2, height: ph }, pupil]} />
       {/* The eyelid closes from the top down over the eye. */}
       <Animated.View style={[styles.lid, { left: cx - ew / 2, top: cy - eh / 2, width: ew, height: eh, borderRadius: ew / 2 }, lidStyle]} />
+      <Animated.View
+        style={[styles.lash, {
+          left: cx - ew * 0.38, top: cy - eh * 0.05, width: ew * 0.76, height: eh * 0.3,
+          borderBottomWidth: Math.max(1.5, width * 0.016), borderBottomLeftRadius: ew * 0.4, borderBottomRightRadius: ew * 0.4,
+        }, lash]}
+      />
     </>
   );
 }
@@ -390,4 +398,5 @@ const styles = StyleSheet.create({
   },
   pupil: { position: "absolute", backgroundColor: FUR },
   lid: { position: "absolute", backgroundColor: FUR, transformOrigin: "50% 0%" },
+  lash: { position: "absolute", borderColor: "rgba(232, 170, 60, 0.75)" },
 });
