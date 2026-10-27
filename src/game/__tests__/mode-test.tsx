@@ -53,7 +53,7 @@ describe("the active mode", () => {
 
 describe("genres from outside", () => {
   it("lists the modes in home's order", () => {
-    expect(GENRES).toEqual(["noir", "paranormal", "crime_scene"]);
+    expect(GENRES).toEqual(["paranormal", "crime_scene", "noir"]);
   });
 
   it("reads a route param, refusing anything else", () => {

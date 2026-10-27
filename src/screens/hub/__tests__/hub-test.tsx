@@ -73,7 +73,7 @@ const hidden = { includeHiddenElements: true } as const;
 const ROOT = path.join(__dirname, "../../../..");
 const H = ref.layout.hub;
 const M = H.modes;
-const GENRE_LIST = ["noir", "paranormal", "crime_scene"] as const;
+const GENRE_LIST = ["paranormal", "crime_scene", "noir"] as const;
 const NOIR = "Detective Noir. Solve the case.";
 const CRIME = "Crime Scene. Find the killer.";
 const GHOST = "Paranormal. Face the unknown.";
@@ -168,11 +168,11 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(screen.getByRole("header", { name: "ESCAPD" }).props.testID).toBe("hub-logo");
     expect(screen.queryByText("Choose a case")).toBeNull();
     expect(screen.queryByText(/THE STUDY|YOUR ROOM|YOUR CASE/, hidden)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, GHOST, CRIME]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR]);
 
     // No stored session: no tags, never a guest just to label the cards, and no count anywhere.
     await act(async () => resolveSession(null));
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", NOIR, GHOST, CRIME]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR]);
     expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
     expect(screen.queryByText(/\d+ cases?|No cases yet/i, hidden)).toBeNull();
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe("01 · Home: the deck of mode cards", () => {
     // Later cards come later in the tree (on top), and each casts the soft shadow up onto the one it covers.
     const order = screen.container.queryAll((node) => typeof node.props.testID === "string" && /^hub-card-[a-z_]+$/.test(node.props.testID) && node.props.accessibilityRole === "button");
     expect(order.map((node) => node.props.testID)).toEqual(GENRE_LIST.map((g) => `hub-card-${g}`));
-    for (const genre of GENRE_LIST) expect(styleOf(card([NOIR, GHOST, CRIME][GENRE_LIST.indexOf(genre)]))).toMatchObject({ boxShadow: M.deck.shadow, borderRadius: M.radius });
+    for (const genre of GENRE_LIST) expect(styleOf(card([GHOST, CRIME, NOIR][GENRE_LIST.indexOf(genre)]))).toMatchObject({ boxShadow: M.deck.shadow, borderRadius: M.radius });
     // The slot passes touches through outside its card.
     expect(screen.getByTestId("hub-card-noir-slot").props.pointerEvents).toBe("box-none");
   });

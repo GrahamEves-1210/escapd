@@ -11,8 +11,8 @@ import { createContext, createElement, useContext, useSyncExternalStore, type Re
 import type { Genre, PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import { modeThemes, shellTheme, type ModeTheme } from "@/theme/tokens";
 
-/** Every mode, in home's order. */
-export const GENRES: readonly Genre[] = ["noir", "paranormal", "crime_scene"];
+/** Every mode, in home's order: the deck's back card first, its front card (on top) last. */
+export const GENRES: readonly Genre[] = ["paranormal", "crime_scene", "noir"];
 
 let mode: Genre | null = null;
 const listeners = new Set<() => void>();
