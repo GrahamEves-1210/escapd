@@ -12,6 +12,7 @@ import Svg, { Circle, Defs, G, LinearGradient, Path } from "react-native-svg";
 import { FocusRing, gradientStops, useFocusRing, SquashPressable } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
+import { GearSixIcon } from "phosphor-react-native";
 
 const C = ref.button.chip;
 const H = ref.layout.hub;
@@ -27,9 +28,11 @@ export interface ChipProps {
   onPress: () => void;
   disabled?: boolean;
   testID?: string;
+  /** The disc is a magnifying glass: its ring the lens's rim, a handle out to the bottom right (Settings). */
+  lens?: boolean;
 }
 
-export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, disabled = false, testID }: ChipProps) {
+export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, disabled = false, testID, lens = false }: ChipProps) {
   const focus = useFocusRing();
   const feedback = useFeedback();
   const id = `chip${useId().replace(/[^A-Za-z0-9]/g, "")}`;
@@ -55,8 +58,26 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
               {gradientStops(H.chipRing)}
             </LinearGradient>
           </Defs>
-          <Circle cx={MID} cy={MID} r={MID - C.ringWidth / 2} fill="none" stroke={`url(#${id})`} strokeWidth={C.ringWidth} />
+          <Circle
+            cx={MID}
+            cy={MID}
+            r={MID - (lens ? LENS.rim : C.ringWidth) / 2}
+            fill="none"
+            stroke={lens ? ref.color.textPrimary : `url(#${id})`}
+            strokeWidth={lens ? LENS.rim : C.ringWidth}
+          />
         </Svg>
+        {lens ? (
+          // The handle: from the rim at the bottom right, outward at 45 degrees (inside the 48 hit box).
+          <Svg width={C.hit} height={C.hit} style={styles.handle} pointerEvents="none">
+            <Path
+              d={`M ${C.hit / 2 + MID * 0.707} ${C.hit / 2 + MID * 0.707} L ${C.hit / 2 + MID * 0.707 + LENS.handle} ${C.hit / 2 + MID * 0.707 + LENS.handle}`}
+              stroke={ref.color.textPrimary}
+              strokeWidth={LENS.handleWidth}
+              strokeLinecap="round"
+            />
+          </Svg>
+        ) : null}
         {icon}
         <FocusRing visible={focus.focused} shape="pill" />
       </View>
@@ -64,7 +85,16 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
   );
 }
 
+/** The Settings magnifier: a heavier rim than a chip's ring, and its handle. */
+const LENS = { rim: 2, handle: 7, handleWidth: 3.5 } as const;
+
+/** A gear, for the Settings magnifier's lens. */
+export function GearGlyph() {
+  return <GearSixIcon size={GLYPH} weight="bold" color={ref.color.textPrimary} />;
+}
+
 const styles = StyleSheet.create({
+  handle: { position: "absolute", left: (C.size - C.hit) / 2, top: (C.size - C.hit) / 2, overflow: "visible" },
   hit: { width: C.hit, height: C.hit, alignItems: "center", justifyContent: "center" },
   disc: {
     width: C.size,

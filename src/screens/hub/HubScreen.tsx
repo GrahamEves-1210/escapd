@@ -35,7 +35,7 @@ import { introHref } from "@/screens/mode/routes";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { continueHref, type CaseToContinue } from "./caseStatus";
-import { Chip, SlidersGlyph } from "./Chip";
+import { Chip, GearGlyph } from "./Chip";
 import { deckLayout, deckTilt } from "./deck";
 import { HubNotice } from "./HubNotice";
 import { ModeCard } from "./ModeCard";
@@ -319,7 +319,8 @@ export function HubScreen() {
           <Chip
             ref={helpRef}
             accessibilityLabel="Settings"
-            icon={<SlidersGlyph />}
+            icon={<GearGlyph />}
+            lens
             onPress={openSheet}
             disabled={busy !== null}
             testID="hub-settings"
