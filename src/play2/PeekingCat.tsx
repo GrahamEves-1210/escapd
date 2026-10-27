@@ -13,6 +13,8 @@
 //     a while it dozes off on the ledge, eyes shut, "z"s rising, until the
 //     light moves again and it pops back up,
 //   - now and then it ducks behind the ledge and peeks back up.
+// It all moves at 12 frames a second, like stop motion: the animations run
+// smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
 // pupils and eyelids are drawn over the eyes. Under reduced motion it sits
 // still apart from its eyes.
@@ -20,7 +22,7 @@ import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { SparkleIcon } from "phosphor-react-native";
 import Animated, {
-  Easing, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
+  Easing, useAnimatedReaction, useAnimatedStyle, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 import { useModeTheme } from "@/game/mode";
@@ -36,8 +38,27 @@ const EYE_R = { x: 0.0949, y: 0.0833 };
 /** Pupil width: a slit in the light, round in the dark (fractions of the art's width). */
 const PUPIL = { slit: 0.026, wide: 0.085, h: 0.15 };
 const FUR = "#0B0806";
+/** Drawn at this many frames a second: stop motion. */
+const FPS = 12;
 /** It dozes off when the light has been still this long (ms). */
 const DOZE_AFTER = 22000;
+
+/**
+ * Stop motion: the sources' values, snapshotted FPS times a second. Styles read
+ * the snapshot (by index), so they only change on a new frame.
+ */
+function useStopMotion(sources: SharedValue<number>[]): SharedValue<number[]> {
+  const shown = useSharedValue(sources.map((v) => v.get()));
+  const last = useSharedValue(-1);
+  useFrameCallback((frame) => {
+    "worklet";
+    const step = Math.floor(frame.timeSinceFirstFrame / (1000 / FPS));
+    if (step === last.get()) return;
+    last.set(step);
+    shown.set(sources.map((v) => v.get()));
+  });
+  return shown;
+}
 
 export type CatReaction = { kind: "found" | "wrong"; at: number } | null;
 /** What the cat is doing between reactions: watching, or thinking along with the case. */
@@ -195,24 +216,25 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   const fx = frame?.x ?? 0, fy = frame?.y ?? 0, fw = frame?.width ?? 0, fh = frame?.height ?? 0;
   const known = !!origin && !!frame;
 
+  // Everything the cat's drawn from, at 12 frames a second (indices: see the reads below).
+  const f = useStopMotion([rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY]);
   const body = useAnimatedStyle(() => {
-    const b = breath.get();
+    const [r, h, b, tilt, , squashX, squashY, z, t, bx] = f.get();
     let lean = 0;
     if (known) {
-      const dx = fx + beamX.get() * fw - (ox + width / 2);
+      const dx = fx + bx * fw - (ox + width / 2);
       lean = Math.max(-7, Math.min(7, dx / 40));
     }
-    const z = doze.get(), t = think.get();
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
     return {
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
-        { translateY: Math.max(0, rise.get() + hop.get() + (1 - b) * 1.5 + z * height * 0.14) },
-        { rotate: `${lean * (1 - z) + idleTilt.get() + t * 8 - z * 5}deg` },
+        { translateY: Math.max(0, r + h + (1 - b) * 1.5 + z * height * 0.14) },
+        { rotate: `${lean * (1 - z) + tilt + t * 8 - z * 5}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
-        { scaleY: sy.get() * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
-        { scaleX: sx.get() * (1 - b * 0.012 * deep) },
+        { scaleY: squashY * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
+        { scaleX: squashX * (1 - b * 0.012 * deep) },
       ],
     };
   });
@@ -251,7 +273,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       >
         <Image source={ART} style={{ position: "absolute", left: 0, top: 0, width, height }} resizeMode="contain" />
         {EYES.map((eye, i) => (
-          <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} beamX={beamX} beamY={beamY} lid={lid} doze={doze} think={think} />
+          <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} f={f} />
         ))}
       </Animated.View>
     </View>
@@ -269,8 +291,9 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
     const period = drift ? 2200 : 1500;
     t.set(withDelay(delay, withRepeat(withTiming(1, { duration: period, easing: Easing.out(Easing.quad) }), -1, false)));
   }, [t, delay, drift, still]);
+  const shown = useStopMotion([t]);
   const anim = useAnimatedStyle(() => {
-    const p = t.get();
+    const p = shown.get()[0];
     // Pops in with a little overshoot, rises (a "z" drifts sideways too), fades near the top.
     const grow = p < 0.18 ? (p / 0.18) * 1.15 : p < 0.3 ? 1.15 - ((p - 0.18) / 0.12) * 0.15 : 1;
     const fade = p < 0.08 ? p / 0.08 : p > 0.7 ? (1 - p) / 0.3 : 1;
@@ -297,8 +320,9 @@ function Burst({ size, color, glyph }: { size: number; color: string; glyph: { c
   useEffect(() => {
     t.set(withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
   }, [t]);
+  const shown = useStopMotion([t]);
   const bang = useAnimatedStyle(() => {
-    const p = t.get();
+    const p = shown.get()[0];
     return {
       opacity: p > 0.75 ? (1 - p) / 0.25 : 1,
       transform: [{ translateY: -p * size * 0.5 }, { scale: p < 0.2 ? (p / 0.2) * 1.3 : 1.3 - Math.min(1, (p - 0.2) / 0.2) * 0.3 }],
@@ -307,7 +331,7 @@ function Burst({ size, color, glyph }: { size: number; color: string; glyph: { c
   return (
     <>
       {[-0.9, -0.35, 0.35, 0.9].map((a, i) => (
-        <Spark key={i} t={t} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.24 : 0.32)} color={color} />
+        <Spark key={i} t={shown} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.24 : 0.32)} color={color} />
       ))}
       <Animated.View style={[styles.mark, bang]}>
         <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.6, lineHeight: size * 0.7 }]}>!</Text>
@@ -316,9 +340,9 @@ function Burst({ size, color, glyph }: { size: number; color: string; glyph: { c
   );
 }
 
-function Spark({ t, angle, reach, size, color }: { t: SharedValue<number>; angle: number; reach: number; size: number; color: string }) {
+function Spark({ t, angle, reach, size, color }: { t: SharedValue<number[]>; angle: number; reach: number; size: number; color: string }) {
   const style = useAnimatedStyle(() => {
-    const p = t.get();
+    const p = t.get()[0];
     return {
       opacity: p > 0.6 ? (1 - p) / 0.4 : 1,
       transform: [
@@ -336,11 +360,11 @@ function Spark({ t, angle, reach, size, color }: { t: SharedValue<number>; angle
   );
 }
 
-function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: {
+function Eye({ eye, width, height, known, at, f }: {
   eye: { x: number; y: number }; width: number; height: number; known: boolean;
   at: { ox: number; oy: number; fx: number; fy: number; fw: number; fh: number };
-  beamX: SharedValue<number>; beamY: SharedValue<number>; lid: SharedValue<number>;
-  doze: SharedValue<number>; think: SharedValue<number>;
+  /** The cat's stop-motion frame (useStopMotion). */
+  f: SharedValue<number[]>;
 }) {
   const cx = eye.x * width;
   const cy = eye.y * height;
@@ -350,10 +374,11 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: 
   const rangeX = width * EYE_R.x * 0.55;
   const rangeY = height * EYE_R.y * 0.35;
   const pupil = useAnimatedStyle(() => {
+    const [, , , , , , , , t, beamX, beamY] = f.get();
     let dx = 0, dy = 0, open = 1;
     if (known) {
-      const bx = at.fx + beamX.get() * at.fw - (at.ox + cx);
-      const by = at.fy + beamY.get() * at.fh - (at.oy + cy);
+      const bx = at.fx + beamX * at.fw - (at.ox + cx);
+      const by = at.fy + beamY * at.fh - (at.oy + cy);
       const d = Math.hypot(bx, by) || 1;
       const pull = Math.min(1, d / 160);
       dx = (bx / d) * rangeX * pull;
@@ -362,7 +387,6 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: 
       open = Math.max(0, Math.min(1, (d - 120) / 380));
     }
     // Thinking, it looks up and off to the side, wide-eyed.
-    const t = think.get();
     dx = dx * (1 - t) + rangeX * 0.7 * t;
     dy = dy * (1 - t) - rangeY * 1.1 * t;
     open = open * (1 - t) + 0.8 * t;
@@ -370,9 +394,9 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: 
     return { width: pw, borderRadius: pw, left: cx - pw / 2, transform: [{ translateX: dx }, { translateY: dy }] };
   });
   // Dozing, the lids sit shut (a blink can't open them).
-  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(lid.get(), doze.get()) }] }));
+  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(f.get()[4], f.get()[7]) }] }));
   // Shut (asleep, or mid-blink), a curved lash line where the eye was.
-  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (Math.max(doze.get(), lid.get()) - 0.7) / 0.3) }));
+  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (Math.max(f.get()[4], f.get()[7]) - 0.7) / 0.3) }));
   return (
     <>
       <Animated.View style={[styles.pupil, { top: cy - ph / 2, height: ph }, pupil]} />
