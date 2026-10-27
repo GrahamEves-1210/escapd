@@ -58,6 +58,8 @@ const mockPreferences = {
   hotspotAssist: false,
   setHotspotAssist: jest.fn(),
   haptics_enabled: true,
+  sound_enabled: true,
+  music_enabled: true,
   reduced_motion: false,
   update: jest.fn(async (_patch: Record<string, boolean>) => {}),
 };
@@ -116,6 +118,8 @@ beforeEach(async () => {
   jest.clearAllMocks();
   mockPreferences.hotspotAssist = false;
   mockPreferences.haptics_enabled = true;
+  mockPreferences.sound_enabled = true;
+  mockPreferences.music_enabled = true;
   mockPreferences.reduced_motion = false;
   mockPreferences.update.mockImplementation(async () => {});
   mocked.ensureSession.mockResolvedValue({} as never);
@@ -647,17 +651,27 @@ describe("01 · Home: Settings", () => {
       const room = SE.height - SE.top - S.top;
 
       const sections = within(sheet).getAllByRole("header").length - 1;
-      const rows = [
+      const controls = [
         ...within(sheet).getAllByRole("switch"),
         ...within(sheet).getAllByRole("button").filter((b) => b.props.accessibilityLabel !== "Close"),
       ];
-      expect(rows.map((r) => r.props.accessibilityLabel)).toContain("Replay The Study");
-      expect(rows).toHaveLength(8);
+      expect(controls.map((r) => r.props.accessibilityLabel)).toContain("Replay The Study");
+      expect(controls).toHaveLength(9);
       expect(sections).toBe(3);
-      const details = rows.map((r) => r.props.accessibilityHint as string | undefined).filter(Boolean) as string[];
+      // Sound and Music share one row, side by side: nine controls in eight rows.
+      const pair = within(sheet).getByTestId("hub-sound-music");
+      expect(within(pair).getAllByRole("switch").map((r) => r.props.accessibilityLabel)).toEqual(["Sound", "Music"]);
+      const rows = controls.length - 1;
+      expect(rows).toBe(8);
+      // A detail line is a hint shown under the label (the pair's hints are read, not shown).
+      const details = controls
+        .map((r) => r.props.accessibilityHint as string | undefined)
+        .filter((hint): hint is string => !!hint && within(sheet).queryByText(hint) !== null);
+      expect(details).toHaveLength(5);
       // Each detail is one line beside a switch on the SE.
       for (const detail of details) expect(detail.length).toBeLessThanOrEqual(S.detailMax);
-      for (const row of rows) expect(styleOf(row).minHeight).toBeGreaterThanOrEqual(ref.hit.min);
+      // Every control, the pair's halves included, is at least a 44 pt target (48 tall).
+      for (const control of controls) expect(styleOf(control).minHeight).toBeGreaterThanOrEqual(ref.hit.min);
 
       const T = ref.type;
       const chip = ref.button.chip;
@@ -669,7 +683,7 @@ describe("01 · Home: Settings", () => {
       const plainRow = Math.max(S.rowHeight, 2 * S.padY + T.body.lineHeight);
       const height = header + 2 * ref.space.sm + ref.space.lg + SE.bottom
         + sections * (S.heading.lineHeight + S.headingGap) + (sections - 1) * S.section
-        + details.length * detailRow + (rows.length - details.length) * plainRow + (rows.length - sections) * H.hairline;
+        + details.length * detailRow + (rows - details.length) * plainRow + (rows - sections) * H.hairline;
       expect(height).toBeLessThanOrEqual(room);
     } finally {
       Dimensions.set({ window });
@@ -701,6 +715,26 @@ describe("01 · Home: Settings", () => {
     expect(motionRow().props.accessibilityState).toMatchObject({ checked: false });
     expect(mockPreferences.update).toHaveBeenLastCalledWith({ reduced_motion: false });
     expect(screen.getByText("Couldn't save that while offline. It's back as it was.")).toBeTruthy();
+  });
+
+  it("Settings: Sound and Music share a row, each its own switch, and Music saves music_enabled like Sound", async () => {
+    await renderHub();
+    await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
+    const music = screen.getByRole("switch", { name: "Music" });
+    expect(music.props.accessibilityState).toMatchObject({ checked: true });
+    expect(music.props.accessibilityHint).toBe("A theme for each mode.");
+    expect(styleOf(music)).toMatchObject({ minHeight: H.settings.rowHeight, flex: 1 });
+    expect(styleOf(screen.getByRole("switch", { name: "Sound" }))).toMatchObject({ flex: 1 });
+
+    await fireEvent.press(music);
+    await act(async () => {});
+    expect(mocked.ensureSession).toHaveBeenCalledTimes(1);
+    expect(mockPreferences.update).toHaveBeenCalledWith({ music_enabled: false });
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("switch", { name: "Sound" }));
+    await act(async () => {});
+    expect(mockPreferences.update).toHaveBeenLastCalledWith({ sound_enabled: false });
   });
 
   it("Settings: Haptics ticks once just after it turns on, and not as it turns off", async () => {

@@ -1,5 +1,7 @@
 # Audio
 
+Two kinds: the **effects and room tones** in `assets/audio/` (self-generated, below) and the **music** in `assets/music/` (the user's tracks, see "Music").
+
 Every sound in `assets/audio/` is **self-generated**: synthesized from seeded noise, filters, envelopes and a small reverb by `scripts/audio/generate.mjs`, then encoded with ffmpeg's native AAC encoder. No samples or recordings were downloaded or used, so there is nothing third-party to license or attribute. The files belong to the project like its code.
 
 Rebuild them all (Node 18+ and ffmpeg on PATH):
@@ -45,3 +47,41 @@ All thirteen files total about 340 KB. Licence for every file: self-generated fo
 - Silent cues: `tick`, `success`, `warning`, `error` (outcomes the screen states; the game moments carry their own sounds). `typewriter` is sound only, with no haptic.
 - Room tone: `useRoomTone(active)` (`src/game/useRoomTone.ts`), mounted by `app/play/[roomId].tsx` and `app/tutorial/index.tsx`. It plays the active mode's loop (`useMode()`, noir when none), fades in over 1.6 s and out over 0.7 s, crossfades when the mode changes, and fades out when the screen loses focus, the app leaves the foreground, sound is turned off or the screen unmounts.
 - The app config's `expo-audio` plugin asks for no microphone and no background audio.
+
+## Music
+
+Three looping tracks in `assets/music/`, one per mode. They are the user's own and are **not** generated.
+
+| File | Plays in | Source | Licence |
+|---|---|---|---|
+| `theme.m4a` | The shell (home, Pro, account) and Detective Noir: its mode screens, intro, capture flow, build wait and play screen | The main theme: the audio of the user's screen recording (AAC-LC, 44.1 kHz stereo, about 130 kbit/s), **stream-copied** with no re-encode, its silent 1.6 s head and 1.9 s tail cut on frame boundaries: `ffmpeg -i video.mp4 -vn -c:a copy raw.m4a`, then `ffmpeg -ss 1.6 -to 214.2 -i raw.m4a -c copy -movflags +faststart assets/music/theme.m4a`. 212.6 s, 3.4 MB, -27.6 LUFS integrated | Supplied and licensed by the user |
+| `crime.mp3` | Crime Scene ("murder mystery") | The user's `jazz.mp3`, as supplied | Supplied and licensed by the user |
+| `paranormal.mp3` | Paranormal | The user's `atmoseerie01.mp3`, as supplied (MP3 44.1 kHz stereo, 20.1 s, 400 KB, -26.0 LUFS; `trim` 0.83 brings it to the theme) | Supplied and licensed by the user |
+
+**Placeholder:** `crime.mp3` is still **4 s of silence** until the user's jazz track arrives (`theme.m4a` and `paranormal.mp3` are the real tracks). The placeholders were made with ffmpeg in the right container (`theme.m4a` AAC-LC 44.1 kHz stereo; the others MP3 44.1 kHz stereo, 64 kbit/s), so the whole music system builds and runs against them. Replace each file in place under the same name; no code changes are needed (only `trim`, below, if a track is louder or quieter than the others).
+
+```sh
+ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a aac -b:a 64k -movflags +faststart assets/music/theme.m4a
+ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a libmp3lame -b:a 64k assets/music/crime.mp3
+ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 4 -c:a libmp3lame -b:a 64k assets/music/paranormal.mp3
+```
+
+### Levels
+
+Every level is in `src/game/sound.ts`, in one place (`EFFECTS`, `TONES`, `MUSIC`):
+
+| What | Level |
+|---|---|
+| Effects | 0.45 to 0.95 (the press click 0.22) |
+| Music (`MUSIC.level`) | 0.35, times each track's `trim` (1 for now; set once the real tracks are in, to even out their loudness) |
+| Room tone | 0.1 to 0.12; while music plays, half that (`MUSIC.roomTone` 0.5), faded over 1.2 s, back up when the music stops |
+
+### Playback
+
+- `useMusic()` (`src/game/useMusic.ts`) is mounted **once**, in `app/_layout.tsx`, so the music follows the active mode (`useMode()`) across screens instead of starting and stopping with each one. `src/game/music.ts` owns the players and fades.
+- **One track at a time**, looping. A mode change **crossfades over 1.2 s** (`MUSIC.fade.cross`); the old track pauses once silent. The shell and noir share the theme, so moving between them **keeps it playing, without a restart**. A track coming back after another mode's starts from its top; one coming back after a pause resumes where it was.
+- **Music off** (Settings → Music, the server's `music_enabled`) fades out at once, over 0.5 s (`MUSIC.fade.stop`); on fades back in. Music is independent of Sound (effects and room tone) and Haptics.
+- **The app leaving the foreground:** `inactive` fades out over 0.5 s; `background` silences and pauses at once (timers may not run there to finish a fade). On return it fades back in where it was.
+- **Start:** at app start, once fonts are loaded and the root stack mounts. The ambient session needs no user gesture on iOS or Android; the web plays no audio at all (as for the effects).
+- **Never throws:** a failed load is silence (and isn't retried, and doesn't lower the room tone); a failed play or seek is swallowed. A track is only ever sought when `player.isLoaded` is true, the same guard as the effects (iOS raises an uncatchable native exception for a seek on an item that isn't ready).
+- **Session:** the effects' session, unchanged: the silent switch is respected and `mixWithOthers` is kept. The trade-off: games usually let their score be ducked or paused when another app plays; here the music plays alongside the player's own audio, so effects and music share one consistent session and nothing of ours interrupts theirs. A player who'd rather hear only their own music turns Music off.

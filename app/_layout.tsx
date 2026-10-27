@@ -23,6 +23,7 @@ import { Archivo_900Black } from "@expo-google-fonts/archivo/900Black";
 import { CourierPrime_400Regular } from "@expo-google-fonts/courier-prime/400Regular";
 import { CourierPrime_700Bold } from "@expo-google-fonts/courier-prime/700Bold";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
+import { Music } from "@/game/useMusic";
 import { useSkiaReady } from "@/lib/skiaReady";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { color } from "@/theme/tokens";
@@ -79,6 +80,8 @@ function ThemedStack() {
   return (
     <ThemeProvider reducedMotion={reduced_motion}>
       <StatusBar style="light" />
+      {/* Once, here, so the music follows the active mode across every screen. */}
+      <Music />
       <Stack
         screenOptions={{
           headerShown: false,

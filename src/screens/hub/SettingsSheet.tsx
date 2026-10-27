@@ -8,7 +8,10 @@
 // so every row fits with no scroll on an iPhone SE at the default text size
 // (large text scrolls). Only settings that work today:
 // - Gameplay: Show interactives and Case clock (local, AsyncStorage), Sound
-//   (the server's sound_enabled, which the sound player honours) and
+//   and Music side by side in one row (the server's sound_enabled, which the
+//   effects and room tone honour, and music_enabled, which useMusic honours;
+//   two short labels with no detail line, so the sheet still fits an iPhone
+//   SE; each half is its own 48 pt switch, its detail read as a hint) and
 //   Haptics (the server's haptics_enabled, which useFeedback honours).
 // - Accessibility: Reduce motion (the server's reduced_motion, which drives
 //   the app's reduced motion).
@@ -56,7 +59,10 @@ export const COPY = {
   caseClock: "Case clock",
   caseClockDetail: "Your time on a case, as you play.",
   sound: "Sound",
-  soundDetail: "Room tone and the click of locks.",
+  // Sound and Music share a row: no detail line, so these are read as hints only.
+  soundHint: "Room tone and the click of locks.",
+  music: "Music",
+  musicHint: "A theme for each mode.",
   haptics: "Haptics",
   hapticsDetail: "A light tap as you press or find.",
   accessibility: "Accessibility",
@@ -82,7 +88,7 @@ const WEB_THUMB: object = Platform.OS === "web" ? { activeThumbColor: SW.thumb }
 /** The app's version, from the app config (expo-constants). */
 const VERSION = Constants.expoConfig?.version ?? null;
 
-type ServerSetting = "haptics_enabled" | "sound_enabled" | "reduced_motion";
+type ServerSetting = "haptics_enabled" | "sound_enabled" | "music_enabled" | "reduced_motion";
 
 /** Where a navigation row goes. */
 export type SettingsRoute = "/account" | "/pro" | "/tutorial";
@@ -187,15 +193,29 @@ export function SettingsSheet({ onClose, onOpen, study = null }: SettingsSheetPr
             }}
             testID="hub-case-clock"
           />
-          <SwitchRow
-            label={COPY.sound}
-            detail={COPY.soundDetail}
-            value={shown("sound_enabled")}
-            onChange={(on) => {
-              save("sound_enabled", on);
-            }}
-            testID="hub-sound"
-          />
+          <View style={styles.pair} testID="hub-sound-music">
+            <SwitchRow
+              label={COPY.sound}
+              hint={COPY.soundHint}
+              value={shown("sound_enabled")}
+              onChange={(on) => {
+                save("sound_enabled", on);
+              }}
+              half
+              testID="hub-sound"
+            />
+            <View style={styles.pairDivider} />
+            <SwitchRow
+              label={COPY.music}
+              hint={COPY.musicHint}
+              value={shown("music_enabled")}
+              onChange={(on) => {
+                save("music_enabled", on);
+              }}
+              half
+              testID="hub-music"
+            />
+          </View>
           <SwitchRow
             label={COPY.haptics}
             detail={COPY.hapticsDetail}
@@ -262,18 +282,25 @@ function RowText({ label, detail }: { label: string; detail?: string }) {
   );
 }
 
-/** One accessible switch: the row toggles, the native switch only shows the value. */
+/**
+ * One accessible switch: the row toggles, the native switch only shows the value.
+ * `half` is one of two switches sharing a row (Sound and Music), with a hint in place of a detail line.
+ */
 function SwitchRow({
   label,
   detail,
+  hint,
   value,
   onChange,
+  half = false,
   testID,
 }: {
   label: string;
   detail?: string;
+  hint?: string;
   value: boolean;
   onChange: (on: boolean) => void;
+  half?: boolean;
   testID: string;
 }) {
   const focus = useFocusRing();
@@ -281,7 +308,7 @@ function SwitchRow({
     <Pressable
       accessibilityRole="switch"
       accessibilityLabel={label}
-      accessibilityHint={detail}
+      accessibilityHint={hint ?? detail}
       accessibilityState={{ checked: value }}
       onPress={() => {
         // Not awaited: the switch shows its new value at once while it saves.
@@ -290,7 +317,7 @@ function SwitchRow({
       onFocus={focus.onFocus}
       onBlur={focus.onBlur}
       testID={testID}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.row, half && styles.half, pressed && styles.pressed]}
     >
       <RowText label={label} detail={detail} />
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -364,6 +391,10 @@ const styles = StyleSheet.create({
     paddingVertical: S.padY,
   },
   pressed: { opacity: S.pressedOpacity },
+  // Sound and Music: two halves of one row, a rim line between them.
+  pair: { flexDirection: "row", alignItems: "stretch" },
+  half: { flex: 1 },
+  pairDivider: { width: H.hairline, marginVertical: S.padY, backgroundColor: S.divider },
   // The label column wraps at large text; the switch, chevron and value keep their size.
   rowText: { flex: 1, gap: S.detailGap },
   label: { ...T.body, color: ref.color.textPrimary },

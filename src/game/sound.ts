@@ -3,8 +3,9 @@
 // without audio (the web), a failed load or a failed play is simply silence.
 //
 // Callers don't play sounds directly: feedback.ts gives each cue its sound
-// (following the player's sound_enabled), and useRoomTone.ts runs the
-// ambience. The files and how they were made are in docs/AUDIO.md; they are
+// (following the player's sound_enabled), useRoomTone.ts runs the ambience
+// and music.ts / useMusic.ts the music. Every file and its level is here, in
+// one place: EFFECTS, TONES and MUSIC. The files and how they were made are in docs/AUDIO.md; they are
 // rebuilt by scripts/audio/generate.mjs.
 //
 // The audio session respects the iOS silent switch (playsInSilentMode: false,
@@ -54,10 +55,38 @@ const TONES: Record<Genre, { source: number; volume: number }> = {
 /** Room tone fades, in ms. */
 export const ROOM_TONE_FADE = { in: 1600, out: 700, step: 50 } as const;
 
-const supported = Platform.OS === "ios" || Platform.OS === "android";
+export type TrackName = "theme" | "crime" | "paranormal";
+
+/**
+ * Music: one looping track at a time, under the effects (shutter 0.95, stamp
+ * 0.9, unlock 0.85) and over the room tone. `level` is every track's
+ * playback volume times its `trim`, for evening out the supplied tracks'
+ * loudness. While music plays the room tone drops to `roomTone` of its level
+ * (fading over `fade.duck`), so rain or a hum and the music don't muddy each
+ * other; it comes back up when the music stops. Fades are in ms: `cross` for
+ * a crossfade between tracks (and fading in), `stop` for fading to silence
+ * (music off, the app leaving the foreground).
+ */
+export const MUSIC = {
+  level: 0.35,
+  roomTone: 0.5,
+  fade: { cross: 1200, stop: 500, duck: 1200, step: 50 },
+  tracks: {
+    // The main theme, the sound stripped from the user's video (stream-copied AAC, the silent 1.6 s
+    // head and 1.9 s tail cut on frame boundaries; nothing re-encoded): the shell and noir. -27.6 LUFS,
+    // the reference the other trims match.
+    theme: { source: require("../../assets/music/theme.m4a"), trim: 1 },
+    // Crime Scene's track (the user's jazz.mp3).
+    crime: { source: require("../../assets/music/crime.mp3"), trim: 1 },
+    // Paranormal's track (the user's atmoseerie01.mp3, as supplied). -26.0 LUFS: trimmed 1.6 dB down to the theme.
+    paranormal: { source: require("../../assets/music/paranormal.mp3"), trim: 0.83 },
+  } satisfies Record<TrackName, { source: number; trim: number }>,
+} as const;
+
+export const supported = Platform.OS === "ios" || Platform.OS === "android";
 
 /** Run something that may throw or reject; neither may reach the screen. */
-function quietly(fn: () => unknown) {
+export function quietly(fn: () => unknown) {
   try {
     const result = fn() as { catch?: (f: () => void) => unknown } | undefined;
     if (result && typeof result.catch === "function") result.catch(() => {});
@@ -65,7 +94,8 @@ function quietly(fn: () => unknown) {
 }
 
 let configured = false;
-function configure() {
+/** Set the shared audio session once (effects, room tone and music alike). */
+export function configure() {
   if (configured) return;
   configured = true;
   quietly(() =>
@@ -78,7 +108,8 @@ function configure() {
   );
 }
 
-function load(source: number): AudioPlayer | null {
+/** A player for a bundled file, or null when it won't load (silence, never a throw). */
+export function load(source: number): AudioPlayer | null {
   try {
     return createAudioPlayer(source, { updateInterval: 1000 });
   } catch {
@@ -104,7 +135,7 @@ export function preloadSounds() {
  * an item that isn't ready to play: still loading, or failed (a broken file,
  * a dropped dev-server asset, media services reset).
  */
-function canSeek(player: AudioPlayer): boolean {
+export function canSeek(player: AudioPlayer): boolean {
   try {
     return player.isLoaded === true;
   } catch {
@@ -141,15 +172,27 @@ interface Tone {
 
 const tones: Partial<Record<Genre, Tone | null>> = {};
 let ticker: ReturnType<typeof setInterval> | null = null;
+/** The room tone's share of its level: 1, or MUSIC.roomTone while music plays (faded between). */
+let duck = 1;
+let duckTarget = 1;
 
 function applyVolume(genre: Genre, tone: Tone) {
   quietly(() => {
-    tone.player.volume = TONES[genre].volume * tone.level * tone.level;
+    tone.player.volume = TONES[genre].volume * tone.level * tone.level * duck;
   });
 }
 
 function step() {
   let moving = false;
+  if (duck !== duckTarget) {
+    const delta = ((1 - MUSIC.roomTone) * ROOM_TONE_FADE.step) / MUSIC.fade.duck;
+    duck = duckTarget > duck ? Math.min(duckTarget, duck + delta) : Math.max(duckTarget, duck - delta);
+    for (const genre of Object.keys(tones) as Genre[]) {
+      const tone = tones[genre];
+      if (tone && tone.level > 0) applyVolume(genre, tone);
+    }
+    if (duck !== duckTarget) moving = true;
+  }
   for (const genre of Object.keys(tones) as Genre[]) {
     const tone = tones[genre];
     if (!tone || tone.level === tone.target) continue;
@@ -190,6 +233,14 @@ export function setRoomTone(genre: Genre | null) {
   if (!ticker) ticker = setInterval(step, ROOM_TONE_FADE.step);
 }
 
+/** Lower the room tone while music plays (true), or bring it back up (false). Fades over MUSIC.fade.duck. */
+export function setRoomToneDucked(ducked: boolean) {
+  const target = ducked ? MUSIC.roomTone : 1;
+  if (target === duckTarget) return;
+  duckTarget = target;
+  if (supported && !ticker) ticker = setInterval(step, ROOM_TONE_FADE.step);
+}
+
 /** Forget every player. For tests. */
 export function resetSoundsForTests() {
   for (const p of Object.values(players)) quietly(() => p?.remove());
@@ -199,4 +250,6 @@ export function resetSoundsForTests() {
   if (ticker) clearInterval(ticker);
   ticker = null;
   configured = false;
+  duck = 1;
+  duckTarget = 1;
 }
