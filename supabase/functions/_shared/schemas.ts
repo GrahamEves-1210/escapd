@@ -114,9 +114,15 @@ export const MAX_OBJECTS_PER_PHOTO = 20;
 // ---------------------------------------------------------------------------
 // Stage 2: per-photo perception
 // ---------------------------------------------------------------------------
+// face_visible is the only field the privacy gate reads (stage 3). It was
+// person_present ("any person or part of one"); the narrower name keeps the
+// model from flagging a hand at the frame edge. sensitive_text is only logged.
 export const PERCEPTION_SCHEMA: JsonSchema = closedObject({
-  person_present: { type: "boolean", description: "A real person or any part of one (including a reflection) is visible." },
-  sensitive_text: { type: "boolean", description: "Readable mail, documents, cards, handwriting, or a lit screen showing content is visible." },
+  face_visible: {
+    type: "boolean",
+    description: "A real person's face is clearly visible (in the room or clearly in a mirror). Hands, arms, backs, cut-off or blurred figures, and faces in art, photos or on screens do not count.",
+  },
+  sensitive_text: { type: "boolean", description: "Readable mail, documents, cards, handwriting, or a lit screen showing content is visible. Logged only." },
   quality: { type: "string", enum: [...PHOTO_QUALITY] },
   objects: {
     type: "array",
@@ -142,21 +148,30 @@ export interface PerceivedObject {
 }
 
 export interface PerceptionResult {
-  personPresent: boolean;
+  /** A real person's face is clearly visible: the only thing the privacy gate blocks on. */
+  faceVisible: boolean;
+  /** Legible private text. Logged, never blocks: the prompts keep text out of the game instead. */
   sensitiveText: boolean;
   quality: PhotoQuality;
   objects: PerceivedObject[];
 }
 
+/** The pre-face_visible shape, `person_present` in its place: still read, as face_visible. */
+function legacyPerception(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const { person_present, ...rest } = value as Record<string, unknown>;
+  return "person_present" in value && !("face_visible" in value) ? { face_visible: person_present, ...rest } : value;
+}
+
 export function parsePerception(value: unknown): PerceptionResult {
   const raw = assertSchema<{
-    person_present: boolean;
+    face_visible: boolean;
     sensitive_text: boolean;
     quality: PhotoQuality;
     objects: Array<{ label: string; affordance: Affordance; box_2d: number[]; confidence: number }>;
-  }>(PERCEPTION_SCHEMA, value);
+  }>(PERCEPTION_SCHEMA, legacyPerception(value));
   return {
-    personPresent: raw.person_present,
+    faceVisible: raw.face_visible,
     sensitiveText: raw.sensitive_text,
     quality: raw.quality,
     objects: raw.objects.map((o) => ({

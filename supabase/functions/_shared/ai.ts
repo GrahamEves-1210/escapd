@@ -38,6 +38,7 @@ import {
   type PhotoPayload,
   reconcile,
   type StageContext,
+  textPhotoCount,
   verifyCandidates,
 } from "./perception.ts";
 import { GeminiProvider, type ModelProvider } from "./provider.ts";
@@ -162,17 +163,22 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
 
     // 2. Perception
     const perceptions = await perceivePhotos(ctx, photos);
-    stage("perception", { objects: perceptions.reduce((n, p) => n + p.objects.length, 0) });
+    stage("perception", {
+      objects: perceptions.reduce((n, p) => n + p.objects.length, 0),
+      text_photos: textPhotoCount(perceptions),   // a count only; legible text never blocks
+    });
 
-    // 3. Privacy gate
+    // 3. Privacy gate: only a real person's clearly visible face blocks.
+    // Legible text, hands, arms and cut-off or blurred figures pass; the
+    // prompts keep them out of the game (never listed, copied or described).
     // The message keeps its "photo position(s): 0, 2." prefix, which current
     // clients parse, and ends with each position's reason, which newer
-    // clients show on the photo: "Reasons: 0=person; 2=private_text."
+    // clients show on the photo: "Reasons: 0=person; 2=person."
     const flagged = flaggedPositions(perceptions, photos);
     if (flagged.length) {
       throw fail(
-        `Person or private text detected in photo position(s): ${flagged.join(", ")}. ` +
-          "Retake those photos without people, mail, documents or lit screens. " +
+        `A face is visible in photo position(s): ${flagged.join(", ")}. ` +
+          "Retake those photos without anyone's face in the frame. " +
           `Reasons: ${flaggedReasons(perceptions, photos)}.`,
         ErrorCode.personOrSensitive, false);
     }

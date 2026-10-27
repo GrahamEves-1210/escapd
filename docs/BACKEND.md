@@ -180,8 +180,8 @@ The TypeScript preflight (`puzzle-check.ts`) and the trial engine (`scripts/tria
 | # | Stage | Module |
 |---|---|---|
 | 1 | Download the signed photos in position order (URLs and bytes are never logged) | `ai.ts` |
-| 2 | Perceive each photo in parallel: label, affordance (closed set), 0–1000 box, confidence, `person_present`, `sensitive_text` | `perception.ts` |
-| 3 | Any person or legible mail/document/screen → `person_or_sensitive` | `perception.ts` |
+| 2 | Perceive each photo in parallel: label, affordance (closed set), 0–1000 box, confidence, `face_visible` (was `person_present`, still parsed as it), `sensitive_text` (logged as a count, never blocks) | `perception.ts` |
+| 3 | A real person's clearly visible face → `person_or_sensitive`. Nothing else blocks: legible mail, documents and screens, hands, arms, cut-off, distant or blurred figures, and faces in art, photos or on screens all pass. Perception never lists people, body parts, screens or papers as objects (the deny list backs this up), and no prompt copies text or describes anyone in the photos | `perception.ts` |
 | 4 | One verification call over all photos drops implied, occluded and inside-a-closed-container candidates | `perception.ts` |
 | 5–6 | Reconcile duplicates (same object across photos, same label, overlapping boxes) so each real object gives **one** hotspot on its clearest photo; fewer than 4 → `too_few_objects` | `perception.ts` |
 | 7 | Pick a hand-authored template whose roles fit; mint the 4-digit code and item ids with crypto randomness | `templates.ts` |
@@ -195,7 +195,7 @@ Templates own causality; the model never invents edges. Each of the seven templa
 
 | `error_code` | Retryable | Meaning |
 |---|---|---|
-| `person_or_sensitive` | no | Person or legible private text. Message ends with `photo position(s): 0, 2.` (`room_photos.position`) |
+| `person_or_sensitive` | no | A clearly visible face (the code keeps its name). Message: `A face is visible in photo position(s): 0, 2. … Reasons: 0=person; 2=person.` (`room_photos.position`); the only reason now is `person` |
 | `too_few_objects` | no | Fewer than 4 distinct verified objects; ask for one or two closer views |
 | `photo_unavailable` / `photos_too_large` | no | Photo missing (HTTP 4xx), unsupported type, over 15 MB, or all photos together over the provider's ~20 MB inline limit |
 | `spend_cap` | no | The next call could push this attempt over $0.90 |

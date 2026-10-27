@@ -1,5 +1,15 @@
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
-import { collectCandidates, flaggedPositions, flaggedReasons, isDeniedLabel, type PhotoPayload, reconcile, sanitizeLabel, type VerifiedCandidate } from "./perception.ts";
+import {
+  collectCandidates,
+  flaggedPositions,
+  flaggedReasons,
+  isDeniedLabel,
+  type PhotoPayload,
+  reconcile,
+  sanitizeLabel,
+  textPhotoCount,
+  type VerifiedCandidate,
+} from "./perception.ts";
 import { parsePerception, parseVerification, SchemaViolation } from "./schemas.ts";
 
 Deno.test("labels are sanitized to short generic nouns", () => {
@@ -19,7 +29,7 @@ Deno.test("deny list keeps people, private items, screens and room structure out
 
 Deno.test("collectCandidates drops denied labels, bad boxes, low confidence and slivers", () => {
   const result = parsePerception({
-    person_present: false, sensitive_text: false, quality: "good",
+    face_visible: false, sensitive_text: false, quality: "good",
     objects: [
       { label: "Desk Lamp", affordance: "electronic", box_2d: [100, 100, 400, 300], confidence: 0.9 },
       { label: "laptop", affordance: "electronic", box_2d: [100, 400, 400, 600], confidence: 0.9 },
@@ -34,7 +44,7 @@ Deno.test("collectCandidates drops denied labels, bad boxes, low confidence and 
 });
 
 Deno.test("perception responses outside the schema are rejected", () => {
-  const base = { person_present: false, sensitive_text: false, quality: "good", objects: [] as unknown[] };
+  const base = { face_visible: false, sensitive_text: false, quality: "good", objects: [] as unknown[] };
   assertThrows(() => parsePerception({ ...base, extra: true }), SchemaViolation);
   assertThrows(() => parsePerception({ ...base, quality: "great" }), SchemaViolation);
   assertThrows(() => parsePerception({ ...base, objects: [{ label: "x", affordance: "furniture", box_2d: [0, 0, 1, 1], confidence: 1 }] }), SchemaViolation);
@@ -76,19 +86,41 @@ Deno.test("reconcile: one object per real thing, kept on its clearest photo", ()
   assert(!("sameObjectAs" in desk));
 });
 
-Deno.test("flaggedPositions reports room_photos positions", () => {
+Deno.test("flaggedPositions reports room_photos positions of clear faces only; legible text never blocks", () => {
   const photos = [0, 2, 5].map((position, index) => ({ index, position }) as PhotoPayload);
-  const clean = { personPresent: false, sensitiveText: false, quality: "good" as const, objects: [] };
-  assertEquals(flaggedPositions([clean, { ...clean, sensitiveText: true }, { ...clean, personPresent: true }], photos), [2, 5]);
+  const clean = { faceVisible: false, sensitiveText: false, quality: "good" as const, objects: [] };
+  assertEquals(flaggedPositions([clean, { ...clean, sensitiveText: true }, { ...clean, faceVisible: true }], photos), [5]);
+  assertEquals(flaggedPositions([{ ...clean, sensitiveText: true }, { ...clean, sensitiveText: true }, clean], photos), []);
+  assertEquals(flaggedPositions([{ ...clean, faceVisible: true }, clean, { ...clean, faceVisible: true, sensitiveText: true }], photos), [0, 5]);
 });
 
-Deno.test("flaggedReasons names what each flagged position shows", () => {
+Deno.test("flaggedReasons names only faces, as person", () => {
   const photos = [0, 2, 5].map((position, index) => ({ index, position }) as PhotoPayload);
-  const clean = { personPresent: false, sensitiveText: false, quality: "good" as const, objects: [] };
+  const clean = { faceVisible: false, sensitiveText: false, quality: "good" as const, objects: [] };
   assertEquals(
-    flaggedReasons([{ ...clean, personPresent: true }, clean, { ...clean, personPresent: true, sensitiveText: true }], photos),
-    "0=person; 5=person+private_text",
+    flaggedReasons([{ ...clean, faceVisible: true }, clean, { ...clean, faceVisible: true, sensitiveText: true }], photos),
+    "0=person; 5=person",
   );
-  assertEquals(flaggedReasons([clean, { ...clean, sensitiveText: true }, clean], photos), "2=private_text");
+  assertEquals(flaggedReasons([clean, { ...clean, sensitiveText: true }, clean], photos), "");
   assertEquals(flaggedReasons([clean, clean, clean], photos), "");
+  assertEquals(textPhotoCount([clean, { ...clean, sensitiveText: true }, { ...clean, faceVisible: true, sensitiveText: true }]), 2);
+});
+
+Deno.test("perception: face_visible is the gate field; the old person_present still parses as it", () => {
+  const base = { sensitive_text: true, quality: "good", objects: [] as unknown[] };
+  assertEquals(parsePerception({ ...base, face_visible: true }).faceVisible, true);
+  assertEquals(parsePerception({ ...base, face_visible: false }).faceVisible, false);
+  assertEquals(parsePerception({ ...base, person_present: true }).faceVisible, true);
+  assertEquals(parsePerception({ ...base, person_present: false }).sensitiveText, true);
+  assertThrows(() => parsePerception(base), SchemaViolation);                                      // neither field
+  assertThrows(() => parsePerception({ ...base, face_visible: true, person_present: true }), SchemaViolation);   // both
+});
+
+Deno.test("deny list drops parts of a person, which now pass the privacy gate", () => {
+  for (const label of ["hand", "hands", "person's arm", "left hand", "human leg", "bare feet", "face", "reflection", "silhouette"]) {
+    assert(isDeniedLabel(label), label);
+  }
+  for (const label of ["armchair", "hand towel", "headboard", "footstool", "wall clock", "handbag stand", "arm lamp"]) {
+    assert(!isDeniedLabel(label), label);
+  }
 });

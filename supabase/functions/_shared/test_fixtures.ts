@@ -103,19 +103,34 @@ export const SCENE: Record<number, SceneObject[]> = {
   ],
 };
 
-const textOf = (call: JsonCall<unknown>) => call.parts.map((p) => ("text" in p ? p.text : "")).join("\n");
+export const textOf = (call: JsonCall<unknown>) => call.parts.map((p) => ("text" in p ? p.text : "")).join("\n");
 
+/** Objects a perception model might still list on a photo with a hand or arm in it (the prompt says not to). */
+export const BODY_PART_OBJECTS: SceneObject[] = [
+  ["hand", "other", [700, 0, 1000, 250]],
+  ["person's arm", "other", [600, 750, 1000, 1000]],
+];
+
+/**
+ * What perception reports for photo `flagPhoto` (1-based): "face" (the
+ * default) a clearly visible face; "text" legible mail or a lit screen;
+ * "hand" a hand and an arm at the frame edge, no face, and the model
+ * listing them as objects anyway.
+ */
 export function perceptionHandler(
-  opts: { scene?: Record<number, SceneObject[]>; flagPhoto?: number; flag?: "person" | "text" } = {},
+  opts: { scene?: Record<number, SceneObject[]>; flagPhoto?: number; flag?: "face" | "text" | "hand" } = {},
 ): StageHandler {
   const scene = opts.scene ?? SCENE;
+  const flag = opts.flag ?? "face";
   return (call) => {
     const photo = Number(textOf(call).match(/Photo (\d+) of/)?.[1] ?? 0);
+    const flagged = opts.flagPhoto === photo;
+    const objects = [...(scene[photo] ?? []), ...(flagged && flag === "hand" ? BODY_PART_OBJECTS : [])];
     return {
-      person_present: opts.flagPhoto === photo && opts.flag !== "text",
-      sensitive_text: opts.flagPhoto === photo && opts.flag === "text",
+      face_visible: flagged && flag === "face",
+      sensitive_text: flagged && flag === "text",
       quality: "good",
-      objects: (scene[photo] ?? []).map(([label, affordance, box]) => ({ label, affordance, box_2d: [...box], confidence: 0.9 })),
+      objects: objects.map(([label, affordance, box]) => ({ label, affordance, box_2d: [...box], confidence: 0.9 })),
     };
   };
 }
