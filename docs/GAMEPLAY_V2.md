@@ -481,3 +481,35 @@ answers are evidence cards, and the paranormal ritual is one ordered submit of o
 at the door (no evidence board or room drift yet). MirrorFog, Sequence, Arrange and Dig
 aren't in the kit yet. The removable object is an optional keepsake (take it, it leaves
 the photo). Herrings are empty containers. All words are placeholders for the author call.
+
+---
+
+## Chunk 2: the v2 player (app only)
+
+Every room now opens on the v2 player (`app/play/[roomId].tsx` → `src/play2/PlayerV2.tsx`).
+Generation v2 isn't wired yet, so the room is **planned on the device from its v1 objects**:
+`adapter.ts` reads each v1 hotspot's label as a taxonomy type (`typeForLabel`: type names, then
+synonyms such as closet → wardrobe, painting → framed picture), gives it that type's typical
+features and turns its box into an `InventoryObject`; `planFromV1` runs `planRoom` seeded by the
+room id (minted values too), so a room always plans the same way. No model call, no server
+change. A room the planner can't build (no door or door-like exit, too few objects) falls back to
+the v1 player, as does `?v=1`. Words are the planner's placeholders until the author call
+(chunk 3) writes them.
+
+| Piece | File | What it does |
+|---|---|---|
+| State | `useRoomV2.ts` | Loads the room (`startOrResume` → v1 definition → plan), runs actions through `applyAction` locally, saves progress per room in AsyncStorage and resumes it, a 5 s cooldown after a wrong submit, the hint ladder (`nextStep`: the first open required step whose prerequisites are solved; rungs 1–3), restart |
+| Discover | `Stage.tsx` | The photo in the dark (per-mode darkness); one finger sweeps a torch beam (Skia, punched out of the dark); objects glint (a blurred outline) as the beam passes, weaker once seen; a lit lamp throws its own pool of light; UV marks glow, opened panels and pinned cards show. A tap looks at the smallest object under the finger; a fast horizontal fling turns the view. Screen readers get a button per object (`onAccessibilityTap`) |
+| Inspect | `InspectView.tsx` | The close-up: a vignetted crop of the real photo around the object (`cropAround`), settling in; the archetype's mechanism under it; cards it turned up on paper; "Use something you're holding"; "Take it" for the removable object |
+| Manipulate | `mechanisms/` | One component per archetype (Drawer, LiftUnder, Readable, FrameTilt, ClockHands, TuningDial, CombinationLock, Light, Door, Decoder), contract in `mechanisms/types.ts`: local feel and detents, value committed on release |
+| Learn | `Casebook.tsx` | Objective, every card found, what's held (examine an item: its card, or the decoder's ring), hints, Glints on/off (off is the hard way), restart |
+| Tray | `PlayerV2.tsx` | Held items as chips: one selected, tap something in the room to use it; two selected, Fit together (combine); hold to examine |
+| Payoff | `Ending.tsx` | The door's close-up fills the screen, light floods out of it, the ending's lines, then Close the case → case closed |
+
+Settings: Show interactives keeps a faint outline on every object (accessibility); Glints in the
+casebook. Tests: `src/play2/__tests__/` (adapter, a whole planned room played through the hook with
+save and resume, cooldown and the hint ladder, the fallback; the mechanisms).
+
+**Not yet:** server-side play (the play-action edge function and v2 storage), the author call's
+words, the removed object's on-device fill for v2's removable, crime's evidence board and
+paranormal's drift, and case closed's stats for v2 rooms (it shows none).
