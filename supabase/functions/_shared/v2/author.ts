@@ -52,8 +52,10 @@ function optionsOf(def: RoomDefinitionV2) {
 }
 
 export function authorSchema(def: RoomDefinitionV2, secret: RoomSecretV2): JsonSchema {
-  const idEnum = (values: string[]): JsonSchema => ({ type: "string", enum: values.length ? values : ["none"] });
-  const rows = (ids: string[], fields: Record<string, JsonSchema>): JsonSchema => ({ type: "array", items: closedObject({ id: idEnum(ids), ...fields }) });
+  // Ids are plain strings (the brief lists them; unknown ones are ignored when parsing): enums in six
+  // arrays of objects make a schema Gemini may refuse as too large.
+  const rows = (ids: string[], fields: Record<string, JsonSchema>): JsonSchema =>
+    ({ type: "array", maxItems: Math.max(1, ids.length), items: closedObject({ id: str("An id exactly as listed in the brief."), ...fields }) });
   return closedObject({
     title: str(`Case title, at most ${AUTHOR_LIMITS.title} characters.`),
     objective: str(`One line at the top of the screen: what the player must do, at most ${AUTHOR_LIMITS.objective} characters.`),

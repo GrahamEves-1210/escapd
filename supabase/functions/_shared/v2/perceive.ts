@@ -12,7 +12,7 @@ import {
 } from "../perception.ts";
 import { callWithFallback, type PromptPart } from "../provider.ts";
 import { type Affordance, assertSchema, closedObject, type JsonSchema, MAX_OBJECTS_PER_PHOTO, PHOTO_QUALITY, type PhotoQuality, str } from "../schemas.ts";
-import { categoryOf, FEATURES, type Feature, type InventoryObject, isFeature, isObjectType, OBJECT_TYPES, type ObjectType } from "./taxonomy.ts";
+import { categoryOf, type Feature, type InventoryObject, isFeature, OBJECT_TYPES, type ObjectType, typeFromText } from "./taxonomy.ts";
 
 export const PERCEPTION_V2_OUTPUT_TOKENS = 3_000;
 const PERCEPTION_TIMEOUT_MS = 25_000;
@@ -20,13 +20,17 @@ export const MAX_VERIFY_CANDIDATES_V2 = 60;
 const MIN_BOX_AREA = 0.0015;
 const MAX_BOX_AREA = 0.70;
 
+// The type list and the feature flags are in the prompt, not enums in the schema:
+// Gemini refuses a schema that constrains a 70-way enum inside a 20-item array
+// (HTTP 400 INVALID_ARGUMENT). The parser maps what comes back onto the taxonomy.
 const PERCEPTION_V2_SYSTEM = `You are the perception stage of ESCAPD, an escape-room game built from photos a player takes of their own room. You look at ONE photo and list the real physical objects in it, described physically: what kind of thing it is and what it physically has. Another stage decides what the game does with them.
 
 Rules:
 - Only list objects you can directly see in this photo. Never guess at the contents of closed drawers, cabinets or boxes.
 - label: a generic noun phrase of 1-4 lowercase words ("oak desk", "wall clock", "woven basket", "bedroom door"). No brand names and never text read from the object.
-- type: the closest entry of the list. Use "other" only when nothing fits.
-- features: every flag that is physically true and visible:
+- type: the closest entry of this list, written exactly as listed; "other" only when nothing fits:
+  ${OBJECT_TYPES.join(", ")}.
+- features: every flag that is physically true and visible, from this list only:
   has_drawers (it has drawers), has_doors (cabinet or wardrobe doors), has_hands (a clock with hands), has_dial (a tuning dial or knob), has_strings, has_keys (piano keys),
   can_open (a lid or door that opens), can_lift (light enough to lift or move: cushions, rugs, small boxes, plant pots, books),
   wall_mounted (hangs on the wall), light_source (a lamp or light), reflective (a mirror or glass), has_pages (a book or notebook),
@@ -51,8 +55,8 @@ export const PERCEPTION_V2_SCHEMA: JsonSchema = closedObject({
     maxItems: MAX_OBJECTS_PER_PHOTO,
     items: closedObject({
       label: str("Generic noun phrase, 1-4 lowercase words, no brands, no transcribed text."),
-      type: { type: "string", enum: [...OBJECT_TYPES] },
-      features: { type: "array", items: { type: "string", enum: [...FEATURES] } },
+      type: str("The closest type from the list in the instructions."),
+      features: { type: "array", items: str("A feature flag from the list in the instructions.") },
       box_2d: {
         type: "array", minItems: 4, maxItems: 4,
         description: "[ymin, xmin, ymax, xmax] normalized to 0-1000.",
@@ -91,8 +95,8 @@ export function parsePerceptionV2(value: unknown): PerceptionV2Result {
     quality: raw.quality,
     objects: raw.objects.map((o) => ({
       label: o.label,
-      type: isObjectType(o.type) ? o.type : "other",
-      features: [...new Set(o.features.filter(isFeature))],
+      type: typeFromText(o.type, o.label),
+      features: [...new Set(o.features.map((f) => f.trim().toLowerCase().replace(/[\s-]+/g, "_")).filter(isFeature))],
       box: [o.box_2d[0], o.box_2d[1], o.box_2d[2], o.box_2d[3]] as const,
       confidence: o.confidence,
     })),

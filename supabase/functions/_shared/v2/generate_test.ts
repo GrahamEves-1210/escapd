@@ -56,7 +56,21 @@ function perception(scene = SCENE) {
   };
 }
 
-const ids = (call: JsonCall<unknown>, list: string): string[] => call.schema.properties?.[list]?.items?.properties?.id?.enum ?? [];
+/** The ids the brief lists for each part of the room (the schema no longer enumerates them). */
+function ids(call: JsonCall<unknown>, list: string): string[] {
+  const brief = textOf(call);
+  const section = (name: string) => brief.split("\n\n").find((p) => p.startsWith(name)) ?? "";
+  const all = (re: RegExp, text: string) => [...new Set([...text.matchAll(re)].map((m) => m[1]))];
+  switch (list) {
+    case "objects": return all(/(?:^|; )([a-z0-9_-]+) = /g, section("Objects:").replace(/^Objects: /, ""));
+    case "items": return all(/(?:^|; )([a-z0-9_-]+) = /g, section("Items:").replace(/^Items: /, ""));
+    case "cards": return all(/^(card_\d+) /gm, brief);
+    case "steps": return all(/^(step_\d+)\b/gm, brief);
+    case "beats": return all(/(rule_\d+): /g, section("Beats:"));
+    case "options": return all(/(?:: |; )([a-z]_[a-z0-9]+) \(/g, section("Options to name:"));
+  }
+  return [];
+}
 const keepRefs = (s: string) => {
   const refs = [...s.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/g)].map((m) => `{{${m[1]}}}`);
   return refs.length ? `Scratched into it: ${refs.join(", then ")}.` : "Nothing more to it.";
@@ -230,4 +244,19 @@ Deno.test("play: from v1's empty state to the end, with hints, a wrong answer's 
   assertEquals(last.ending, secret.ending);
   assert(!last.can_hint);
   assert(last.cards.length > 0 && last.cards.every((c) => !c.text.includes("{{")));
+});
+
+Deno.test("perception v2: the schema enumerates no types (Gemini refuses it); the parser maps free text onto the taxonomy", async () => {
+  const { PERCEPTION_V2_SCHEMA, parsePerceptionV2 } = await import("./perceive.ts");
+  assert(!JSON.stringify(PERCEPTION_V2_SCHEMA).includes("wall_clock"));
+  const parsed = parsePerceptionV2({
+    face_visible: false, sensitive_text: false, quality: "good",
+    objects: [
+      { label: "round clock", type: "Wall clock", features: ["Has hands", "wall-mounted", "glows"], box_2d: [1, 2, 3, 4], confidence: 0.8 },
+      { label: "old couch", type: "settee thing", features: [], box_2d: [1, 2, 3, 4], confidence: 0.8 },
+      { label: "mystery", type: "", features: [], box_2d: [1, 2, 3, 4], confidence: 0.8 },
+    ],
+  });
+  assertEquals(parsed.objects.map((o) => o.type), ["wall_clock", "sofa", "other"]);
+  assertEquals(parsed.objects[0].features, ["has_hands", "wall_mounted"]);
 });

@@ -89,3 +89,55 @@ export const TYPICAL_FEATURES: Partial<Record<ObjectType, Feature[]>> = {
   record_player: ["has_dial"], guitar: ["has_strings"], keyboard_instrument: ["has_keys"], door: ["is_door", "can_open"],
   mug: ["can_lift"], trophy: ["can_lift"], figurine: ["can_lift"], jar: ["can_open", "can_lift"], basket: ["can_lift", "holds_items"],
 };
+
+/** Words in a label that name a type the taxonomy spells differently. First match wins. */
+const SYNONYMS: [RegExp, ObjectType][] = [
+  [/\b(alarm clock|clock radio)\b/, "alarm_clock"],
+  [/\bclock\b/, "wall_clock"],
+  [/\b(couch|settee|loveseat)\b/, "sofa"],
+  [/\b(closet|armoire)\b/, "wardrobe"],
+  [/\b(cupboard|hutch)\b/, "cabinet"],
+  [/\b(bedside|night stand)\b/, "nightstand"],
+  [/\b(chest of drawers|drawers?)\b/, "dresser"],
+  [/\b(bookcase|shelves|shelving)\b/, "bookshelf"],
+  [/\b(painting|picture|photo frame|frame|artwork|canvas|print)\b/, "framed_picture"],
+  [/\b(lamp|light)\b/, "desk_lamp"],
+  [/\b(fairy lights)\b/, "string_lights"],
+  [/\b(plant|cactus|succulent|fern)\b/, "potted_plant"],
+  [/\b(pot|planter)\b/, "plant_pot"],
+  [/\b(cup|teacup)\b/, "mug"],
+  [/\b(stereo|turntable|vinyl)\b/, "record_player"],
+  [/\b(piano|synth|keyboard)\b/, "keyboard_instrument"],
+  [/\b(phone)\b/, "telephone"],
+  [/\b(board)\b/, "noticeboard"],
+  [/\b(journal|diary|notepad)\b/, "notebook"],
+  [/\b(books)\b/, "book_stack"],
+  [/\b(throw|duvet|quilt)\b/, "blanket"],
+  [/\b(carpet|mat)\b/, "rug"],
+  [/\b(drapes|blind)\b/, "curtain"],
+  [/\b(statue|ornament|sculpture)\b/, "figurine"],
+  [/\b(tv|television|media console)\b/, "tv_stand"],
+  [/\b(crate|bin|container)\b/, "box"],
+  [/\b(backpack|handbag|purse)\b/, "bag"],
+  [/\b(doorway|entrance|exit)\b/, "door"],
+];
+
+// Longest type names first, so "coffee table" wins over "table".
+const BY_NAME = [...OBJECT_TYPES]
+  .filter((t) => t !== "other")
+  .map((t) => [new RegExp(`\\b${t.replace(/_/g, " ")}s?\\b`), t] as const)
+  .sort((a, b) => b[0].source.length - a[0].source.length);
+
+/** The taxonomy type a free-text object label most likely means; "other" when none fits. */
+export function typeForLabel(label: string): ObjectType {
+  const text = label.toLowerCase().replace(/[_-]+/g, " ");
+  for (const [re, type] of BY_NAME) if (re.test(text)) return type;
+  for (const [re, type] of SYNONYMS) if (re.test(text)) return type;
+  return "other";
+}
+
+/** A type as a model wrote it ("Wall clock", "wall_clock"), else the type its label means. */
+export function typeFromText(raw: string, label: string): ObjectType {
+  const t = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return isObjectType(t) ? t : typeForLabel(`${raw} ${label}`);
+}
