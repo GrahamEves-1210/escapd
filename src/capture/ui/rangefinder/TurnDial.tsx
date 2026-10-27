@@ -21,6 +21,8 @@
 // - Screen readers: one element, "Photo 2 of 5.", and "Far enough. Take the
 //   photo." added (and announced once) when the turn is far enough.
 import { useCallback } from "react";
+import { Image } from "expo-image";
+import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { arcPath, dialPoint, turnStep } from "@/capture/turn";
@@ -50,11 +52,17 @@ export interface TurnDialProps {
   line: string;
   /** The label without the "far enough" sentence; the dial adds it. */
   accessibilityLabel: (reached: boolean) => string;
+  /**
+   * The ghost edge: the photo the turn is counted from, its right-hand strip
+   * drawn see-through where that part of the room now is, with a line where
+   * the photo ended. Null hides it (no photo to follow, retake mode, busy).
+   */
+  ghost?: { uri: string; fov: number; width: number; height: number } | null;
   /** The light tick. */
   onReached: () => void;
 }
 
-export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached }: TurnDialProps) {
+export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, ghost = null }: TurnDialProps) {
   const { reducedMotion } = useTheme();
   const reachedNow = useCallback(() => {
     onReached();
@@ -69,6 +77,8 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
   const arc = turn.tracking && target !== null ? arcPath(C, C, R, from, turn.progress * step) : "";
 
   return (
+    <>
+    {ghost && turn.tracking && active ? <GhostEdge {...ghost} turned={turn.turned} /> : null}
     <View
       style={styles.slot}
       pointerEvents="none"
@@ -116,10 +126,61 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
         </Text>
       </View>
     </View>
+    </>
+  );
+}
+
+/** How much of the last photo the ghost shows, in degrees of its right edge. */
+const GHOST_STRIP = 14;
+
+/**
+ * The last photo's right edge, pinned to the room by the turn sensor. The
+ * edge sits at half the field of view right of where that photo pointed, so
+ * after turning `t` it is `fov/2 - t` from the middle of the view, on screen
+ * through the lens's projection (tan). It starts on the right edge, where the
+ * photo ended, and slides left as the player turns; on the stop it has reached
+ * the left edge: line it up and shoot. The strip to its left is that part of
+ * the photo, see-through, to match against the live feed.
+ */
+function GhostEdge({ uri, fov, width, height, turned }: { uri: string; fov: number; width: number; height: number; turned: SharedValue<number> }) {
+  const half = fov / 2;
+  const style = useAnimatedStyle(() => {
+    const k = Math.tan((half * Math.PI) / 180);
+    const x = (deg: number) => width / 2 + (width / 2) * (Math.tan((Math.max(-89, Math.min(89, deg)) * Math.PI) / 180) / k);
+    const edge = half - turned.get();
+    const right = x(edge);
+    const left = x(edge - GHOST_STRIP);
+    return {
+      left,
+      width: Math.max(0, right - left),
+      // Gone once the edge has passed out of view on the left.
+      opacity: edge < -half ? 0 : 1,
+    };
+  });
+  // The strip is the photo's right-hand GHOST_STRIP degrees: that share of its width, scaled to the strip.
+  const k = Math.tan((half * Math.PI) / 180);
+  const share = 1 - (width / 2 + (width / 2) * (Math.tan(((half - GHOST_STRIP) * Math.PI) / 180) / k)) / width;
+  const imageStyle = useAnimatedStyle(() => {
+    const kk = Math.tan((half * Math.PI) / 180);
+    const x = (deg: number) => width / 2 + (width / 2) * (Math.tan((Math.max(-89, Math.min(89, deg)) * Math.PI) / 180) / kk);
+    const edge = half - turned.get();
+    const stripWidth = Math.max(1, x(edge) - x(edge - GHOST_STRIP));
+    return { width: stripWidth / Math.max(0.01, share) };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.ghost, { height }, style]} testID="turn-ghost">
+      <Animated.View style={[styles.ghostImage, { height }, imageStyle]}>
+        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} transition={0} />
+      </Animated.View>
+      <View style={styles.ghostLine} />
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  ghost: { position: "absolute", top: 0, overflow: "hidden" },
+  ghostImage: { position: "absolute", right: 0, top: 0, opacity: 0.45 },
+  ghostLine: { position: "absolute", right: 0, top: 0, bottom: 0, width: 2, backgroundColor: ref.color.textPrimary },
   // Top-centred on the feed.
   slot: { position: "absolute", left: 0, right: 0, top: T.inset, alignItems: "center" },
   pill: {

@@ -16,6 +16,7 @@
 // never sends a rotation rate, and whenever `active` is off, `tracking` is
 // false and the dial is static.
 import { useEffect, useRef, useState } from "react";
+import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import { Platform } from "react-native";
 import { DeviceMotion, type DeviceMotionMeasurement } from "expo-sensors";
 import {
@@ -70,6 +71,8 @@ export interface TurnTracking {
   progress: number;
   /** This turn has gone far enough. */
   reached: boolean;
+  /** Degrees turned since the photo the turn is counted from, live at the sensor's rate (the ghost edge). */
+  turned: SharedValue<number>;
 }
 
 interface TurnState {
@@ -96,6 +99,9 @@ export function useTurnTracking({ listening, active, step, resetKey, reducedMoti
   const [tracking, setTracking] = useState(false);
   const [shown, setShown] = useState<Shown>({ key, progress: 0, reached: false });
   const turn = useRef<TurnState>(fresh(key));
+  const turnedLive = useSharedValue(0);
+  // A new photo: the live turn starts again from it.
+  useEffect(() => turnedLive.set(0), [key, turnedLive]);
   // The listener reads the latest options without resubscribing.
   const latest = useRef({ key, step, active, reducedMotion, onReached });
   useEffect(() => {
@@ -120,6 +126,7 @@ export function useTurnTracking({ listening, active, step, resetKey, reducedMoti
       const dt = state.last === null ? 0 : t - state.last;
       state.last = t;
       state.turned = integrateTurn(state.turned, turnRate(rateAxes(rate, Platform.OS), state.gravity), dt);
+      turnedLive.set(Math.abs(state.turned));
       const raw = turnProgress(state.turned, now.step);
       const drawn = quantizeProgress(raw, now.reducedMotion);
       // Far enough is only said while the dial shows the turn; a turn made
@@ -149,5 +156,5 @@ export function useTurnTracking({ listening, active, step, resetKey, reducedMoti
   const live = tracking && listening && active;
   // Progress measured from an earlier photo is not shown for this one.
   const current = live && shown.key === key ? shown : null;
-  return { tracking: live, progress: current?.progress ?? 0, reached: current?.reached ?? false };
+  return { tracking: live, progress: current?.progress ?? 0, reached: current?.reached ?? false, turned: turnedLive };
 }

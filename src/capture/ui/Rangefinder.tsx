@@ -46,6 +46,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
 import { addPlate, firstOpenSlot, getPlates, getRollPlan, getRollPlanState, replacePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
 import { MIN_PLATES, platePrompts } from "@/capture/slots";
+import { LENS_FOV } from "@/capture/turn";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
@@ -332,6 +333,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
                 listening={turnListening}
                 active={turnActive}
                 resetKey={anchor?.key ?? "none"}
+                ghost={turnActive && anchor && slots[anchor.slot]?.uri
+                  ? { uri: slots[anchor.slot]!.uri, fov: LENS_FOV[lenses.choice], width: viewfinder.width, height: viewfinder.height }
+                  : null}
                 line={turnCopy(at, false).line}
                 accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}
                 onReached={onTurned}
