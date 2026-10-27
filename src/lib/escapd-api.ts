@@ -4,6 +4,7 @@
 import { supabase } from "./supabase";
 import type { Database } from "./database.types";
 import type { ActionResult, GameAction, Genre, MyAccess, PuzzleDefinitionV1 } from "./puzzle-types";
+import type { PlayRequest, PlayResponse, RoomDefinitionV2 } from "@/engine/v2";
 import { newId } from "./uuid";
 
 const PHOTO_BUCKET = "room-photos";
@@ -220,9 +221,13 @@ export async function getLatestGenerationJob(roomId: string): Promise<Generation
   return data;
 }
 
-export async function getPlayableDefinition(versionId: string): Promise<PuzzleDefinitionV1> {
+/**
+ * A version's public definition: a v1 room, or a v2 room (`schema_version: 2`,
+ * played on the server through `playActionV2`). Check `schema_version` before use.
+ */
+export async function getPlayableDefinition(versionId: string): Promise<PuzzleDefinitionV1 | RoomDefinitionV2> {
   const row = unwrap(await supabase.from("puzzle_versions").select("public_definition").eq("id", versionId).single());
-  return row.public_definition as unknown as PuzzleDefinitionV1;
+  return row.public_definition as unknown as PuzzleDefinitionV1 | RoomDefinitionV2;
 }
 
 export async function startOrResume(roomId: string): Promise<GameSession> {
@@ -245,6 +250,37 @@ export async function getLatestSession(roomId: string, status?: GameSession["sta
 
 export async function submitAction(sessionId: string, action: GameAction): Promise<ActionResult> {
   return unwrap(await supabase.rpc("submit_action", { p_session_id: sessionId, p_action: action })) as unknown as ActionResult;
+}
+
+/**
+ * One play request on a v2 session (the play-action edge function): an action,
+ * a hint, or neither to load. Errors carry the function's code ("conflict"
+ * when another request saved first: load and retry once); a request that never
+ * reached the server reads as a network error (isNetworkError).
+ */
+export async function playActionV2(sessionId: string, body: PlayRequest = {}): Promise<PlayResponse> {
+  const { data, error } = await supabase.functions.invoke("play-action", { body: { session_id: sessionId, ...body } });
+  if (error) throw await functionError(error);
+  if (data == null) throw new ApiError("Empty response");
+  return data as PlayResponse;
+}
+
+/** An edge function's error as an ApiError: its `{ error: code, message }` body, or a network failure. */
+async function functionError(error: { name?: string; message: string; context?: unknown }): Promise<ApiError> {
+  if (error.name === "FunctionsFetchError") {
+    const cause = error.context instanceof Error ? error.context.message : String(error.context ?? "");
+    return new ApiError(`Network request failed${cause ? `: ${cause}` : ""}`, undefined, error);
+  }
+  const response = error.context as { json?: () => Promise<unknown> } | undefined;
+  if (error.name === "FunctionsHttpError" && typeof response?.json === "function") {
+    try {
+      const body = (await response.json()) as { error?: string; message?: string } | null;
+      return new ApiError(body?.message || error.message, body?.error || undefined, error);
+    } catch {
+      // Not JSON: keep the client's message.
+    }
+  }
+  return new ApiError(error.message, undefined, error);
 }
 
 export async function getSettings(): Promise<UserSettings> {

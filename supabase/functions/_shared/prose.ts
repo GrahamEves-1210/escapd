@@ -94,6 +94,12 @@ const WHAT_TO_WRITE = [
   `- Lengths: title at most 60 characters, intro at most 400, names at most 40, descriptions at most 240, prompts at most 160, messages at most 300, exit_message at most 300.`,
 ];
 
+/** A genre's voice, its never-list and the people rule: shared with gameplay v2's author call (v2/author.ts). */
+export function voiceRules(genre: Genre): string {
+  const g = GENRE_PROMPTS[genre];
+  return `${g.voice}\n\n${g.never}\n${PEOPLE_RULE}`;
+}
+
 /** The prose system prompt for a genre. Always starts "You write the text" (ai_test routes on it). */
 export function proseSystem(genre: Genre): string {
   const g = GENRE_PROMPTS[genre];

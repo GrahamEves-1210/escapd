@@ -68,7 +68,8 @@ export function usePlayer(roomId: string) {
           return;
         }
         setSession(nextSession);
-        setDefinition(nextDefinition);
+        // No problem means schema_version 1 (a v2 room is "unsupported_schema" here).
+        setDefinition(nextDefinition as PuzzleDefinitionV1);
         setState(nextSession.state as unknown as SessionState);
         setPhase({ kind: "ready" });
       } catch (error) {

@@ -477,7 +477,7 @@ Deno.test("photo problems: missing objects are non-retryable, storage hiccups re
 });
 
 Deno.test("invalid input: unsupported schema version or no photos", async () => {
-  const v2 = await assertRejects(() => generatePuzzle({ ...INPUT, outputSchemaVersion: 2 }, deps(happyProvider())), GenerationError);
+  const v2 = await assertRejects(() => generatePuzzle({ ...INPUT, outputSchemaVersion: 3 }, deps(happyProvider())), GenerationError);
   assertEquals(v2.code, "invalid_input");
   assertEquals(v2.retryable, false);
   const none = await assertRejects(() => generatePuzzle({ ...INPUT, photos: [] }, deps(happyProvider())), GenerationError);

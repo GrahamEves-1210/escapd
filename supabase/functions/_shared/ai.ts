@@ -17,6 +17,8 @@
 //  10  preflight (puzzle-check.ts + worker_preview_puzzle RPC); at most one
 //      text-only repair call, then preflight again -> invalid_after_repair
 //
+// A job for schema 2 (gameplay v2) runs v2/generate.ts after stage 1 instead.
+//
 // worker_complete_generation_job re-validates and is the only publisher.
 // Every GenerationError thrown from here carries the usage spent so far.
 export * from "./contract.ts";
@@ -46,6 +48,7 @@ import { assembleDefinition, pickStoryFamily, repairProse, writeProse } from "./
 import { checkPuzzle } from "./puzzle-check.ts";
 import type { ProseText } from "./schemas.ts";
 import { cryptoInt, type RandomInt, selectAndCompile, TEMPLATES_BY_GENRE } from "./templates.ts";
+import { generateV2 } from "./v2/generate.ts";
 
 export const DEFAULT_MODELS = {
   perception: "gemini-2.5-flash",
@@ -148,7 +151,7 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
   };
 
   try {
-    if (input.outputSchemaVersion !== 1) {
+    if (input.outputSchemaVersion !== 1 && input.outputSchemaVersion !== 2) {
       throw fail(`unsupported output schema version ${input.outputSchemaVersion}`, ErrorCode.invalidInput, false);
     }
     const genre = input.genre ?? "noir";
@@ -160,6 +163,12 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
     // 1. Download
     const photos = await downloadPhotos(ordered, deps, ctx);
     stage("download", { photos: photos.length });
+
+    // Schema 2: gameplay v2's stages (v2/generate.ts): perception v2, the planner, the author call.
+    if (input.outputSchemaVersion === 2) {
+      const out = await generateV2({ ctx, photos, photoIds, genre, roomId: input.roomId, randomInt: deps.randomInt, stage, fail });
+      return { ...out, usage: ledger.usage() };
+    }
 
     // 2. Perception
     const perceptions = await perceivePhotos(ctx, photos);

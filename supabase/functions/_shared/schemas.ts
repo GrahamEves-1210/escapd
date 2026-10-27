@@ -79,11 +79,11 @@ export function assertSchema<T>(schema: JsonSchema, value: unknown): T {
   return value as T;
 }
 
-function closedObject(properties: Record<string, JsonSchema>, description?: string): JsonSchema {
+export function closedObject(properties: Record<string, JsonSchema>, description?: string): JsonSchema {
   return { type: "object", description, properties, required: Object.keys(properties), additionalProperties: false };
 }
 
-const str = (description?: string): JsonSchema => ({ type: "string", description });
+export const str = (description?: string): JsonSchema => ({ type: "string", description });
 
 // ---------------------------------------------------------------------------
 // Closed vocabularies

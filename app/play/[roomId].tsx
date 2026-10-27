@@ -3,8 +3,8 @@
 // The room tone plays under it while it has focus (useRoomTone).
 //
 // Rooms play on gameplay v2 (src/play2: the torch, close-ups, the casebook,
-// the door), planned on the device from the room's objects. A room the v2
-// planner can't build, or `?v=1`, plays on the v1 player.
+// the door): a v2 room on the server, a v1 room planned on the device from its
+// objects. A v1 room the v2 planner can't build, or `?v=1`, plays on the v1 player.
 import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { useRoomTone } from "@/game/useRoomTone";

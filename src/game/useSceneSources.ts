@@ -3,19 +3,22 @@
 // before it expires.
 import { useEffect, useState } from "react";
 import { getRoomPhotos, signedPhotoUrl } from "@/lib/escapd-api";
-import type { PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import type { SceneSource } from "@/render/SceneView";
 import { bundledScene } from "@/render/bundledScenes";
 
 // Signed URLs last 15 minutes; refresh with margin.
 const REFRESH_MS = 12 * 60 * 1000;
 
+/** One photo of a room: an uploaded one (`photo_id`) or a bundled one (`asset_key`). */
+export type ScenePhoto = { photo_id: string } | { asset_key: string };
+
 export type SceneSources =
   | { kind: "loading" }
   | { kind: "ready"; sources: SceneSource[] }
   | { kind: "error"; reason: "missing_asset" | "load_failed" };
 
-export function useSceneSources(roomId: string, definition: PuzzleDefinitionV1 | null): SceneSources {
+/** Any room definition with photos (v1, or v2's stored rooms). Keep it stable across renders: a new object resolves again. */
+export function useSceneSources(roomId: string, definition: { photos: readonly ScenePhoto[] } | null): SceneSources {
   const [result, setResult] = useState<SceneSources>({ kind: "loading" });
 
   useEffect(() => {

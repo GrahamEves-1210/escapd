@@ -11,3 +11,7 @@ export {
   analyzeInventory, MAX_OBJECTS, MIN_POOL, MIN_SALIENCE, type PlanFailure, type PlanOptions, type PlanResult, planRoom, type PlanSummary,
   seededRandom, STEP_BAND, THREE_THREAD_POOL, usableObjects,
 } from "./planner.ts";
+export {
+  COOLDOWN_MS, type FoundCardV2, nextStep, play, type PlayRequest, type PlayResponse, type PlaySave, storedState,
+  type StoredStateV2,
+} from "./play.ts";

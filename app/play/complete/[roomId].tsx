@@ -5,7 +5,8 @@
 // and the magnifier rating they earn. The player passes the mode, the case's name, the
 // server's lines and the accused suspect's id as params, and the case in
 // memory (closedCase.ts); after a reload the case's name and the accused are
-// read from the completed session's definition instead. Then the pinned
+// read from the completed session's definition instead (a v2 room's: its name
+// only). Then the pinned
 // actions: Start a new case in the same mode (the photo guide's pill,
 // openCapture({ genre })), Back to <mode> (home, where the mode's card is),
 // or this case again.
@@ -42,6 +43,11 @@ export default function PlayCompleteScreen() {
         setSummary(caseSummary(s));
         if (!s || !needsDefinition) return;
         const def = await getPlayableDefinition(s.puzzle_version_id);
+        // A v2 room has no suspects to look up: just its name.
+        if (def.schema_version !== 1) {
+          if (!cancelled) setFetched({ title: def.title });
+          return;
+        }
         const contradicted = (s.state as { contradicted?: string[] } | null)?.contradicted ?? [];
         const accused = suspectById(def, suspect);
         if (!cancelled) setFetched({ title: def.title, accused: accused && { ...accused, contradicted: contradicted.includes(accused.id) } });

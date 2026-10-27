@@ -208,6 +208,17 @@ describe("Case closed: custom rooms", () => {
     expect((await screen.findByTestId("closed-accused")).props.accessibilityLabel).toMatch(/^Guilty\. Tobias Reed/);
   });
 
+  it("after a reload of a v2 room, reads only the case's name (no suspects to look up)", async () => {
+    params.mockReturnValue({ roomId: "v2-room", genre: "crime_scene", suspect: "s_tobias" });
+    mocked.getPlayableDefinition.mockResolvedValue({
+      schema_version: 2, mode: "crime_scene", title: "The Locked Study", objective: "Get out.",
+      photos: [{ photo_id: "a" }], objects: [], items: [], cards: [], finale: { kind: "combination", wheels: 3 },
+    } as unknown as Awaited<ReturnType<typeof api.getPlayableDefinition>>);
+    await render(<PlayCompleteScreen />);
+    expect(await screen.findByText("The Locked Study")).toBeTruthy();
+    expect(screen.queryByTestId("closed-accused")).toBeNull();
+  });
+
   it("paranormal: the room in full colour, CASE CLOSED and \"The presence is gone.\"", async () => {
     stashClosedCase({ roomId: ROOM, genre: "paranormal", title: "The Cold Room", photo: 7 });
     params.mockReturnValue({ roomId: ROOM, genre: "paranormal", title: "The Cold Room", message: "The air warms." });

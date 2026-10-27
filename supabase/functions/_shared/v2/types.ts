@@ -67,6 +67,8 @@ export interface RoomDefinitionV2 {
   title: string;
   objective: string;
   intro?: string;
+  /** The room's photos, in photo_index order (stored rooms; a room planned on the device has none). */
+  photos?: { photo_id: string }[];
   objects: ObjectDef[];
   items: ItemDef[];
   cards: CardDef[];

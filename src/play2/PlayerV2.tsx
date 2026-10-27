@@ -1,13 +1,15 @@
 // The v2 player (gameplay v2, chunk 2): the room in the dark, a torch to find
 // things, close-ups with mechanisms to work them, a casebook for what was
-// learned, and the real door as the way out. Runs the v2 engine on the device
-// (useRoomV2); when the planner can't build a v2 room from this one it hands
+// learned, and the real door as the way out. useRoomV2 runs the room: on the
+// device for a v1 room planned into a v2 one, on the server for a v2 room;
+// either way each request is async and the casebook (cards, hint rungs) comes
+// back rendered. When the planner can't build a v2 room from a v1 one it hands
 // back to the v1 player (`onFallback`).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
-import { renderCard, type ActionResult, type ItemDef, type ObjectDef, type StateValue } from "@/engine/v2";
+import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { ModeScope, useModeTheme } from "@/game/mode";
 import { useFeedback } from "@/game/feedback";
@@ -22,7 +24,7 @@ import { InspectView, type FoundCard } from "./InspectView";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { Stage, type StageObject } from "./Stage";
-import { nextStep, useRoomV2 } from "./useRoomV2";
+import { useRoomV2, type RoomV2 } from "./useRoomV2";
 
 export interface PlayerV2Props {
   roomId: string;
@@ -42,7 +44,7 @@ const TOAST = {
 
 export function PlayerV2(props: PlayerV2Props) {
   const v2 = useRoomV2(props.roomId);
-  const genre = v2.room?.def.mode ?? null;
+  const genre = v2.def?.mode ?? null;
   return (
     <ModeScope genre={genre}>
       <Body {...props} v2={v2} />
@@ -50,12 +52,12 @@ export function PlayerV2(props: PlayerV2Props) {
   );
 }
 
-function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { v2: ReturnType<typeof useRoomV2> }) {
+function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { v2: RoomV2 }) {
   const theme = useModeTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
-  const { phase, room, progress, act, hint, restart, cooldown } = v2;
-  const sources = useSceneSources(roomId, room?.v1 ?? null);
+  const { phase, def, scene, state, cards: casebookCards, hints, canHint, completed, ending, busy, error, act, hint, restart, cooldown } = v2;
+  const sources = useSceneSources(roomId, scene);
 
   const [view, setView] = useState(0);
   const [open, setOpen] = useState<Open | null>(null);
@@ -64,8 +66,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [toasts, setToasts] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [casebook, setCasebook] = useState(false);
-  const [hints, setHints] = useState<string[]>([]);
-  const [ending, setEnding] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [aspects, setAspects] = useState<Record<number, number>>({});
   // Glints: on by default; off is the hard way (nothing catches the light). Show interactives keeps a faint outline on everything.
@@ -77,22 +77,21 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (fallback !== null) onFallback(fallback);
   }, [fallback, onFallback]);
 
-  const def = room?.def ?? null;
-  const state = progress?.state ?? null;
   const photos = def ? Math.max(1, ...def.objects.map((o) => o.photo_index + 1)) : 1;
-  const toast = (text: string) => setToasts((t) => [...t.slice(-2), text]);
+  const toast = useCallback((text: string) => setToasts((t) => [...t.slice(-2), text]), []);
+
+  // A request that didn't go through (a room played on the server).
+  useEffect(() => {
+    if (error) toast(error.offline ? "No connection. Try again." : "That didn't go through. Try again.");
+  }, [error, toast]);
 
   const itemById = useCallback((id: string) => def?.items.find((i) => i.id === id), [def]);
   const objectById = useCallback((id: string) => def?.objects.find((o) => o.id === id), [def]);
   const heldItems = useMemo(() => (state ? state.inventory.map((id) => itemById(id)).filter((i): i is ItemDef => !!i) : []), [state, itemById]);
-  const casebookCards = useMemo<FoundCard[]>(() => {
-    if (!def || !room || !state) return [];
-    return state.cards.map((id) => def.cards.find((c) => c.id === id)).filter((c) => !!c).map((c) => ({ id: c!.id, title: c!.title, text: renderCard(c!, room.secret) }));
-  }, [def, room, state]);
-
-  /** Feedback and notes for one result; returns the cards it showed. */
-  const take = (result: ActionResult, where: "inspect" | "room"): FoundCard[] => {
+  /** Feedback and notes for one result (none when it didn't go through); returns the cards it showed. */
+  const take = (result: ActionResult | null, where: "inspect" | "room"): FoundCard[] => {
     const cards: FoundCard[] = [];
+    if (!result) return cards;
     const lines: string[] = [];
     setRevision((r) => r + 1);
     switch (result.outcome) {
@@ -139,9 +138,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         case "solved":
           feedback.success();
           break;
-        case "complete":
-          setEnding(e.ending);
-          break;
         default:
           break;
       }
@@ -157,31 +153,30 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     return cards;
   };
 
-  const look = (objectId: string | null) => {
-    if (!objectId || !def) {
+  const look = async (objectId: string | null) => {
+    if (!objectId || !def || busy) {
       return;
     }
     // Holding one item: use it on what was tapped.
     if (selected.length === 1) {
-      const result = act({ type: "use_item", item: selected[0], object: objectId });
+      const item = selected[0];
       setSelected([]);
-      take(result, "room");
+      take(await act({ type: "use_item", item, object: objectId }), "room");
       return;
     }
     feedback.press();
     setLookCards([]);
     setNote(null);
     setOpen({ kind: "object", id: objectId });
-    const result = act({ type: "inspect", object: objectId });
-    take(result, "inspect");
+    take(await act({ type: "inspect", object: objectId }), "inspect");
   };
 
   const openItem = (itemId: string) => {
     setCasebook(false);
     // An examined item shows its own card, once it has been found.
     const item = itemById(itemId);
-    const card = item?.card && state?.cards.includes(item.card) ? def?.cards.find((c) => c.id === item.card) : undefined;
-    setLookCards(card && room ? [{ id: card.id, title: card.title, text: renderCard(card, room.secret) }] : []);
+    const card = item?.card ? casebookCards.find((c) => c.id === item.card) : undefined;
+    setLookCards(card ? [card] : []);
     setNote(null);
     setOpen({ kind: "item", id: itemId });
   };
@@ -191,22 +186,18 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length >= 2 ? [s[1], id] : [...s, id]));
   };
 
-  const combine = () => {
+  const combine = async () => {
     if (selected.length !== 2) return;
-    const result = act({ type: "combine", items: [selected[0], selected[1]] });
+    const items: [string, string] = [selected[0], selected[1]];
     setSelected([]);
-    take(result, "room");
+    take(await act({ type: "combine", items }), "room");
   };
 
-  const askHint = () => {
-    const h = hint();
-    if (h) {
-      feedback.tick();
-      setHints((list) => [...list, h.text]);
-    }
+  const askHint = async () => {
+    if (await hint()) feedback.tick();
   };
 
-  if (phase.kind === "loading" || phase.kind === "fallback" || !def || !state || !room) {
+  if (phase.kind === "loading" || phase.kind === "fallback" || !def || !state || !scene) {
     return (
       <View style={[styles.root, styles.center, { backgroundColor: theme.ground }]} testID="v2-loading">
         {phase.kind === "error" ? (
@@ -233,7 +224,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const source = sources.kind === "ready" ? sources.sources[view] : null;
   const photoKey = (i: number) => {
-    const p = room.v1.photos[i];
+    const p = scene.photos[i];
     return p && "photo_id" in p ? p.photo_id : undefined;
   };
 
@@ -260,7 +251,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     ? def.objects.filter((o) => !o.exit && state.seen.includes(o.id)).map((o) => ({ id: o.id, label: o.label }))
     : undefined;
 
-  const step = nextStep(room.secret, state.solved);
   const exitObject = def.objects.find((o) => o.exit);
 
   return (
@@ -354,14 +344,14 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           cards={lookCards}
           note={note}
           held={heldItems}
-          busy={false}
+          busy={busy}
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
           ritualChoices={ritualChoices}
-          onSet={(control, value) => take(act({ type: "set_control", target: target!.id, control, value }), "inspect")}
-          onSubmit={(value) => take(act({ type: "submit", object: target!.id, value }), "inspect")}
-          onUse={(itemId) => take(act({ type: "use_item", item: itemId, object: target!.id }), "inspect")}
-          onTake={takeable ? () => take(act({ type: "set_control", target: target!.id, control: "taken", value: true }), "inspect") : undefined}
+          onSet={async (control, value) => take(await act({ type: "set_control", target: target!.id, control, value }), "inspect")}
+          onSubmit={async (value) => take(await act({ type: "submit", object: target!.id, value }), "inspect")}
+          onUse={async (itemId) => take(await act({ type: "use_item", item: itemId, object: target!.id }), "inspect")}
+          onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "inspect") : undefined}
           onClose={() => setOpen(null)}
           revision={revision}
         />
@@ -373,27 +363,29 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           cards={casebookCards}
           items={heldItems.map((i) => ({ id: i.id, name: i.name, examinable: !!(i.card || i.archetype === "Decoder") }))}
           hints={hints}
-          canHint={!!step}
+          canHint={canHint}
           glints={glints}
           onGlints={setGlints}
           onHint={askHint}
           onExamine={openItem}
           onRestart={() => {
-            restart();
-            setHints([]);
             setSelected([]);
             setCasebook(false);
+            setOpen(null);
+            restart().then((ok) => {
+              if (!ok) toast("Couldn't restart. Check your connection.");
+            });
           }}
           onClose={() => setCasebook(false)}
         />
       ) : null}
 
-      {ending !== null ? (
+      {completed ? (
         <Ending
-          text={ending}
+          text={ending ?? ""}
           door={exitObject && sources.kind === "ready" ? { source: sources.sources[exitObject.photo_index], cacheKey: photoKey(exitObject.photo_index), box: exitObject.box } : undefined}
           genre={def.mode}
-          onDone={() => onComplete({ title: def.title, ending, genre: def.mode })}
+          onDone={() => onComplete({ title: def.title, ending: ending ?? "", genre: def.mode })}
         />
       ) : null}
 

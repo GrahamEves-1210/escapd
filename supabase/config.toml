@@ -425,6 +425,9 @@ verify_jwt = false
 [functions.delete-account]
 verify_jwt = false
 
+[functions.play-action]
+verify_jwt = false
+
 [functions.merge-guest]
 verify_jwt = false
 
