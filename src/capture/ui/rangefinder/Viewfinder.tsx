@@ -6,10 +6,11 @@
 // framing grid (when on), the turn dial at the top (`overlay`, TurnDial.tsx)
 // and at the foot the lens note (on 1x where the phone has 0.5) over the
 // privacy note (until photo 1), both the same see-through black pill.
-import type { ReactNode, RefObject } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { CameraView, type AvailableLenses, type CameraMountError, type FlashMode } from "expo-camera";
-import Animated, { FadeOut, ReduceMotion, useAnimatedStyle } from "react-native-reanimated";
+import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { toEasing, useStateProgress } from "@/components/noir";
 import { containBox, type Box } from "@/render/geometry";
 import { curve, ref } from "@/theme/tokens";
@@ -18,10 +19,30 @@ import { COPY } from "./copy";
 
 const L = ref.layout.camera;
 
-// After plate I the privacy note fades out. Opacity, so reduced motion keeps it.
-const NOTE_EXIT = FadeOut.duration(ref.motion.control.duration)
-  .easing(toEasing(ref.motion.control.easing))
-  .reduceMotion(ReduceMotion.Never);
+/**
+ * A note over the feed that shows at once and fades out before it unmounts
+ * (after photo 1 the privacy note goes; the lens note goes on 0.5). A
+ * shared-value fade, not a Reanimated `exiting` layout animation: those
+ * crashed the app (Fabric's layout animation proxy), and switching to 1x
+ * mounts the lens note right as the camera changes lens. Opacity, so reduced
+ * motion keeps it.
+ */
+function FadingNote({ shown, children }: { shown: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(shown);
+  const opacity = useSharedValue(shown ? 1 : 0);
+  useEffect(() => {
+    if (shown) {
+      setMounted(true);
+      opacity.set(1);
+      return;
+    }
+    opacity.set(withTiming(0, { duration: ref.motion.control.duration, easing: toEasing(ref.motion.control.easing), reduceMotion: ReduceMotion.Never }, (done) => {
+      if (done) scheduleOnRN(setMounted, false);
+    }));
+  }, [shown, opacity]);
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.get() }));
+  return mounted ? <Animated.View style={fade}>{children}</Animated.View> : null;
+}
 
 export interface Size {
   width: number;
@@ -90,26 +111,22 @@ export function Viewfinder({
       <FramingGrid visible={grid} width={layout.width} height={layout.height} />
       {overlay}
       <View pointerEvents="none" style={styles.noteSlot}>
-        {lensNote ? (
-          <Animated.View exiting={NOTE_EXIT}>
-            <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="lens-note">
-              <View style={styles.noteFill} testID="lens-note-fill" />
-              <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
-                {lensNote}
-              </Text>
-            </View>
-          </Animated.View>
-        ) : null}
-        {note ? (
-          <Animated.View exiting={NOTE_EXIT}>
-            <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">
-              <View pointerEvents="none" style={styles.noteFill} testID="privacy-note-fill" />
-              <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
-                {COPY.privacy}
-              </Text>
-            </View>
-          </Animated.View>
-        ) : null}
+        <FadingNote shown={!!lensNote}>
+          <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="lens-note">
+            <View style={styles.noteFill} testID="lens-note-fill" />
+            <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
+              {lensNote}
+            </Text>
+          </View>
+        </FadingNote>
+        <FadingNote shown={note}>
+          <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">
+            <View pointerEvents="none" style={styles.noteFill} testID="privacy-note-fill" />
+            <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
+              {COPY.privacy}
+            </Text>
+          </View>
+        </FadingNote>
       </View>
     </View>
   );

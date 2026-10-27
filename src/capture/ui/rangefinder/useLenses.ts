@@ -16,6 +16,8 @@ import type { AvailableLenses, CameraView, LensInfo } from "expo-camera";
 
 /** AVCaptureDevice.DeviceType.builtInUltraWideCamera, as expo-camera reports it. */
 export const ULTRA_WIDE_LENS = "AVCaptureDeviceTypeBuiltInUltraWideCamera";
+/** The main (1x) back lens. Named explicitly on 1x: unsetting `selectedLens` on a running camera is fragile. */
+export const MAIN_LENS = "AVCaptureDeviceTypeBuiltInWideAngleCamera";
 
 export type LensChoice = "wide" | "main";
 
@@ -34,7 +36,7 @@ export interface Lenses {
   /** The lens in use: the ultra-wide unless the player picked 1x. Always "main" without an ultra-wide. */
   choice: LensChoice;
   choose: (choice: LensChoice) => void;
-  /** CameraView `selectedLens`: the ultra-wide when chosen, otherwise unset (the default main lens). */
+  /** CameraView `selectedLens`: the ultra-wide when chosen; the main lens by name on a phone that has both; otherwise unset. */
   selectedLens: string | undefined;
   /** Read the list. Call once the camera is ready. */
   read: () => void;
@@ -69,13 +71,15 @@ export function useLenses(camera: RefObject<CameraView | null>, initial: LensCho
   }, []);
 
   const ultraWide = lenses.find((lens) => lens.deviceType === ULTRA_WIDE_LENS)?.deviceType ?? null;
+  const main = lenses.find((lens) => lens.deviceType === MAIN_LENS)?.deviceType ?? null;
   const current = lensFor(ultraWide, choice);
 
   return {
     ultraWide,
     choice: current,
     choose: setChoice,
-    selectedLens: current === "wide" && ultraWide ? ultraWide : undefined,
+    // 1x after 0.5: the main lens by name (when listed), never back to unset.
+    selectedLens: current === "wide" && ultraWide ? ultraWide : ultraWide && main ? main : undefined,
     read,
     onChanged,
     settled: listed,

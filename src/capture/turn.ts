@@ -22,20 +22,23 @@ import { MAX_PLATES, MIN_PLATES } from "./slots";
 export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 92, main: 55 };
 
 /**
- * Neighbouring photos should share about a fifth of their width: enough for
- * the photos to stitch round the loop, without the near-duplicates a third
- * gave (6 photos on 0.5x). The photo count follows from it: 0.5x (92) goes
- * round in 5 photos 72 apart, sharing 20 degrees. Set it to 0 and 0.5x takes
- * 4 photos 90 apart, which only just meet (2 degrees shared), so the turn
- * prompts word the turn edge to edge, as on 1x.
+ * How much of their width neighbouring photos should share. 0: the fewest
+ * photos that still go all the way round. 0.5x (92) takes 4 photos 90 apart,
+ * which just meet (2 degrees shared): the ultra-wide sees enough that four
+ * cover the room, and every extra photo is a near-duplicate to take and to
+ * build from. The main lens (55) would need 7 and is held to 6 (60 apart),
+ * leaving thin gaps, so its prompts word the turn edge to edge. 0.2 gave 0.5x
+ * 5 photos 72 apart.
  */
-export const TARGET_OVERLAP = 0.2;
+export const TARGET_OVERLAP = 0;
 
 /**
- * Neighbours sharing less than this only just meet: there's no "part of the
- * last photo" to keep in view, so the turn prompts word the turn edge to edge.
+ * Neighbours that share any of the view overlap: "keep part of the last photo
+ * in view" is something the player can do (0.5x's 4 photos share a sliver,
+ * and the prompt keeps them from turning too far). Below it (1x, held to 6
+ * photos, leaves thin gaps) the turn prompts word the turn edge to edge.
  */
-export const MIN_OVERLAP = 0.1;
+export const MIN_OVERLAP = 0;
 
 export interface TurnPlan {
   /** Photos all the way round. */
