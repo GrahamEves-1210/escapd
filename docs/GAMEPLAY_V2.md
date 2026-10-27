@@ -426,3 +426,58 @@ inspection views plus the casebook; schema v1 → v2 for new rooms.
 
 Phase 0 is deliberately small and cheap: it tests the **feel**, the thing generation
 can't fix, before we build the factory for it.
+
+---
+
+## Chunk 1: what exists
+
+The pure-logic core: no UI, no AI calls, no I/O. It lives in
+`supabase/functions/_shared/v2/` (Deno-style `.ts` imports) and the app imports the same
+files through `src/engine/v2.ts` (`import { applyAction } from "@/engine/v2"`); tsconfig has
+`allowImportingTsExtensions` and Metro resolves exact paths, so there is one source of truth.
+The crypto minting helpers moved from `templates.ts` to `_shared/mint.ts` (re-exported, no
+behaviour change) so the core doesn't pull in the v1 pipeline.
+
+| Module | What it holds |
+|---|---|
+| `taxonomy.ts` | Perception v2 input: `ObjectType` (closed list of ~70 household types with a category and a portable flag), `Feature` flags, `InventoryObject {id, label, type, features, box, photo_index, salience, fully_visible}` |
+| `archetypes.ts` | The kit: `ARCHETYPES` (Drawer, LiftUnder, Readable, FrameTilt, ClockHands, TuningDial, CombinationLock, Light, Assemble, Decoder, Door), each with variants, host rules (type whitelist + required features), controls and their `ControlDomain`, submit domain, emits/accepts, overlays, `holdsItems`. `hostableArchetypes(obj)`, `normalize(domain, value)` |
+| `types.ts` | Schema v2. Public `RoomDefinitionV2 {schema_version: 2, mode, title, objective, objects, items, cards, finale}`; server-only `RoomSecretV2 {slots, rules, steps (with 3-rung hints), ending}`; `PlayState`, `Action`, `ActionResult`, `PublicEffect` |
+| `engine.ts` | `initialState(def)`, `applyAction(def, secret, state, action, {cooldownActive?}) → {state, result}`, `renderCard(card, secret)` |
+| `validate.ts` | `validateDefinition(def, secret?) → string[]` (static: shape, ids, references, host rules, one exit, at most one removable, props only inside objects that hold them, answers only as slots) |
+| `simulate.ts` | `simulate(def, secret) → {ok, errors, metrics, path}`: BFS over actions a player could make with what they've seen; proves solvable, no softlock, no shortcut past a thread, every slot on exactly one reachable card before it's needed; metrics `requiredSteps, maxChain, revisits, roomChanges, branching` |
+| `motifs.ts` | `MOTIFS`: the motif library as data (cost, archetypes, per-room cap, per-mode weight) |
+| `planner.ts` | `planRoom(inventory, {mode, seed, randomInt?, candidates?}) → {ok, definition, secret, report, summary} \| {ok: false, reason, detail}`; `analyzeInventory` |
+
+**Rules model.** A rule is `trigger` (inspect, control, use, combine, submit, auto) +
+`when` (control value, object state, submitted value, held item, solved step) → `effects`
+(open, close, reveal, grant, consume, set_state, show_card, beat, overlay `light_on |
+panel_open | glow_mark | pinned_card | object_removed`, complete). Each rule fires once and
+may solve a step. Minted values are `{slot}` references; cards carry `{{slot}}` and are
+rendered by the engine only when shown. Lock and accusation submits are `string[]`
+(wheels, `[suspect, motive, method]`, or ritual object ids in order).
+
+**For the UI (chunk 2):** render `definition.objects` (box, archetype, variant, controls,
+`initial`); send `set_control` on release, `submit` for locks and the door; apply the
+`result.effects` (cards arrive rendered; overlays are typed). For a local preview, keep a
+`PlayState` and call `applyAction` with the secret. Wrong submits return
+`{outcome: "wrong", start_cooldown: true}`; the server owns the timing and passes
+`cooldownActive`.
+
+**For generation (chunk 3):** perception v2 produces `InventoryObject[]`; call
+`planRoom(inventory, {mode: genre, seed: roomId})`. On `{ok: false}` map `too_few_objects`
+and `no_exit` to `ErrorCode.tooFewObjects` (the detail says what to add). The author call
+rewrites `title`, `objective`, `ending`, card titles and texts (keeping each `{{slot}}`
+exactly once), item names, accusation option names, `beat` texts and step hints; then
+re-run `validateDefinition` and `simulate` before publishing.
+
+**Tests:** `cd supabase/functions && deno test --allow-read _shared/v2/` (archetype host
+rules, engine actions, validator, simulator, the planner on hand-written rooms, and a
+property test over 300 synthetic inventories × 3 modes); `npx jest src/engine` checks that
+the app runtime can import and run it.
+
+**Simplified in chunk 1:** the crime finale is a three-dimension, three-option lock whose
+answers are evidence cards, and the paranormal ritual is one ordered submit of object ids
+at the door (no evidence board or room drift yet). MirrorFog, Sequence, Arrange and Dig
+aren't in the kit yet. The removable object is an optional keepsake (take it, it leaves
+the photo). Herrings are empty containers. All words are placeholders for the author call.
