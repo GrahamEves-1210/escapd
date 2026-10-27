@@ -5,9 +5,8 @@
 // no card covers: the mode's name in its display face and its tagline on a
 // plate of the mode's ground that fades down to clear, with a small busy
 // capsule beside the tagline while the card's tap works. No status tag: the
-// continue prompt says when there's a case to go back to. One signature touch
-// each, decorative and static: noir's brass rule over the name and
-// paranormal's soft glow (crime scene's cover tapes off its own door). Every
+// continue prompt says when there's a case to go back to. Paranormal adds a
+// soft glow over its cover (no rule over noir's name: the user removed it). Every
 // value is ref.layout.hub.modes or the mode's theme (modeThemes).
 // The card is turned by its deck tilt about its centre, casts a soft shadow
 // up onto the card it covers, and catches a faint line of light along its top
@@ -75,7 +74,6 @@ export function ModeCard({ genre, busy = false, disabled = false, onPress, onWor
             testID={`${testID}-words`}
           >
             <Plate theme={theme} />
-            {genre === "noir" ? <View style={[styles.rule, { backgroundColor: theme.accent }]} testID={`${testID}-rule`} /> : null}
             <Text style={[theme.display, { color: theme.ink }]}>{theme.name}</Text>
             <View style={styles.line}>
               <Text style={[M.type.tagline, styles.tagline, { color: theme.ink }]}>{theme.tagline}</Text>
@@ -172,7 +170,6 @@ const styles = StyleSheet.create({
   words: { padding: M.pad },
   fade: { position: "absolute", left: 0, right: 0, bottom: -M.fade, height: M.fade },
   plate: { opacity: M.plate },
-  rule: { width: M.rule.width, height: M.rule.height, marginBottom: M.rule.gap },
   // The tagline and the busy capsule share a line; at large text the capsule wraps under it.
   line: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: M.tag.gap, rowGap: M.taglineGap, marginTop: M.taglineGap },
   tagline: { flexShrink: 1 },

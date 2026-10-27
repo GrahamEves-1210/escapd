@@ -181,7 +181,7 @@ Tokens: `ref` throughout (`ref.button.chip`, `ref.gradient.divider`, `ref.type`,
 | `radius` / `rim` / `pad` | 20 / 1 / 18 | continuous corners, the rim in the mode's `rim`, the words' padding |
 | `plate` / `fade` / `fadeStops` | 0.72 / 56 / 0 → 0.38 → 0.72 | the mode's ground behind the words, fading down to clear under them |
 | `tag` | padX 10, padY 4, gap 8 | the busy capsule beside the tagline while a card's tap works |
-| `rule`, `glow` | | noir's brass rule over the name; paranormal's soft glow |
+| `glow` | | paranormal's soft glow (round 9: noir's brass rule over the name is removed) |
 | `type.tagline` / `type.tag` | 17/22 Medium / 13/16 Semibold | |
 | `pressScale` | 0.98 | the kit's squash |
 
@@ -198,7 +198,7 @@ Three case files dealt down a dark desk. Each card is solid and lit by its own c
 | Deck | a scroll view from the divider to the screen's foot; content `top` 16 under the divider, `edge` 16 from the sides, `foot` 12 + the safe bottom at the end | Three cards in reading order, later cards on top (tree order; no zIndex) |
 | Card size | card = column / (1 + 2 × (1 − cover)), at least the tallest card's words + `peek` divided by (1 − cover), at least 168. Each card after the first starts `overlap` = round(card × 0.36) above the previous card's foot | 375 × 667 (column 554): cards 242, overlap 87, 155 of each upper card showing; 393 × 852: 292 / 105 / 187; 430 × 932: 327 / 118 / 209. All three fit with no scrolling at the default text size |
 | Card face | the card's full size, turned `tilt` | the mode's drawn cover full bleed (`ModeCover`, baked at the card's real size); 1 pt rim in the mode's `rim`; corners 20, continuous; the `deck.shadow` and the top `deck.edge` |
-| Words | top of the card, padded 18 | noir's brass rule (28 × 2, 10 above the name); the mode's name in its display face (`theme.display`) in `ink`; the tagline (17/22) in `ink`; beside it, only while the card's tap works, a busy capsule (the mode's `ground`, 1 pt `rim`, a small spinner in `ink`). No status tag: the continue prompt says when there's a case to go back to. A plate of the mode's ground at 72 % behind them, fading down to clear over 56 pt below them (the mode's ink stays 4.5:1 over even a white picture) |
+| Words | top of the card, padded 18 | the mode's name in its display face (`theme.display`) in `ink`; the tagline (17/22) in `ink`; beside it, only while the card's tap works, a busy capsule (the mode's `ground`, 1 pt `rim`, a small spinner in `ink`). No status tag: the continue prompt says when there's a case to go back to. A plate of the mode's ground at 72 % behind them, fading down to clear over 56 pt below them (the mode's ink stays 4.5:1 over even a white picture) |
 | Notice | over the last card's foot, centred | the dark capsule (States: Error) |
 
 Large text: the words grow; the cards grow with them (the same share covered) so every name and tagline stays in the part no card covers, and the deck scrolls. The tag wraps under the tagline when they don't fit on one line.
@@ -1447,13 +1447,13 @@ Each mode has its own illustrated cover, drawn in code with Skia from that mode'
 **When it shows:** always, on home's mode cards and the mode intro's banner. No card or banner ever shows a photo: not the player's own room, not The Study's (round 6, the user: illustrated art, not their pictures). The Study's photo stays in the tutorial only.
 
 **The covers** (`src/screens/hub/art/`):
-- **Detective Noir** (`noir.ts`): an office wall raked by light through venetian blinds, with rain on the window and smoke in the beams. A detective in a fedora stands in silhouette, the hat band and shoulder caught in brass, and his shadow falls on the wall. Monochrome, with brass only in the light.
+- **Detective Noir** (`noir.ts`, round 9): a detective's desk from above in one hard pool of lamp light. An open manila case file holds a typed REPORT OF INVESTIGATION (a hotel-room case, set in the grotesk at 10x and scaled down so small type keeps its spacing), a paper-clipped polaroid of a doorway left ajar (a nod to the brand's lit door), and a brass magnifier lying over the report, its lens enlarging a line of type and the whorls of a fingerprint the rest of the page shows only faintly. Monochrome with brass only on the magnifier's rim and the clip; the top left stays dark for the card's words. Replaces the venetian-blind-and-fedora cover the user called generic.
 - **Crime Scene** (`crimeScene.ts`): a dark room at night, in one-point perspective. Through an open door, a hall is lit harsh pale from a far window and washed blood red. Crossed police tape over the doorway reads "CRIME SCENE · DO NOT CROSS". The beam falls across the floorboards onto a chalk outline and three yellow evidence markers numbered 1 to 3. No blood, body, weapon or gore, and yellow is only a detail.
 - **Paranormal** (`paranormal.ts`): an old oval mirror hung askew on damp trellis wallpaper. In it is a pale, featureless woman who isn't in the room; her cold light is the only real light. Below it are a console table with a drawer pulled out, a candle burning pale blue with smoke curling toward the glass, an empty balloon-back chair, floor mist and drifting motes. Eerie, not demonic: no symbols. Every pixel stays between 180° and 215° in hue, never mint.
 
 **Composition rules for all three:** the top left (where the name, tagline and tag now sit) and the bottom left stay dark and calm; the focus sits centre-right. Every colour comes from `modeThemes[genre]` via the kit's `tone()` and `mix()`, never a literal. Sizes scale with the cover's height (each has a design height of 260). Randomness is a fixed seed per mode (`draw.ts` `SEEDS`), so a cover is the same every time.
 
-**Overlays on the card:** noir's brass rule and paranormal's glow sit over the cover. Crime scene has no overlay: its cover tapes off its own door (the corner tape strip is gone).
+**Overlays on the card:** paranormal's glow sits over its cover (noir's brass rule is removed, round 9). Crime scene has no overlay: its cover tapes off its own door (the corner tape strip is gone).
 
 **Baking** (`bake.ts`, `ModeCover.tsx`):
 - **Once per mode and size:** each cover is drawn once per mode, pixel size and scale, and kept in memory for the launch (12 entries, oldest dropped). A request for a key already baking shares that bake; a failed bake isn't kept, so the next request retries.

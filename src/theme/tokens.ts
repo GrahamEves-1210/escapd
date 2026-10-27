@@ -646,9 +646,7 @@ export const ref = {
         taglineGap: 2,
         tag: { padX: 10, padY: 4, gap: 8 },
         pressScale: 0.98,
-        // Each mode's one signature touch, decorative and static:
-        // noir's brass rule `gap` above the name;
-        rule: { width: 28, height: 2, gap: 10 },
+        // A decorative touch, static:
         // paranormal's soft glow: a radial light in the mode's glow colour
         // centred at (cx, cy) of the card, `r` of its width across.
         glow: {

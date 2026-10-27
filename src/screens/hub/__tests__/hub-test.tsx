@@ -289,12 +289,13 @@ describe("01 · Home: the deck of mode cards", () => {
       expect(styleOf(screen.getByText(theme.name, hidden))).toMatchObject({ ...theme.display, color: theme.ink });
       expect(styleOf(screen.getByText(theme.tagline, hidden))).toMatchObject({ ...M.type.tagline, color: theme.ink });
     }
-    expect(styleOf(screen.getByTestId("hub-card-noir-rule", hidden))).toMatchObject({ backgroundColor: modeThemes.noir.accent, width: M.rule.width });
+    // No gold rule over noir's name (the user removed it).
+    expect(screen.queryByTestId("hub-card-noir-rule", hidden)).toBeNull();
     expect(screen.getByTestId("hub-card-paranormal-glow", hidden)).toBeTruthy();
     // Crime scene's drawn cover tapes off its own door: no strip over it.
     expect(screen.queryByTestId("hub-card-crime_scene-tape", hidden)).toBeNull();
     expect(screen.queryByText(/crime scene · do not cross/i, hidden)).toBeNull();
-    expect(screen.queryAllByTestId(/-rule$|-tape$|-glow$/, hidden)).toHaveLength(2);
+    expect(screen.queryAllByTestId(/-rule$|-tape$|-glow$/, hidden)).toHaveLength(1);
   });
 
   it("always shows each mode's drawn cover, never a room photo, even once the player has photographed rooms", async () => {
