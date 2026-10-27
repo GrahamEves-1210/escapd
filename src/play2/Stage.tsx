@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
-  BlurMask, Canvas, Circle, Group, Oval, Paint, RadialGradient, Rect, RoundedRect, vec,
+  BlurMask, Canvas, Circle, Group, Oval, Paint, Path, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
@@ -25,6 +25,7 @@ import { aspectOf, containBox } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
 import { measureInWindow } from "@/render/PickupFlight";
 import { V2 } from "./layout";
+import { useOutlines } from "./useOutlines";
 
 export interface StageObject {
   id: string;
@@ -88,6 +89,8 @@ export function Stage({
   const ownX = useSharedValue<number>(V2.torch.rest.x);
   const ownY = useSharedValue<number>(V2.torch.rest.y);
   const tx = beam?.x ?? ownX;
+  // Each object's real outline, traced from the photo on the device.
+  const outlines = useOutlines(source, cacheKey, objects);
   const ty = beam?.y ?? ownY;
   const size = useSharedValue({ w: 0, h: 0 });
   useEffect(() => size.set({ w: W, h: H }), [size, W, H]);
@@ -218,7 +221,7 @@ export function Stage({
               {/* Glints: an outline that catches the beam. */}
               {glints
                 ? objects.map((o) => (
-                    <Glint key={o.id} box={o.box} seen={o.seen} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} />
+                    <Glint key={o.id} box={o.box} seen={o.seen} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} outline={outlines[o.id]} />
                   ))
                 : null}
             </Canvas>
@@ -302,8 +305,10 @@ function InkMark({ mark, w, h, tx, ty, r, always, uv }: {
   );
 }
 
-function Glint({ box, seen, tx, ty, w, h, r, color }: {
+function Glint({ box, seen, tx, ty, w, h, r, color, outline }: {
   box: Box; seen: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
+  /** The object's traced outline (photo fractions): the glow runs along its real edge. */
+  outline?: { x: number; y: number }[];
 }) {
   const inset = V2.glint.inset;
   const x = (box.x + box.w * inset) * w, y = (box.y + box.h * inset) * h;
@@ -315,6 +320,18 @@ function Glint({ box, seen, tx, ty, w, h, r, color }: {
     const lit = Math.max(0, 1 - d / (r * 0.9));
     return (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
   });
+  if (outline && outline.length > 3) {
+    const d = outline.map((p, i) => `${i ? "L" : "M"} ${(p.x * w).toFixed(1)} ${(p.y * h).toFixed(1)}`).join(" ") + " Z";
+    return (
+      <Group opacity={opacity}>
+        {/* A wide soft halo, then a fine bright line on the edge itself. */}
+        <Path path={d} color={color} style="stroke" strokeWidth={5} strokeJoin="round" opacity={0.5}>
+          <BlurMask blur={8} style="normal" />
+        </Path>
+        <Path path={d} color={color} style="stroke" strokeWidth={1.4} strokeJoin="round" />
+      </Group>
+    );
+  }
   return (
     <Oval x={x} y={y} width={bw} height={bh} color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={opacity}>
       <BlurMask blur={V2.glint.blur} style="solid" />

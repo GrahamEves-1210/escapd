@@ -31,7 +31,7 @@ export interface RemovalPatch {
 
 type Skia = typeof import("@shopify/react-native-skia");
 
-function skia(): Skia {
+export function skia(): Skia {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require("@shopify/react-native-skia") as Skia;
 }
@@ -40,7 +40,7 @@ function skia(): Skia {
 const IDLE_WAIT = 800;
 
 /** The JS thread's next idle moment (at most IDLE_WAIT away), else the next turn of the event loop. */
-function idle(): Promise<void> {
+export function idle(): Promise<void> {
   return new Promise((resolve) => {
     const whenIdle = (globalThis as { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }).requestIdleCallback;
     if (typeof whenIdle === "function") whenIdle(() => resolve(), { timeout: IDLE_WAIT });
@@ -100,7 +100,7 @@ function seedFor(id: string) {
 }
 
 /** The region's pixels (RGBA, unpremultiplied), read off the photo at the region's size. */
-function readRegion(S: Skia, photo: SkImage, g: RegionGeometry): Uint8Array | null {
+export function readRegion(S: Skia, photo: SkImage, g: RegionGeometry): Uint8Array | null {
   const { Skia, FilterMode, MipmapMode, ColorType, AlphaType } = S;
   const surface = Skia.Surface.Make(g.width, g.height);
   if (!surface) return null;
