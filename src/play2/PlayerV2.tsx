@@ -559,7 +559,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           >
             {/* The cat, peering over the ledge, eyes on your light. */}
             <View style={styles.cat} pointerEvents="none">
-              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} />
+              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"} />
             </View>
             <View style={styles.trayWrap}>{tray}</View>
           </View>

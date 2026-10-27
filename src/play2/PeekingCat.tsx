@@ -5,16 +5,25 @@
 //     tilts its head toward the light,
 //   - its slit pupils follow the flashlight's beam, opening wide in the dark
 //     and narrowing to slits as the light comes near,
-//   - it reacts: a happy hop when the player finds something, a flinch and a
-//     quick duck when they get something wrong (`reaction` changes).
+//   - it reacts with squash and stretch: a crouch, a happy pop and a burst of
+//     sparkles when the player finds something; a flinch and a quick duck when
+//     they get something wrong (`reaction` changes),
+//   - it has moods, shown with floating marks like a mascot's: "?"s drift up
+//     while the case is thinking (`mood`), and when the light hasn't moved for
+//     a while it dozes off on the ledge, eyes shut, "z"s rising, until the
+//     light moves again and it pops back up,
+//   - now and then it ducks behind the ledge and peeks back up.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
 // pupils and eyelids are drawn over the eyes. Under reduced motion it sits
 // still apart from its eyes.
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Image, StyleSheet, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
+import { SparkleIcon } from "phosphor-react-native";
 import Animated, {
-  Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming, type SharedValue,
+  Easing, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
+  type SharedValue,
 } from "react-native-reanimated";
+import { useModeTheme } from "@/game/mode";
 import { measureInWindow } from "@/render/PickupFlight";
 import { useTheme } from "@/theme/ThemeProvider";
 
@@ -27,10 +36,14 @@ const EYE_R = { x: 0.0949, y: 0.0833 };
 /** Pupil width: a slit in the light, round in the dark (fractions of the art's width). */
 const PUPIL = { slit: 0.026, wide: 0.085, h: 0.15 };
 const FUR = "#0B0806";
+/** It dozes off when the light has been still this long (ms). */
+const DOZE_AFTER = 22000;
 
 export type CatReaction = { kind: "found" | "wrong"; at: number } | null;
+/** What the cat is doing between reactions: watching, or thinking along with the case. */
+export type CatMood = "idle" | "thinking";
 
-export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
+export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle" }: {
   /** On-screen width (points). */
   width: number;
   beamX: SharedValue<number>;
@@ -39,8 +52,10 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
   frame: { x: number; y: number; width: number; height: number } | null;
   /** The latest thing that happened, to react to (a new `at` each time). */
   reaction?: CatReaction;
+  mood?: CatMood;
 }) {
   const { reducedMotion } = useTheme();
+  const theme = useModeTheme();
   const height = (width * ART_H) / ART_W;
   const viewRef = useRef<ComponentRef<typeof View>>(null);
   const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
@@ -55,12 +70,37 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
   const idleTilt = useSharedValue(0);
   // Eyelids: 0 open, 1 shut.
   const lid = useSharedValue(0);
+  // Squash and stretch (1 at rest), scaled from the ledge.
+  const sx = useSharedValue(1);
+  const sy = useSharedValue(1);
+  // Dozing (0 awake, 1 asleep) and thinking (0..1: eyes up, head cocked, up a little higher).
+  const doze = useSharedValue(0);
+  const think = useSharedValue(0);
+  // When the light last moved (ms), for dozing off.
+  const lastMove = useSharedValue(Date.now());
+  const [asleep, setAsleep] = useState(false);
+  const [burst, setBurst] = useState<number | null>(null);
+
+  /** A pop: crouch, stretch up, land with a squash, settle. */
+  const pop = (up: number) => {
+    "worklet";
+    hop.set(withSequence(
+      withTiming(height * 0.05, { duration: 90, easing: Easing.out(Easing.quad) }),
+      withTiming(-height * up, { duration: 150, easing: Easing.out(Easing.quad) }),
+      withSpring(0, { damping: 7, stiffness: 170 }),
+    ));
+    sy.set(withSequence(withTiming(0.84, { duration: 90 }), withTiming(1.14, { duration: 150 }), withTiming(0.9, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
+    sx.set(withSequence(withTiming(1.12, { duration: 90 }), withTiming(0.9, { duration: 150 }), withTiming(1.08, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
+  };
 
   useEffect(() => {
     if (reducedMotion) return;
     rise.set(withDelay(500, withSpring(0, { damping: 9, stiffness: 120, mass: 0.8 })));
+    // Stretched as it springs up, squashed as it lands on its paws.
+    sy.set(withDelay(500, withSequence(withTiming(1.12, { duration: 180 }), withTiming(0.92, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
+    sx.set(withDelay(500, withSequence(withTiming(0.92, { duration: 180 }), withTiming(1.07, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
     breath.set(withRepeat(withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }), -1, true));
-  }, [reducedMotion, rise, breath]);
+  }, [reducedMotion, rise, breath, sx, sy]);
 
   // Blinks (sometimes a double), and the odd curious head tilt.
   useEffect(() => {
@@ -74,9 +114,18 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
       blink = setTimeout(doBlink, 2600 + Math.random() * 3800);
     };
     const doTilt = () => {
-      if (!reducedMotion) {
-        const to = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 5);
-        idleTilt.set(withSequence(withSpring(to, { damping: 7, stiffness: 90 }), withDelay(900, withSpring(0, { damping: 10, stiffness: 80 }))));
+      if (!reducedMotion && doze.get() < 0.5 && think.get() < 0.5) {
+        if (Math.random() < 0.3) {
+          // Duck behind the ledge, then peek back up.
+          rise.set(withSequence(
+            withTiming(height * 0.55, { duration: 220, easing: Easing.in(Easing.quad) }),
+            withDelay(700, withSpring(0, { damping: 9, stiffness: 130, mass: 0.8 })),
+          ));
+          sy.set(withDelay(920, withSequence(withTiming(1.1, { duration: 160 }), withSpring(1, { damping: 6, stiffness: 160 }))));
+        } else {
+          const to = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 5);
+          idleTilt.set(withSequence(withSpring(to, { damping: 7, stiffness: 90 }), withDelay(900, withSpring(0, { damping: 10, stiffness: 80 }))));
+        }
       }
       tilt = setTimeout(doTilt, 6000 + Math.random() * 7000);
     };
@@ -86,18 +135,63 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
       clearTimeout(blink);
       clearTimeout(tilt);
     };
-  }, [lid, idleTilt, reducedMotion]);
+  }, [lid, idleTilt, reducedMotion, rise, sy, doze, think, height]);
 
   // Reactions.
   useEffect(() => {
-    if (!reaction || reducedMotion) return;
+    if (!reaction) return;
+    // Whatever happened wakes it.
+    lastMove.set(Date.now());
+    if (reducedMotion) return;
     if (reaction.kind === "found") {
-      hop.set(withSequence(withTiming(-height * 0.16, { duration: 140, easing: Easing.out(Easing.quad) }), withSpring(0, { damping: 6, stiffness: 160 })));
+      pop(0.2);
+      setBurst(reaction.at);
     } else {
+      // Flinch: squashed down behind the ledge, a shiver, then back up.
       hop.set(withSequence(withTiming(height * 0.22, { duration: 90 }), withDelay(450, withSpring(0, { damping: 9, stiffness: 120 }))));
+      sy.set(withSequence(withTiming(0.88, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
+      sx.set(withSequence(withTiming(1.08, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
+      idleTilt.set(withSequence(
+        withTiming(-4, { duration: 50 }), withTiming(4, { duration: 50 }), withTiming(-3, { duration: 50 }), withTiming(3, { duration: 50 }),
+        withSpring(0, { damping: 10, stiffness: 120 }),
+      ));
       lid.set(withSequence(withTiming(0.55, { duration: 80 }), withDelay(500, withTiming(0, { duration: 160 }))));
     }
+    // pop reads shared values only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reaction, reducedMotion, hop, lid, height]);
+
+  // Thinking: head cocked, eyes up, raised a little, "?"s rising.
+  useEffect(() => {
+    lastMove.set(Date.now());
+    think.set(withSpring(mood === "thinking" ? 1 : 0, { damping: 9, stiffness: 120 }));
+  }, [mood, think, lastMove]);
+
+  // The light moving keeps it awake.
+  useAnimatedReaction(
+    () => beamX.get() + beamY.get() * 1000,
+    (now, prev) => {
+      if (prev !== null && now !== prev) lastMove.set(Date.now());
+    },
+  );
+
+  // Dozing off, and waking with a start.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const still = Date.now() - lastMove.get();
+      if (!asleep && still > DOZE_AFTER && mood === "idle") {
+        setAsleep(true);
+        doze.set(withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.sin) }));
+      } else if (asleep && still < 1000) {
+        setAsleep(false);
+        doze.set(withTiming(0, { duration: 120 }));
+        if (!reducedMotion) pop(0.14);
+      }
+    }, 400);
+    return () => clearInterval(timer);
+    // pop reads shared values only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asleep, mood, reducedMotion, doze, lastMove]);
 
   // The light's position against the cat (window points), for the lean and the pupils.
   const ox = origin?.x ?? 0, oy = origin?.y ?? 0;
@@ -111,20 +205,42 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
       const dx = fx + beamX.get() * fw - (ox + width / 2);
       lean = Math.max(-7, Math.min(7, dx / 40));
     }
+    const z = doze.get(), t = think.get();
+    // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
+    const deep = 1 + z * 1.6;
     return {
       transform: [
-        { translateY: rise.get() + hop.get() + (1 - b) * 1.5 },
-        { rotate: `${lean + idleTilt.get()}deg` },
-        // Breathing: a little taller as it breathes in, a touch narrower.
-        { scaleY: 1 + b * 0.025 },
-        { scaleX: 1 - b * 0.012 },
+        { translateY: rise.get() + hop.get() + (1 - b) * 1.5 + z * height * 0.14 - t * height * 0.05 },
+        { rotate: `${lean * (1 - z) + idleTilt.get() + t * 8 - z * 5}deg` },
+        // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
+        { scaleY: sy.get() * (1 + b * 0.025 * deep) },
+        { scaleX: sx.get() * (1 - b * 0.012 * deep) },
       ],
     };
   });
 
+  const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
   return (
-    // The ledge hides what's below it: the cat rises from behind it.
-    <View style={[styles.clip, { width: width * 1.3, height: height * 1.25 }]} pointerEvents="none">
+    <View pointerEvents="none" style={{ width: width * 1.3, height: height * 1.25 }}>
+    {/* Its marks float above its head, outside the ledge's clip. */}
+    <View style={[styles.marks, { left: width * 0.7, bottom: height * 0.75, width: width * 1.2, height: height * 1.1 }]}>
+      {mood === "thinking" && !reducedMotion ? (
+        <>
+          <Mark glyph="?" size={width * 0.34} dx={0} delay={250} style={mark} still={false} />
+          <Mark glyph="?" size={width * 0.26} dx={width * 0.32} delay={750} style={mark} still={false} />
+          <Mark glyph="?" size={width * 0.22} dx={-width * 0.22} delay={1250} style={mark} still={false} />
+        </>
+      ) : null}
+      {asleep ? (
+        <>
+          <Mark glyph="z" size={width * 0.24} dx={0} delay={0} style={mark} drift still={reducedMotion} />
+          <Mark glyph="z" size={width * 0.3} dx={width * 0.1} delay={1100} style={mark} drift still={reducedMotion} />
+        </>
+      ) : null}
+      {burst !== null && !reducedMotion ? <Burst key={burst} size={width} color={theme.ink} glyph={mark} /> : null}
+    </View>
+    {/* The ledge hides what's below it: the cat rises from behind it. */}
+    <View style={[styles.clip, StyleSheet.absoluteFill]}>
       <Animated.View
         ref={viewRef}
         onLayout={() => measureInWindow(viewRef.current).then((r) => r && setOrigin({ x: r.x, y: r.y }))}
@@ -135,17 +251,96 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction }: {
       >
         <Image source={ART} style={StyleSheet.absoluteFill} resizeMode="contain" />
         {EYES.map((eye, i) => (
-          <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} beamX={beamX} beamY={beamY} lid={lid} />
+          <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} beamX={beamX} beamY={beamY} lid={lid} doze={doze} think={think} />
         ))}
       </Animated.View>
+    </View>
     </View>
   );
 }
 
-function Eye({ eye, width, height, known, at, beamX, beamY, lid }: {
+/** A mark floating up from its head and fading, over and over: a "?" while it thinks, a "z" while it dozes. */
+function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
+  glyph: string; size: number; dx: number; delay: number; style: { color: string; fontFamily?: string }; drift?: boolean; still: boolean;
+}) {
+  const t = useSharedValue(still ? 0.5 : 0);
+  useEffect(() => {
+    if (still) return;
+    const period = drift ? 2200 : 1500;
+    t.set(withDelay(delay, withRepeat(withTiming(1, { duration: period, easing: Easing.out(Easing.quad) }), -1, false)));
+  }, [t, delay, drift, still]);
+  const anim = useAnimatedStyle(() => {
+    const p = t.get();
+    // Pops in with a little overshoot, rises (a "z" drifts sideways too), fades near the top.
+    const grow = p < 0.18 ? (p / 0.18) * 1.15 : p < 0.3 ? 1.15 - ((p - 0.18) / 0.12) * 0.15 : 1;
+    const fade = p < 0.08 ? p / 0.08 : p > 0.7 ? (1 - p) / 0.3 : 1;
+    return {
+      opacity: fade,
+      transform: [
+        { translateX: dx + (drift ? p * size * 1.4 : Math.sin(p * Math.PI * 2) * size * 0.15) },
+        { translateY: -p * size * (drift ? 2.6 : 2.2) },
+        { rotate: `${drift ? -12 : Math.sin(p * Math.PI * 3) * 14}deg` },
+        { scale: grow },
+      ],
+    };
+  });
+  return (
+    <Animated.View style={[styles.mark, anim]}>
+      <Text allowFontScaling={false} style={[styles.markText, style, { fontSize: size, lineHeight: size * 1.15 }]}>{glyph}</Text>
+    </Animated.View>
+  );
+}
+
+/** A find: sparkles burst out around its head and an "!" pops up, once. */
+function Burst({ size, color, glyph }: { size: number; color: string; glyph: { color: string; fontFamily?: string } }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.set(withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+  }, [t]);
+  const bang = useAnimatedStyle(() => {
+    const p = t.get();
+    return {
+      opacity: p > 0.75 ? (1 - p) / 0.25 : 1,
+      transform: [{ translateY: -p * size * 0.5 }, { scale: p < 0.2 ? (p / 0.2) * 1.3 : 1.3 - Math.min(1, (p - 0.2) / 0.2) * 0.3 }],
+    };
+  });
+  return (
+    <>
+      {[-0.9, -0.35, 0.35, 0.9].map((a, i) => (
+        <Spark key={i} t={t} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.2 : 0.26)} color={color} />
+      ))}
+      <Animated.View style={[styles.mark, bang]}>
+        <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.42, lineHeight: size * 0.5 }]}>!</Text>
+      </Animated.View>
+    </>
+  );
+}
+
+function Spark({ t, angle, reach, size, color }: { t: SharedValue<number>; angle: number; reach: number; size: number; color: string }) {
+  const style = useAnimatedStyle(() => {
+    const p = t.get();
+    return {
+      opacity: p > 0.6 ? (1 - p) / 0.4 : 1,
+      transform: [
+        { translateX: Math.cos(angle) * reach * p },
+        { translateY: Math.sin(angle) * reach * p },
+        { rotate: `${p * 90}deg` },
+        { scale: p < 0.25 ? p / 0.25 : 1 - (p - 0.25) * 0.6 },
+      ],
+    };
+  });
+  return (
+    <Animated.View style={[styles.mark, style]}>
+      <SparkleIcon size={size} weight="fill" color={color} />
+    </Animated.View>
+  );
+}
+
+function Eye({ eye, width, height, known, at, beamX, beamY, lid, doze, think }: {
   eye: { x: number; y: number }; width: number; height: number; known: boolean;
   at: { ox: number; oy: number; fx: number; fy: number; fw: number; fh: number };
   beamX: SharedValue<number>; beamY: SharedValue<number>; lid: SharedValue<number>;
+  doze: SharedValue<number>; think: SharedValue<number>;
 }) {
   const cx = eye.x * width;
   const cy = eye.y * height;
@@ -166,10 +361,16 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid }: {
       // Near the light the pupil narrows to a slit; far off, in the dark, it opens wide.
       open = Math.max(0, Math.min(1, (d - 120) / 380));
     }
+    // Thinking, it looks up and off to the side, wide-eyed.
+    const t = think.get();
+    dx = dx * (1 - t) + rangeX * 0.7 * t;
+    dy = dy * (1 - t) - rangeY * 1.1 * t;
+    open = open * (1 - t) + 0.8 * t;
     const pw = width * (PUPIL.slit + (PUPIL.wide - PUPIL.slit) * open);
     return { width: pw, borderRadius: pw, left: cx - pw / 2, transform: [{ translateX: dx }, { translateY: dy }] };
   });
-  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: lid.get() }] }));
+  // Dozing, the lids sit shut (a blink can't open them).
+  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(lid.get(), doze.get()) }] }));
   return (
     <>
       <Animated.View style={[styles.pupil, { top: cy - ph / 2, height: ph }, pupil]} />
@@ -181,7 +382,12 @@ function Eye({ eye, width, height, known, at, beamX, beamY, lid }: {
 
 const styles = StyleSheet.create({
   clip: { overflow: "hidden", justifyContent: "flex-end" },
-  cat: { position: "absolute", bottom: 0 },
+  cat: { position: "absolute", bottom: 0, transformOrigin: "50% 100%" },
+  marks: { position: "absolute", alignItems: "center", justifyContent: "flex-end" },
+  mark: { position: "absolute", bottom: 0 },
+  markText: {
+    fontWeight: "900", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 },
+  },
   pupil: { position: "absolute", backgroundColor: FUR },
   lid: { position: "absolute", backgroundColor: FUR, transformOrigin: "50% 0%" },
 });
