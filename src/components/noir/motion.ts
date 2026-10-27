@@ -9,6 +9,7 @@ import {
   SlideInDown,
   SlideOutDown,
   interpolateColor,
+  useAnimatedStyle,
   useSharedValue,
   withTiming,
   type SharedValue,
@@ -89,6 +90,26 @@ export function useStateProgress(on: boolean): SharedValue<number> {
     progress.set(withTiming(on ? 1 : 0, controlTiming));
   }, [on, progress]);
   return progress;
+}
+
+/**
+ * A fade in over `duration` ms on mount, and again whenever `key` changes:
+ * an opacity style driven by a shared value. Use it instead of a Reanimated
+ * `entering`/`exiting` layout animation on anything in the play screen's
+ * tray, coach card or toast: layout animations there ran in the same commit
+ * as a clue's sheet, a newly mounted tray and a swapped coach card, the
+ * likeliest cause of the iOS crash at the first pickup (Fabric, Reanimated's
+ * layout animation proxy). A plain style animation never changes the view tree.
+ */
+export function useFadeIn(duration: number, key?: unknown) {
+  const opacity = useSharedValue(0);
+  useEffect(() => {
+    opacity.set(0);
+    opacity.set(withTiming(1, { duration, reduceMotion: ReduceMotion.Never }));
+    // Re-run on a new key only; a duration change (reduced motion toggled) needn't fade again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, opacity]);
+  return useAnimatedStyle(() => ({ opacity: opacity.get() }));
 }
 
 type Palette<K extends string> = Readonly<Record<K, string>>;

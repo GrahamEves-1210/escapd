@@ -1,12 +1,10 @@
-import { useEffect, useRef, type ComponentRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ComponentRef, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import Animated, {
-  FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
 import { PlusIcon } from "phosphor-react-native/src/icons/Plus";
 import type { Id } from "@/lib/puzzle-types";
 import type { InventoryItem } from "@/game/selectors";
-import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
+import { FocusRing, SquashPressable, useFadeIn, useFocusRing } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
@@ -51,9 +49,15 @@ export interface InventoryBarProps {
  * use it): its tag is ringed in the mode's ink and its glyph fills, and a
  * card says what it is. Two open the worktable; "Fit together" sends combine.
  * Descriptions are shown only for items the server placed in the inventory.
+ *
+ * No Reanimated layout animations here (`entering`, `exiting`, `layout`):
+ * the tray changes in the same commits as a clue's sheet and a pickup's
+ * flight, and a layout transition on items in a horizontal ScrollView that
+ * mounts at that very moment (the first item) is the riskiest place for one
+ * on iOS with Fabric. Cards fade in and items land with shared-value styles
+ * only; an item that moves along the tray simply moves.
  */
 export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, busy, arriving, registerSlot, lip }: InventoryBarProps) {
-  const { reducedMotion } = useTheme();
   const theme = useModeTheme();
   const material = evidenceMaterial(theme.genre);
   const { width } = useWindowDimensions();
@@ -65,7 +69,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
   return (
     <View style={styles.root}>
       {picked.length === 1 ? (
-        <Animated.View entering={FadeIn.duration(motion.reducedFade)} accessibilityLiveRegion="polite" style={styles.edge}>
+        <FadeInCard>
           <Card style={styles.useCard} testID="use-card">
             <View style={styles.cardText}>
               <Text style={[styles.cardTitle, { color: theme.ink }]}>{picked[0].name}</Text>
@@ -74,10 +78,10 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
             </View>
             <ModePill variant="quiet" ground="dark" label="Cancel" onPress={onCancel} padX={ref.space.sm} />
           </Card>
-        </Animated.View>
+        </FadeInCard>
       ) : null}
       {picked.length === 2 ? (
-        <Animated.View entering={FadeIn.duration(motion.reducedFade)} accessibilityLiveRegion="polite" style={styles.edge}>
+        <FadeInCard>
           <Card style={styles.mat} testID="worktable">
             <View style={styles.sockets}>
               <Socket label="A" item={picked[0]} material={material} />
@@ -93,7 +97,7 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
               </View>
             </View>
           </Card>
-        </Animated.View>
+        </FadeInCard>
       ) : null}
 
       <View style={[styles.tray, { backgroundColor: material.leather, borderColor: material.edge }]} testID="evidence-tray">
@@ -120,23 +124,32 @@ export function InventoryBar({ items, selected, onToggle, onCombine, onCancel, b
                 );
               }
               return (
-                <Animated.View key={item.id} layout={reducedMotion ? undefined : LinearTransition.duration(200)}>
-                  <Tile
-                    item={item}
-                    width={tile}
-                    material={material}
-                    selected={selected.includes(item.id)}
-                    arriving={arriving?.has(item.id) ?? false}
-                    onToggle={onToggle}
-                    registerSlot={registerSlot}
-                  />
-                </Animated.View>
+                <Tile
+                  key={item.id}
+                  item={item}
+                  width={tile}
+                  material={material}
+                  selected={selected.includes(item.id)}
+                  arriving={arriving?.has(item.id) ?? false}
+                  onToggle={onToggle}
+                  registerSlot={registerSlot}
+                />
               );
             })}
           </ScrollView>
         )}
       </View>
     </View>
+  );
+}
+
+/** The use card or the worktable, fading in as it appears (a shared value, not an `entering` animation). */
+function FadeInCard({ children }: { children: ReactNode }) {
+  const fade = useFadeIn(motion.reducedFade);
+  return (
+    <Animated.View accessibilityLiveRegion="polite" style={[styles.edge, fade]}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -155,6 +168,8 @@ function Tile({ item, width, material, selected, arriving, onToggle, registerSlo
   const shown = useSharedValue(arriving ? 0 : 1);
   const scale = useSharedValue(1);
   const wasArriving = useRef(arriving);
+  // Stable, so the slot isn't unregistered and registered again on every render.
+  const slotRef = useCallback((node: SlotRef | null) => registerSlot?.(item.id, node), [registerSlot, item.id]);
 
   // Landing: the tag drops into its well with a small bounce (a fade under reduced motion).
   useEffect(() => {
@@ -180,7 +195,7 @@ function Tile({ item, width, material, selected, arriving, onToggle, registerSlo
 
   return (
     <View
-      ref={(node) => registerSlot?.(item.id, node)}
+      ref={slotRef}
       collapsable={false}
       style={[styles.well, { width, backgroundColor: material.well, borderTopColor: material.wellEdge }]}
       testID={`slot-${item.id}`}

@@ -29,7 +29,7 @@ import { useUiMemory } from "@/game/useUiMemory";
 import type { CoachContext, CoachStep } from "@/tutorial/coach";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref, z } from "@/theme/tokens";
-import { DarkSheet, TreatedImage } from "@/components/noir";
+import { DarkSheet, TreatedImage, useFadeIn } from "@/components/noir";
 import { ModePill } from "@/capture/ui/ModePill";
 import { StateScreen } from "@/components/StateScreen";
 import {
@@ -1011,10 +1011,14 @@ function PresenceGone() {
   );
 }
 
-/** 02's error line on 07's card, with the guide's pill (the mode's accent, hugging its label) to retry and a quiet Dismiss. */
+/**
+ * 02's error line on 07's card, with the guide's pill (the mode's accent, hugging its label) to retry and a quiet Dismiss.
+ * It fades in on a shared value, not an `entering` layout animation: it shares the tray's column (see InventoryBar).
+ */
 function FailureBanner({ text, offline, onRetry, onDismiss }: { text: string; offline: boolean; onRetry: () => void; onDismiss: () => void }) {
+  const fade = useFadeIn(motion.reducedFade);
   return (
-    <Animated.View entering={FadeIn.duration(motion.reducedFade)} style={styles.edge} accessibilityLiveRegion="polite">
+    <Animated.View style={[styles.edge, fade]} accessibilityLiveRegion="polite">
       <Card style={styles.banner} testID="failure-banner">
         <NoticeLine
           icon={offline ? WifiSlashIcon : WarningIcon}

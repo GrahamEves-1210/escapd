@@ -1,27 +1,31 @@
 import { StyleSheet, Text } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { LightbulbIcon } from "@/components/icons";
+import { useFadeIn } from "@/components/noir";
 
 const P = ref.layout.play;
 
 /**
  * A tutorial coach mark: 07's card (raised, 8 corners) with a white
  * Lightbulb and the step in white Regular 14. It changes only after the
- * server confirms the step.
+ * server confirms the step, fading the new step in over the same card.
+ *
+ * No layout animations (no keyed swap with `entering`/`exiting`): the step
+ * changes in the very commit that opens a solve's clue and fills the tray,
+ * and that swap there is the likeliest cause of the iOS crash at the first
+ * pickup ("the game crashed when I picked up the key"). The fade is a plain
+ * opacity style.
  */
 export function CoachCard({ text }: { text: string }) {
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
-  const d = reducedMotion ? motion.reducedFade : 240;
+  const fade = useFadeIn(reducedMotion ? motion.reducedFade : 240, text);
   return (
     <Animated.View
-      key={text}
-      entering={FadeIn.duration(d)}
-      exiting={FadeOut.duration(d)}
-      style={[styles.card, { backgroundColor: theme.raised }]}
+      style={[styles.card, { backgroundColor: theme.raised }, fade]}
       accessibilityLiveRegion="polite"
       accessible
       accessibilityLabel={`Tip: ${text}`}

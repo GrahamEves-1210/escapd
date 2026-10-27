@@ -147,8 +147,11 @@ export function DarkSheet({
   useEffect(() => {
     const t = setTimeout(
       () => {
-        // The web has no sendAccessibilityEvent.
-        if (titleRef.current && Platform.OS !== "web") AccessibilityInfo.sendAccessibilityEvent(titleRef.current, "focus");
+        // The web has no sendAccessibilityEvent. Presentation only: a failure here must never reach the screen.
+        if (!titleRef.current || Platform.OS === "web") return;
+        try {
+          AccessibilityInfo.sendAccessibilityEvent(titleRef.current, "focus");
+        } catch {}
       },
       reducedMotion ? S.titleFocusReduced : S.titleFocus,
     );

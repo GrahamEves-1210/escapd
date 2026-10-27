@@ -3,7 +3,7 @@
 // fly. The crash report was "it's crashing when I pick up an item"; these pin
 // the logic around the flight: it lands once with one cue, a restart or
 // leaving drops it, and no new clue can open while the last one slides away.
-import { Image } from "react-native";
+import { Image, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
@@ -11,7 +11,8 @@ import * as api from "@/lib/escapd-api";
 import type { ActionResult, SessionState } from "@/lib/puzzle-types";
 import { initialState, sessionRow, studyPublic, studySecret } from "@/test-utils/seed";
 import { TUTORIAL_ROOM_ID } from "@/tutorial/assets";
-import { ref } from "@/theme/tokens";
+import { tutorialCoach } from "@/tutorial/coach";
+import { ref, z } from "@/theme/tokens";
 import { Player } from "../Player";
 
 const P = ref.layout.play;
@@ -97,8 +98,11 @@ async function layoutScene() {
   for (const scene of await screen.findAllByTestId("scene-view")) await fireEvent(scene, "layout", { nativeEvent: { layout: AREA } });
 }
 
-async function renderStudy() {
-  const view = await render(<Player roomId={TUTORIAL_ROOM_ID} onExit={jest.fn()} onComplete={jest.fn()} />, { wrapper: GestureHandlerRootView });
+async function renderStudy({ coach = false }: { coach?: boolean } = {}) {
+  const view = await render(
+    <Player roomId={TUTORIAL_ROOM_ID} coach={coach ? tutorialCoach : undefined} onExit={jest.fn()} onComplete={jest.fn()} />,
+    { wrapper: GestureHandlerRootView },
+  );
   await layoutScene();
   return view;
 }
@@ -196,5 +200,74 @@ describe("the pickup's flight in the player", () => {
     mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
     await press("hotspot-bookshelf");
     expect(mocked.submitAction).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Reanimated layout animations (`entering`, `exiting`, `layout`) mounted
+ * anywhere but in a DarkSheet's layer: none may run in the tray, the coach
+ * card, the toast or the failure banner, which change in the same commits as
+ * a clue's sheet and a pickup (the likeliest cause of the iOS crash on
+ * picking up the key). Named by their testID or the nearest one above them.
+ */
+function layoutAnimated() {
+  return screen.container.queryAll((n) => !!(n.props.entering || n.props.exiting || n.props.layout));
+}
+
+function layoutAnimationsOutsideSheets(): string[] {
+  const found: string[] = [];
+  for (const node of layoutAnimated()) {
+    let label = "";
+    let inSheet = false;
+    for (let at: typeof node | null = node; at; at = at.parent) {
+      if (StyleSheet.flatten(at.props.style)?.zIndex === z.sheet) inSheet = true;
+      if (!label && typeof at.props.testID === "string") label = at.props.testID;
+    }
+    if (!inSheet) found.push(label || node.type);
+  }
+  return [...new Set(found)];
+}
+
+describe("no layout animations on the pickup path", () => {
+  it("the tutorial's first pickup, through the coach card's change, the tray filling and the landing", async () => {
+    mocked.submitAction.mockResolvedValueOnce(found(["brass_key"]));
+    await renderStudy({ coach: true });
+    expect(screen.getByText("Tap the desk drawer to search it.")).toBeTruthy();
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+    await press("hotspot-desk_drawer");
+    await screen.findByTestId("result-sheet");
+    // The check sees layout animations where there are some: the sheet's own slide and scrim.
+    expect(layoutAnimated().length).toBeGreaterThan(0);
+    // The coach moved on and the tray filled in the commit that opened the clue.
+    expect(screen.getByText("Books hide things. Try the shelf.", hidden)).toBeTruthy();
+    expect(screen.getByTestId("item-brass_key-arriving", hidden)).toBeTruthy();
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+    await press("result-continue");
+    await sheetGone();
+    await screen.findByTestId("pickup-flight-brass_key", hidden);
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+    await waitFor(() => expect(screen.queryByTestId("pickup-flight-brass_key", hidden)).toBeNull());
+    expect(mockFeedback.pickup).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByTestId("coach-card")).toHaveLength(1);
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+  });
+
+  it("choosing pocketed items (the use card, the worktable) and a toast", async () => {
+    mocked.submitAction.mockResolvedValueOnce(found(["brass_key", "torn_note_left"]));
+    await renderStudy({ coach: true });
+    await press("hotspot-desk_drawer");
+    await press("result-continue");
+    await sheetGone();
+    await waitFor(() => expect(screen.queryByTestId("item-brass_key-arriving", hidden)).toBeNull());
+    await press("item-brass_key");
+    await screen.findByTestId("use-card");
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+    await press("item-torn_note_left");
+    await screen.findByTestId("worktable");
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
+    mocked.submitAction.mockResolvedValueOnce({ outcome: "nothing", message: "Nothing interesting happens." });
+    await press("combine");
+    await screen.findByTestId("toast");
+    expect(layoutAnimationsOutsideSheets()).toEqual([]);
   });
 });

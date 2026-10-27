@@ -26,6 +26,7 @@ export {
   sheetRiseTiming,
   timingFor,
   toEasing,
+  useFadeIn,
   usePaletteTransition,
   usePressProgress,
   useStateProgress,
