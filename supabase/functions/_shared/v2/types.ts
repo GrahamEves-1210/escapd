@@ -119,7 +119,8 @@ export type Effect =
   | { do: "set_state"; target: Id; key: string; value: StateValue }
   | { do: "show_card"; card: Id }
   | { do: "beat"; text: string }
-  | { do: "overlay"; object: Id; overlay: Overlay }
+  /** `text` (glow_mark): what is written there, with {{slot}}s; drawn on the object once revealed. */
+  | { do: "overlay"; object: Id; overlay: Overlay; text?: string }
   | { do: "complete" };
 
 export interface Rule {
@@ -164,7 +165,8 @@ export interface PlayState {
   fired: Id[];
   cards: Id[];
   seen: Id[];
-  overlays: { object: Id; overlay: Overlay }[];
+  /** `mark`: a glow mark's writing, rendered (the player has revealed it). */
+  overlays: { object: Id; overlay: Overlay; mark?: string }[];
   completed: boolean;
 }
 

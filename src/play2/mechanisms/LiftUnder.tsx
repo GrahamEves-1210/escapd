@@ -20,7 +20,12 @@ export function LiftUnder({ target, state, onSet, busy, width }: MechanismProps)
     feedback.paper();
     onSet("lifted", true);
   }, [feedback, onSet]);
-  const { progress, gesture, commitNow } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit });
+  // Put back: shut, laid down, straightened. The room keeps what was found.
+  const onUncommit = useCallback(() => {
+    feedback.tick();
+    onSet("lifted", false);
+  }, [feedback, onSet]);
+  const { progress, gesture, commitNow } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit, onUncommit });
 
   const w = Math.min(width - 2 * ref.space.xl, 240);
   const clothStyle = useAnimatedStyle(() => {
@@ -43,7 +48,7 @@ export function LiftUnder({ target, state, onSet, busy, width }: MechanismProps)
         <Animated.View style={[styles.hollow, { width: w * 0.8, backgroundColor: theme.ground, borderColor: theme.rim }, hollowStyle]} />
         <GestureDetector gesture={gesture}>
           <Animated.View
-            {...activatable(lifted ? `${target.label}, lifted` : `Lift the ${target.label}`, "Looks underneath", commitNow, lifted || busy)}
+            {...activatable(lifted ? `${target.label}, lifted` : `Lift the ${target.label}`, "Looks underneath", lifted ? onUncommit : commitNow, busy)}
             testID="mech-lift"
             style={[styles.cloth, { width: w, backgroundColor: theme.raised, borderColor: theme.rim }, clothStyle]}
           >

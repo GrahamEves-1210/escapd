@@ -124,9 +124,15 @@ function applyEffect(e: Effect, state: PlayState, def: RoomDefinitionV2, secret:
       out.push({ do: "show_card", card: card.id, title: card.title, text: renderCard(card, secret) });
       return;
     }
-    case "overlay":
-      if (!state.overlays.some((o) => o.object === e.object && o.overlay === e.overlay)) state.overlays.push({ object: e.object, overlay: e.overlay });
-      break;
+    case "overlay": {
+      const mark = e.text ? renderCard({ id: "", title: "", text: e.text }, secret) : undefined;
+      if (!state.overlays.some((o) => o.object === e.object && o.overlay === e.overlay)) {
+        state.overlays.push({ object: e.object, overlay: e.overlay, ...(mark ? { mark } : {}) });
+      }
+      // The client gets the writing rendered, never the slot reference.
+      out.push({ do: "overlay", object: e.object, overlay: e.overlay, ...(mark ? { text: mark } : {}) });
+      return;
+    }
     case "complete":
       state.completed = true;
       out.push({ do: "complete", ending: secret.ending });

@@ -35,6 +35,8 @@ export const V2 = {
     settleFrom: 1.07,
     settleMs: 900,
     cropRadius: 18,
+    /** The mechanism's band under the crop. */
+    mechanismH: 300,
   },
   tray: { height: 56, chip: 40 },
   ending: { lightMs: 1600, holdMs: 900 },

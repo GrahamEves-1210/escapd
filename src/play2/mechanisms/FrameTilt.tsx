@@ -21,7 +21,12 @@ export function FrameTilt({ target, state, onSet, busy, width }: MechanismProps)
     feedback.thud();
     onSet("tilted", true);
   }, [feedback, onSet]);
-  const { progress, gesture, commitNow } = usePull({ axis: "x", range: 110, done: tilted, busy, onCommit });
+  // Put back: shut, laid down, straightened. The room keeps what was found.
+  const onUncommit = useCallback(() => {
+    feedback.tick();
+    onSet("tilted", false);
+  }, [feedback, onSet]);
+  const { progress, gesture, commitNow } = usePull({ axis: "x", range: 110, done: tilted, busy, onCommit, onUncommit });
 
   const w = Math.min(width - 2 * ref.space.xxl, 180);
   // Turn about the nail: the frame hangs from its top centre.
@@ -36,7 +41,7 @@ export function FrameTilt({ target, state, onSet, busy, width }: MechanismProps)
         <Animated.View style={[styles.patch, { width: w, height: FRAME_H, borderColor: theme.rim, backgroundColor: theme.surface }, patchStyle]} />
         <GestureDetector gesture={gesture}>
           <Animated.View
-            {...activatable(tilted ? `${target.label}, askew` : `Tilt the ${target.label}`, "Looks behind it", commitNow, tilted || busy)}
+            {...activatable(tilted ? `${target.label}, askew` : `Tilt the ${target.label}`, "Looks behind it", tilted ? onUncommit : commitNow, busy)}
             testID="mech-frame"
             style={[styles.frame, { width: w, height: FRAME_H, borderColor: theme.raised, backgroundColor: theme.ground }, frameStyle]}
           >

@@ -26,6 +26,11 @@ export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
     feedback.thud();
     onSet("open", true);
   }, [feedback, onSet]);
+  // Put back: shut, laid down, straightened. The room keeps what was found.
+  const onUncommit = useCallback(() => {
+    feedback.tick();
+    onSet("open", false);
+  }, [feedback, onSet]);
   const onLocked = useCallback(() => {
     feedback.warning();
     rattle();
@@ -33,7 +38,7 @@ export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
   }, [feedback, rattle, markTried]);
 
   const { progress, gesture, commitNow } = usePull({
-    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked,
+    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked, onUncommit,
   });
 
   const w = Math.min(width - 2 * ref.space.lg, 280);
@@ -64,10 +69,10 @@ export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
         <GestureDetector gesture={gesture}>
           <Animated.View
             {...activatable(
-              open ? `${target.label}, open` : `Pull the ${noun} open`,
-              locked ? "It is locked" : `Opens the ${noun}`,
-              commitNow,
-              open || busy,
+              open ? `Push the ${noun} shut` : `Pull the ${noun} open`,
+              locked ? "It is locked" : open ? `Closes the ${noun}` : `Opens the ${noun}`,
+              open ? onUncommit : commitNow,
+              busy,
             )}
             testID="mech-drawer"
             style={[

@@ -186,6 +186,11 @@ class Builder {
     }
   }
 
+  /** What a glow mark says: each slot as written on the object (its door symbol first, if any), nothing more. */
+  mark(slots: string[]): string {
+    return slots.map((s) => `${this.labels.has(s) && /^[^A-Za-z]+$/.test(this.labels.get(s)!) ? `${this.labels.get(s)} ` : ""}{{${s}}}`).join("  ");
+  }
+
   card(title: string, slots: string[], flavour?: string): string {
     const id = `card_${this.cards.length + 1}`;
     const text = slots.length ? slots.map((s) => `${this.labels.get(s) ?? LABEL[this.slots[s].kind]}: {{${s}}}`).join("\n") : flavour ?? "";
@@ -369,7 +374,7 @@ class Builder {
     const target = this.bind(tp, thread, "inspect");
     const s1 = this.step("room_change", thread, lamp.id, [], ["The room is darker than it should be.", `The ${lamp.inv.label} still works.`, `Switch on the ${lamp.inv.label}.`]);
     this.rule({ on: "control", target: lamp.id, control: "on" }, [{ if: "control", target: lamp.id, control: "on", eq: { lit: true } }],
-      [{ do: "overlay", object: lamp.id, overlay: "light_on" }, { do: "overlay", object: target.id, overlay: "glow_mark" }], s1);
+      [{ do: "overlay", object: lamp.id, overlay: "light_on" }, { do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }], s1);
     const s2 = this.step("room_change", thread, target.id, [s1], ["The light changed something.", `Look at the ${target.inv.label} while the ${lamp.inv.label} is on.`, `With the ${lamp.inv.label} on, inspect the ${target.inv.label}.`]);
     this.rule({ on: "inspect", object: target.id }, [{ if: "state", target: lamp.id, key: "on", eq: { lit: true } }],
       [{ do: "show_card", card: this.card("In the light", slots) }], s2);
@@ -377,16 +382,16 @@ class Builder {
   }
 
   toolReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const torch = this.item("tool", "UV torch", { archetype: "Light", variant: "torch", card: this.card("UV torch", [], "A small torch with a violet bulb.") });
+    const torch = this.item("tool", "UV flashlight", { archetype: "Light", variant: "torch", card: this.card("UV flashlight", [], "A small flashlight with a violet bulb. Tap it to switch your light over, then sweep the room.") });
     const up = this.deliver(torch, budget - 1, thread, depth);
     if (!up) return null;
     const source = this.steps.find((s) => s.id === up)?.object;
     const tp = this.pick({ trigger: "use", thread, markable: true, preferUsed: true, excludeIds: [source] });
     if (!tp) return null;
     const target = this.bind(tp, thread, "use");
-    const s = this.step("tool_reveal", thread, target.id, [up], ["A tool you found shows what eyes can't.", `Something on the ${target.inv.label} only shows under UV.`, `Shine the UV torch on the ${target.inv.label}.`]);
+    const s = this.step("tool_reveal", thread, target.id, [up], ["A tool you found shows what eyes can't.", `Something on the ${target.inv.label} only shows under UV.`, `Switch to the UV flashlight and hold it on the ${target.inv.label}.`]);
     this.rule({ on: "use", item: torch, object: target.id }, [],
-      [{ do: "overlay", object: target.id, overlay: "glow_mark" }, { do: "show_card", card: this.card("Under UV", slots) }], s);
+      [{ do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }, { do: "show_card", card: this.card("Under UV", slots) }], s);
     return s;
   }
 
@@ -420,6 +425,7 @@ const LABEL: Record<SlotKind, string> = {
   time: "Time", freq: "Frequency", page: "Page", offset: "Offset", digits: "Digits", letters: "Word", symbols: "Symbols",
   cipher: "Coded line", option: "Evidence", object: "Ritual", code: "Code",
 };
+
 const STEP_TITLE: Record<MotifId, string> = {
   read: "Read it", contain: "Look inside", split: "Piece it together", set_state: "Set the mechanism",
   cross_reference: "Find the page", decode: "Decode it", tool_reveal: "Under the light", room_change: "Change the room",
@@ -494,7 +500,8 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     let at = 0;
     const parts = sizes.map((n, i) => {
       const digits = code.slice(at, at + n);
-      const label = n === 1 ? `Door wheel ${at + 1}` : `Door wheels ${at + 1}-${at + n}`;
+      // The door's wheels carry these symbols: the player matches each clue to its wheels (never "wheel 1").
+      const label = SYMBOLS.slice(at, at + n).join("");
       at += n;
       const s = B.slot("digits", digits, undefined, label);
       outputs[order[i]].push(s);

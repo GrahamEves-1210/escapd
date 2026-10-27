@@ -25,7 +25,7 @@ import { Image } from "expo-image";
 import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { arcPath, dialPoint, turnStep } from "@/capture/turn";
+import { arcPath, dialPoint, TURN_REACHED, turnStep } from "@/capture/turn";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
@@ -78,7 +78,7 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
 
   return (
     <>
-    {ghost && turn.tracking && active ? <GhostEdge {...ghost} turned={turn.turned} /> : null}
+    {ghost && turn.tracking && active ? <GhostEdge {...ghost} turned={turn.turned} step={step} /> : null}
     <View
       style={styles.slot}
       pointerEvents="none"
@@ -134,44 +134,27 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
 const GHOST_STRIP = 14;
 
 /**
- * The last photo's right edge, pinned to the room by the turn sensor. The
- * edge sits at half the field of view right of where that photo pointed, so
- * after turning `t` it is `fov/2 - t` from the middle of the view, on screen
- * through the lens's projection (tan). It starts on the right edge, where the
- * photo ended, and slides left as the player turns; on the stop it has reached
- * the left edge: line it up and shoot. The strip to its left is that part of
- * the photo, see-through, to match against the live feed.
+ * The last photo's right edge, moved by the turn sensor in step with the dial:
+ * it starts on the right edge of the frame, where that photo ended, and
+ * slides left as the player turns, reaching the left edge exactly as the dial
+ * says the turn is far enough (TURN_REACHED of the step). Line it up and
+ * shoot. The strip to its left is that part of the photo, see-through, to
+ * match against the live feed.
  */
-function GhostEdge({ uri, fov, width, height, turned }: { uri: string; fov: number; width: number; height: number; turned: SharedValue<number> }) {
-  const half = fov / 2;
+function GhostEdge({ uri, fov, width, height, turned, step }: {
+  uri: string; fov: number; width: number; height: number; turned: SharedValue<number>; step: number;
+}) {
+  const stripW = width * Math.min(0.3, GHOST_STRIP / fov);
   const style = useAnimatedStyle(() => {
-    const k = Math.tan((half * Math.PI) / 180);
-    const x = (deg: number) => width / 2 + (width / 2) * (Math.tan((Math.max(-89, Math.min(89, deg)) * Math.PI) / 180) / k);
-    const edge = half - turned.get();
-    const right = x(edge);
-    const left = x(edge - GHOST_STRIP);
-    return {
-      left,
-      width: Math.max(0, right - left),
-      // Gone once the edge has passed out of view on the left.
-      opacity: edge < -half ? 0 : 1,
-    };
-  });
-  // The strip is the photo's right-hand GHOST_STRIP degrees: that share of its width, scaled to the strip.
-  const k = Math.tan((half * Math.PI) / 180);
-  const share = 1 - (width / 2 + (width / 2) * (Math.tan(((half - GHOST_STRIP) * Math.PI) / 180) / k)) / width;
-  const imageStyle = useAnimatedStyle(() => {
-    const kk = Math.tan((half * Math.PI) / 180);
-    const x = (deg: number) => width / 2 + (width / 2) * (Math.tan((Math.max(-89, Math.min(89, deg)) * Math.PI) / 180) / kk);
-    const edge = half - turned.get();
-    const stripWidth = Math.max(1, x(edge) - x(edge - GHOST_STRIP));
-    return { width: stripWidth / Math.max(0.01, share) };
+    const p = Math.min(1, Math.max(0, turned.get() / Math.max(1, step * TURN_REACHED)));
+    const right = width * (1 - p);
+    return { left: right - stripW, width: stripW, opacity: p >= 1 ? 0.6 : 1 };
   });
   return (
     <Animated.View pointerEvents="none" style={[styles.ghost, { height }, style]} testID="turn-ghost">
-      <Animated.View style={[styles.ghostImage, { height }, imageStyle]}>
+      <View style={[styles.ghostImage, { height, width: stripW / Math.min(0.3, GHOST_STRIP / fov) }]}>
         <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} transition={0} />
-      </Animated.View>
+      </View>
       <View style={styles.ghostLine} />
     </Animated.View>
   );

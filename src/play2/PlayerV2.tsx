@@ -1,12 +1,14 @@
-// The v2 player (gameplay v2, chunk 2): the room in the dark, a torch to find
-// things, close-ups with mechanisms to work them, a casebook for what was
+// The v2 player (gameplay v2, chunk 2): the room in the dark, a flashlight to
+// find things, close-ups with mechanisms to work them, a casebook for what was
 // learned, and the real door as the way out. useRoomV2 runs the room: on the
 // device for a v1 room planned into a v2 one, on the server for a v2 room;
 // either way each request is async and the casebook (cards, hint rungs) comes
 // back rendered. When the planner can't build a v2 room from a v1 one it hands
 // back to the v1 player (`onFallback`).
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { CaretLeftIcon, CaretRightIcon, ListIcon, ArrowLeftIcon } from "phosphor-react-native";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
@@ -23,10 +25,11 @@ import { Toast } from "@/render/Toast";
 import { ref } from "@/theme/tokens";
 import { Casebook } from "./Casebook";
 import { Ending } from "./Ending";
-import { InspectView, type FoundCard } from "./InspectView";
+import { InspectView, type Content } from "./InspectView";
+import { DragGhost, ItemTray, isUvLight } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
-import { Stage, type StageObject } from "./Stage";
+import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 
 export interface PlayerV2Props {
@@ -64,7 +67,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const [view, setView] = useState(0);
   const [open, setOpen] = useState<Open | null>(null);
-  const [lookCards, setLookCards] = useState<FoundCard[]>([]);
+  // What each object turned out to hold (notes to read, items not yet picked up), shown in it when it's open.
+  const [contents, setContents] = useState<Record<string, Content[]>>({});
+  // The UV flashlight switched on, the objects already checked under it, the photo's frame for drops, a drag.
+  const [uvOn, setUvOn] = useState(false);
+  const [uvChecked, setUvChecked] = useState<string[]>([]);
+  const [frame, setFrame] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const drag = { x: useSharedValue(0), y: useSharedValue(0) };
+  const { height: windowHeight } = useWindowDimensions();
   const [note, setNote] = useState<string | null>(null);
   const [toasts, setToasts] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -121,13 +132,25 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const objectById = useCallback((id: string) => def?.objects.find((o) => o.id === id), [def]);
   const heldItems = useMemo(() => (state ? state.inventory.map((id) => itemById(id)).filter((i): i is ItemDef => !!i) : []), [state, itemById]);
   /** Feedback and notes for one result (none when it didn't go through); returns the cards it showed. */
-  const take = (result: ActionResult | null, where: "inspect" | "room"): FoundCard[] => {
-    const cards: FoundCard[] = [];
+  const openObject = open?.kind === "object" ? open.id : null;
+  const addContent = (objectId: string, c: Content) =>
+    setContents((all) => {
+      const list = all[objectId] ?? [];
+      const key = (x: Content) => (x.kind === "card" ? `c:${x.card.id}` : `i:${x.item.id}`);
+      return list.some((x) => key(x) === key(c)) ? all : { ...all, [objectId]: [...list, c] };
+    });
+  const pickUp = (objectId: string, itemId: string) => {
+    setContents((all) => ({ ...all, [objectId]: (all[objectId] ?? []).filter((x) => !(x.kind === "item" && x.item.id === itemId)) }));
+    toast(`${itemById(itemId)?.name ?? "It"}: in your hands.`);
+  };
+  const take = (result: ActionResult | null, where: "inspect" | "room", quiet = false): { title: string; text: string; id: string }[] => {
+    const cards: { title: string; text: string; id: string }[] = [];
     if (!result) return cards;
     const lines: string[] = [];
     setRevision((r) => r + 1);
     switch (result.outcome) {
       case "nothing":
+        if (quiet) return cards;
         feedback.tap();
         if (where === "room") lines.push(TOAST.nothing);
         break;
@@ -150,10 +173,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         case "show_card":
           feedback.paper();
           cards.push({ id: e.card, title: e.title, text: e.text });
+          if (where === "inspect" && openObject) addContent(openObject, { kind: "card", card: { id: e.card, title: e.title, text: e.text } });
           break;
         case "grant": {
-          feedback.pickup();
-          lines.push(`Found: ${itemById(e.item)?.name ?? "something"}.`);
+          const item = itemById(e.item);
+          if (where === "inspect" && openObject && item) addContent(openObject, { kind: "item", item });
+          else {
+            feedback.pickup();
+            lines.push(`Found: ${item?.name ?? "something"}.`);
+          }
           break;
         }
         case "open":
@@ -176,9 +204,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     }
     if (where === "inspect") {
       setNote(lines.length ? lines.join(" ") : null);
-      if (cards.length) setLookCards((c) => [...c, ...cards.filter((n) => !c.some((x) => x.id === n.id))]);
-      // Beats and finds also toast, so they're seen after the close-up closes.
-      for (const l of lines) if (l.startsWith("Found") || l === "Something changed in the room.") toast(l);
+      for (const l of lines) if (l === "Something changed in the room.") toast(l);
     } else {
       for (const l of lines) toast(l);
     }
@@ -197,10 +223,26 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       return;
     }
     feedback.press();
-    setLookCards([]);
     setNote(null);
     setOpen({ kind: "object", id: objectId });
-    take(await act({ type: "inspect", object: objectId }), "inspect");
+    // The look runs with the close-up open, so what it turns up lands in the object.
+    const result = await act({ type: "inspect", object: objectId });
+    takeAt(objectId, result);
+  };
+
+  /** A result for an object's close-up, wherever the close-up is now (the request may land after it moved on). */
+  const takeAt = (objectId: string, result: ActionResult | null) => {
+    if (!result) return;
+    setRevision((r) => r + 1);
+    for (const e of result.effects) {
+      if (e.do === "show_card") addContent(objectId, { kind: "card", card: { id: e.card, title: e.title, text: e.text } });
+      if (e.do === "grant") {
+        const item = itemById(e.item);
+        if (item) addContent(objectId, { kind: "item", item });
+      }
+    }
+    take({ ...result, effects: result.effects.filter((e) => e.do !== "show_card" && e.do !== "grant") }, "inspect");
+    if (result.effects.some((e) => e.do === "show_card")) feedback.paper();
   };
 
   const openItem = (itemId: string) => {
@@ -208,14 +250,52 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     // An examined item shows its own card, once it has been found.
     const item = itemById(itemId);
     const card = item?.card ? casebookCards.find((c) => c.id === item.card) : undefined;
-    setLookCards(card ? [card] : []);
+    setContents((all) => ({ ...all, [`item:${itemId}`]: card ? [{ kind: "card", card }] : [] }));
     setNote(null);
     setOpen({ kind: "item", id: itemId });
   };
 
   const toggleItem = (id: string) => {
     feedback.tick();
+    const item = itemById(id);
+    // The UV flashlight: tap to switch the light over, tap again to switch back.
+    if (item && isUvLight(item)) {
+      setUvOn((on) => !on);
+      return;
+    }
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length >= 2 ? [s[1], id] : [...s, id]));
+  };
+
+  // The current view's objects, set each render (drops are hit-tested against them).
+  let stageObjectsNow: StageObject[] = [];
+  /** Let go of a dragged item: on the close-up, use it there; on the room's photo, on what's under the finger. */
+  const drop = async (itemId: string, x: number, y: number) => {
+    setDragging(null);
+    if (busy) return;
+    const trayTop = windowHeight - insets.bottom - V2.tray.height - ref.space.lg * 2;
+    if (y > trayTop) return;
+    let objectId: string | null = null;
+    if (open?.kind === "object") objectId = open.id;
+    else if (frame && x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height) {
+      objectId = hitTest(stageObjectsNow, (x - frame.x) / frame.width, (y - frame.y) / frame.height);
+    }
+    if (!objectId) return;
+    feedback.press();
+    const result = await act({ type: "use_item", item: itemId, object: objectId });
+    if (open?.kind === "object") takeAt(objectId, result);
+    else take(result, "room");
+  };
+
+  // The UV flashlight held over something for a moment checks it: invisible ink shows if there's any.
+  const uvItem = state?.inventory.map((id) => itemById(id)).find((i) => i && isUvLight(i));
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onHover = (objectId: string | null) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (!uvOn || !uvItem || !objectId || uvChecked.includes(objectId)) return;
+    hoverTimer.current = setTimeout(async () => {
+      setUvChecked((list) => [...list, objectId]);
+      take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true);
+    }, 400);
   };
 
   const combine = async () => {
@@ -249,6 +329,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const stageObjects: StageObject[] = def.objects
     .filter((o) => o.photo_index === view && visible(o))
     .map((o) => ({ id: o.id, label: o.label, box: o.box, seen: state.seen.includes(o.id) }));
+  stageObjectsNow = stageObjects;
+  const marks = state.overlays
+    .filter((ov) => ov.overlay === "glow_mark" && ov.mark)
+    .map((ov) => ({ ov, o: objectById(ov.object) }))
+    .filter(({ o }) => o && o.photo_index === view)
+    .map(({ ov, o }) => ({ object: ov.object, box: o!.box, text: ov.mark! }));
   const overlays = state.overlays
     .map((ov) => ({ ...ov, o: objectById(ov.object) }))
     .filter((ov) => ov.o && ov.o.photo_index === view)
@@ -284,23 +370,35 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
+  const tray = (
+    <ItemTray
+      items={heldItems}
+      selected={selected}
+      equipped={uvOn}
+      drag={drag}
+      onTap={toggleItem}
+      onExamine={openItem}
+      onDragStart={(id) => { feedback.tick(); setDragging(id); }}
+      onDrop={drop}
+    />
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: theme.ground }]} testID="v2-player">
       <View style={[styles.top, { paddingTop: insets.top + ref.space.xs }]}>
         <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.square, { backgroundColor: theme.raised }]} testID="v2-back">
-          <Text style={[ref.type.headline, { color: theme.ink }]}>‹</Text>
+          <ArrowLeftIcon size={22} weight="bold" color={theme.ink} />
         </Pressable>
         <View style={styles.titles}>
-          <Text style={[ref.type.serifTitle, { color: theme.ink }]} numberOfLines={1}>{def.title}</Text>
-          <Text style={[ref.type.meta, { color: theme.inkMuted }]} numberOfLines={2} testID="v2-objective">{def.objective}</Text>
+          {/* The objective, in full: no case name competing with it. */}
+          <Text style={[ref.type.body, { color: theme.ink }]} testID="v2-objective">{def.objective}</Text>
           {def.mode === "paranormal" && progress.total > 0 ? (
             // The presence answers each step the player takes toward the ritual; at the end it is gone.
             <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
           ) : null}
         </View>
         <Pressable onPress={() => setCasebook(true)} accessibilityRole="button" accessibilityLabel="Casebook" hitSlop={8} style={[styles.square, { backgroundColor: theme.raised }]} testID="v2-casebook-open">
-          <Text style={[ref.type.headline, { color: theme.ink }]}>☰</Text>
+          <ListIcon size={22} weight="bold" color={theme.ink} />
         </Pressable>
       </View>
 
@@ -316,10 +414,38 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             patch={patch && removable && removable.photo_index === view && objectState(removable.id).removed ? patch : null}
             glints={glints}
             assist={hotspotAssist}
+            uv={uvOn}
+            marks={marks}
+            onHover={onHover}
+            onFrame={setFrame}
             onLook={look}
             onPage={(dir) => setView((v) => (v + dir + photos) % photos)}
             accessibilityLabel={`View ${view + 1} of ${photos}`}
           />
+        ) : null}
+        {photos > 1 ? (
+          <>
+            <Pressable
+              onPress={() => { feedback.tick(); setView((v) => (v - 1 + photos) % photos); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
+              hitSlop={12}
+              testID="v2-prev"
+              style={[styles.edge, styles.edgeLeft]}
+            >
+              <CaretLeftIcon size={44} weight="bold" color="#FFFFFF" />
+            </Pressable>
+            <Pressable
+              onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Next view (${view + 1} of ${photos})`}
+              hitSlop={12}
+              testID="v2-next"
+              style={[styles.edge, styles.edgeRight]}
+            >
+              <CaretRightIcon size={44} weight="bold" color="#FFFFFF" />
+            </Pressable>
+          </>
         ) : null}
         <View style={styles.toasts} pointerEvents="none">
           {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
@@ -327,45 +453,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       </View>
 
       <View style={[styles.foot, { paddingBottom: insets.bottom + ref.space.sm }]}>
-        <View style={styles.pager}>
-          <Pressable onPress={() => { feedback.tick(); setView((v) => (v - 1 + photos) % photos); }} accessibilityRole="button" accessibilityLabel="Previous view" hitSlop={8} testID="v2-prev" style={styles.arrow}>
-            <Text style={[ref.type.headline, { color: theme.ink }]}>‹</Text>
-          </Pressable>
-          <Text style={[ref.type.meta, { color: theme.inkMuted }]} testID="v2-view">{`View ${view + 1} of ${photos}`}</Text>
-          <Pressable onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }} accessibilityRole="button" accessibilityLabel="Next view" hitSlop={8} testID="v2-next" style={styles.arrow}>
-            <Text style={[ref.type.headline, { color: theme.ink }]}>›</Text>
-          </Pressable>
-        </View>
-        {selected.length === 1 ? (
-          <Text style={[ref.type.meta, styles.instruction, { color: theme.inkMuted }]}>{`Tap something in the room to use the ${itemById(selected[0])?.name ?? "item"}.`}</Text>
-        ) : null}
         {selected.length === 2 ? (
           <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
             <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
           </Pressable>
         ) : null}
-        <View style={styles.tray} testID="v2-tray">
-          {heldItems.length ? heldItems.map((item) => {
-            const on = selected.includes(item.id);
-            return (
-              <Pressable
-                key={item.id}
-                onPress={() => toggleItem(item.id)}
-                onLongPress={() => openItem(item.id)}
-                accessibilityRole="button"
-                accessibilityLabel={item.name}
-                accessibilityState={{ selected: on }}
-                accessibilityHint="Select to use or fit together; hold to examine."
-                testID={`v2-item-${item.id}`}
-                style={[styles.chip, { backgroundColor: theme.raised, borderColor: on ? theme.ink : theme.rim, borderWidth: on ? 2 : StyleSheet.hairlineWidth }]}
-              >
-                <Text style={[ref.type.meta, { color: theme.ink }]} numberOfLines={1}>{item.name}</Text>
-              </Pressable>
-            );
-          }) : (
-            <Text style={[ref.type.meta, { color: theme.inkMuted }]}>Drag to shine the light. Tap what catches it.</Text>
-          )}
-        </View>
+        {heldItems.length ? tray : <Text style={[ref.type.meta, styles.instruction, { color: theme.inkMuted }]}>Drag across the photo to shine your flashlight.</Text>}
       </View>
 
       {open && target ? (
@@ -378,17 +471,17 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
               : undefined}
           genre={def.mode}
           state={targetState}
-          cards={lookCards}
+          contents={contents[open.kind === "object" ? open.id : `item:${open.id}`] ?? []}
           note={note}
-          held={heldItems}
+          onPickUp={(itemId) => pickUp(open.kind === "object" ? open.id : `item:${open.id}`, itemId)}
+          tray={tray}
           busy={busy}
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
           ritualChoices={ritualChoices}
-          onSet={async (control, value) => take(await act({ type: "set_control", target: target!.id, control, value }), "inspect")}
-          onSubmit={async (value) => take(await act({ type: "submit", object: target!.id, value }), "inspect")}
-          onUse={async (itemId) => take(await act({ type: "use_item", item: itemId, object: target!.id }), "inspect")}
-          onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "inspect") : undefined}
+          onSet={async (control, value) => takeAt(target!.id, await act({ type: "set_control", target: target!.id, control, value }))}
+          onSubmit={async (value) => takeAt(target!.id, await act({ type: "submit", object: target!.id, value }))}
+          onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "room") : undefined}
           onClose={() => setOpen(null)}
           revision={revision}
         />
@@ -435,6 +528,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
+      {dragging && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
+
       {/* The photos' aspects, for the close-up's crop (measured once each, off screen). */}
       <AspectProbe sources={sources.kind === "ready" ? sources.sources : []} known={aspects} onAspect={(i, a) => setAspects((m) => ({ ...m, [i]: a }))} />
     </View>
@@ -476,8 +571,12 @@ const styles = StyleSheet.create({
   stage: { flex: 1 },
   toasts: { position: "absolute", top: ref.space.sm, left: 0, right: 0, alignItems: "center" },
   foot: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, gap: ref.space.sm },
-  pager: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: ref.space.lg },
-  arrow: { minWidth: ref.hit.min, minHeight: ref.hit.min, alignItems: "center", justifyContent: "center" },
+  edge: {
+    position: "absolute", top: "50%", marginTop: -32, width: 52, height: 64, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)", zIndex: 10,
+  },
+  edgeLeft: { left: 0, borderTopRightRadius: 16, borderBottomRightRadius: 16 },
+  edgeRight: { right: 0, borderTopLeftRadius: 16, borderBottomLeftRadius: 16 },
   instruction: { textAlign: "center" },
   combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center" },
   tray: { flexDirection: "row", flexWrap: "wrap", gap: ref.space.sm, minHeight: V2.tray.height, alignItems: "center", justifyContent: "center" },

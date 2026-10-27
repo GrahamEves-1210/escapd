@@ -11,6 +11,7 @@ import { RingPressable } from "@/render/parts";
 import { ref } from "@/theme/tokens";
 import { Line, MechButton, Stage, cooldownText } from "./kit";
 import { WheelBank } from "./Wheels";
+import { SYMBOLS } from "@/engine/v2";
 import type { MechanismProps } from "./types";
 
 export function Door(props: MechanismProps) {
@@ -30,6 +31,7 @@ export function Door(props: MechanismProps) {
         cooldown={props.cooldown}
         done={false}
         submitLabel="Try the door"
+        marks={SYMBOLS.slice(0, count)}
         onSubmit={props.onSubmit}
       />
     </Stage>

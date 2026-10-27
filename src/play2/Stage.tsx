@@ -8,14 +8,14 @@
 //
 // Touch is one pan (the beam) racing one tap (look); both are hit-tested here.
 // Screen readers get one button per visible object instead (accessibilityTap).
-import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
   BlurMask, Canvas, Circle, Group, Paint, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
-import { useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { Overlay, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
@@ -23,6 +23,7 @@ import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import { aspectOf, containBox } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
+import { measureInWindow } from "@/render/PickupFlight";
 import { V2 } from "./layout";
 
 export interface StageObject {
@@ -42,6 +43,14 @@ export interface StageProps {
   patch?: { rect: Box; uri: string } | null;
   /** False: the hard setting, no glints at all. */
   glints: boolean;
+  /** The UV flashlight is on: a violet beam, and invisible ink shows where it falls. */
+  uv?: boolean;
+  /** Writing revealed on objects (glow marks): shown under the UV beam, or always while a lamp is lit. */
+  marks?: { object: string; box: Box; text: string }[];
+  /** The object under the beam's centre as it moves (UV checks it after a moment). */
+  onHover?: (objectId: string | null) => void;
+  /** The photo's frame in window points, once laid out (drops from the tray are hit-tested against it). */
+  onFrame?: (frame: { x: number; y: number; width: number; height: number }) => void;
   /** Show interactives (accessibility): a faint outline on every object, always. */
   assist: boolean;
   onLook: (objectId: string | null) => void;
@@ -60,7 +69,10 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
   return best?.id ?? null;
 }
 
-export function Stage({ source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel }: StageProps) {
+export function Stage({
+  source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
+  uv = false, marks = [], onHover, onFrame,
+}: StageProps) {
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
@@ -74,6 +86,12 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
   useEffect(() => size.set({ w: W, h: H }), [size, W, H]);
 
   const look = (x: number, y: number) => onLook(hitTest(objects, x, y));
+  // What the beam's centre is on, worked out on the UI thread; JS hears only when it changes.
+  const boxes = objects.map((o) => [o.box.x, o.box.y, o.box.w, o.box.h, o.box.w * o.box.h] as const);
+  const ids = objects.map((o) => o.id);
+  const hovered = useSharedValue(-1);
+  const hover = (i: number) => onHover?.(i >= 0 ? ids[i] ?? null : null);
+  const frameRef = useRef<ComponentRef<typeof View>>(null);
   const pan = usePanGesture({
     maxPointers: 1,
     minDistance: 4,
@@ -88,8 +106,19 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
       "worklet";
       const s = size.get();
       if (s.w <= 0) return;
-      tx.set(Math.min(1, Math.max(0, e.x / s.w)));
-      ty.set(Math.min(1, Math.max(0, e.y / s.h)));
+      const x = Math.min(1, Math.max(0, e.x / s.w));
+      const y = Math.min(1, Math.max(0, e.y / s.h));
+      tx.set(x);
+      ty.set(y);
+      let hit = -1;
+      for (let i = 0; i < boxes.length; i++) {
+        const b = boxes[i];
+        if (x >= b[0] && x <= b[0] + b[2] && y >= b[1] && y <= b[1] + b[3] && (hit < 0 || b[4] < boxes[hit][4])) hit = i;
+      }
+      if (hit !== hovered.get()) {
+        hovered.set(hit);
+        scheduleOnRN(hover, hit);
+      }
     },
     onDeactivate: (e) => {
       "worklet";
@@ -123,7 +152,12 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
     <View style={styles.root} onLayout={onLayout} testID="v2-stage">
       {frame ? (
         <GestureDetector gesture={gesture}>
-          <View style={[styles.frame, { left: frame.x, top: frame.y, width: W, height: H }]} collapsable={false}>
+          <View
+            ref={frameRef}
+            style={[styles.frame, { left: frame.x, top: frame.y, width: W, height: H }]}
+            collapsable={false}
+            onLayout={() => measureInWindow(frameRef.current).then((rect) => rect && onFrame?.(rect))}
+          >
             <TreatedImage
               source={source}
               genre={genre}
@@ -152,7 +186,7 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
               ))}
               {/* The dark, with the beam and every lit lamp punched out of it. */}
               <Group layer={<Paint />}>
-                <Rect x={0} y={0} width={W} height={H} color={`rgba(0,0,0,${darkness})`} />
+                <Rect x={0} y={0} width={W} height={H} color={`rgba(0,0,0,${uv ? Math.min(0.92, darkness + 0.06) : darkness})`} />
                 <Beam tx={tx} ty={ty} w={W} h={H} r={R} />
                 {lamps.map((l) => {
                   const cx = (l.box.x + l.box.w / 2) * W;
@@ -165,6 +199,8 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
                   );
                 })}
               </Group>
+              {/* The UV flashlight: its beam glows violet. */}
+              {uv ? <Beam tx={tx} ty={ty} w={W} h={H} r={R} tint="rgba(150,95,255,0.30)" /> : null}
               {/* Glints: an outline that catches the beam. */}
               {glints || assist
                 ? objects.map((o) => (
@@ -172,6 +208,10 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
                   ))
                 : null}
             </Canvas>
+            {/* Invisible ink: drawn on the object, seen where the UV beam falls (or everywhere while a lamp is lit). */}
+            {marks.map((m) => (
+              <InkMark key={m.object} mark={m} w={W} h={H} tx={tx} ty={ty} r={R} always={lamps.length > 0} uv={uv} />
+            ))}
             {/* One button per object for screen readers; no touch handlers, so the gestures above get every touch. */}
             {objects.map((o) => (
               <View
@@ -202,14 +242,49 @@ export function Stage({ source, cacheKey, genre, objects, overlays, patch, glint
   );
 }
 
-function Beam({ tx, ty, w, h, r }: { tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number }) {
+function Beam({ tx, ty, w, h, r, tint }: { tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; tint?: string }) {
   const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
   const cx = useDerivedValue(() => tx.get() * w);
   const cy = useDerivedValue(() => ty.get() * h);
+  if (tint) {
+    // A coloured pool over the lit area (the UV flashlight).
+    return (
+      <Circle cx={cx} cy={cy} r={r}>
+        <RadialGradient c={c} r={r} colors={[tint, tint, "rgba(0,0,0,0)"]} positions={[0, 0.55, 1]} />
+      </Circle>
+    );
+  }
   return (
     <Circle cx={cx} cy={cy} r={r} blendMode="dstOut">
       <RadialGradient c={c} r={r} colors={["rgba(0,0,0,1)", "rgba(0,0,0,0.92)", "rgba(0,0,0,0)"]} positions={[0, 0.5, 1]} />
     </Circle>
+  );
+}
+
+/**
+ * Writing in invisible ink on an object: a digit, a word, a door symbol and its
+ * number, in glowing violet, as someone wrote it there. Seen only where the UV
+ * beam falls (fading at its edge), or plainly while a lamp is lit.
+ */
+function InkMark({ mark, w, h, tx, ty, r, always, uv }: {
+  mark: { box: Box; text: string }; w: number; h: number; tx: SharedValue<number>; ty: SharedValue<number>; r: number; always: boolean; uv: boolean;
+}) {
+  const { box } = mark;
+  const cx = (box.x + box.w / 2) * w;
+  const cy = (box.y + box.h / 2) * h;
+  const size = Math.max(16, Math.min(44, Math.min(box.w * w, box.h * h) * 0.45));
+  const style = useAnimatedStyle(() => {
+    if (always) return { opacity: 1 };
+    if (!uv) return { opacity: 0 };
+    const d = Math.hypot(tx.get() * w - cx, ty.get() * h - cy);
+    return { opacity: Math.max(0, Math.min(1, 1.6 * (1 - d / r))) };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.ink, { left: box.x * w, top: box.y * h, width: box.w * w, height: box.h * h }, style]}>
+      <Text style={[styles.inkText, { fontSize: size, lineHeight: size * 1.15 }]} accessibilityLabel={`Written in invisible ink: ${mark.text}`}>
+        {mark.text}
+      </Text>
+    </Animated.View>
   );
 }
 
@@ -237,11 +312,8 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
   const x = box.x * w, y = box.y * h, bw = box.w * w, bh = box.h * h;
   switch (kind) {
     case "glow_mark":
-      return (
-        <RoundedRect x={x + bw * 0.25} y={y + bh * 0.3} width={bw * 0.5} height={bh * 0.4} r={8} color="rgba(170,120,255,0.75)">
-          <BlurMask blur={10} style="normal" />
-        </RoundedRect>
-      );
+      // The writing itself is drawn by InkMark, under the beam.
+      return null;
     case "panel_open":
       return (
         <Group>
@@ -261,5 +333,10 @@ const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },
+  ink: { position: "absolute", alignItems: "center", justifyContent: "center" },
+  inkText: {
+    color: "rgb(205,170,255)", fontWeight: "700", textAlign: "center", transform: [{ rotate: "-6deg" }],
+    textShadowColor: "rgba(150,95,255,0.95)", textShadowRadius: 10, textShadowOffset: { width: 0, height: 0 },
+  },
   probe: { ...StyleSheet.absoluteFill, opacity: 0 },
 });

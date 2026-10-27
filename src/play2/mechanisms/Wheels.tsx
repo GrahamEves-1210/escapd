@@ -129,9 +129,11 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled }: {
 }
 
 /** N wheels and a submit. Submit sends one symbol per wheel. */
-export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, onSubmit }: {
+export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, onSubmit, marks }: {
   alphabet: WheelAlphabet; count: number; width: number; busy: boolean; cooldown: number; done: boolean;
   submitLabel: string; onSubmit: (symbols: string[]) => void;
+  /** A symbol engraved above each wheel (the door's: its clues carry the same symbols). */
+  marks?: readonly string[];
 }) {
   const symbols = ALPHABET[alphabet];
   const [values, setValues] = useState<number[]>(() => Array.from({ length: count }, () => 0));
@@ -146,7 +148,10 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
     <View style={styles.bank}>
       <View style={styles.row}>
         {values.map((v, i) => (
-          <SymbolWheel key={i} index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} />
+          <View key={i} style={styles.marked}>
+            {marks ? <Text style={styles.mark} accessibilityLabel={`Wheel marked ${marks[i]}`}>{marks[i]}</Text> : null}
+            <SymbolWheel index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} />
+          </View>
         ))}
       </View>
       <MechButton label={submitLabel} disabled={blocked} onPress={() => onSubmit(values.map((v) => symbols[v]))} testID="mech-submit" />
@@ -158,6 +163,8 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
 const styles = StyleSheet.create({
   bank: { alignItems: "center", gap: ref.space.lg },
   row: { flexDirection: "row", gap: GAP, justifyContent: "center" },
+  marked: { alignItems: "center", gap: ref.space.xs },
+  mark: { ...ref.type.headline, color: ref.color.textSecondary, textAlign: "center" },
   wheel: { height: ROW * 3, borderRadius: ref.radius.tag, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", ...ref.curve },
   column: { position: "absolute", left: 0, right: 0, top: 0 },
   cell: { height: ROW, alignItems: "center", justifyContent: "center" },

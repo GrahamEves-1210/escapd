@@ -168,9 +168,11 @@ export type PullAxis = "down" | "up" | "x";
  * Locked, it gives a few points and rattles (`onLocked`). A tick when the
  * pull crosses the catch. `done` holds it at the end; while `busy` it holds still.
  */
-export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked }: {
+export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked, onUncommit }: {
   axis: PullAxis; range: number; done: boolean; locked?: boolean; busy: boolean;
   onCommit: () => void; onLocked?: () => void;
+  /** Given: once done it can be pushed back (a drawer shut, a cushion put back), committing this on release. */
+  onUncommit?: () => void;
 }): { progress: SharedValue<number>; gesture: ReturnType<typeof usePanGesture>; commitNow: () => void } {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
@@ -178,14 +180,17 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
   const start = useSharedValue(0);
   const live = useSharedValue(false);
   const lockedSV = useSharedValue(locked);
-  const enabled = useSharedValue(!done && !busy);
+  const reversible = !!onUncommit;
+  const enabled = useSharedValue(!busy && (!done || reversible));
+  const doneSV = useSharedValue(done);
   const reduced = useSharedValue(reducedMotion);
 
   useEffect(() => {
     lockedSV.set(locked);
-    enabled.set(!done && !busy);
+    enabled.set(!busy && (!done || reversible));
+    doneSV.set(done);
     reduced.set(reducedMotion);
-  }, [locked, done, busy, reducedMotion, lockedSV, enabled, reduced]);
+  }, [locked, done, busy, reducedMotion, lockedSV, enabled, reduced, reversible, doneSV]);
 
   // Settle to the state once nothing is in flight (a refused commit falls back).
   useEffect(() => {
@@ -205,6 +210,7 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
 
   const commit = useCallback(() => onCommit(), [onCommit]);
   const refuse = useCallback(() => onLocked?.(), [onLocked]);
+  const uncommit = useCallback(() => onUncommit?.(), [onUncommit]);
 
   const gesture = usePanGesture({
     enabled,
@@ -233,6 +239,16 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
       if (lockedSV.get()) {
         progress.set(withTiming(0, back));
         scheduleOnRN(refuse);
+        return;
+      }
+      // Open already: pushed most of the way back closes it again; otherwise it springs back open.
+      if (doneSV.get()) {
+        if (Math.abs(v) <= 1 - COMMIT_AT) {
+          progress.set(withTiming(0, back));
+          scheduleOnRN(uncommit);
+        } else {
+          progress.set(withTiming(v < 0 ? -1 : 1, back));
+        }
         return;
       }
       if (Math.abs(v) >= COMMIT_AT) {

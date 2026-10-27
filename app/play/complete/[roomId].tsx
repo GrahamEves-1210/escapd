@@ -80,23 +80,8 @@ export default function PlayCompleteScreen() {
       actions={(
         <>
           <ModePill variant="ghost" label={PLAY_COPY.newCase} onPress={newCase} testID="complete-new-case" />
-          <ModePill
-            variant="quiet"
-            ground="dark"
-            fullWidth
-            label={`Back to ${theme.name}`}
-            // Home, where the mode's card is: back down the stack to it (or to it in place of this screen).
-            onPress={() => router.dismissTo("/")}
-            testID="complete-mode"
-          />
-          <ModePill
-            variant="quiet"
-            ground="dark"
-            fullWidth
-            label={PLAY_COPY.replay}
-            onPress={() => router.replace({ pathname: "/play/[roomId]", params: { roomId } })}
-            testID="complete-replay"
-          />
+          {/* No "Back to <mode>" and no replay: one way on, and Done to go home. */}
+          <ModePill variant="quiet" ground="dark" fullWidth label="Done" onPress={() => router.dismissTo("/")} testID="complete-mode" />
         </>
       )}
     />
