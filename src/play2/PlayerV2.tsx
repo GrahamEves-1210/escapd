@@ -7,7 +7,8 @@
 // back to the v1 player (`onFallback`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { CaretLeftIcon, CaretRightIcon, ListIcon, ArrowLeftIcon, MagnifyingGlassIcon } from "phosphor-react-native";
+import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon, MagnifyingGlassIcon } from "phosphor-react-native";
+import { Canvas, RadialGradient, Rect as SkRect, vec } from "@shopify/react-native-skia";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
@@ -30,6 +31,8 @@ import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat } from "./PeekingCat";
+import { HeldFlashlight } from "./HeldFlashlight";
+import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 
@@ -41,6 +44,12 @@ export interface PlayerV2Props {
 }
 
 type Open = { kind: "object"; id: string } | { kind: "item"; id: string };
+
+/** A theme colour (#RRGGBB) at an opacity. */
+function tint(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : hex;
+}
 
 /** The cat's width on the ledge (points). */
 const CAT_W = 104;
@@ -91,6 +100,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [casebook, setCasebook] = useState(false);
   const [revision, setRevision] = useState(0);
   const [objectiveOpen, setObjectiveOpen] = useState(false);
+  // Clues read in the casebook (the badge counts the ones since), and where the ledge starts (the hand sits above it).
+  const [cluesRead, setCluesRead] = useState(0);
+  const [ledgeTop, setLedgeTop] = useState<number | null>(null);
+  const { width: screenW } = useWindowDimensions();
   // Glints: on by default; off is the hard way (nothing catches the light). Show interactives keeps a faint outline on everything.
   const [glints, setGlints] = useState(true);
 
@@ -398,6 +411,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   );
 
   const selectedItem = selected.length === 1 ? itemById(selected[0]) : undefined;
+  const SelectedGlyph = selectedItem ? itemIcon(selectedItem) : null;
+  const unread = Math.max(0, casebookCards.length - cluesRead);
+  const glass = { backgroundColor: tint(theme.ground, 0.72), borderColor: theme.rim };
+  const middle = frame ? frame.y + frame.height / 2 : null;
   const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
 
   return (
@@ -427,21 +444,45 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           />
         ) : null}
       </View>
+      {/* A vignette: the room's edges fall away into the dark. */}
+      <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+        <SkRect x={0} y={0} width={screenW} height={windowHeight}>
+          <RadialGradient
+            c={vec(screenW / 2, windowHeight * 0.45)}
+            r={Math.max(screenW, windowHeight) * 0.72}
+            colors={["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0.55)"]}
+            positions={[0, 0.55, 1]}
+          />
+        </SkRect>
+      </Canvas>
 
       <View style={[styles.top, { paddingTop: insets.top + ref.space.xs }]} pointerEvents="box-none">
-        <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={styles.glass} testID="v2-back">
-          <ArrowLeftIcon size={20} weight="bold" color="#FFFFFF" />
+        <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.glass, glass]} testID="v2-back">
+          <ArrowLeftIcon size={20} weight="bold" color={theme.ink} />
         </Pressable>
-        {/* The objective: one quiet line; tap for all of it. */}
-        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
-          <Text style={styles.objectiveText} numberOfLines={objectiveOpen ? undefined : 1}>{def.objective}</Text>
+        {/* The case: a label in the mode's display face over one quiet line; tap for all of it. */}
+        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={[styles.objective, glass]} testID="v2-objective">
+          <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>The case</Text>
+          <Text style={[styles.objectiveText, { color: theme.ink }]} numberOfLines={objectiveOpen ? undefined : 1}>{def.objective}</Text>
           {def.mode === "paranormal" && progress.total > 0 ? (
             // The presence answers each step the player takes toward the ritual; at the end it is gone.
             <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
           ) : null}
         </Pressable>
-        <Pressable onPress={() => setCasebook(true)} accessibilityRole="button" accessibilityLabel="Casebook" hitSlop={8} style={styles.glass} testID="v2-casebook-open">
-          <ListIcon size={20} weight="bold" color="#FFFFFF" />
+        <Pressable
+          onPress={() => { setCasebook(true); setCluesRead(casebookCards.length); }}
+          accessibilityRole="button"
+          accessibilityLabel={unread ? `Casebook, ${unread} new` : "Casebook"}
+          hitSlop={8}
+          style={[styles.glass, glass]}
+          testID="v2-casebook-open"
+        >
+          <NotebookIcon size={21} weight="bold" color={theme.ink} />
+          {unread ? (
+            <View style={[styles.badge, { backgroundColor: theme.accent }]} testID="v2-casebook-badge">
+              <Text style={[styles.badgeText, { color: theme.accentInk }]}>{unread}</Text>
+            </View>
+          ) : null}
         </Pressable>
       </View>
 
@@ -453,9 +494,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-prev"
-            style={[styles.edge, styles.edgeLeft]}
+            style={[styles.edge, glass, styles.edgeLeft, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
           >
-            <CaretLeftIcon size={44} weight="bold" color="#FFFFFF" />
+            <CaretLeftIcon size={28} weight="bold" color={theme.ink} />
           </Pressable>
           <Pressable
             onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }}
@@ -463,9 +504,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Next view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-next"
-            style={[styles.edge, styles.edgeRight]}
+            style={[styles.edge, glass, styles.edgeRight, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
           >
-            <CaretRightIcon size={44} weight="bold" color="#FFFFFF" />
+            <CaretRightIcon size={28} weight="bold" color={theme.ink} />
           </Pressable>
         </>
       ) : null}
@@ -473,15 +514,27 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
       </View>
 
+      {!open && ledgeTop !== null ? (
+        <HeldFlashlight beamX={beam.x} beamY={beam.y} frame={frame} pivot={{ x: screenW - 40, y: ledgeTop - 22 }} uv={uvOn} />
+      ) : null}
+
       {!open ? (
-        <View style={[styles.foot, { paddingBottom: insets.bottom + ref.space.sm }]} pointerEvents="box-none">
+        <View style={styles.foot} pointerEvents="box-none">
           {/* What the selected item is: a clean card over the tray. */}
           {selectedItem && !dragging ? (
             <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
-              <Text style={[ref.type.headline, { color: theme.ink }]}>{selectedItem.name}</Text>
-              <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
-                {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
-              </Text>
+              {SelectedGlyph ? (
+                <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
+                  <SelectedGlyph size={24} weight="fill" color={theme.ink} />
+                </View>
+              ) : null}
+              <View style={styles.itemText}>
+                <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>Evidence</Text>
+                <Text style={[ref.type.headline, { color: theme.ink }]}>{selectedItem.name}</Text>
+                <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
+                  {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
+                </Text>
+              </View>
             </View>
           ) : null}
           {selected.length === 2 ? (
@@ -489,7 +542,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
               <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
             </Pressable>
           ) : null}
-          <View style={[styles.footRow, styles.ledge, { borderTopColor: theme.rim }]} pointerEvents="box-none">
+          <View
+            style={[styles.footRow, styles.ledge, { backgroundColor: tint(theme.surface, 0.96), borderTopColor: tint(theme.ink, 0.14), paddingBottom: insets.bottom + ref.space.sm }]}
+            pointerEvents="box-none"
+            onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
+          >
             {/* The cat, peering over the ledge, eyes on your light. */}
             <View style={styles.cat} pointerEvents="none">
               <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} />
@@ -569,6 +626,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
 /** The magnifier, bottom left of the room: drag it onto something to look closer. */
 function Magnifier({ drag, onDragStart, onDrop }: { drag: DragState; onDragStart: () => void; onDrop: (x: number, y: number) => void }) {
+  const theme = useModeTheme();
   const pan = usePanGesture({
     minDistance: 4,
     maxPointers: 1,
@@ -590,8 +648,8 @@ function Magnifier({ drag, onDragStart, onDrop }: { drag: DragState; onDragStart
   });
   return (
     <GestureDetector gesture={pan}>
-      <View style={styles.lens} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
-        <MagnifyingGlassIcon size={30} weight="bold" color="#FFFFFF" />
+      <View style={[styles.lens, { backgroundColor: theme.raised, borderColor: theme.stamp }]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
+        <MagnifyingGlassIcon size={30} weight="bold" color={theme.ink} />
       </View>
     </GestureDetector>
   );
@@ -611,26 +669,34 @@ const styles = StyleSheet.create({
   center: { alignItems: "center", justifyContent: "center", gap: ref.space.lg },
   back: { minHeight: ref.hit.min, justifyContent: "center" },
   top: { position: "absolute", left: 0, right: 0, top: 0, flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm, paddingHorizontal: ref.space.lg },
-  glass: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" },
+  glass: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
   objective: {
-    flex: 1, minHeight: 40, borderRadius: 20, paddingHorizontal: ref.space.lg, paddingVertical: ref.space.sm, justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.45)", gap: ref.space.xs,
+    flex: 1, minHeight: 42, borderRadius: 14, paddingHorizontal: ref.space.lg, paddingVertical: 6, justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth, gap: 1,
   },
-  objectiveText: { ...ref.type.meta, color: "rgba(255,255,255,0.92)", textAlign: "center" },
+  caseLabel: { fontSize: 10, lineHeight: 12, letterSpacing: 1.6, textTransform: "uppercase", textAlign: "center" },
+  objectiveText: { ...ref.type.meta, textAlign: "center" },
+  badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
+  badgeText: { fontSize: 11, lineHeight: 13, fontWeight: "700" },
   toasts: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   edge: {
-    position: "absolute", top: "50%", marginTop: -32, width: 52, height: 64, alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.35)", zIndex: 10,
+    position: "absolute", top: "50%", marginTop: -26, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth, zIndex: 10,
   },
-  edgeLeft: { left: 0, borderTopRightRadius: 16, borderBottomRightRadius: 16 },
-  edgeRight: { right: 0, borderTopLeftRadius: 16, borderBottomLeftRadius: 16 },
-  foot: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: ref.space.lg, gap: ref.space.sm },
+  edgeLeft: { left: ref.space.sm },
+  edgeRight: { right: ref.space.sm },
+  foot: { position: "absolute", left: 0, right: 0, bottom: 0, gap: ref.space.sm },
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
-  ledge: { marginHorizontal: -ref.space.lg, paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: StyleSheet.hairlineWidth, backgroundColor: "rgba(12,12,16,0.82)" },
+  ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: 1 },
   cat: { position: "absolute", left: ref.space.lg + 64, bottom: "100%" },
   trayWrap: { flex: 1, paddingRight: 96 },
-  lens: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)" },
+  lens: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   lensGhost: { position: "absolute", left: 0, top: 0, width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.12)", zIndex: 200 },
-  itemCard: { alignSelf: "center", maxWidth: 340, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: ref.space.lg, paddingVertical: ref.space.sm + 2, gap: 2 },
-  combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center" },
+  itemCard: {
+    alignSelf: "center", maxWidth: 360, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.sm + 2,
+    flexDirection: "row", alignItems: "center", gap: ref.space.sm, marginHorizontal: ref.space.lg,
+  },
+  itemGlyph: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  itemText: { flexShrink: 1, gap: 1 },
+  combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center", marginHorizontal: ref.space.xl },
 });

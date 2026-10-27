@@ -226,8 +226,6 @@ export function Stage({
             {marks.map((m) => (
               <InkMark key={m.object} mark={m} w={W} h={H} tx={tx} ty={ty} r={R} always={lamps.length > 0} uv={uv} />
             ))}
-            {/* The flashlight in hand, bottom right, aimed at the beam. */}
-            <HeldLight tx={tx} ty={ty} w={W} h={H} uv={uv} />
             {/* One button per object for screen readers; no touch handlers, so the gestures above get every touch. */}
             {objects.map((o) => (
               <View
@@ -345,42 +343,7 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
   }
 }
 
-/**
- * The flashlight, first person: held low in the bottom-right corner, its
- * body turning to point at the beam, foreshortened as it aims deeper into the
- * room. Follows the light smoothly; never touchable.
- */
-function HeldLight({ tx, ty, w, h, uv }: { tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; uv: boolean }) {
-  const pivotX = w - 26;
-  const pivotY = h - 14;
-  const reach = Math.hypot(w, h);
-  const style = useAnimatedStyle(() => {
-    const dx = tx.get() * w - pivotX;
-    const dy = ty.get() * h - pivotY;
-    const angle = Math.atan2(dy, dx);
-    // Aimed far (high in the frame): the body points away and looks shorter.
-    const far = Math.min(1, Math.hypot(dx, dy) / reach);
-    return { transform: [{ rotate: `${angle}rad` }, { scaleX: 1 - 0.35 * far }] };
-  });
-  return (
-    <Animated.View pointerEvents="none" style={[styles.held, { left: pivotX, top: pivotY - LIGHT.body / 2 }, style]}>
-      <View style={styles.heldBody} />
-      <View style={styles.heldHead}>
-        <View style={[styles.heldLens, { backgroundColor: uv ? "rgb(170,120,255)" : "rgb(255,236,190)" }]} />
-      </View>
-    </Animated.View>
-  );
-}
-const LIGHT = { length: 96, body: 18, head: 28 } as const;
-
 const styles = StyleSheet.create({
-  held: { position: "absolute", width: LIGHT.length, height: LIGHT.body, flexDirection: "row", alignItems: "center", transformOrigin: "0% 50%" },
-  heldBody: { flex: 1, height: LIGHT.body, borderRadius: 6, backgroundColor: "rgb(38,38,42)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
-  heldHead: {
-    width: 26, height: LIGHT.head, borderRadius: 7, backgroundColor: "rgb(56,56,62)", alignItems: "flex-end", justifyContent: "center",
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
-  },
-  heldLens: { width: 6, height: LIGHT.head - 8, borderRadius: 3, marginRight: -1 },
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },
