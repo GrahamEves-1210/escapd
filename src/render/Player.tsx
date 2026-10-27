@@ -50,6 +50,8 @@ import { ladderFrom, type Ladder } from "./informantLadder";
 import { InventoryBar, type SlotRef } from "./InventoryBar";
 import { PickupFlight, flightRects, measureInWindow, type Flight } from "./PickupFlight";
 import { PresenceMeter } from "./PresenceMeter";
+import { RemovalLayer } from "./RemovalLayer";
+import { useRoomRemoval } from "./removalPatch";
 import { ResultSheet, type ResultContent } from "./ResultSheet";
 import { ScenePager } from "./ScenePager";
 import { SceneView, type SceneSource } from "./SceneView";
@@ -225,13 +227,28 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   const sceneIndex = Math.min(Math.max(ui.memory.sceneIndex, 0), sceneCount - 1);
   // The view in view, for async work to see whether it changed under it.
   const sceneRef = useRef(sceneIndex);
-  useLayoutEffect(() => {
-    latestState.current = state;
-    sceneRef.current = sceneIndex;
-  });
   const [picked, setPicked] = useState<Id[]>([]);
   // Every result opens as a new sheet (its own key), so one never takes over a sheet still sliding away.
   const [{ sheet }, setSheet] = useReducer(nextSheet, { sheet: null, seq: 0 });
+
+  // Taken objects leave the room (docs/DESIGN.md, Game feel · 4a): the room's
+  // one removable object, once its patch is baked, is gone while its inspect
+  // is solved, from the moment its clue is pocketed (the sheet closes, as the
+  // items fly out of it). Derived from state, so a resumed case shows it gone.
+  const removal = useRoomRemoval(def, sources, genre);
+  const taken = removal && state.solved.includes(removal.puzzleId) ? removal : null;
+  const goneId = taken && !(sheet?.kind === "result" && sheet.returnTo === taken.hotspotId) ? taken.hotspotId : null;
+  const goneIds = useMemo<ReadonlySet<Id>>(() => new Set(goneId ? [goneId] : []), [goneId]);
+  // Taken on this visit, with the patch ready: it fades out on the full removal fade.
+  const [takenLive, setTakenLive] = useState(false);
+  const removalRef = useRef(removal);
+  const takenRef = useRef<Id | null>(null);
+  useLayoutEffect(() => {
+    latestState.current = state;
+    sceneRef.current = sceneIndex;
+    removalRef.current = removal;
+    takenRef.current = taken?.hotspotId ?? null;
+  });
   const [toast, setToast] = useState<{ text: string; key: number } | null>(null);
   const [flash, setFlash] = useState<{ id: Id; key: number }>();
   const [thread, setThread] = useState<Thread | null>(null);
@@ -294,8 +311,8 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   const sceneHotspots = useMemo(() => hotspotsForScene(def, state, sceneIndex), [def, state, sceneIndex]);
   // Every view's visible hotspot rects: the loupe's detents and the crop's limit.
   const targetsByScene = useMemo(
-    () => def.photos.map((_, i) => hotspotsForScene(def, state, i).map((hotspot) => hotspot.shape)),
-    [def, state],
+    () => def.photos.map((_, i) => hotspotsForScene(def, state, i).filter((h) => h.id !== goneId).map((hotspot) => hotspot.shape)),
+    [def, state, goneId],
   );
   const solvedIds = useMemo(() => {
     const ids = new Set<Id>();
@@ -431,7 +448,8 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     setIrisId(null);
     // Pocketing the clue: what it gave up goes into the tray.
     launchPickup();
-    if (!returnTo) return;
+    // A taken object has left the room: there is nothing to go back to.
+    if (!returnTo || returnTo === takenRef.current) return;
     // Focus goes back to the hotspot the action came from, if it is still on screen then.
     if (focusTimer.current) clearTimeout(focusTimer.current);
     focusTimer.current = setTimeout(() => {
@@ -489,6 +507,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     const next = result.state ?? state;
     feedback.success();
     if (hotspotId) setFlash({ id: hotspotId, key: Date.now() });
+    if (result.puzzle_id && result.puzzle_id === removalRef.current?.puzzleId) setTakenLive(true);
     const gained = gainedItems(def, next, result.gained_items);
     if (gained.length) {
       AccessibilityInfo.announceForAccessibility(`${gained.map((g) => g.name).join(", ")} added to your evidence.`);
@@ -764,7 +783,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   const modal = sheet !== null;
   // The idle glint: after a quiet spell, the visible objects still to find catch the light once.
   const idle = useIdle(P.glint.idle, !modal && !completing && !player.pending);
-  const glint = idle.idleKey !== null ? { key: idle.idleKey, ids: glintTargets(sceneHotspots, solvedIds, tapped) } : undefined;
+  const glint = idle.idleKey !== null ? { key: idle.idleKey, ids: glintTargets(goneId ? sceneHotspots.filter((h) => h.id !== goneId) : sceneHotspots, solvedIds, tapped) } : undefined;
   const idleTouch = idle.touch;
   const idleCapture = useCallback(() => {
     idleTouch();
@@ -868,6 +887,9 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
               pageable={pageable}
               onWindow={onWindow}
               pagerGesture={pager}
+              backdrop={removal && goneId && !cleared && removal.photoIndex === i ? (stage, inLoupe) => (
+                <RemovalLayer patch={removal} stage={stage} live={takenLive} testID={inLoupe ? undefined : `removed-${removal.hotspotId}`} />
+              ) : undefined}
             >
               {(stage) => (
                 <>
@@ -879,6 +901,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
                     highlightId={coachHighlight}
                     flash={flash}
                     solvedIds={solvedIds}
+                    goneIds={goneIds}
                     irisId={irisId ?? undefined}
                     thread={thread ?? undefined}
                     labelFor={labelFor}

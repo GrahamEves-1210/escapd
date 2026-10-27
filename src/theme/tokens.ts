@@ -1526,6 +1526,11 @@ export const ref = {
       // lands anyway. Reduced motion: no flight; the item appears in its slot
       // (the haptic is kept).
       pickup: { flight: 520, arc: 90, from: 1.25, size: 44, bounce: 1.14, bounceUp: 90, spring: { damping: 9, stiffness: 260, mass: 0.6 }, measureTimeout: 160, landSlack: 200 },
+      // A taken object leaves the room (src/render/RemovalLayer.tsx): its
+      // filled patch fades in over it in `fade` ms as the clue is pocketed;
+      // a patch ready only after the solve (a resumed case) comes in on the
+      // treatment's own fade. Reduced motion: it is simply gone.
+      removal: { fade: 600 },
       // A clue as an object on the sheet: a note on lined, torn paper (`tear`
       // pt of torn edge, ruled every line, a margin rule `margin` in, tilted
       // `tilt` degrees) and, for an object in the room, a polaroid of it (the

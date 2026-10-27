@@ -37,6 +37,11 @@ export interface SceneViewProps {
   accessibilityLabel: string;
   /** Rendered inside the image box, so children position in image fractions. Only on the page in view. */
   children: (stage: Size) => ReactNode;
+  /**
+   * Drawn on the photo itself, under the children, on every mounted page and
+   * in the loupe (`inLoupe`; a taken object's patch): it moves with the photo. Never touchable.
+   */
+  backdrop?: (stage: Size, inLoupe: boolean) => ReactNode;
   /** True while the player pinches, pans, or holds the loupe (chrome fades). */
   onInteractionChange?: (active: boolean) => void;
   /** Completion: the photo pulls back slightly. */
@@ -80,7 +85,7 @@ export function bundledAspect(source: SceneSource): number | null {
  * fractions stay locked to the photograph.
  */
 export function SceneView({
-  source, genre, treated = true, cacheKey, accessibilityLabel, children, onInteractionChange, pulledBack,
+  source, genre, treated = true, cacheKey, accessibilityLabel, children, backdrop, onInteractionChange, pulledBack,
   armed = false, loupeTargets = [], active = true, pageable, onAspect, onWindow, pagerGesture,
 }: SceneViewProps) {
   const { reducedMotion } = useTheme();
@@ -324,6 +329,12 @@ export function SceneView({
       transform: [{ translateX: loupeImgX.get() }, { translateY: loupeImgY.get() }],
     };
   });
+  // The backdrop at 1x, scaled about its centre to the loupe's magnification and moved back to its top left.
+  const loupeBackdropStyle = useAnimatedStyle(() => {
+    const mag = motion.loupeMagnification * scale.get();
+    const { width, height } = img.get();
+    return { transform: [{ translateX: (width * mag - width) / 2 }, { translateY: (height * mag - height) / 2 }, { scale: mag }] };
+  });
 
   const laidOut = fit && windowWidth > 0 && windowHeight > 0;
   return (
@@ -359,6 +370,11 @@ export function SceneView({
                 onLoad={(e) => onPhotoLoad(e.source.width, e.source.height)}
                 testID={active ? "scene-photo" : undefined}
               />
+              {backdrop ? (
+                <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                  {backdrop({ width: imageWidth, height: imageHeight }, false)}
+                </View>
+              ) : null}
               {active ? children({ width: imageWidth, height: imageHeight }) : null}
             </Animated.View>
             {armed && active ? <View pointerEvents="none" style={[styles.armed, { borderColor: theme.ink }]} testID="scene-armed" /> : null}
@@ -374,6 +390,11 @@ export function SceneView({
                     contentFit="fill"
                     accessible={false}
                   />
+                  {backdrop && active ? (
+                    <Animated.View pointerEvents="none" style={[styles.loupeBackdrop, { width: imageWidth, height: imageHeight }, loupeBackdropStyle]}>
+                      {backdrop({ width: imageWidth, height: imageHeight }, true)}
+                    </Animated.View>
+                  ) : null}
                 </Animated.View>
                 <View style={styles.loupeRim} />
               </View>
@@ -426,6 +447,7 @@ const styles = StyleSheet.create({
   },
   loupeLens: { flex: 1, borderRadius: LOUPE / 2, overflow: "hidden" },
   loupeImage: { position: "absolute", left: 0, top: 0 },
+  loupeBackdrop: { position: "absolute", left: 0, top: 0 },
   loupeRim: { ...StyleSheet.absoluteFill, borderRadius: LOUPE / 2, borderWidth: P.loupe.rim, borderColor: ref.color.rimFaint },
   measure: { width: 1, height: 1, opacity: 0 },
 });

@@ -44,6 +44,11 @@ export interface HotspotLayerProps {
   flash?: { id: Id; key: number };
   /** Hotspots whose puzzles are already solved: grey brackets and a check seal. */
   solvedIds?: ReadonlySet<Id>;
+  /**
+   * Objects taken out of the room (RemovalLayer): no brackets, no touch, not
+   * read out. The target stays mounted, so the pickup can still measure it.
+   */
+  goneIds?: ReadonlySet<Id>;
   /** A hotspot that just appeared. Its brackets open heavier, in white. */
   irisId?: Id;
   /** A dashed white thread from the object that revealed something, in image fractions. */
@@ -74,14 +79,14 @@ export function readingOrder(hotspots: readonly Hotspot[]): Id[] {
 }
 
 export function HotspotLayer({
-  hotspots, stage, persistent, highlightId, flash, solvedIds, irisId, thread, labelFor, onPress, onPressIn, registerRef, glint,
+  hotspots, stage, persistent, highlightId, flash, solvedIds, goneIds, irisId, thread, labelFor, onPress, onPressIn, registerRef, glint,
 }: HotspotLayerProps) {
   const theme = useModeTheme();
   return (
     <View
       style={StyleSheet.absoluteFill}
       pointerEvents="box-none"
-      experimental_accessibilityOrder={readingOrder(hotspots).map(nativeIdFor)}
+      experimental_accessibilityOrder={readingOrder(goneIds?.size ? hotspots.filter((h) => !goneIds.has(h.id)) : hotspots).map(nativeIdFor)}
       testID="hotspot-layer"
     >
       {thread ? (
@@ -116,6 +121,7 @@ export function HotspotLayer({
           stage={stage}
           bright={persistent || h.id === highlightId || h.id === irisId}
           solved={solvedIds?.has(h.id) ?? false}
+          gone={goneIds?.has(h.id) ?? false}
           iris={h.id === irisId}
           flashKey={flash?.id === h.id ? flash.key : undefined}
           glintKey={glint?.ids.includes(h.id) ? glint.key : undefined}
@@ -131,12 +137,13 @@ export function HotspotLayer({
 }
 
 const HotspotTarget = memo(function HotspotTarget({
-  hotspot, stage, bright, solved, iris, flashKey, glintKey, glintOrder, label, onPress, onPressIn, registerRef,
+  hotspot, stage, bright, solved, gone, iris, flashKey, glintKey, glintOrder, label, onPress, onPressIn, registerRef,
 }: {
   hotspot: Hotspot;
   stage: Size;
   bright: boolean;
   solved: boolean;
+  gone: boolean;
   iris: boolean;
   flashKey?: number;
   glintKey?: number;
@@ -198,6 +205,11 @@ const HotspotTarget = memo(function HotspotTarget({
       ref={(node) => registerRef?.(hotspot.id, node)}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityElementsHidden={gone}
+      importantForAccessibility={gone ? "no-hide-descendants" : "auto"}
+      accessibilityState={gone ? { disabled: true } : undefined}
+      disabled={gone}
+      pointerEvents={gone ? "none" : "auto"}
       nativeID={nativeIdFor(hotspot.id)}
       hitSlop={hitSlopFor(rect, hit.min)}
       unstable_pressDelay={ref.layout.play.hotspotPressDelay}
@@ -208,13 +220,15 @@ const HotspotTarget = memo(function HotspotTarget({
       testID={`hotspot-${hotspot.id}`}
       style={[styles.target, rect]}
     >
-      {glintKey !== undefined ? (
+      {gone ? null : glintKey !== undefined ? (
         <Glint key={glintKey} id={hotspot.id} width={rect.width} height={rect.height} order={glintOrder} />
       ) : null}
-      <Animated.View style={[StyleSheet.absoluteFill, bracketStyle]} pointerEvents="none">
-        <Brackets width={rect.width} height={rect.height} tone={iris ? "iris" : solved ? "spent" : "open"} />
-      </Animated.View>
-      {solved ? (
+      {gone ? null : (
+        <Animated.View style={[StyleSheet.absoluteFill, bracketStyle]} pointerEvents="none">
+          <Brackets width={rect.width} height={rect.height} tone={iris ? "iris" : solved ? "spent" : "open"} />
+        </Animated.View>
+      )}
+      {solved && !gone ? (
         <View pointerEvents="none" style={styles.seal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={styles.sealFill} />
           <CheckIcon size={SEAL.icon} weight="bold" color={theme.ink} />

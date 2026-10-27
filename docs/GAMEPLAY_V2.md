@@ -85,6 +85,12 @@ finale that needs all of them**, then a payoff you can see.
    pinned where it was found, UV light makes marks glow, paranormal objects shift. The
    photo stays; **state overlays** anchored to the object's box tell you the world moved.
 
+   *Shipped, a first version, app only:* one small portable object per room (an
+   inspect-only hotspot on a plain background) disappears from the photo once it is
+   taken: an on-device push-pull fill of its box, with matched grain, fades in over it.
+   No model call, no server change, and it works on existing rooms. See DESIGN.md,
+   Game feel · 4a "Taken objects leave the room".
+
 ### Pacing target: 6–10 minutes
 
 | Beat | Time | What happens |
