@@ -27,7 +27,7 @@ import { InspectView, type Content } from "./InspectView";
 import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
-import { PeekingCat } from "./PeekingCat";
+import { PeekingCat, type CatReaction } from "./PeekingCat";
 import { Flashlight, LensGhost, Magnifier, TOOL } from "./Tools";
 import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
@@ -102,6 +102,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [casebook, setCasebook] = useState(false);
   const [revision, setRevision] = useState(0);
   const [objectiveOpen, setObjectiveOpen] = useState(false);
+  // What the cat last reacted to (a find, a wrong answer).
+  const [catReaction, setCatReaction] = useState<CatReaction>(null);
   // Clues read in the casebook (the badge counts the ones since), and where the ledge starts (the hand sits above it).
   const [cluesRead, setCluesRead] = useState(0);
   const [ledgeTop, setLedgeTop] = useState<number | null>(null);
@@ -179,6 +181,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         if (where === "room") lines.push(TOAST.nothing);
         break;
       case "wrong":
+        setCatReaction({ kind: "wrong", at: Date.now() });
         feedback.wrongCode();
         lines.push(TOAST.wrong);
         break;
@@ -220,6 +223,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           lines.push(e.text);
           break;
         case "solved":
+          setCatReaction({ kind: "found", at: Date.now() });
           feedback.success();
           break;
         default:
@@ -555,7 +559,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           >
             {/* The cat, peering over the ledge, eyes on your light. */}
             <View style={styles.cat} pointerEvents="none">
-              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} />
+              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} />
             </View>
             <View style={styles.trayWrap}>{tray}</View>
           </View>
