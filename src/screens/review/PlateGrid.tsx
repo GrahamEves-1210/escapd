@@ -58,15 +58,25 @@ export interface PlateGridProps {
   /** Retake a photo in place, or take an open slot: both open the camera on that slot. */
   onRetake: (slot: number) => void;
   onRemove: (slot: number) => void;
+  /** The height the grid must fit in (no scrolling): tiles shrink to it. */
+  fitHeight?: number;
 }
 
-export function PlateGrid({ slots, prompts, marks, onRetake, onRemove }: PlateGridProps) {
+/** The number line under each tile. */
+const LABEL_H = 24;
+
+export function PlateGrid({ slots, prompts, marks, onRetake, onRemove, fitHeight }: PlateGridProps) {
   const { width } = useWindowDimensions();
-  const tile = (width - ref.space.edge * 2 - G.gap * (G.columns - 1)) / G.columns;
+  // Two across up to four photos, three across for more: every photo on one screen.
+  const columns = slots.length > 4 ? 3 : G.columns;
+  const rowCount = Math.max(1, Math.ceil(slots.length / columns));
+  const byWidth = (width - ref.space.edge * 2 - G.gap * (columns - 1)) / columns;
+  const perRow = fitHeight ? (fitHeight - G.rowGap * (rowCount - 1)) / rowCount - G.labelGap - LABEL_H : Infinity;
+  const tile = Math.max(60, Math.min(byWidth, perRow * ASPECT));
   const size = { width: tile, height: tile / ASPECT };
   const rows: number[][] = [];
   slots.forEach((_, i) => {
-    if (i % G.columns === 0) rows.push([]);
+    if (i % columns === 0) rows.push([]);
     rows[rows.length - 1].push(i);
   });
   return (
@@ -224,7 +234,7 @@ function PlateName({ prompt, palette }: { prompt: PlatePrompt; palette: CaptureP
 
 const styles = StyleSheet.create({
   grid: { marginHorizontal: ref.space.edge, gap: G.rowGap },
-  row: { flexDirection: "row", gap: G.gap, alignItems: "flex-start" },
+  row: { flexDirection: "row", gap: G.gap, alignItems: "flex-start", justifyContent: "center" },
   cell: { gap: G.labelGap },
   // 02's last-photo frame, grown: no border, so the focus ring measures from its outer edge.
   frame: { ...StyleSheet.absoluteFill, borderRadius: THUMB.radius, ...curve },

@@ -24,8 +24,8 @@
 // case" as the mode's primary pill, and every photo in the mode's baked
 // treatment (TreatedImage), so the player sees the room as the case will
 // show it. The flagged amber stays.
-import { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { decodeFlags, decodeIssue, type RetakeReason } from "@/capture/failure";
@@ -34,7 +34,6 @@ import { MIN_PLATES, platePrompts } from "@/capture/slots";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { AddPlateButton } from "./AddPlateButton";
-import { ChecksSection } from "./ChecksSection";
 import { COPY } from "./copy";
 import { DevelopFooter, type DevelopFooterProps } from "./DevelopFooter";
 import { TapGlyph } from "./Glyphs";
@@ -73,13 +72,15 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
       : null;
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/capture"));
+  const [gridH, setGridH] = useState(0);
   const hasPlates = plates.length > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: palette.page }]} testID="review-root">
       <ReviewHeader top={insets.top} count={plates.length} max={plan.shots} onBack={back} />
       <View style={styles.body}>
-        <ScrollView contentContainerStyle={styles.content} testID="review-scroll">
+        {/* Everything on one screen: the photos shrink to the room left, nothing scrolls. */}
+        <View style={styles.content} testID="review-scroll">
           {issue ? (
             <View style={[styles.issue, { backgroundColor: palette.raised }]} testID="review-issue">
               <Text style={[styles.issueText, { color: palette.ink }]}>{COPY.issues[issue]}</Text>
@@ -89,20 +90,22 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
             {COPY.lead}
           </Text>
           {hasPlates ? (
-            <View style={styles.grid}>
-              <PlateGrid
-                slots={slots}
-                prompts={prompts}
-                marks={marks}
-                onRetake={(slot) => router.push({ pathname: "/capture", params: { retake: String(slot) } })}
-                onRemove={(slot) => removePlate(slot)}
-              />
+            <View style={styles.grid} onLayout={(e) => setGridH(e.nativeEvent.layout.height)}>
+              {gridH > 0 ? (
+                <PlateGrid
+                  slots={slots}
+                  prompts={prompts}
+                  marks={marks}
+                  fitHeight={gridH}
+                  onRetake={(slot) => router.push({ pathname: "/capture", params: { retake: String(slot) } })}
+                  onRemove={(slot) => removePlate(slot)}
+                />
+              ) : null}
             </View>
           ) : null}
           {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
           {plates.length < plan.shots ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
-          <ChecksSection style={styles.checks} />
-        </ScrollView>
+        </View>
         <PageFade color={palette.page} height={GAP.top} solidAt="top" style={styles.topFade} />
       </View>
       <DevelopFooter bottom={insets.bottom} blocked={blocked} onDevelop={() => router.push("/capture/develop")} />
@@ -114,7 +117,7 @@ const styles = StyleSheet.create({
   // The flat ground: the palette's page.
   root: { flex: 1 },
   body: { flex: 1 },
-  content: { paddingTop: GAP.top, paddingBottom: GAP.end },
+  content: { flex: 1, paddingTop: GAP.top, paddingBottom: ref.space.lg },
   topFade: { top: 0 },
   // A failure about the whole set: a calm raised note at the camera's nested corners (no glyph, not amber).
   issue: {
@@ -126,9 +129,8 @@ const styles = StyleSheet.create({
   },
   issueText: { ...ref.type.subtitle },
   lead: { ...ref.type.subtitle, marginHorizontal: ref.space.edge },
-  grid: { marginTop: GAP.lead },
+  grid: { flex: 1, marginTop: GAP.lead },
   hint: { marginTop: GAP.hint },
   add: { marginTop: GAP.add },
   addFirst: { marginTop: GAP.lead },
-  checks: { marginTop: GAP.section },
 });
