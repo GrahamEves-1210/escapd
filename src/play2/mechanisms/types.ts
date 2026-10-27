@@ -4,6 +4,7 @@
 // local feel (detents, haptics, sound); it reports a value only on release
 // (`onSet`) or on a deliberate submit (`onSubmit`). The engine decides what
 // that value means: a mechanism never knows an answer.
+import type { ReactNode } from "react";
 import type { ControlDef, ControlDomain, FinaleDef, StateValue } from "@/engine/v2";
 import type { ArchetypeId } from "@/engine/v2";
 
@@ -36,4 +37,9 @@ export interface MechanismProps {
   ritualChoices?: { id: string; label: string }[];
   /** Width available (the inspection view's content width). */
   width: number;
+  /**
+   * What it holds (notes, items), for a mechanism with an inside to lay it in:
+   * a drawer's, under a cloth. The others leave it to the inspection view.
+   */
+  inside?: ReactNode;
 }

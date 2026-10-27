@@ -13,7 +13,7 @@ import type { MechanismProps } from "./types";
 
 const TRAVEL = 72;
 
-export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
+export function Drawer({ target, state, onSet, busy, width, inside }: MechanismProps) {
   const theme = useModeTheme();
   const feedback = useFeedback();
   const swing = target.variant === "compartment";
@@ -68,12 +68,6 @@ export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
       <View style={[styles.room, { height: STAGE }]}>
         <GestureDetector gesture={gesture}>
           <Animated.View
-            {...activatable(
-              open ? `Push the ${noun} shut` : `Pull the ${noun} open`,
-              locked ? "It is locked" : open ? `Closes the ${noun}` : `Opens the ${noun}`,
-              open ? onUncommit : commitNow,
-              busy,
-            )}
             testID="mech-drawer"
             style={[
               styles.carcass,
@@ -84,8 +78,19 @@ export function Drawer({ target, state, onSet, busy, width }: MechanismProps) {
             {/* The dark inside the front leaves behind. */}
             <Animated.View style={[styles.inside, { height: h, backgroundColor: theme.ground, borderColor: theme.rim }, insideStyle]}>
               <View style={[styles.insideEdge, { borderColor: theme.rim }]} />
+              {/* What's in it, lying in the part the front slid off (pushed shut, the front covers it again). */}
+              {inside ? <View style={[styles.lying, { height: swing ? h : TRAVEL - ref.space.sm }]} pointerEvents="box-none">{inside}</View> : null}
             </Animated.View>
-            <Animated.View style={[styles.front, { height: h, backgroundColor: theme.raised, borderColor: theme.rim }, frontStyle]}>
+            {/* The front is the control for assistive tech (what's inside stays reachable on its own). */}
+            <Animated.View
+              {...activatable(
+                open ? `Push the ${noun} shut` : `Pull the ${noun} open`,
+                locked ? "It is locked" : open ? `Closes the ${noun}` : `Opens the ${noun}`,
+                open ? onUncommit : commitNow,
+                busy,
+              )}
+              style={[styles.front, { height: h, backgroundColor: theme.raised, borderColor: theme.rim }, frontStyle]}
+            >
               <View style={[styles.bevel, { borderColor: theme.rim }]} />
               {swing ? (
                 <View style={[styles.knob, { backgroundColor: theme.accent }]} />
@@ -121,6 +126,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
+  lying: { position: "absolute", left: 0, right: 0, top: 0, alignItems: "center", justifyContent: "center" },
   insideEdge: { position: "absolute", left: ref.space.lg, right: ref.space.lg, top: ref.space.lg, bottom: 0, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0 },
   front: {
     borderRadius: ref.radius.tag / 2,

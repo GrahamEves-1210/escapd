@@ -64,13 +64,13 @@ describe("mechanisms", () => {
     expect(frame.onSet).toHaveBeenCalledWith("tilted", true);
   });
 
-  it("turns pages with the steppers and the scale", async () => {
+  it("turns straight to a page with the number wheels", async () => {
     const t = target("Readable", "pages");
     const { onSet } = await mount(t, { state: { page: "46" } });
-    await fireEvent.press(screen.getByLabelText("Next page"));
+    for (let i = 0; i < 4; i++) await act("Wheel 2", "increment");
+    for (let i = 0; i < 7; i++) await act("Wheel 3", "increment");
+    await fireEvent.press(screen.getByLabelText("Turn to page"));
     expect(onSet).toHaveBeenLastCalledWith("page", "47");
-    await act("Page", "increment");
-    expect(onSet).toHaveBeenLastCalledWith("page", "48");
     for (const [, v] of onSet.mock.calls) expectValid(t, "page", v);
   });
 

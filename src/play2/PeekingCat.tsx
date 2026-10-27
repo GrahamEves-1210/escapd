@@ -47,8 +47,9 @@ const DOZE_AFTER = 22000;
  * Stop motion: the sources' values, snapshotted FPS times a second. Styles read
  * the snapshot (by index), so they only change on a new frame.
  */
-function useStopMotion(sources: SharedValue<number>[]): SharedValue<number[]> {
-  const shown = useSharedValue(sources.map((v) => v.get()));
+export function useStopMotion(sources: SharedValue<number>[], initial: number[]): SharedValue<number[]> {
+  // Seeded with the sources' starting values (reading them during render isn't allowed).
+  const shown = useSharedValue(initial);
   const last = useSharedValue(-1);
   useFrameCallback((frame) => {
     "worklet";
@@ -217,7 +218,10 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   const known = !!origin && !!frame;
 
   // Everything the cat's drawn from, at 12 frames a second (indices: see the reads below).
-  const f = useStopMotion([rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY]);
+  const f = useStopMotion(
+    [rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY],
+    [reducedMotion ? 0 : height, 0, 0, 0, 0, 1, 1, 0, 0, 0.5, 0.5],
+  );
   const body = useAnimatedStyle(() => {
     const [r, h, b, tilt, , squashX, squashY, z, t, bx] = f.get();
     let lean = 0;
@@ -291,7 +295,7 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
     const period = drift ? 2200 : 1500;
     t.set(withDelay(delay, withRepeat(withTiming(1, { duration: period, easing: Easing.out(Easing.quad) }), -1, false)));
   }, [t, delay, drift, still]);
-  const shown = useStopMotion([t]);
+  const shown = useStopMotion([t], [still ? 0.5 : 0]);
   const anim = useAnimatedStyle(() => {
     const p = shown.get()[0];
     // Pops in with a little overshoot, rises (a "z" drifts sideways too), fades near the top.
@@ -315,12 +319,12 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
 }
 
 /** A find: sparkles burst out around its head and an "!" pops up, once. */
-function Burst({ size, color, glyph }: { size: number; color: string; glyph: { color: string; fontFamily?: string } }) {
+export function Burst({ size, color, glyph }: { size: number; color: string; glyph: { color: string; fontFamily?: string } }) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.set(withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
   }, [t]);
-  const shown = useStopMotion([t]);
+  const shown = useStopMotion([t], [0]);
   const bang = useAnimatedStyle(() => {
     const p = shown.get()[0];
     return {

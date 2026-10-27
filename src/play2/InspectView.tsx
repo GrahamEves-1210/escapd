@@ -50,6 +50,8 @@ export interface InspectViewProps {
   revision: number;
   /** The held items, as the tray (drag one up onto the sheet to use it here). */
   tray: ReactNode;
+  /** The cat, peering over the sheet's top edge while it's up. */
+  cat?: ReactNode;
 }
 
 const CONTAINER_KEYS = ["open", "lifted", "tilted", "panel", "on"] as const;
@@ -61,7 +63,7 @@ function showsInside(state: Record<string, StateValue>): boolean {
 }
 
 export function InspectView(props: InspectViewProps) {
-  const { target, state, contents, note, busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray } = props;
+  const { target, state, contents, note, busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray, cat } = props;
   const theme = useModeTheme();
   const feedback = useFeedback();
   const { reducedMotion } = useTheme();
@@ -90,11 +92,44 @@ export function InspectView(props: InspectViewProps) {
   // Opened (or there was nothing to open) and nothing in it: say so.
   const empty = open && contents.length === 0 && (target.archetype === null || CONTAINER_KEYS.some((k) => state[k] === true));
 
+  // What it holds: tap a note to read it, an item to pick it up. A drawer or a
+  // cloth lays it in its own inside; anything else, along the bottom.
+  const lies = target.archetype === "Drawer" || target.archetype === "LiftUnder";
+  const items = inside.length || empty ? (
+    <>
+      {inside.map((c) => {
+        const Glyph = c.kind === "card" ? NoteIcon : itemIcon(c.item);
+        return (
+          <Pressable
+            key={c.kind === "card" ? c.card.id : c.item.id}
+            onPress={() => {
+              if (c.kind === "card") {
+                feedback.paper();
+                setReading(c.card);
+              } else {
+                feedback.pickup();
+                onPickUp(c.item.id);
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${c.item.name}`}
+            testID={c.kind === "card" ? `v2-note-${c.card.id}` : `v2-found-${c.item.id}`}
+            style={[styles.found, c.kind === "card" ? styles.paperFound : { backgroundColor: theme.raised, borderColor: theme.ink }]}
+          >
+            <Glyph size={30} weight="fill" color={c.kind === "card" ? PAPER_INK : theme.ink} />
+          </Pressable>
+        );
+      })}
+      {empty && !inside.length ? <Text style={[ref.type.body, styles.empty, { color: theme.inkMuted }]} testID="v2-empty">Nothing here.</Text> : null}
+    </>
+  ) : null;
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none" testID="v2-inspect">
       {/* The room stays in view above; a tap there puts the sheet away. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Back to the room" testID="v2-inspect-away" />
       <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.rim, paddingBottom: insets.bottom + ref.space.sm }, sheetStyle]}>
+        {cat ? <View style={styles.cat} pointerEvents="none">{cat}</View> : null}
         <View style={[styles.grabber, { backgroundColor: theme.rim }]} />
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -118,35 +153,10 @@ export function InspectView(props: InspectViewProps) {
             finale={finale}
             ritualChoices={ritualChoices}
             width={width - 2 * ref.space.lg}
+            inside={lies && items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : undefined}
           />
-          {/* What it holds, lying in it: tap a note to read it, an item to pick it up. */}
-          {inside.length || empty ? (
-            <View style={styles.contents} pointerEvents="box-none" testID="v2-contents">
-              {inside.map((c) => {
-                const Glyph = c.kind === "card" ? NoteIcon : itemIcon(c.item);
-                return (
-                  <Pressable
-                    key={c.kind === "card" ? c.card.id : c.item.id}
-                    onPress={() => {
-                      if (c.kind === "card") {
-                        feedback.paper();
-                        setReading(c.card);
-                      } else {
-                        feedback.pickup();
-                        onPickUp(c.item.id);
-                      }
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${c.item.name}`}
-                    testID={c.kind === "card" ? `v2-note-${c.card.id}` : `v2-found-${c.item.id}`}
-                    style={[styles.found, c.kind === "card" ? styles.paperFound : { backgroundColor: theme.raised, borderColor: theme.ink }]}
-                  >
-                    <Glyph size={30} weight="fill" color={c.kind === "card" ? PAPER_INK : theme.ink} />
-                  </Pressable>
-                );
-              })}
-              {empty && !inside.length ? <Text style={[ref.type.body, styles.empty, { color: theme.inkMuted }]} testID="v2-empty">Nothing here.</Text> : null}
-            </View>
+          {!lies && items ? (
+            <View style={styles.contents} pointerEvents="box-none" testID="v2-contents">{items}</View>
           ) : null}
           {onTake ? (
             <Pressable onPress={onTake} disabled={busy} accessibilityRole="button" accessibilityLabel="Take it" testID="v2-take" style={[styles.take, { backgroundColor: theme.accent }]}>
@@ -180,12 +190,14 @@ const styles = StyleSheet.create({
     position: "absolute", left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     borderTopWidth: StyleSheet.hairlineWidth, paddingTop: ref.space.sm, zIndex: 50,
   },
+  cat: { position: "absolute", left: ref.space.xl, bottom: "100%" },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, marginBottom: ref.space.sm },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: ref.space.lg, gap: ref.space.sm, minHeight: 44 },
   headerText: { flex: 1, gap: 2 },
   close: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   mechanism: { alignItems: "center", justifyContent: "center" },
   contents: { position: "absolute", left: 0, right: 0, bottom: ref.space.sm, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
+  lying: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
   found: { width: 56, height: 56, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   paperFound: { backgroundColor: PAPER, borderColor: "rgba(0,0,0,0.25)", transform: [{ rotate: "-4deg" }] },
   empty: { fontStyle: "italic" },

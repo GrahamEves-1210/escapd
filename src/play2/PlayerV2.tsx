@@ -156,7 +156,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const itemById = useCallback((id: string) => def?.items.find((i) => i.id === id), [def]);
   const objectById = useCallback((id: string) => def?.objects.find((o) => o.id === id), [def]);
-  const heldItems = useMemo(() => (state ? state.inventory.map((id) => itemById(id)).filter((i): i is ItemDef => !!i) : []), [state, itemById]);
+  // Found items lying where they were found (a drawer, under a cloth) aren't in hand until picked up.
+  const lying = useMemo(() => new Set(Object.values(contents).flat().flatMap((c) => (c.kind === "item" ? [c.item.id] : []))), [contents]);
+  const heldItems = useMemo(
+    () => (state ? state.inventory.filter((id) => !lying.has(id)).map((id) => itemById(id)).filter((i): i is ItemDef => !!i) : []),
+    [state, itemById, lying],
+  );
   /** Feedback and notes for one result (none when it didn't go through); returns the cards it showed. */
   const openObject = open?.kind === "object" ? open.id : null;
   const addContent = (objectId: string, c: Content) =>
@@ -198,11 +203,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     for (const e of result.effects) {
       switch (e.do) {
         case "show_card":
+          setCatReaction({ kind: "found", at: Date.now() });
           feedback.paper();
           cards.push({ id: e.card, title: e.title, text: e.text });
           if (where === "inspect" && openObject) addContent(openObject, { kind: "card", card: { id: e.card, title: e.title, text: e.text } });
           break;
         case "grant": {
+          setCatReaction({ kind: "found", at: Date.now() });
           const item = itemById(e.item);
           if (where === "inspect" && openObject && item) addContent(openObject, { kind: "item", item });
           else {
@@ -320,7 +327,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   };
 
   // The UV flashlight held over something for a moment checks it: invisible ink shows if there's any.
-  const uvItem = state?.inventory.map((id) => itemById(id)).find((i) => i && isUvLight(i));
+  const uvItem = heldItems.find((i) => isUvLight(i));
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onHover = (objectId: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -339,7 +346,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   };
 
   const askHint = async () => {
-    if (await hint()) feedback.tick();
+    if (await hint()) {
+      feedback.tick();
+      // The cat's had an idea.
+      setCatReaction({ kind: "found", at: Date.now() });
+    }
   };
 
   if (phase.kind === "loading" || phase.kind === "fallback" || !def || !state || !scene) {
@@ -403,6 +414,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
+  const cat = <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"} />;
   const tray = (
     <ItemTray
       items={heldItems}
@@ -557,10 +569,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             pointerEvents="box-none"
             onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
           >
-            {/* The cat, peering over the ledge, eyes on your light. */}
-            <View style={styles.cat} pointerEvents="none">
-              <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"} />
-            </View>
+            {/* The cat, peering over the ledge, eyes on your light (over the close-up's sheet while that's up). */}
+            {open || casebook ? null : <View style={styles.cat} pointerEvents="none">{cat}</View>}
             <View style={styles.trayWrap}>{tray}</View>
           </View>
         </View>
@@ -574,6 +584,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           note={note}
           onPickUp={(itemId) => pickUp(open.kind === "object" ? open.id : `item:${open.id}`, itemId)}
           tray={tray}
+          cat={cat}
           busy={busy}
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
@@ -588,6 +599,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
       {casebook ? (
         <Casebook
+          cat={cat}
           objective={def.objective}
           board={def.finale.kind === "accusation"
             ? [
@@ -656,7 +668,8 @@ const styles = StyleSheet.create({
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, gap: ref.space.sm },
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
   ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: 1 },
-  cat: { position: "absolute", left: ref.space.xl, bottom: "100%" },
+  // Just right of the magnifier (bottom-left of the photo), clear of it.
+  cat: { position: "absolute", left: ref.space.sm + TOOL + ref.space.sm, bottom: "100%" },
   trayWrap: { flex: 1 },
   itemCard: {
     alignSelf: "center", maxWidth: 360, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.sm + 2,

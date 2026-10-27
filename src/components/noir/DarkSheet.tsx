@@ -68,6 +68,8 @@ export interface DarkSheetProps {
   closeTestID?: string;
   /** Default true. False holds the content still (a picker inside is being dragged). */
   scrollEnabled?: boolean;
+  /** Something peering over the sheet's top edge (the game's cat), riding up with it. */
+  peek?: ReactNode;
 }
 
 const TITLE = { headline: ref.type.headline, serif: ref.type.serifTitle, display: null } as const;
@@ -91,6 +93,7 @@ export function DarkSheet({
   testID,
   closeTestID,
   scrollEnabled = true,
+  peek,
 }: DarkSheetProps) {
   const { reducedMotion } = useTheme();
   // Inside a mode the sheet takes that mode's panel, edge and ink colours; in the shell these are today's ref colours.
@@ -175,6 +178,8 @@ export function DarkSheet({
         </Animated.View>
       </Animated.View>
       <Animated.View style={[styles.slot, slide]} pointerEvents="box-none">
+      {/* Above the sheet (which clips its own content), sliding with it. */}
+      {peek ? <View style={styles.peek} pointerEvents="none">{peek}</View> : null}
       <Animated.View
         entering={entering}
         exiting={exiting}
@@ -248,6 +253,7 @@ const styles = StyleSheet.create({
   scrim: { backgroundColor: S.scrim },
   // The sheet's slot: the whole layer, the sheet at its foot (its maxHeight is a share of the layer).
   slot: { ...StyleSheet.absoluteFill, justifyContent: "flex-end" },
+  peek: { alignSelf: "flex-start", marginLeft: ref.space.xl },
   sheet: {
     borderTopLeftRadius: ref.radius.bottomSheet,
     borderTopRightRadius: ref.radius.bottomSheet,

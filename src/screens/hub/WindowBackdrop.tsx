@@ -45,7 +45,7 @@ export function WindowBackdrop() {
   const h = height - top - height * ART.sill;
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" testID="hub-window">
-      <Image source={WINDOW} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
+      <Image source={WINDOW} style={[StyleSheet.absoluteFill, { width, height }]} resizeMode="cover" accessibilityIgnoresInvertColors />
       <View style={{ position: "absolute", left, top, width: w, height: h, overflow: "hidden" }}>
         <Lightning still={reducedMotion} />
         {reducedMotion ? null : <Rain width={w} height={h} />}

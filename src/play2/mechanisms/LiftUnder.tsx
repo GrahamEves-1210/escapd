@@ -12,7 +12,7 @@ import type { MechanismProps } from "./types";
 
 const RISE = 84;
 
-export function LiftUnder({ target, state, onSet, busy, width }: MechanismProps) {
+export function LiftUnder({ target, state, onSet, busy, width, inside }: MechanismProps) {
   const theme = useModeTheme();
   const feedback = useFeedback();
   const lifted = state.lifted === true;
@@ -46,6 +46,8 @@ export function LiftUnder({ target, state, onSet, busy, width }: MechanismProps)
     <Stage width={width}>
       <View style={[styles.room, { height: STAGE }]}>
         <Animated.View style={[styles.hollow, { width: w * 0.8, backgroundColor: theme.ground, borderColor: theme.rim }, hollowStyle]} />
+        {/* What was under it, lying in the hollow it left. */}
+        {inside ? <View style={[styles.lying, { width: w * 0.8 }]} pointerEvents="box-none">{inside}</View> : null}
         <GestureDetector gesture={gesture}>
           <Animated.View
             {...activatable(lifted ? `${target.label}, lifted` : `Lift the ${target.label}`, "Looks underneath", lifted ? onUncommit : commitNow, busy)}
@@ -67,6 +69,7 @@ export function LiftUnder({ target, state, onSet, busy, width }: MechanismProps)
 
 const styles = StyleSheet.create({
   room: { justifyContent: "flex-end", alignItems: "center", paddingBottom: ref.space.lg },
+  lying: { position: "absolute", bottom: ref.space.xl, height: 56, alignItems: "center", justifyContent: "center" },
   hollow: { position: "absolute", bottom: ref.space.xl, height: 56, borderRadius: ref.radius.round, borderWidth: StyleSheet.hairlineWidth },
   cloth: {
     height: 104,

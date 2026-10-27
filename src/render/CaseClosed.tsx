@@ -51,6 +51,7 @@ import type { SceneSource } from "./SceneView";
 import { useSlam } from "./slam";
 import { Stamp } from "./Stamp";
 import { SuspectFile, type SuspectFace } from "./SuspectFile";
+import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
 import { magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
 
 export type { CaseSummary } from "./victory";
@@ -126,6 +127,19 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
     nudgeY.set(withSequence(t(y), t(-y / 2), t(0)));
     nudgeX.set(withSequence(t(x), t(-x), t(x / 2), t(0)));
   };
+  // The cat, peering over the top of the case, celebrates when the stamp lands.
+  const [catReaction, setCatReaction] = useState<CatReaction>(null);
+  const landed = () => {
+    nudge();
+    setCatReaction({ kind: "found", at: Date.now() });
+  };
+  const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
+  // Over noir's folder it sits on the folder's top edge, below the tab.
+  const peek = (onTab = false) => (
+    <View style={[styles.catPeek, onTab && { transform: [{ translateY: C.folder.tabHeight }] }]} pointerEvents="none">
+      <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} />
+    </View>
+  );
   const nudgeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: nudgeX.get() }, { translateY: nudgeY.get() }] }));
 
   // Paranormal: the tint comes off the room at its beat.
@@ -188,7 +202,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
       size="medium"
       slam
       delay={head.stamp}
-      onLanded={nudge}
+      onLanded={landed}
       style={styles.stamp}
       testID="closed-stamp"
     />
@@ -206,7 +220,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
       onPhoto={!!room}
       onLanded={() => {
         feedback.thud();
-        nudge();
+        landed();
       }}
     />
   ) : null;
@@ -220,6 +234,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
             {genre === "noir" ? (
               <Beat delay={0} reduced={reduced} style={styles.folder}>
                 <CaseFolder theme={theme} title={title} stamp={caseStamp} />
+                {peek(true)}
               </Beat>
             ) : null}
 
@@ -230,9 +245,10 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
                   size="large"
                   style={styles.accusedCard}
                   testID="closed-accused"
-                  stamp={<Stamp text="Guilty" size="medium" slam delay={head.stamp} onLanded={nudge} testID="closed-guilty" />}
+                  stamp={<Stamp text="Guilty" size="medium" slam delay={head.stamp} onLanded={landed} testID="closed-guilty" />}
                   stampLabel="Guilty"
                 />
+                {peek()}
               </Beat>
             ) : null}
 
@@ -251,6 +267,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
                   />
                 </Beat>
                 {goneLine ? <View style={styles.roomLine} pointerEvents="none">{goneLine}</View> : null}
+                {peek()}
               </View>
             ) : goneLine}
 
@@ -374,6 +391,7 @@ const styles = StyleSheet.create({
   fill: { flexGrow: 1 },
   card: { flexGrow: 1, justifyContent: "center", alignItems: "center", gap: C.gap.head },
   // Noir's folder grows from its compact size to folder.max.
+  catPeek: { position: "absolute", right: ref.space.xl, bottom: "100%" },
   folder: { alignSelf: "stretch", flexGrow: 1, maxHeight: C.folder.max },
   folderFill: { flexGrow: 1 },
   tab: {

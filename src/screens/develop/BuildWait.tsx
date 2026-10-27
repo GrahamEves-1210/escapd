@@ -29,6 +29,7 @@ import { StateActions, type StateAction } from "@/components/StateScreen";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useRoomTone } from "@/game/useRoomTone";
+import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
 import { Stamp } from "@/render/Stamp";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
@@ -103,7 +104,11 @@ export function BuildWait({ stage, photos, onLeave, open }: {
     if (successTimer.current) clearTimeout(successTimer.current);
     successTimer.current = setTimeout(() => feedback.success(), D.ready.success);
   }, [feedback]);
+  // The cat peers over the room while the case is built, thinking, and cheers the stamp.
+  const [catReaction, setCatReaction] = useState<CatReaction>(null);
+  const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
   const land = () => {
+    setCatReaction({ kind: "found", at: Date.now() });
     const { x, y, step } = NUDGE;
     const t = (to: number) => withTiming(to, { duration: step });
     nudgeY.set(withSequence(t(y), t(-y / 2), t(0)));
@@ -137,6 +142,9 @@ export function BuildWait({ stage, photos, onLeave, open }: {
       <View style={styles.column}>
         <Animated.View style={[styles.stage, nudgeStyle]}>
           <RoomPanorama photos={photos} ready={ready} style={styles.room} />
+          <View style={styles.cat} pointerEvents="none">
+            <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} mood={ready ? "idle" : "thinking"} />
+          </View>
           {ready ? (
             <View style={styles.stampSlot} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <Stamp
@@ -195,6 +203,7 @@ const styles = StyleSheet.create({
   column: { flex: 1, justifyContent: "center", paddingHorizontal: ref.space.edge, paddingTop: D.header.below },
   stage: { flexShrink: 1, flexGrow: 1, maxHeight: D.frame.maxHeight, minHeight: D.frame.minHeight, justifyContent: "center" },
   room: { flex: 1 },
+  cat: { position: "absolute", right: ref.space.lg, bottom: "100%" },
   stampSlot: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
   title: { textAlign: "center", marginTop: D.gap.title },
   status: { marginTop: D.gap.status, minHeight: ref.type.status.lineHeight, alignSelf: "stretch", alignItems: "center" },

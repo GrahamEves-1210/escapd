@@ -2,6 +2,7 @@
 // far (what the room has told the player, in the mode's voice), what they
 // hold, and the hint ladder for the step they're on. A dark sheet over the
 // room.
+import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { DarkSheet } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
@@ -26,14 +27,16 @@ export interface CasebookProps {
   onExamine: (itemId: string) => void;
   onRestart: () => void;
   onClose: () => void;
+  /** The cat, peering over the casebook's top edge (thinking along when you ask for a hint). */
+  cat?: ReactNode;
 }
 
-export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose }: CasebookProps) {
+export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat }: CasebookProps) {
   const theme = useModeTheme();
   const heading = [ref.type.meta, styles.heading, { color: theme.inkMuted }];
   const body = [ref.type.body, { color: theme.ink }];
   return (
-    <DarkSheet title="Casebook" titleStyle="serif" meta={objective} onClose={onClose} maxHeight="80%" testID="v2-casebook" closeTestID="v2-casebook-close">
+    <DarkSheet title="Casebook" titleStyle="serif" meta={objective} onClose={onClose} maxHeight="80%" testID="v2-casebook" closeTestID="v2-casebook-close" peek={cat}>
       <View style={styles.section}>
         <Text style={heading}>Found</Text>
         {cards.length ? (
