@@ -19,8 +19,9 @@
 // The tap uses this focus's fetch once it has landed; until then the card
 // goes busy while it waits for it. A failure shows the notice.
 // Home is the shell, so it clears the active mode each time it gains focus.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AccessibilityInfo, BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance } from "react-native";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { AccessibilityInfo, BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance, type ViewStyle } from "react-native";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect } from "react-native-svg";
@@ -42,6 +43,7 @@ import { ModeCard } from "./ModeCard";
 import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
+import { WindowBackdrop } from "./WindowBackdrop";
 
 const H = ref.layout.hub;
 const M = H.modes;
@@ -69,6 +71,8 @@ interface Prompt {
 
 export function HubScreen() {
   const insets = useSafeAreaInsets();
+  // The logo falls in with the cards, a beat after the window.
+  const logoIn = useFallIn(0);
   const { height: windowHeight } = useWindowDimensions();
   const { reducedMotion } = useTheme();
   const hub = useHubData();
@@ -299,6 +303,8 @@ export function HubScreen() {
 
   return (
     <View style={styles.root}>
+      {/* A rainy night through the window, the frame round the screen. */}
+      <WindowBackdrop />
       {/* Everything behind a sheet: hidden from TalkBack while it is open (VoiceOver is trapped by the sheet). */}
       <View
         style={styles.screen}
@@ -311,11 +317,12 @@ export function HubScreen() {
           {/* Opal's dismiss chevron: left out (home is the root). Its place keeps the wordmark centred. */}
           <View style={styles.chipSlot} />
           {/* The ESCAPD logo, large and centred: the brand art's cream letters with the lit keyhole, keyed onto the black. */}
-          <View style={styles.titleGroup}>
-            <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo">
+          <Animated.View style={[styles.titleGroup, logoIn]}>
+            <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={styles.lift}>
               <Image source={WORDMARK} style={styles.logo} resizeMode="contain" accessibilityIgnoresInvertColors />
             </View>
-          </View>
+          </Animated.View>
+          <View style={styles.lift}>
           <Chip
             ref={helpRef}
             accessibilityLabel="Settings"
@@ -325,19 +332,8 @@ export function HubScreen() {
             disabled={busy !== null}
             testID="hub-settings"
           />
+          </View>
         </View>
-        {/* The faint divider, lg 16 under the chips: white 0 to 10 % to 0 across the screen. */}
-        <View style={styles.divider} pointerEvents="none" accessible={false}>
-          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 1 1" preserveAspectRatio="none">
-            <Defs>
-              <LinearGradient id={dividerId} {...gradientLine(DIVIDER.angle)}>
-                {gradientStops(DIVIDER.stops)}
-              </LinearGradient>
-            </Defs>
-            <Rect x={0} y={0} width={1} height={1} fill={`url(#${dividerId})`} />
-          </Svg>
-        </View>
-
         <ScrollView
           style={styles.column}
           contentContainerStyle={[styles.cards, { paddingBottom: insets.bottom + M.foot }]}
@@ -346,8 +342,12 @@ export function HubScreen() {
         >
           {/* Reading order is the deck's order; later cards lie on top (no zIndex). */}
           {GENRES.map((genre, i) => (
-            <ModeCard
+            <FallIn
               key={genre}
+              index={i + 1}
+              style={{ marginTop: i === 0 ? 0 : -deck.overlap, transform: [{ rotate: `${deckTilt(i)}deg` }] }}
+            >
+            <ModeCard
               ref={(node) => {
                 cardRefs.current[genre] = node;
               }}
@@ -361,12 +361,9 @@ export function HubScreen() {
                 const h = Math.ceil(height);
                 setWords((w) => (w[genre] === h ? w : { ...w, [genre]: h }));
               }}
-              style={{
-                height: deck.card,
-                marginTop: i === 0 ? 0 : -deck.overlap,
-                transform: [{ rotate: `${deckTilt(i)}deg` }],
-              }}
+              style={{ height: deck.card }}
             />
+            </FallIn>
           ))}
         </ScrollView>
 
@@ -399,9 +396,32 @@ export function HubScreen() {
   );
 }
 
+/** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
+const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620 } as const;
+
+function useFallIn(index: number) {
+  const { reducedMotion } = useTheme();
+  const p = useSharedValue(0);
+  useEffect(() => {
+    p.set(withDelay(FALL.delay + index * FALL.stagger, withTiming(1, { duration: reducedMotion ? 200 : FALL.duration, easing: Easing.out(Easing.back(1.1)) })));
+  }, [p, index, reducedMotion]);
+  return useAnimatedStyle(() => ({
+    opacity: Math.min(1, p.get() * 1.6),
+    transform: reducedMotion ? [] : [{ translateY: (1 - p.get()) * FALL.from }],
+  }));
+}
+
+function FallIn({ index, style, children }: { index: number; style: ViewStyle; children: ReactNode }) {
+  const fall = useFallIn(index);
+  return <Animated.View style={[style, styles.card, fall]}>{children}</Animated.View>;
+}
+
 const styles = StyleSheet.create({
   // The shell's black. No glow, no grain.
   root: { flex: 1, backgroundColor: ref.color.void },
+  // Every element on the window casts a shadow, so it reads on the night and the rain.
+  lift: { shadowColor: "#000000", shadowOpacity: 0.7, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+  card: { shadowColor: "#000000", shadowOpacity: 0.65, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 14 },
   screen: { ...StyleSheet.absoluteFill },
   header: {
     flexDirection: "row",
@@ -412,7 +432,6 @@ const styles = StyleSheet.create({
   // Centred between the two 48 slots, so on the screen's axis.
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
   logo: { height: H.header.logo, width: H.header.logo * H.header.logoAspect },
-  divider: { height: H.hairline, marginTop: ref.space.lg - CHIP_PAD },
   column: { flex: 1 },
   cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge },
   noticeSlot: { position: "absolute", left: M.edge + M.pad, right: M.edge + M.pad, alignItems: "center" },
