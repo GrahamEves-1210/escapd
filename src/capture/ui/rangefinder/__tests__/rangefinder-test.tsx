@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { AccessibilityInfo, BackHandler, Platform, StyleSheet } from "react-native";
-import { act, fireEvent, render, screen, userEvent } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, userEvent, waitFor } from "@testing-library/react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
@@ -236,7 +236,8 @@ describe("Rangefinder: ready", () => {
     expect(mockFeedback.tick).not.toHaveBeenCalled();
     // The player can still switch, and back.
     await fireEvent.press(screen.getByRole("radio", { name: "Main lens" }));
-    expect(cameraProps().selectedLens).toBeUndefined();
+    // 1x names the main lens: unsetting the lens on a running camera crashed.
+    expect(cameraProps().selectedLens).toBe("AVCaptureDeviceTypeBuiltInWideAngleCamera");
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
     // The lens already chosen: nothing moves, so no tick.
     await fireEvent.press(screen.getByRole("radio", { name: "Main lens" }));
@@ -278,8 +279,8 @@ describe("Rangefinder: capture", () => {
     expect(counter()).toBe("Next: photo 2. 1 of 5 photos taken.");
     expect(screen.getByRole("button", { name: "Take photo 2, Turn right a little" })).toBeTruthy();
     expect(thumbnailUri()).toBe("file://plate-shot.jpg");
-    // The privacy note is only for plate I.
-    expect(screen.queryByText(COPY.privacy)).toBeNull();
+    // The privacy note is only for plate I: it fades, then goes.
+    await waitFor(() => expect(screen.queryByText(COPY.privacy)).toBeNull());
     // Jest runs as iOS, which has no live regions: the new prompt is announced.
     expect(announce).toHaveBeenCalledWith("Turn right a little. Keep part of the last photo in view.");
   });

@@ -64,9 +64,9 @@ describe("useLibraryImport", () => {
     expect(back).not.toHaveBeenCalled();
   });
 
-  it("offers only the room left in the roll's plan: 5 on 0.5x", async () => {
+  it("offers only the room left in the roll's plan: 4 on 0.5x", async () => {
     setRollLens("wide");
-    seedRoll(3);
+    seedRoll(2);
     launch.mockResolvedValue(picked("file://picked-a.jpg", "file://picked-b.jpg", "file://picked-c.jpg"));
     const { result } = await renderHook(() => useLibraryImport({ retakeIndex: null }));
     let outcome: LibraryImportResult | null = null;
@@ -74,7 +74,7 @@ describe("useLibraryImport", () => {
       outcome = await result.current.pick();
     });
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({ selectionLimit: 2 }));
-    expect(getPlates()).toHaveLength(5);
+    expect(getPlates()).toHaveLength(4);
     expect(outcome).toMatchObject({ total: 2, added: 2 });
   });
 
