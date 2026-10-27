@@ -9,7 +9,10 @@
 // along the ring from the last stop toward the next; once the turn is far
 // enough the next stop fills and the light tick plays (onReached).
 // - Static wherever tracking isn't: the web, no motion sensor, the first
-//   photo, retake mode, a busy or stopped camera, all 6 taken.
+//   photo, retake mode, a busy or stopped camera, all 6 taken, and any photo
+//   that doesn't follow the one the player just took (an open slot left by a
+//   removed photo, a camera reopened on photos already taken): the target
+//   ring still marks that photo's place round the circle.
 // - Reduce Motion: the arc steps in quarters instead of following the turn.
 // - Neutral instrument greys and white in every mode, as the privacy note.
 // - Screen readers: one element, "Photo 2 of 6.", and "Far enough. Take the
@@ -37,9 +40,11 @@ export interface TurnDialProps {
   taken: readonly boolean[];
   /** The next stop (the photo about to be taken), or null once all are taken. */
   target: number | null;
-  /** Track the turn live (the next photo follows a turn and the camera can take it). */
+  /** Keep counting the turn (the camera is live and taking photos in turn), shown or not. */
+  listening: boolean;
+  /** Show the turn live (the next photo follows the one the turn is counted from, and the camera can take it). */
   active: boolean;
-  /** Changes with every photo: the turn restarts. */
+  /** Changes the moment a photo is taken: the turn restarts from there. */
   resetKey: string;
   line: string;
   /** The label without the "far enough" sentence; the dial adds it. */
@@ -48,13 +53,13 @@ export interface TurnDialProps {
   onReached: () => void;
 }
 
-export function TurnDial({ shots, step, taken, target, active, resetKey, line, accessibilityLabel, onReached }: TurnDialProps) {
+export function TurnDial({ shots, step, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached }: TurnDialProps) {
   const { reducedMotion } = useTheme();
   const reachedNow = useCallback(() => {
     onReached();
     AccessibilityInfo.announceForAccessibility(COPY.turnReached);
   }, [onReached]);
-  const turn = useTurnTracking({ active, step, resetKey, reducedMotion, onReached: reachedNow });
+  const turn = useTurnTracking({ listening, active, step, resetKey, reducedMotion, onReached: reachedNow });
   const stops = dialStops(shots, step);
   // The arc runs from the stop before the target, clockwise.
   const from = target === null ? 0 : stops[(target - 1 + shots) % shots];

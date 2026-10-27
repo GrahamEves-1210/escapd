@@ -1,3 +1,6 @@
+/// <reference types="node" />
+import fs from "fs";
+import path from "path";
 import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import {
   LENS_FOV,
@@ -32,21 +35,33 @@ describe("lens default", () => {
 });
 
 describe("turnPlan: photos and turn per lens", () => {
-  it("takes 6 photos 60 degrees apart on the ultra-wide, neighbours sharing a third", () => {
-    expect(LENS_FOV.wide).toBe(90);
+  it("uses the iPhone lenses' real views in the 3:4 portrait frame: 0.5x about 92 degrees, 1x about 55", () => {
+    // Apple's ultra-wide is 120 degrees across the diagonal; the frame's short side is 0.6 of it.
+    const ultraWide = 2 * Math.atan(0.6 * Math.tan(Math.PI / 3)) * (180 / Math.PI);
+    expect(LENS_FOV.wide).toBeCloseTo(ultraWide, 0);
+    expect(LENS_FOV.wide).toBe(92);
+    // 24 to 26 mm full-frame equivalent across a 26 mm-equivalent short side.
+    const main = (mm: number) => 2 * Math.atan(13 / mm) * (180 / Math.PI);
+    expect(LENS_FOV.main).toBeGreaterThanOrEqual(Math.floor(main(26)));
+    expect(LENS_FOV.main).toBeLessThanOrEqual(Math.ceil(main(24)));
+  });
+
+  it("takes 6 photos 60 degrees apart on the ultra-wide, neighbours sharing about a third", () => {
     const plan = turnPlan("wide");
     expect(plan.shots).toBe(6);
     expect(plan.step).toBe(60);
-    expect(plan.overlap).toBeCloseTo(1 / 3, 5);
+    expect(plan.overlap).toBeCloseTo(32 / 92, 5);
+    expect(plan.overlaps).toBe(true);
   });
 
-  it("holds the main lens to the 6-photo limit: still 60 apart, neighbours just meeting", () => {
+  it("holds the main lens to the 6-photo limit: still 60 apart so the loop closes, neighbours only just meeting", () => {
     const plan = turnPlan("main");
     expect(plan.shots).toBe(MAX_PLATES);
     expect(plan.step).toBe(60);
-    // A sliver of gap at most (55 degree view, 60 degree turn).
+    // A sliver of gap at most (55 degree view, 60 degree turn): no overlap to keep in view.
     expect(plan.overlap).toBeLessThan(0);
     expect(plan.overlap).toBeGreaterThan(-0.1);
+    expect(plan.overlaps).toBe(false);
   });
 
   it("would take more, smaller turns on the main lens if the limit allowed it", () => {
@@ -64,6 +79,54 @@ describe("turnPlan: photos and turn per lens", () => {
       expect(plan.shots * plan.step).toBeCloseTo(360, 5);
     }
     expect(turnPlan("wide", 6, 8).shots).toBe(6);
+  });
+});
+
+describe("DeviceMotion's units (expo-sensors 58, as installed)", () => {
+  // The turn maths takes rotationRate in deg/s and timestamps in seconds. A
+  // radians-per-second rate would make every turn read 57 times too small and
+  // the dial never tick; milliseconds would make it tick at once. These pin
+  // what the native modules actually send.
+  const read = (file: string) => fs.readFileSync(path.join(__dirname, "../../../node_modules/expo-sensors", file), "utf8");
+
+  it("iOS sends CoreMotion's rotation rate in deg/s as alpha = z, beta = y, gamma = x, stamped in seconds", () => {
+    const swift = read("ios/DeviceMotionModule.swift");
+    const block = swift.slice(swift.indexOf('"rotationRate": ['), swift.indexOf("]", swift.indexOf('"rotationRate": [')));
+    expect(block).toMatch(/"alpha": radiansToDegrees\(rotationRate\.z\)/);
+    expect(block).toMatch(/"beta": radiansToDegrees\(rotationRate\.y\)/);
+    expect(block).toMatch(/"gamma": radiansToDegrees\(rotationRate\.x\)/);
+    // CMLogItem.timestamp: seconds.
+    expect(block).toMatch(/"timestamp": data\.timestamp/);
+    expect(read("ios/SensorsUtils.swift")).toMatch(/radians \* 180 \/ Double\.pi/);
+    expect(rateAxes({ alpha: 1, beta: 2, gamma: 3 }, "ios")).toEqual({ x: 3, y: 2, z: 1 });
+  });
+
+  it("Android sends the gyroscope in deg/s as alpha = x, beta = y, gamma = z, stamped in seconds", () => {
+    const kotlin = read("android/src/main/java/expo/modules/sensors/modules/DeviceMotionModule.kt");
+    const block = kotlin.slice(kotlin.indexOf('"rotationRate"'), kotlin.indexOf('"rotationRate"') + 600);
+    expect(block).toMatch(/putDouble\("alpha", Math\.toDegrees\(rotationRate\.values\[0\]/);
+    expect(block).toMatch(/putDouble\("beta", Math\.toDegrees\(rotationRate\.values\[1\]/);
+    expect(block).toMatch(/putDouble\("gamma", Math\.toDegrees\(rotationRate\.values\[2\]/);
+    expect(block).toMatch(/putDouble\("timestamp", rotationRate\.timestamp \/ 1_000_000_000\.0\)/);
+    expect(rateAxes({ alpha: 1, beta: 2, gamma: 3 }, "android")).toEqual({ x: 1, y: 2, z: 3 });
+  });
+
+  it("reads a real 60-degree turn as one stop: a second at 60 deg/s from iOS samples, 30 a second", () => {
+    let gravity = null as ReturnType<typeof smoothGravity> | null;
+    let turned = 0;
+    let last: number | null = null;
+    for (let i = 0; i <= 30; i += 1) {
+      // CoreMotion's own clock: seconds since boot.
+      const sample = { rotationRate: { alpha: 0, beta: 60, gamma: 0, timestamp: 5000 + i / 30 }, gravity: { x: 0, y: -9.8, z: 0 } };
+      gravity = smoothGravity(gravity, sample.gravity);
+      const dt = last === null ? 0 : sample.rotationRate.timestamp - last;
+      last = sample.rotationRate.timestamp;
+      turned = integrateTurn(turned, turnRate(rateAxes(sample.rotationRate, "ios"), gravity), dt);
+    }
+    expect(Math.abs(turned)).toBeCloseTo(60, 3);
+    expect(isTurnReached(turnProgress(turned, turnPlan("wide").step))).toBe(true);
+    // The same turn misread as rad/s (1.047) would be under the deadband: no turn at all.
+    expect(integrateTurn(0, (60 * Math.PI) / 180, 1 / 30)).toBe(0);
   });
 });
 

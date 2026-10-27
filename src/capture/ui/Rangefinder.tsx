@@ -17,7 +17,11 @@
 // The player turns all the way round the room, a photo at each stop: the
 // lens sets how far (src/capture/turn.ts, the ultra-wide by default where the
 // phone has one) and the turn dial on the feed shows the stops and, where the
-// phone's motion can be read, how far the player has turned.
+// phone's motion can be read, how far the player has turned since the last
+// photo's shutter. The turn prompts and the live turn only apply when the next
+// photo follows the one the player just took here; otherwise (an open slot, a
+// removed last photo, a camera reopened on photos already taken) the prompt
+// places the photo by its neighbours and the dial marks its place, static.
 // Feedback: the shutter cue (a thud and the shutter's sound) as it fires,
 // error on a failed shot, success when the 6th photo fills the set, tick on
 // flash, grid and lens changes and when a turn is far enough, press on the
@@ -92,8 +96,12 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const [mountFailed, setMountFailed] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // The slot and the count a capture or an import started on, held until it ends.
-  const [held, setHeld] = useState<{ index: number; taken: number } | null>(null);
+  // The slot, the count and the prompt's footing a capture or an import started on, held until it ends.
+  const [held, setHeld] = useState<{ index: number; taken: number; inTurn: boolean } | null>(null);
+  // The last photo the player took here, from the moment its shutter fired:
+  // where they stand, and what the turn is counted from (`key` restarts it).
+  const [anchor, setAnchor] = useState<{ slot: number; key: string } | null>(null);
+  const shutterCount = useRef(0);
   const [flash, setFlash] = useState(false);
   const [grid, setGrid] = useState(false);
   const [area, setArea] = useState({ width: 0, height: 0 });
@@ -109,22 +117,38 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const full = !retake && plates.length >= MAX_PLATES;
   // Retake mode on a slot the player emptied: a first take of that slot, not a retake.
   const filling = retake && slots[retakeIndex] == null;
+  const filled = Array.from({ length: MAX_PLATES }, (_, i) => slots[i] != null);
+  // The next photo follows the one the player just took here (still kept), so
+  // they stand one stop back from it: the turn prompts and the live turn apply.
+  const followsLast = anchor !== null && nextIndex > 0 && anchor.slot === nextIndex - 1 && filled[anchor.slot];
+  // Photo 1 of an empty roll starts the turn; anything else out of turn is placed by its neighbours.
+  const inTurn = !retake && (nextIndex === 0 ? plates.length === 0 : followsLast);
+
+  // The 360 for the lens in use, live: a lens switch changes the plan and its words at once.
+  const plan = turnPlan(lenses.choice);
 
   // While a capture or an import is busy, the prompt, counter and shutter hold
   // the plate it started on, so they change (and are announced) once, as it ends.
-  const at = busy && held !== null
-    ? { index: held.index, retake, filling, taken: held.taken }
-    : { index: nextIndex, retake, filling, taken: plates.length };
+  const at = {
+    ...(busy && held !== null ? held : { index: nextIndex, taken: plates.length, inTurn }),
+    retake,
+    filling,
+    filled,
+    edgeToEdge: !plan.overlaps,
+  };
   const headline = promptCopy(at);
   const counter = counterCopy(at);
 
-  // The 360 for the lens in use. Live turn tracking only between photos of
-  // one turn: not before photo 1, in retake mode, while busy or once full.
-  const plan = turnPlan(lenses.choice);
+  // The turn is counted from each shutter while the camera is live (through
+  // the busy wait), and shown only between photos taken in turn: not before
+  // photo 1, in retake mode, while busy, once full or out of turn.
   const turnTarget = full ? null : Math.min(at.index, plan.shots - 1);
-  const turnActive = live && !retake && !full && !busy && nextIndex > 0;
-  const taken = Array.from({ length: plan.shots }, (_, i) => slots[i] != null);
+  const turnListening = live && !retake && !full;
+  const turnActive = turnListening && !busy && followsLast;
+  const taken = filled.slice(0, plan.shots);
   const onTurned = feedback.tick;
+  // On 1x where the phone has 0.5: say the photos only just meet, and point to 0.5.
+  const lensNote = live && !full && lenses.ultraWide !== null && !plan.overlaps ? COPY.lensNote : null;
 
   // Waits under ~1 s show nothing more; past it the thinking line takes the subtitle slot.
   const showThinking = useShowAfter(busy, L.thinkingDelay);
@@ -188,12 +212,18 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     if (!view || inFlight.current || busy || full || !live) return;
     inFlight.current = true;
     setShooting(true);
-    setHeld({ index: nextIndex, taken: plates.length });
+    setHeld({ index: nextIndex, taken: plates.length, inTurn });
     setNotice(null);
     try {
       const picture = await view.takePictureAsync({ quality: CAPTURE_QUALITY, exif: false });
       // The shutter firing: the firm, physical moment, and its sound.
       feedback.shutter();
+      // The player stands at this photo's place now: the next turn is counted
+      // from here, including while the photo is prepared.
+      if (retakeIndex === null) {
+        shutterCount.current += 1;
+        setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}` });
+      }
       const plate = await processPhoto(picture);
       if (retakeIndex === null) {
         // The 6th photo fills the set: an outcome the prompt also states.
@@ -220,7 +250,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     if (inFlight.current || busy || full) return;
     inFlight.current = true;
     setNotice(null);
-    setHeld({ index: nextIndex, taken: plates.length });
+    setHeld({ index: nextIndex, taken: plates.length, inTurn });
     const before = getPlates().length;
     try {
       const result = await library.pick();
@@ -283,14 +313,16 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             selectedLens={lenses.selectedLens}
             grid={grid}
             note={!retake && plates.length === 0}
+            lensNote={lensNote}
             overlay={
               <TurnDial
                 shots={plan.shots}
                 step={plan.step}
                 taken={taken}
                 target={turnTarget}
+                listening={turnListening}
                 active={turnActive}
-                resetKey={`${nextIndex}:${plates.length}`}
+                resetKey={anchor?.key ?? "none"}
                 line={turnCopy(at, plan.shots, false).line}
                 accessibilityLabel={(reached) => turnCopy(at, plan.shots, reached).accessibilityLabel}
                 onReached={onTurned}

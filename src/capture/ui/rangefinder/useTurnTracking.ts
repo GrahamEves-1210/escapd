@@ -4,7 +4,12 @@
 // Android; neither asks for a permission). The rotation rate is taken along
 // gravity, so it is the turn about the vertical however the phone is held,
 // and integrated between samples (src/capture/turn.ts). It restarts from 0 on
-// every `resetKey` (a new photo) and gives `onReached` once per turn.
+// every `resetKey`, which the camera changes the moment the shutter fires, so
+// the turn is measured from where that photo was taken: the sensor keeps
+// running while `listening` (through the busy wait after the shutter, when
+// most players already start turning), and the dial only shows it while
+// `active`. The step is read live, so a lens switch mid-turn rescales the
+// turn without losing it. `onReached` fires once per turn, while active.
 //
 // It degrades to nothing: on the web (where motion needs a tap to allow it
 // and the camera is a preview), with no sensor, a sensor that won't start or
@@ -44,11 +49,13 @@ export function resetTurnSensorForTests() {
 }
 
 export interface TurnTrackingOptions {
-  /** Track only while the next photo follows a turn and the camera is live. */
+  /** Keep the sensor running and the turn counted (the camera is live and photos are being taken in turn). */
+  listening: boolean;
+  /** Show the turn and tick when it is far enough: the next photo follows the one the turn is counted from. */
   active: boolean;
-  /** Degrees between photos (turnPlan's step). */
+  /** Degrees between photos (turnPlan's step), read live. */
   step: number;
-  /** Changes with every new photo: the turn restarts from 0. */
+  /** Changes the moment a photo is taken: the turn restarts from 0 there. */
   resetKey: string;
   /** Under Reduce Motion the drawn progress steps in quarters. */
   reducedMotion: boolean;
@@ -66,7 +73,7 @@ export interface TurnTracking {
 }
 
 interface TurnState {
-  /** The photo (resetKey and step) this turn is toward. */
+  /** The photo (resetKey) this turn is counted from. */
   key: string;
   turned: number;
   gravity: Vec3 | null;
@@ -76,27 +83,27 @@ interface TurnState {
 
 const fresh = (key: string): TurnState => ({ key, turned: 0, gravity: null, last: null, reached: false });
 
-/** What the dial draws, for the photo it was measured toward. */
+/** What the dial draws, for the photo it was measured from. */
 interface Shown {
   key: string;
   progress: number;
   reached: boolean;
 }
 
-export function useTurnTracking({ active, step, resetKey, reducedMotion, onReached }: TurnTrackingOptions): TurnTracking {
-  // A new photo (or a new plan) starts the turn again.
-  const key = `${resetKey}|${step}`;
+export function useTurnTracking({ listening, active, step, resetKey, reducedMotion, onReached }: TurnTrackingOptions): TurnTracking {
+  // Only a new photo starts the turn again: a new step (a lens switch) rescales it.
+  const key = resetKey;
   const [tracking, setTracking] = useState(false);
   const [shown, setShown] = useState<Shown>({ key, progress: 0, reached: false });
   const turn = useRef<TurnState>(fresh(key));
   // The listener reads the latest options without resubscribing.
-  const latest = useRef({ key, step, reducedMotion, onReached });
+  const latest = useRef({ key, step, active, reducedMotion, onReached });
   useEffect(() => {
-    latest.current = { key, step, reducedMotion, onReached };
-  }, [key, step, reducedMotion, onReached]);
+    latest.current = { key, step, active, reducedMotion, onReached };
+  }, [key, step, active, reducedMotion, onReached]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!listening) return;
     let cancelled = false;
     let subscription: { remove: () => void } | null = null;
     const onSample = (m: DeviceMotionMeasurement) => {
@@ -115,7 +122,9 @@ export function useTurnTracking({ active, step, resetKey, reducedMotion, onReach
       state.turned = integrateTurn(state.turned, turnRate(rateAxes(rate, Platform.OS), state.gravity), dt);
       const raw = turnProgress(state.turned, now.step);
       const drawn = quantizeProgress(raw, now.reducedMotion);
-      const reachedNow = !state.reached && isTurnReached(raw);
+      // Far enough is only said while the dial shows the turn; a turn made
+      // while hidden (the busy wait) ticks as soon as it shows.
+      const reachedNow = now.active && !state.reached && isTurnReached(raw);
       if (reachedNow) state.reached = true;
       const next: Shown = { key: state.key, progress: drawn, reached: state.reached };
       setShown((prev) => (prev.key === next.key && prev.progress === next.progress && prev.reached === next.reached ? prev : next));
@@ -135,10 +144,10 @@ export function useTurnTracking({ active, step, resetKey, reducedMotion, onReach
       subscription?.remove();
       setTracking(false);
     };
-  }, [active]);
+  }, [listening]);
 
-  const live = tracking && active;
-  // Progress measured toward an earlier photo is not shown for this one.
+  const live = tracking && listening && active;
+  // Progress measured from an earlier photo is not shown for this one.
   const current = live && shown.key === key ? shown : null;
   return { tracking: live, progress: current?.progress ?? 0, reached: current?.reached ?? false };
 }

@@ -141,6 +141,31 @@ describe("cues with sound", () => {
     expect(Haptics.impactAsync).toHaveBeenCalledWith("heavy");
   });
 
+  it("never seeks a sound that hasn't loaded (iOS kills the app for that); it still plays from its start", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    const unlock = playerFor(SOURCE.unlock)! as (typeof audio.__players)[number] & { isLoaded: boolean };
+    // Still loading, or failed: no seek, just play.
+    unlock.isLoaded = false;
+    result.current.unlock();
+    expect(unlock.seekTo).not.toHaveBeenCalled();
+    expect(unlock.play).toHaveBeenCalledTimes(1);
+    // Loaded: a replay starts over.
+    unlock.isLoaded = true;
+    result.current.unlock();
+    expect(unlock.seekTo).toHaveBeenCalledWith(0);
+    expect(unlock.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("the pickup cue reuses one player however often it lands", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    const loaded = audio.createAudioPlayer.mock.calls.length;
+    for (let i = 0; i < 20; i++) result.current.pickup();
+    expect(audio.createAudioPlayer).toHaveBeenCalledTimes(loaded);
+    const pickups = audio.__players.filter((p) => p.play.mock.calls.length > 0);
+    expect(pickups).toHaveLength(1);
+    expect(pickups[0].play).toHaveBeenCalledTimes(20);
+  });
+
   it("a player that throws on play is silence too", async () => {
     const { result } = await renderHook(() => useFeedback());
     playerFor(SOURCE.unlock)!.play.mockImplementation(() => {

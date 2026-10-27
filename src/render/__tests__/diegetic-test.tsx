@@ -12,7 +12,8 @@ import { HotspotLayer } from "../HotspotLayer";
 import { glintTargets, useIdle } from "../idle";
 import { EMPTY_LADDER, INFORMANTS, isDry, ladderFrom, nextLadder, visibleLadder } from "../informantLadder";
 import { cluePaper, evidenceMaterial, tornEdge } from "../materials";
-import { PickupFlight, flightPoint, measureInWindow } from "../PickupFlight";
+import { aspectOf } from "../geometry";
+import { PickupFlight, finiteRect, flightPoint, flightRects, landingScale, measureInWindow } from "../PickupFlight";
 
 jest.mock("@/lib/supabase", () => ({ supabase: { rpc: jest.fn() } }));
 
@@ -139,6 +140,67 @@ describe("the pickup's flight", () => {
     expect(onLanded).not.toHaveBeenCalled();
     await act(() => jest.advanceTimersByTime(1));
     expect(onLanded).toHaveBeenCalledWith(7);
+    // The animation's end and the fallback timer both report: it lands once.
+    await act(() => jest.advanceTimersByTime(P.pickup.flight + P.pickup.landSlack + 100));
+    expect(onLanded).toHaveBeenCalledTimes(1);
+  });
+
+  it("never lands once it has unmounted mid-flight", async () => {
+    jest.useFakeTimers();
+    const onLanded = jest.fn();
+    const flight = { key: 8, item: { id: "brass_key", name: "Brass key" }, from, to };
+    const view = await render(<PickupFlight flight={flight as never} onLanded={onLanded} />);
+    await act(() => jest.advanceTimersByTime(P.pickup.flight / 2));
+    await view.unmount();
+    await act(() => jest.advanceTimersByTime(P.pickup.flight + P.pickup.landSlack + 100));
+    expect(onLanded).not.toHaveBeenCalled();
+  });
+
+  it("only ever measures a finite box with a size: NaN, Infinity or nothing is no box", async () => {
+    const answer = (...box: number[]) => ({
+      measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => cb(box[0], box[1], box[2], box[3]),
+    });
+    await expect(measureInWindow(answer(NaN, 2, 30, 40))).resolves.toBeNull();
+    await expect(measureInWindow(answer(1, 2, Infinity, 40))).resolves.toBeNull();
+    await expect(measureInWindow(answer(1, 2, 30, NaN))).resolves.toBeNull();
+    await expect(measureInWindow(answer(0, 0, 0, 0))).resolves.toBeNull();
+    await expect(measureInWindow({ measureInWindow: () => {
+      throw new Error("unmounted");
+    } })).resolves.toBeNull();
+    await expect(measureInWindow({} as never)).resolves.toBeNull();
+    expect(finiteRect(1, 2, 3, 4)).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(finiteRect(1, 2, 3, -4)).toBeNull();
+  });
+
+  it("answers once: a late answer after the timeout changes nothing", async () => {
+    jest.useFakeTimers();
+    let late: ((x: number, y: number, w: number, h: number) => void) | null = null;
+    const result = measureInWindow({ measureInWindow: (cb) => {
+      late = cb;
+    } });
+    jest.advanceTimersByTime(P.pickup.measureTimeout);
+    late!(1, 2, 30, 40);
+    await expect(result).resolves.toBeNull();
+  });
+
+  it("flies only between finite boxes, in the overlay's coordinates", () => {
+    const root = { x: 0, y: 50, width: 393, height: 800 };
+    expect(flightRects(root, from, to)).toEqual({
+      from: { x: 100, y: 50, width: 60, height: 40 },
+      to: { x: 20, y: 650, width: 80, height: 72 },
+    });
+    expect(flightRects(null, from, to)).toBeNull();
+    expect(flightRects(root, null, to)).toBeNull();
+    expect(flightRects(root, from, null)).toBeNull();
+    expect(flightRects({ ...root, x: NaN }, from, to)).toBeNull();
+    expect(flightRects(root, { ...from, y: Infinity }, to)).toBeNull();
+  });
+
+  it("lands at the slot's size, never larger, and never at a non-finite scale", () => {
+    expect(landingScale({ x: 0, y: 0, width: 22, height: 30 }, 44)).toBe(0.5);
+    expect(landingScale({ x: 0, y: 0, width: 88, height: 88 }, 44)).toBe(1);
+    expect(landingScale({ x: 0, y: 0, width: NaN, height: 88 }, 44)).toBe(1);
+    expect(landingScale({ x: 0, y: 0, width: 22, height: 30 }, 0)).toBe(1);
   });
 });
 
@@ -165,6 +227,22 @@ describe("clue objects and materials", () => {
       expect(c.left + c.width).toBeGreaterThanOrEqual(92 - 1e-9);
       expect(c.top + c.height).toBeGreaterThanOrEqual(92 - 1e-9);
     }
+  });
+
+  it("never crops to NaN or Infinity, whatever the photo or shape reports", () => {
+    const box = { width: 92, height: 92 };
+    for (const aspect of [NaN, Infinity, 0, -1]) {
+      const c = polaroidCrop({ x: 0.4, y: 0.4, w: 0.2, h: 0.15 }, aspect, box);
+      for (const v of Object.values(c)) expect(Number.isFinite(v)).toBe(true);
+    }
+    const c = polaroidCrop({ x: NaN, y: Infinity, w: NaN, h: 0 }, 0.75, box);
+    for (const v of Object.values(c)) expect(Number.isFinite(v)).toBe(true);
+    // A photo's size: only finite and positive makes an aspect.
+    expect(aspectOf(1200, 1600)).toBe(0.75);
+    expect(aspectOf(0, 0)).toBeNull();
+    expect(aspectOf(1200, 0)).toBeNull();
+    expect(aspectOf(NaN, 1600)).toBeNull();
+    expect(aspectOf(undefined, 1600)).toBeNull();
   });
 
   it("tears each note the same way every time", () => {

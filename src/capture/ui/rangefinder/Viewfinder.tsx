@@ -4,7 +4,8 @@
 // fitted by containBox into the space the header and the control row leave,
 // so it shrinks before any text does. Over the feed, ESCAPD's own: the
 // framing grid (when on), the turn dial at the top (`overlay`, TurnDial.tsx)
-// and the privacy note at the foot until photo 1.
+// and at the foot the lens note (on 1x where the phone has 0.5) over the
+// privacy note (until photo 1), both the same see-through black pill.
 import type { ReactNode, RefObject } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { CameraView, type AvailableLenses, type CameraMountError, type FlashMode } from "expo-camera";
@@ -42,6 +43,8 @@ export interface ViewfinderProps {
   grid: boolean;
   /** The privacy note, shown until plate I and never in retake mode. */
   note: boolean;
+  /** The lens note (1x where the phone has 0.5), above the privacy note; null for none. */
+  lensNote?: string | null;
   /** Drawn over the feed and the grid, before the note: the turn dial. */
   overlay?: ReactNode;
   onCameraReady: () => void;
@@ -56,6 +59,7 @@ export function Viewfinder({
   selectedLens,
   grid,
   note,
+  lensNote = null,
   overlay,
   onCameraReady,
   onMountError,
@@ -85,16 +89,28 @@ export function Viewfinder({
       </View>
       <FramingGrid visible={grid} width={layout.width} height={layout.height} />
       {overlay}
-      {note ? (
-        <Animated.View exiting={NOTE_EXIT} style={styles.noteSlot}>
-          <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">
-            <View pointerEvents="none" style={styles.noteFill} testID="privacy-note-fill" />
-            <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
-              {COPY.privacy}
-            </Text>
-          </View>
-        </Animated.View>
-      ) : null}
+      <View pointerEvents="none" style={styles.noteSlot}>
+        {lensNote ? (
+          <Animated.View exiting={NOTE_EXIT}>
+            <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="lens-note">
+              <View style={styles.noteFill} testID="lens-note-fill" />
+              <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
+                {lensNote}
+              </Text>
+            </View>
+          </Animated.View>
+        ) : null}
+        {note ? (
+          <Animated.View exiting={NOTE_EXIT}>
+            <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">
+              <View pointerEvents="none" style={styles.noteFill} testID="privacy-note-fill" />
+              <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
+                {COPY.privacy}
+              </Text>
+            </View>
+          </Animated.View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -138,8 +154,8 @@ const styles = StyleSheet.create({
   },
   vertical: { position: "absolute", top: 0, bottom: 0, width: L.grid.line, backgroundColor: ref.color.textPrimary },
   horizontal: { position: "absolute", left: 0, right: 0, height: L.grid.line, backgroundColor: ref.color.textPrimary },
-  // Bottom-centred on the feed.
-  noteSlot: { position: "absolute", left: 0, right: 0, bottom: L.note.inset, alignItems: "center" },
+  // Bottom-centred on the feed, the lens note stacked over the privacy note.
+  noteSlot: { position: "absolute", left: 0, right: 0, bottom: L.note.inset, alignItems: "center", gap: ref.space.sm },
   // A black pill in Once's void (its wells: the track, the counter), see-through
   // so the feed still reads under it; white meta text.
   note: {

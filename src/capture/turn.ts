@@ -12,11 +12,13 @@ import { MAX_PLATES, MIN_PLATES } from "./slots";
 
 /**
  * Each lens's horizontal field of view in degrees with the phone upright and
- * the 3:4 frame (the sensor's short side across): the ultra-wide is about
- * 13 mm full-frame equivalent (2 atan(13 / 13) = 90), main lenses 24 to 26 mm
- * (53 to 57). Typical phones; close enough to plan the turns.
+ * the 3:4 frame (the sensor's short side across). The iPhone ultra-wide is
+ * sold as 120 degrees across the diagonal (13 mm full-frame equivalent): on a
+ * 4:3 sensor the short side is 0.6 of the diagonal, so 2 atan(0.6 tan 60) =
+ * 92. The main lens is 24 to 26 mm, 2 atan(13 / 26 to 24) = 53 to 57. Typical
+ * phones; close enough to plan the turns.
  */
-export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 90, main: 55 };
+export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 92, main: 55 };
 
 /** Neighbouring photos should share about a third of their width. */
 export const TARGET_OVERLAP = 1 / 3;
@@ -28,15 +30,23 @@ export interface TurnPlan {
   step: number;
   /** The share of a photo its neighbour also shows; negative is a gap between them. */
   overlap: number;
+  /**
+   * Neighbours share part of the view, so "keep part of the last photo in
+   * view" is something the player can do. False where the photo limit holds
+   * the lens to turns wider than it sees (1x): the photos only just meet.
+   */
+  overlaps: boolean;
 }
 
 /**
  * The fewest photos that go all the way round with TARGET_OVERLAP, held to
  * the photo limits; the turn is then an even share of the circle. The
- * ultra-wide (90) needs 6 photos 60 apart, a third overlapping. The main lens
- * (55) would need 10; held to 6, its turn is also 60, so neighbours just meet
- * (a sliver of gap at most): an even 60 still covers the most of the room
- * that 6 photos can.
+ * ultra-wide (92) needs 6 photos 60 apart, about a third overlapping. The
+ * main lens (55) would need 10; held to 6, its turn is also 60, so neighbours
+ * just meet (5 degrees of gap): a smaller turn would make them overlap but
+ * stop short of the start, and the photos are shown as a loop round the room
+ * (the build wait, the play screen), so the plan always closes the circle.
+ * The camera says so on 1x and points to 0.5 where the phone has it.
  */
 export function turnPlan(lens: LensChoice, max = MAX_PLATES, min = MIN_PLATES): TurnPlan {
   const fov = LENS_FOV[lens];
@@ -44,7 +54,8 @@ export function turnPlan(lens: LensChoice, max = MAX_PLATES, min = MIN_PLATES): 
   // The epsilon keeps 360 / 60 at 6, not 7, through floating point.
   const shots = Math.min(Math.max(Math.ceil(360 / ideal - 1e-9), min), max);
   const step = 360 / shots;
-  return { shots, step, overlap: (fov - step) / fov };
+  const overlap = (fov - step) / fov;
+  return { shots, step, overlap, overlaps: overlap > 0 };
 }
 
 export interface Vec3 {
@@ -60,10 +71,12 @@ export interface RotationRate {
 }
 
 /**
- * DeviceMotion's rotationRate (deg/s) as the device's x, y and z axes.
- * expo-sensors names them differently per platform: iOS sends alpha = z,
- * beta = y, gamma = x (CoreMotion's rotationRate); Android alpha = x,
- * beta = y, gamma = z (the gyroscope's values in order).
+ * DeviceMotion's rotationRate as the device's x, y and z axes, in deg/s.
+ * Checked against expo-sensors 58's native code (turn-test pins it): iOS
+ * sends CoreMotion's rotationRate converted with radiansToDegrees, alpha = z,
+ * beta = y, gamma = x; Android the gyroscope's values through
+ * Math.toDegrees, alpha = x, beta = y, gamma = z. Both stamp the sample in
+ * seconds (CoreMotion's timestamp; the gyroscope's nanoseconds / 1e9).
  */
 export function rateAxes(rate: RotationRate, os: string): Vec3 {
   return os === "ios" ? { x: rate.gamma, y: rate.beta, z: rate.alpha } : { x: rate.alpha, y: rate.beta, z: rate.gamma };

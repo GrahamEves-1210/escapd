@@ -15,6 +15,9 @@ function createAudioPlayer(source) {
     volume: 1,
     loop: false,
     playing: false,
+    // Loaded at once; a test sets false for a sound still loading or failed.
+    isLoaded: true,
+    currentTime: 0,
     play: jest.fn(() => {
       player.playing = true;
     }),

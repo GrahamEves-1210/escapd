@@ -23,7 +23,9 @@ export interface PlatePrompt {
   detail: string;
 }
 
-const OVERLAP = "Keep part of the last photo in view.";
+/** The turn prompts' detail where neighbours overlap (0.5x); the camera words 1x's turn edge to edge instead. */
+export const OVERLAP_DETAIL = "Keep part of the last photo in view.";
+const OVERLAP = OVERLAP_DETAIL;
 
 export const PLATE_PROMPTS: readonly PlatePrompt[] = [
   { numeral: "1", name: "Start", title: "Start here", detail: "Stand in the middle. Face any wall." },
@@ -39,15 +41,26 @@ export function promptFor(index: number): PlatePrompt {
 }
 
 /**
- * Retaking (or filling) one photo out of order: the turn prompts no longer
- * apply, so the camera names the view and where to aim, between the photos
- * either side of it round the circle (photo 1 sits between 6 and 2).
+ * A photo out of turn: a retake, an open slot left by a removed photo, or the
+ * next slot when the player isn't standing at the photo before it (the camera
+ * was reopened, photos came from the library, or the last one was removed).
+ * The turn prompts ("Turn right a little") only work from the photo before,
+ * so this names the view and places it by its neighbours round the circle
+ * (photo 1 sits between 6 and 2). With `filled` (which slots hold a photo) it
+ * names only neighbours that exist: between both, right of the one before or
+ * left of the one after; without it, or with neither, both.
  */
-export function retakePrompt(index: number): { title: string; detail: string } {
+export function placePrompt(index: number, filled?: readonly boolean[]): { title: string; detail: string } {
   const { name } = promptFor(index);
   const at = PLATE_PROMPTS.indexOf(promptFor(index));
   const count = PLATE_PROMPTS.length;
-  const before = PLATE_PROMPTS[(at - 1 + count) % count].numeral;
-  const after = PLATE_PROMPTS[(at + 1) % count].numeral;
+  const beforeAt = (at - 1 + count) % count;
+  const afterAt = (at + 1) % count;
+  const before = PLATE_PROMPTS[beforeAt].numeral;
+  const after = PLATE_PROMPTS[afterAt].numeral;
+  const hasBefore = filled?.[beforeAt] === true;
+  const hasAfter = filled?.[afterAt] === true;
+  if (hasBefore && !hasAfter) return { title: name, detail: `From the middle, face photo ${before}'s view, then turn right a little.` };
+  if (hasAfter && !hasBefore) return { title: name, detail: `From the middle, face photo ${after}'s view, then turn left a little.` };
   return { title: name, detail: `From the middle, aim between photos ${before} and ${after}.` };
 }

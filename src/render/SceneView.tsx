@@ -13,7 +13,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import { TreatedImage } from "@/components/noir";
 import {
-  MIN_ZOOM, clampTransform, doubleTapTarget, fillWidthFit, freeMargin, zoomAround, type Size, type Transform,
+  MIN_ZOOM, aspectOf, clampTransform, doubleTapTarget, fillWidthFit, freeMargin, zoomAround, type Size, type Transform,
 } from "./geometry";
 
 /** A bundled asset (require) or a signed photo URL. */
@@ -67,7 +67,7 @@ const P = ref.layout.play;
 export function bundledAspect(source: SceneSource): number | null {
   if (typeof source !== "number") return null;
   const resolved = RNImage.resolveAssetSource(source);
-  return resolved?.width && resolved?.height ? resolved.width / resolved.height : null;
+  return aspectOf(resolved?.width, resolved?.height);
 }
 
 /**
@@ -88,6 +88,11 @@ export function SceneView({
   const feedback = useFeedback();
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(() => bundledAspect(source));
+  // A size that isn't finite and positive keeps the aspect we have (NaN or Infinity must never reach the layout).
+  const onPhotoLoad = (width: number, height: number) => {
+    const next = aspectOf(width, height);
+    if (next !== null) setAspect(next);
+  };
 
   const free = useMemo(() => freeMargin(loupeTargets), [loupeTargets]);
   const fit = aspect ? fillWidthFit(viewport, aspect, Math.min(free, P.photo.maxCrop)) : null;
@@ -351,7 +356,7 @@ export function SceneView({
                 accessibilityRole="image"
                 accessibilityLabel={accessibilityLabel}
                 accessibilityHint={reducedMotion ? undefined : "Pinch to look closer. Press and hold for the loupe."}
-                onLoad={(e) => setAspect(e.source.width / e.source.height)}
+                onLoad={(e) => onPhotoLoad(e.source.width, e.source.height)}
                 testID={active ? "scene-photo" : undefined}
               />
               {active ? children({ width: imageWidth, height: imageHeight }) : null}
@@ -379,7 +384,7 @@ export function SceneView({
         <Image
           source={source}
           style={styles.measure}
-          onLoad={(e) => setAspect(e.source.width / e.source.height)}
+          onLoad={(e) => onPhotoLoad(e.source.width, e.source.height)}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         />

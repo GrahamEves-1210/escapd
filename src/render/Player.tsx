@@ -9,7 +9,7 @@
 // treatment. Crime scene adds the Suspects sheet and the Accuse screen;
 // paranormal adds the hotspot effects and the presence meter, and on case
 // closed the room snaps back to its own colours.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { AccessibilityInfo, Alert, Platform, StyleSheet, Switch, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -48,7 +48,7 @@ import { glintTargets, useIdle } from "./idle";
 import { InformantSheet, Matchbook } from "./Informant";
 import { ladderFrom, type Ladder } from "./informantLadder";
 import { InventoryBar, type SlotRef } from "./InventoryBar";
-import { PickupFlight, measureInWindow, type Flight } from "./PickupFlight";
+import { PickupFlight, flightRects, measureInWindow, type Flight } from "./PickupFlight";
 import { PresenceMeter } from "./PresenceMeter";
 import { ResultSheet, type ResultContent } from "./ResultSheet";
 import { ScenePager } from "./ScenePager";
@@ -172,7 +172,8 @@ type Attempt =
 
 type SheetState =
   // `solved`: it opens on a solve's success haptic, so its paper cue waits a beat.
-  | { kind: "result"; content: ResultContent; returnTo?: Id; solved?: boolean }
+  // `key`: each result is its own sheet, never one still sliding away with new content.
+  | { kind: "result"; content: ResultContent; returnTo?: Id; solved?: boolean; key?: number }
   | { kind: "code"; puzzle: Puzzle; hotspotId: Id }
   | { kind: "menu" }
   | { kind: "informant" }
@@ -182,6 +183,19 @@ type SheetState =
   | null;
 
 const uniq = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
+
+/** The sheet up, and a count that gives each result sheet its own key. */
+function nextSheet(prev: { sheet: SheetState; seq: number }, next: SheetState): { sheet: SheetState; seq: number } {
+  if (next === null && prev.sheet === null) return prev;
+  const seq = prev.seq + 1;
+  return { sheet: next?.kind === "result" ? { ...next, key: seq } : next, seq };
+}
+
+/** Items a solve gave up, held off the tray until its clue is pocketed, and the object they came out of. */
+interface PendingPickup {
+  ids: Id[];
+  hotspotId?: Id;
+}
 
 function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }: {
   roomId: string;
@@ -194,6 +208,8 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
 }) {
   const def = player.definition!;
   const { state } = player;
+  // The newest state, for async work (a pickup measuring) that outlives the render it started in.
+  const latestState = useRef(state);
   const prefs = usePreferences();
   const feedback = useFeedback();
   const { reducedMotion } = useTheme();
@@ -207,8 +223,15 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
 
   const sceneCount = def.photos.length;
   const sceneIndex = Math.min(Math.max(ui.memory.sceneIndex, 0), sceneCount - 1);
+  // The view in view, for async work to see whether it changed under it.
+  const sceneRef = useRef(sceneIndex);
+  useLayoutEffect(() => {
+    latestState.current = state;
+    sceneRef.current = sceneIndex;
+  });
   const [picked, setPicked] = useState<Id[]>([]);
-  const [sheet, setSheet] = useState<SheetState>(null);
+  // Every result opens as a new sheet (its own key), so one never takes over a sheet still sliding away.
+  const [{ sheet }, setSheet] = useReducer(nextSheet, { sheet: null, seq: 0 });
   const [toast, setToast] = useState<{ text: string; key: number } | null>(null);
   const [flash, setFlash] = useState<{ id: Id; key: number }>();
   const [thread, setThread] = useState<Thread | null>(null);
@@ -228,8 +251,30 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
   const rootRef = useRef<HotspotRef>(null);
   // Items granted but not in the tray yet: they land when the clue is pocketed (the sheet closes).
   const [arriving, setArriving] = useState<ReadonlySet<Id>>(() => new Set());
-  const pendingPickup = useRef<{ ids: Id[]; hotspotId?: Id } | null>(null);
-  const [flights, setFlights] = useState<Flight[]>([]);
+  // What each solve gave up, by the object it came out of, until the clue is pocketed.
+  const pendingPickup = useRef<PendingPickup[]>([]);
+  // The flights in the air: state to draw them, mirrored in a ref so a landing
+  // is read and removed outside any state updater (a landing reported twice
+  // lands once, and its cue never runs inside React's render).
+  const [flights, setFlightState] = useState<Flight[]>([]);
+  const flightsRef = useRef<Flight[]>([]);
+  const setFlights = useCallback((next: Flight[]) => {
+    flightsRef.current = next;
+    setFlightState(next);
+  }, []);
+  const flightSeq = useRef(0);
+  // Bumped by a restart and on unmount: a pickup still measuring when it changes is dropped.
+  const pickupEpoch = useRef(0);
+  const alive = useRef(true);
+  const focusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      pickupEpoch.current += 1;
+      if (focusTimer.current) clearTimeout(focusTimer.current);
+    };
+  }, []);
   // Hotspots tapped on this visit: the idle glint passes over them.
   const [tapped, setTapped] = useState<ReadonlySet<Id>>(() => new Set());
   // The informant's tips so far, from the session row until he is asked (then from his answers).
@@ -295,58 +340,75 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     else slotRefs.current.delete(id);
   }, []);
 
-  /** An item reaches the tray: its tile bounces in, with the pickup cue. */
-  const land = useCallback((ids: Id[]) => {
-    if (!ids.length) return;
-    feedback.pickup();
+  /** Items reach the tray: their tiles bounce in, with the pickup cue (`cue` false: a group's cue already came). */
+  const land = useCallback((ids: Id[], cue = true) => {
+    if (!ids.length || !alive.current) return;
+    if (cue) feedback.pickup();
     setArriving((prev) => {
+      if (!ids.some((id) => prev.has(id))) return prev;
       const next = new Set(prev);
       for (const id of ids) next.delete(id);
       return next;
     });
   }, [feedback]);
 
+  /** A flight has landed. Once per key: a second report, or one after a restart, does nothing. */
   const onLanded = useCallback((key: number) => {
-    setFlights((all) => {
-      const done = all.filter((f) => f.key === key);
-      if (done.length) land(done.map((f) => f.item.id));
-      return all.filter((f) => f.key !== key);
-    });
-  }, [land]);
+    const all = flightsRef.current;
+    const done = all.find((f) => f.key === key);
+    if (!done) return;
+    const rest = all.filter((f) => f.key !== key);
+    setFlights(rest);
+    // Items pocketed together land together: one cue, from the last of them.
+    land([done.item.id], !rest.some((f) => f.group === done.group));
+  }, [land, setFlights]);
 
   /**
    * The pocketed items fly from the object into their tray slots. Under
    * reduced motion, or when a position can't be measured, they simply land.
+   * Measuring is async: if the player restarted or left meanwhile, nothing
+   * flies; if the view changed or the object went, the items land.
    */
   const launchPickup = useCallback(async () => {
-    const pending = pendingPickup.current;
-    pendingPickup.current = null;
-    if (!pending) return;
-    const source = pending.hotspotId ? hotspotRefs.current.get(pending.hotspotId) : undefined;
-    if (reducedMotion || !source) {
-      land(pending.ids);
-      return;
-    }
-    const [root, from, ...slots] = await Promise.all([
-      measureInWindow(rootRef.current),
-      measureInWindow(source),
-      ...pending.ids.map((id) => measureInWindow(slotRefs.current.get(id))),
-    ]);
-    const launched: Flight[] = [];
-    const grounded: Id[] = [];
-    pending.ids.forEach((id, i) => {
-      const to = slots[i];
-      const item = inventoryItems(def, player.state).find((it) => it.id === id);
-      if (!root || !from || !to || !item) {
-        grounded.push(id);
-        return;
+    const groups = pendingPickup.current;
+    pendingPickup.current = [];
+    for (const pending of groups) {
+      const source = pending.hotspotId ? hotspotRefs.current.get(pending.hotspotId) : undefined;
+      if (reducedMotion || !source) {
+        land(pending.ids);
+        continue;
       }
-      const local = (r: typeof to) => ({ ...r, x: r.x - root.x, y: r.y - root.y });
-      launched.push({ key: Date.now() + i, item, from: local(from), to: local(to) });
-    });
-    land(grounded);
-    if (launched.length) setFlights((all) => [...all, ...launched]);
-  }, [reducedMotion, land, def, player.state]);
+      const epoch = pickupEpoch.current;
+      const scene = sceneRef.current;
+      const [root, from, ...slots] = await Promise.all([
+        measureInWindow(rootRef.current),
+        measureInWindow(source),
+        ...pending.ids.map((id) => measureInWindow(slotRefs.current.get(id))),
+      ]);
+      if (!alive.current || epoch !== pickupEpoch.current) return;
+      const moved = scene !== sceneRef.current || hotspotRefs.current.get(pending.hotspotId!) !== source;
+      const items = inventoryItems(def, latestState.current);
+      const group = (flightSeq.current += 1);
+      const launched: Flight[] = [];
+      const grounded: Id[] = [];
+      pending.ids.forEach((id, i) => {
+        const rects = moved ? null : flightRects(root, from, slots[i] ?? null);
+        const item = items.find((it) => it.id === id);
+        // An item no longer held (used or combined meanwhile) has nothing to land.
+        if (!item) return;
+        if (!rects || !slotRefs.current.get(id)) {
+          grounded.push(id);
+          return;
+        }
+        launched.push({ key: (flightSeq.current += 1), group, item, ...rects });
+      });
+      // Gone from the inventory: no longer on its way to the tray.
+      const gone = pending.ids.filter((id) => !items.some((it) => it.id === id));
+      if (gone.length) land(gone, false);
+      land(grounded);
+      if (launched.length) setFlights([...flightsRef.current, ...launched]);
+    }
+  }, [reducedMotion, land, def, setFlights]);
 
   const goToScene = useCallback((index: number) => {
     if (index === sceneIndex) return;
@@ -370,11 +432,17 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
     // Pocketing the clue: what it gave up goes into the tray.
     launchPickup();
     if (!returnTo) return;
-    // Focus goes back to the hotspot the action came from.
-    setTimeout(() => {
+    // Focus goes back to the hotspot the action came from, if it is still on screen then.
+    if (focusTimer.current) clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => {
+      focusTimer.current = null;
+      if (!alive.current) return;
       const node = hotspotRefs.current.get(returnTo);
       // The web has no sendAccessibilityEvent.
-      if (node && Platform.OS !== "web") AccessibilityInfo.sendAccessibilityEvent(node, "focus");
+      if (!node || Platform.OS === "web") return;
+      try {
+        AccessibilityInfo.sendAccessibilityEvent(node, "focus");
+      } catch {}
     }, reducedMotion ? 120 : 360);
   }, [sheet, reducedMotion, launchPickup]);
 
@@ -427,7 +495,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       if (!result.completed) {
         // Held off the tray until the clue is pocketed; then they fly in from the object.
         const ids = gained.map((g) => g.id);
-        pendingPickup.current = { ids: [...(pendingPickup.current?.ids ?? []), ...ids], hotspotId };
+        pendingPickup.current = [...pendingPickup.current, { ids, hotspotId }];
         setArriving((prev) => new Set([...prev, ...ids]));
       }
     }
@@ -565,7 +633,9 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
 
   const onHotspotPress = useCallback((hotspot: Hotspot) => {
     // The tick came on press-in (HotspotLayer's onPressIn); the outcome brings its own.
-    if (player.pending || completing) return;
+    // Never while a sheet is up or still sliding away (it lets touches through as it goes):
+    // a result arriving then would land in the sheet that is leaving.
+    if (player.pending || completing || sheet !== null) return;
     setTapped((prev) => (prev.has(hotspot.id) ? prev : new Set([...prev, hotspot.id])));
     if (selected.length === 1) {
       applyItem(selected[0], hotspot);
@@ -585,7 +655,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       return;
     }
     inspect(hotspot);
-  }, [player.pending, completing, selected, applyItem, showToast, def, state, inspect]);
+  }, [player.pending, completing, sheet, selected, applyItem, showToast, def, state, inspect]);
 
   const submitCode = useCallback(async (answer: string): Promise<CodeOutcome> => {
     if (sheet?.kind !== "code") return { kind: "invalid", message: PLAY_COPY.notYet };
@@ -675,7 +745,8 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
         style: "destructive",
         onPress: () => {
           setSheet(null);
-          pendingPickup.current = null;
+          pickupEpoch.current += 1;
+          pendingPickup.current = [];
           setArriving(new Set());
           setFlights([]);
           setTapped(new Set());
@@ -684,7 +755,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
         },
       },
     ]);
-  }, [ui, player, showToast]);
+  }, [ui, player, showToast, setFlights]);
 
   const labelFor = useCallback((h: Hotspot) => hotspotA11yLabel(
     def, state, h, useItemName ? { kind: "use", itemName: useItemName } : { kind: "default" },
@@ -856,7 +927,7 @@ function PlayerStage({ roomId, player, sources, ui, coach, onExit, onComplete }:
       {flights.map((flight) => <PickupFlight key={flight.key} flight={flight} onLanded={onLanded} />)}
 
       {sheet?.kind === "result" ? (
-        <ResultSheet content={sheet.content} onClose={closeSheet} paperDelay={sheet.solved ? P.clue.paperDelay : 0} />
+        <ResultSheet key={sheet.key} content={sheet.content} onClose={closeSheet} paperDelay={sheet.solved ? P.clue.paperDelay : 0} />
       ) : null}
       {sheet?.kind === "informant" ? (
         <InformantSheet

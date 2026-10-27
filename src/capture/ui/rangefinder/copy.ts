@@ -4,7 +4,7 @@
 // so the screen and its tests share one source. The photo prompts themselves
 // live in src/capture/slots.ts: the 360's turns, or in retake mode the view
 // and where to aim.
-import { MAX_PLATES, MIN_PLATES, promptFor, retakePrompt } from "@/capture/slots";
+import { MAX_PLATES, MIN_PLATES, OVERLAP_DETAIL, placePrompt, promptFor } from "@/capture/slots";
 import type { LibraryImportProgress } from "@/capture/useLibraryImport";
 
 export const COPY = {
@@ -33,6 +33,11 @@ export const COPY = {
   shutterFull: "Take a photo",
   // The turn dial: announced once a turn is far enough (the light tick's words).
   turnReached: "Far enough. Take the photo.",
+  // On 1x six photos 60 degrees apart only just meet (src/capture/turn.ts):
+  // the turn prompts' detail says so instead of asking for overlap.
+  edgeDetail: "Start where the last photo ended.",
+  // On 1x where the phone has 0.5: a note on the feed pointing to it.
+  lensNote: "On 1.0 the photos only just meet. Switch to 0.5 to overlap them.",
 } as const;
 
 /**
@@ -40,12 +45,20 @@ export const COPY = {
  * outside retake mode (MAX_PLATES once all 6 are filled), the retaken slot in
  * it. `filling`: retake mode on a slot the player emptied (a first take).
  * `taken`: photos filled now (defaults to `index`, as with no open slots).
+ * `inTurn` (default true): the player stands at the photo before this one,
+ * having just taken it, so the turn prompts apply; false places the photo by
+ * its neighbours instead (`filled`: which slots hold a photo). `edgeToEdge`:
+ * the lens's photos only just meet (1x), so the turn can't keep part of the
+ * last photo in view.
  */
 export interface RollPosition {
   index: number;
   retake: boolean;
   filling?: boolean;
   taken?: number;
+  inTurn?: boolean;
+  filled?: readonly boolean[];
+  edgeToEdge?: boolean;
 }
 
 const isFull = ({ index, retake }: RollPosition) => !retake && index >= MAX_PLATES;
@@ -53,15 +66,16 @@ const takenOf = (at: RollPosition) => at.taken ?? Math.min(at.index, MAX_PLATES)
 
 /**
  * Header title and subtitle: the photo's turn prompt, or the lines once 6 are
- * taken. In retake mode the turn prompts don't apply, so it names the view and
- * where to aim ("Back right" / "From the middle, aim between photos 2 and 4.").
- * No "Retake." prefix: the counter carries it.
+ * taken. In retake mode, and whenever the player isn't standing at the photo
+ * before (`inTurn` false), the turn prompts don't apply, so it names the view
+ * and where to aim ("Back right" / "From the middle, aim between photos 2 and
+ * 4."). No "Retake." prefix: the counter carries it.
  */
 export function promptCopy(at: RollPosition): { title: string; detail: string } {
   if (isFull(at)) return { title: COPY.fullTitle, detail: COPY.fullDetail };
-  if (at.retake) return retakePrompt(at.index);
+  if (at.retake || at.inTurn === false) return placePrompt(at.index, at.filled);
   const { title, detail } = promptFor(at.index);
-  return { title, detail };
+  return { title, detail: at.edgeToEdge && detail === OVERLAP_DETAIL ? COPY.edgeDetail : detail };
 }
 
 /**

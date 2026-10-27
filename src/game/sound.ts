@@ -98,6 +98,20 @@ export function preloadSounds() {
   }
 }
 
+/**
+ * Whether a player's sound has loaded and can be sought. iOS raises an
+ * uncatchable native exception (the app dies, no red screen) for a seek on
+ * an item that isn't ready to play: still loading, or failed (a broken file,
+ * a dropped dev-server asset, media services reset).
+ */
+function canSeek(player: AudioPlayer): boolean {
+  try {
+    return player.isLoaded === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Play one effect from its start. Never throws; silent where audio isn't available. */
 export function playSound(name: SoundName) {
   if (!supported) return;
@@ -107,7 +121,8 @@ export function playSound(name: SoundName) {
   quietly(() => {
     player.volume = EFFECTS[name].volume;
     // A replay starts over; seekTo is async but play picks up the new position.
-    quietly(() => player.seekTo(0));
+    // Only a loaded sound is sought: one still loading starts from its start anyway.
+    if (canSeek(player)) quietly(() => player.seekTo(0));
     player.play();
   });
 }

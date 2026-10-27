@@ -14,7 +14,9 @@
 // Render it conditionally: it animates in on mount.
 // Closing: Close, the scrim and anything inside that asks through
 // useSheetClose() (or a function `footer`'s `close`) slide the sheet away
-// while it is still mounted, and call `onClose` only once it is gone. A
+// while it is still mounted, and call `onClose` only once it is gone (once,
+// from the slide's end on the UI thread through scheduleOnRN, or from a JS
+// fallback ref.layout.hub.sheet.closeSlack ms after it should have ended). A
 // sheet that only animated out on unmount lost its stacking on the way down
 // (the removed view no longer sorts by its zIndex), so the tray and the
 // header drew over it. A caller that unmounts it directly (a sheet swapped
@@ -108,10 +110,18 @@ export function DarkSheet({
   }, [onClose]);
   // A sheet unmounted mid-slide (its caller reopened or swapped it) never calls onClose late.
   const mounted = useRef(true);
+  // onClose runs once per close: from the slide's end, or from the fallback if that never reports.
+  const finished = useRef(false);
+  const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     mounted.current = false;
+    if (fallback.current) clearTimeout(fallback.current);
   }, []);
   const finish = useCallback(() => {
+    if (finished.current) return;
+    finished.current = true;
+    if (fallback.current) clearTimeout(fallback.current);
+    fallback.current = null;
     if (mounted.current) onCloseRef.current();
   }, []);
   const close = useCallback(() => {
@@ -122,9 +132,11 @@ export function DarkSheet({
     const timing = reducedMotion
       ? { duration: motion.reducedFade, reduceMotion: ReduceMotion.Never }
       : { duration: fall.duration, easing: toEasing(fall.easing), reduceMotion: ReduceMotion.Never };
-    gone.set(withTiming(1, timing, (finished) => {
-      if (finished) scheduleOnRN(finish);
+    gone.set(withTiming(1, timing, (done) => {
+      if (done) scheduleOnRN(finish);
     }));
+    // Should the slide be cut short or never report, the sheet still closes (it already lets touches through).
+    fallback.current = setTimeout(finish, timing.duration + S.closeSlack);
   }, [gone, started, reducedMotion, finish]);
   const scrimFade = useAnimatedStyle(() => ({ opacity: 1 - gone.get() }));
   const slide = useAnimatedStyle(() => (reducedMotion

@@ -682,6 +682,8 @@ export const ref = {
         titleFocus: 300,
         titleFocusReduced: 50,
         focusMargin: 100,
+        // A sheet's own close: onClose runs when its slide ends, or this many ms after the slide's duration if that never reports.
+        closeSlack: 150,
         // Every switch (Settings, Case options): a white track with a black
         // thumb when on, grey when off. No green, mint or aqua anywhere.
         switch: { on: refColor.textPrimary, off: refColor.textTertiary, thumb: refColor.void },
@@ -1521,9 +1523,11 @@ export const ref = {
       // arc (`arc` pt above the straight line at its middle) over `flight` ms,
       // shrinking from `from` to the tile's size, then the tile bounces
       // (`bounce` up, then a spring back). Measuring gives up after
-      // `measureTimeout` ms and the item simply lands. Reduced motion: no
-      // flight; the item appears in its slot (the haptic is kept).
-      pickup: { flight: 520, arc: 90, from: 1.25, size: 44, bounce: 1.14, bounceUp: 90, spring: { damping: 9, stiffness: 260, mass: 0.6 }, measureTimeout: 160 },
+      // `measureTimeout` ms and the item simply lands. It lands when the
+      // flight's animation reports its end; `landSlack` ms past `flight` it
+      // lands anyway. Reduced motion: no flight; the item appears in its slot
+      // (the haptic is kept).
+      pickup: { flight: 520, arc: 90, from: 1.25, size: 44, bounce: 1.14, bounceUp: 90, spring: { damping: 9, stiffness: 260, mass: 0.6 }, measureTimeout: 160, landSlack: 200 },
       // A clue as an object on the sheet: a note on lined, torn paper (`tear`
       // pt of torn edge, ruled every line, a margin rule `margin` in, tilted
       // `tilt` degrees) and, for an object in the room, a polaroid of it (the

@@ -15,6 +15,18 @@ export interface Box extends Size {
   y: number;
 }
 
+/**
+ * An image's aspect (width / height) from its reported size, or null unless
+ * both are finite and positive. A 0 or NaN size from a load event would put
+ * NaN or Infinity into a layout or transform, which iOS can crash on.
+ */
+export function aspectOf(width: unknown, height: unknown): number | null {
+  if (typeof width !== "number" || typeof height !== "number") return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  const aspect = width / height;
+  return Number.isFinite(aspect) && aspect > 0 ? aspect : null;
+}
+
 /** The box an image of `aspect` (width / height) occupies inside `viewport` with contain. */
 export function containBox(viewport: Size, aspect: number): Box {
   "worklet";

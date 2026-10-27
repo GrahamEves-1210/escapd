@@ -39,6 +39,15 @@ describe("DarkSheet closing", () => {
     await waitFor(() => expect(fromFooter).toHaveBeenCalledTimes(1));
   });
 
+  it("calls onClose once when both the slide's end and the fallback come", async () => {
+    const onClose = jest.fn();
+    await render(sheet(onClose));
+    await fireEvent.press(screen.getByTestId("close"));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await act(() => new Promise((resolve) => setTimeout(resolve, ref.motion.sheetFall.duration + ref.layout.hub.sheet.closeSlack + 50)));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("never calls onClose late once it has been unmounted mid-slide", async () => {
     const onClose = jest.fn();
     const view = await render(sheet(onClose));

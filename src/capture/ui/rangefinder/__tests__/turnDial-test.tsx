@@ -54,8 +54,9 @@ function props(overrides: Partial<TurnDialProps> = {}): TurnDialProps {
     step: 60,
     taken: [true, false, false, false, false, false],
     target: 1,
+    listening: true,
     active: true,
-    resetKey: "1:1",
+    resetKey: "shot-1",
     line: "Photo 2 of 6",
     accessibilityLabel: (reached) => (reached ? `Photo 2 of 6. ${COPY.turnReached}` : "Photo 2 of 6."),
     onReached: jest.fn(),
@@ -154,7 +155,7 @@ describe("turn dial: live tracking", () => {
     await flush();
     await turn(60, 1);
     expect(onReached).toHaveBeenCalledTimes(1);
-    await view.rerender(<TurnDial {...props({ onReached, taken: [true, true, false, false, false, false], target: 2, resetKey: "2:2" })} />);
+    await view.rerender(<TurnDial {...props({ onReached, taken: [true, true, false, false, false, false], target: 2, resetKey: "shot-2" })} />);
     await flush();
     expect(arc()).toBeNull();
     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
@@ -179,13 +180,52 @@ describe("turn dial: live tracking", () => {
     expect(arcEnd().x).toBeCloseTo(C + R * Math.sin(Math.PI / 12), 1);
   });
 
-  it("stops listening when tracking turns off", async () => {
+  it("hides the turn while inactive but keeps counting it, and stops listening when told to", async () => {
     const view = await render(<TurnDial {...props()} />);
     await flush();
     expect(sensors.mockMotion.listeners.size).toBe(1);
+    await turn(60, 0.25);
+    expect(arc()).toBeTruthy();
     await view.rerender(<TurnDial {...props({ active: false })} />);
+    expect(sensors.mockMotion.listeners.size).toBe(1);
+    expect(arc()).toBeNull();
+    await view.rerender(<TurnDial {...props({ listening: false, active: false })} />);
     expect(sensors.mockMotion.listeners.size).toBe(0);
     expect(arc()).toBeNull();
+  });
+
+  it("counts a turn made while hidden (the busy wait after the shutter) and ticks as soon as it shows", async () => {
+    const onReached = jest.fn();
+    const view = await render(<TurnDial {...props({ onReached, active: false })} />);
+    await flush();
+    // The shutter fired (a new key) and the player turned on while the photo was prepared.
+    await view.rerender(<TurnDial {...props({ onReached, active: false, resetKey: "shot-2" })} />);
+    await turn(60, 0.5);
+    expect(onReached).not.toHaveBeenCalled();
+    await view.rerender(<TurnDial {...props({ onReached, resetKey: "shot-2" })} />);
+    await flush();
+    // Half the turn already made: the arc shows it, and the rest reaches the stop.
+    expect(arc()).toBeTruthy();
+    await turn(60, 0.5);
+    expect(onReached).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the turn when the step changes mid-turn (a lens switch), measuring it against the new step", async () => {
+    const onReached = jest.fn();
+    const view = await render(<TurnDial {...props({ onReached })} />);
+    await flush();
+    await turn(60, 0.5);
+    expect(onReached).not.toHaveBeenCalled();
+    // 30 degrees turned; a plan of 40-degree turns: 75 % there, not back to 0.
+    await view.rerender(<TurnDial {...props({ onReached, step: 40 })} />);
+    const C = ref.layout.camera.turn.dial / 2;
+    const R = C - ref.layout.camera.turn.ring;
+    await turn(60, 0.1);
+    // 36 of 40: the arc from stop 1 (top) runs 0.9 of a 40-degree turn.
+    expect(arcEnd().x).toBeCloseTo(C + R * Math.sin((36 * Math.PI) / 180), 0);
+    expect(onReached).not.toHaveBeenCalled();
+    await turn(60, 0.05);
+    expect(onReached).toHaveBeenCalledTimes(1);
   });
 });
 

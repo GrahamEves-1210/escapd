@@ -12,6 +12,7 @@ import type { InventoryItem } from "@/game/selectors";
 import { TreatedImage } from "@/components/noir";
 import { ref } from "@/theme/tokens";
 import { ItemIcon } from "./ItemIcon";
+import { aspectOf } from "./geometry";
 import { cluePaper, tornEdge } from "./materials";
 import type { SceneSource } from "./SceneView";
 
@@ -36,15 +37,21 @@ export interface Snapshot {
  * image fractions) is centred and covers it, without showing past the photo's
  * edges: the image's size and offset inside the box.
  */
-export function polaroidCrop(shape: Snapshot["shape"], aspect: number, box: { width: number; height: number }) {
-  const sw = Math.max(shape.w, 0.01);
-  const sh = Math.max(shape.h, 0.01);
+export function polaroidCrop(shape: Snapshot["shape"], imageAspect: number, box: { width: number; height: number }) {
+  // Every number here ends up in a style: a NaN or Infinity (a bad aspect or
+  // shape) must never get there, so each input is made finite first.
+  const unit = (v: number, fallback: number) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : fallback);
+  const aspect = Number.isFinite(imageAspect) && imageAspect > 0 ? imageAspect : 1;
+  const sx = unit(shape.x, 0);
+  const sy = unit(shape.y, 0);
+  const sw = Math.max(unit(shape.w, 1), 0.01);
+  const sh = Math.max(unit(shape.h, 1), 0.01);
   // The displayed image height at which the shape covers the box, and never smaller than the box.
   let height = Math.max(box.width / (sw * aspect), box.height / sh);
   height = Math.max(height, box.height, box.width / aspect);
   const width = height * aspect;
-  const cx = (shape.x + sw / 2) * width;
-  const cy = (shape.y + sh / 2) * height;
+  const cx = (sx + sw / 2) * width;
+  const cy = (sy + sh / 2) * height;
   const clamp = (v: number, min: number) => Math.min(0, Math.max(min, v));
   return {
     width,
@@ -108,7 +115,11 @@ export function Polaroid({ snapshot, width = C.width }: { snapshot: Snapshot; wi
           cacheKey={snapshot.cacheKey}
           contentFit="fill"
           accessible={false}
-          onLoad={(e) => setAspect(e.source.width / e.source.height)}
+          onLoad={(e) => {
+            // Only a real size: NaN or Infinity in the crop's style can crash iOS.
+            const next = aspectOf(e.source.width, e.source.height);
+            if (next !== null) setAspect(next);
+          }}
           style={crop ? [styles.photo, crop] : styles.measure}
         />
       </View>
