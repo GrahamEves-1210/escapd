@@ -10,6 +10,7 @@
 // Screen readers get one button per visible object instead (accessibilityTap).
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Image } from "expo-image";
 import {
   BlurMask, Canvas, Circle, Group, Paint, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
@@ -37,6 +38,8 @@ export interface StageProps {
   genre: Genre;
   objects: StageObject[];
   overlays: { object: string; overlay: Overlay; box: Box }[];
+  /** A taken object's fill (its rect in photo fractions), drawn over the photo under the dark. */
+  patch?: { rect: Box; uri: string } | null;
   /** False: the hard setting, no glints at all. */
   glints: boolean;
   /** Show interactives (accessibility): a faint outline on every object, always. */
@@ -57,7 +60,7 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
   return best?.id ?? null;
 }
 
-export function Stage({ source, cacheKey, genre, objects, overlays, glints, assist, onLook, onPage, accessibilityLabel }: StageProps) {
+export function Stage({ source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel }: StageProps) {
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
@@ -132,6 +135,16 @@ export function Stage({ source, cacheKey, genre, objects, overlays, glints, assi
               accessibilityLabel={accessibilityLabel}
               onLoad={(e) => setAspect((a) => a ?? aspectOf(e.source.width, e.source.height))}
             />
+            {patch ? (
+              <Image
+                source={{ uri: patch.uri }}
+                contentFit="fill"
+                transition={600}
+                accessible={false}
+                testID="v2-removed-patch"
+                style={{ position: "absolute", left: patch.rect.x * W, top: patch.rect.y * H, width: patch.rect.w * W, height: patch.rect.h * H }}
+              />
+            ) : null}
             <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
               {/* Marks the room has gained, drawn on the photo under the dark. */}
               {overlays.map((o) => (

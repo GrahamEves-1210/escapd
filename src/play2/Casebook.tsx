@@ -15,6 +15,10 @@ export interface CasebookProps {
   hints: string[];
   /** False when every step is done (nothing left to hint). */
   canHint: boolean;
+  /** Crime scene: the accusation's lists, an evidence board the player crosses options off. */
+  board?: { title: string; options: { id: string; name: string }[] }[];
+  struck?: string[];
+  onStrike?: (id: string) => void;
   /** Objects glint in the torch's beam; off is the hard way. */
   glints: boolean;
   onGlints: (on: boolean) => void;
@@ -24,7 +28,7 @@ export interface CasebookProps {
   onClose: () => void;
 }
 
-export function Casebook({ objective, cards, items, hints, canHint, glints, onGlints, onHint, onExamine, onRestart, onClose }: CasebookProps) {
+export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose }: CasebookProps) {
   const theme = useModeTheme();
   const heading = [ref.type.meta, styles.heading, { color: theme.inkMuted }];
   const body = [ref.type.body, { color: theme.ink }];
@@ -43,6 +47,37 @@ export function Casebook({ objective, cards, items, hints, canHint, glints, onGl
           <Text style={[ref.type.body, { color: theme.inkMuted }]}>Nothing yet. Sweep the light across the room.</Text>
         )}
       </View>
+
+      {board ? (
+        <View style={styles.section} testID="v2-board">
+          <Text style={heading}>Evidence board</Text>
+          <Text style={[ref.type.meta, { color: theme.inkMuted }]}>Cross off what the evidence rules out.</Text>
+          {board.map((list) => (
+            <View key={list.title} style={styles.boardRow}>
+              <Text style={[ref.type.meta, styles.boardTitle, { color: theme.inkMuted }]}>{list.title}</Text>
+              <View style={styles.boardOptions}>
+                {list.options.map((o) => {
+                  const off = struck.includes(o.id);
+                  return (
+                    <Pressable
+                      key={o.id}
+                      onPress={() => onStrike?.(o.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={o.name}
+                      accessibilityState={{ checked: off }}
+                      accessibilityHint={off ? "Ruled out. Tap to put it back." : "Tap to rule it out."}
+                      testID={`v2-board-${o.id}`}
+                      style={[styles.option, { borderColor: theme.rim, backgroundColor: off ? "transparent" : theme.raised }]}
+                    >
+                      <Text style={[ref.type.meta, { color: off ? theme.inkMuted : theme.ink, textDecorationLine: off ? "line-through" : "none" }]}>{o.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
 
       {items.length ? (
         <View style={styles.section}>
@@ -91,6 +126,10 @@ const styles = StyleSheet.create({
   section: { gap: ref.space.sm, marginBottom: ref.space.lg },
   heading: { textTransform: "uppercase", letterSpacing: 1.2 },
   card: { borderRadius: ref.radius.sheet, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.lg, gap: ref.space.xs },
+  boardRow: { flexDirection: "row", gap: ref.space.sm, alignItems: "flex-start" },
+  boardTitle: { width: 36, paddingTop: ref.space.sm, textTransform: "uppercase" },
+  boardOptions: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: ref.space.xs },
+  option: { minHeight: ref.hit.min, paddingHorizontal: ref.space.sm, borderRadius: ref.radius.tag, borderWidth: StyleSheet.hairlineWidth, justifyContent: "center" },
   row: { flexDirection: "row", alignItems: "center", minHeight: ref.hit.min, gap: ref.space.sm },
   flex: { flex: 1 },
   pill: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center", marginTop: ref.space.xs },

@@ -175,6 +175,83 @@ async function produce(def: PuzzleDefinitionV1, sources: readonly SceneSource[],
   }
 }
 
+/** The fill over one known box (gameplay v2's removable object): its rect on the photo and the PNG. */
+export interface BoxPatch {
+  rect: Rect;
+  uri: string;
+}
+
+/** Bakes a fill for one box on one photo, as produce() does for the chosen object; null when anything fails. */
+async function bakeBox(source: SceneSource, genre: Genre, cacheKey: string | undefined, box: Rect, seedId: string): Promise<BoxPatch | null> {
+  const S = skia();
+  const treated = await treatPhoto(source, genre, { cacheKey });
+  const input = treated ?? (typeof source === "number" ? source : source.uri);
+  const photo = await S.loadData(input, (data) => S.Skia.Image.MakeImageFromEncoded(data));
+  if (!photo) return null;
+  let region: PixelRegion;
+  let rect: Rect;
+  try {
+    const g = regionGeometry(box, photo.width(), photo.height());
+    const data = readRegion(S, photo, g);
+    if (!data) return null;
+    region = { data, width: g.width, height: g.height, box: g.box };
+    rect = g.rect;
+  } finally {
+    photo.dispose();
+  }
+  await idle();
+  const pixels = makePatch(region, seedFor(seedId));
+  const image = S.Skia.Image.MakeImage(
+    { width: region.width, height: region.height, colorType: S.ColorType.RGBA_8888, alphaType: S.AlphaType.Unpremul },
+    S.Skia.Data.fromBytes(pixels),
+    region.width * 4,
+  );
+  if (!image) return null;
+  try {
+    const encoded = image.encodeToBase64(S.ImageFormat.PNG, 100);
+    return encoded ? { rect, uri: `data:image/png;base64,${encoded}` } : null;
+  } finally {
+    image.dispose();
+  }
+}
+
+const boxDone = new Map<string, BoxPatch | null>();
+
+/**
+ * Gameplay v2: the fill for the room's removable object, baked in idle
+ * moments once the photo is up (the object is known, no chooser). Null until
+ * then, and for good when there is none or the bake fails.
+ */
+export function useBoxPatch(
+  target: { id: string; source: SceneSource; cacheKey?: string; box: Rect } | null,
+  genre: Genre | null | undefined,
+): BoxPatch | null {
+  const key = target && genre ? `${genre}|${target.cacheKey ?? target.id}|${target.box.x},${target.box.y},${target.box.w},${target.box.h}` : null;
+  const [patch, setPatch] = useState<BoxPatch | null>(() => (key ? boxDone.get(key) ?? null : null));
+  useEffect(() => {
+    if (!key || !target || !genre || !skiaAvailable()) return;
+    const known = boxDone.get(key);
+    if (known !== undefined) {
+      setPatch(known);
+      return;
+    }
+    let live = true;
+    idle()
+      .then(() => bakeBox(target.source, genre, target.cacheKey, target.box, target.id))
+      .catch(() => null)
+      .then((p) => {
+        boxDone.set(key, p);
+        if (live) setPatch(p);
+      });
+    return () => {
+      live = false;
+    };
+    // The key holds everything the bake reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return key ? patch : null;
+}
+
 /**
  * The room's taken-object patch once it is baked; null until then, and for
  * good when no object qualifies, there is no mode, or the bake fails.

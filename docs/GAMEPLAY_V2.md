@@ -510,6 +510,39 @@ Settings: Show interactives keeps a faint outline on every object (accessibility
 casebook. Tests: `src/play2/__tests__/` (adapter, a whole planned room played through the hook with
 save and resume, cooldown and the hint ladder, the fallback; the mechanisms).
 
-**Not yet:** server-side play (the play-action edge function and v2 storage), the author call's
-words, the removed object's on-device fill for v2's removable, crime's evidence board and
-paranormal's drift, and case closed's stats for v2 rooms (it shows none).
+**Since chunk 3:** v2 rooms play on the server (below); the removable object's on-device fill is
+drawn on the stage once it's taken (`useBoxPatch` in `src/render/removalPatch.ts`, the v1 fill on a
+known box); crime scene's casebook has an evidence board (Who / Why / How from the door's lists,
+tap to cross off, kept per room); paranormal's header has the presence meter, fading as required
+steps are solved and gone at the end.
+
+---
+
+## Chunk 3: generation v2 and server-side play
+
+New rooms are generated as schema 2 and played on the server. Rooms made before keep schema 1
+and are planned and played on the device as in chunk 2.
+
+| Piece | File | What it does |
+|---|---|---|
+| Perception v2 | `_shared/v2/perceive.ts` | One Flash call per photo, as v1, but each object comes back as a taxonomy `type` and `features` (doors included: every room leaves by one); v1's deny list minus doors; v1's verification and reconciliation; `toInventory` (salience from clarity, size and confidence; intrinsic features per type) |
+| Generation | `_shared/v2/generate.ts` | For a job with `output_schema_version = 2` (the default now): perception v2 → privacy gate → inventory → `planRoom` seeded by the room id → the author call → `applyAuthor` → `validateDefinition` + `simulate` again (a failure keeps the planner's words) → stored with `photos` and `mode`. No door: `too_few_objects`, "Add a photo that shows the room's door." |
+| Author call | `_shared/v2/author.ts` | One Pro call with the photos writes the title, objective, intro, ending, object and item names, cards, step titles and hint ladders, beats and (crime) the suspects, motives and methods. It sees answers only as `{{slot}}` and their kind. Per field, code keeps the planner's words when the model's break a rule: the same placeholders, each once; no digits outside them; length caps; distinct option names (renamed options rename their slots' text). A sentence that happens to contain an answer is dropped |
+| Play | `_shared/v2/play.ts`, `play-action/` | `play(def, secret, stored, {action?, hint?}, now, lockedUntil)` is the whole request: the engine, the 5 s cooldown after a wrong submit, the hint ladder, the rendered casebook (`cards`, `hints`), `progress`, the ending once done. The edge function verifies the JWT, loads the caller's own session (`worker_v2_play_load`), runs `play()` and saves (`worker_v2_play_save`, refused with 409 `conflict` if another request saved first). The secret never leaves it |
+| Storage | `migrations/20261027000100_gameplay_v2.sql` | Schema 1 and 2 side by side in `puzzle_versions` and `puzzle_solutions`; `private.validate_puzzle_definition_v2` (structure, one exit, photos, no answer in the public room); `worker_complete_generation_job` publishes either; new jobs ask for schema 2; the two service-only play calls. A v2 session starts with v1's empty state; `play()` turns it into the engine's on its first request |
+| App | `src/play2/useRoomV2.ts`, `src/lib/escapd-api.ts` | One API for both: v1 rooms run `play()` on the device (secret planned locally, saved per room); v2 rooms call `play-action` (`playActionV2`), one request at a time, a conflict retried once after a load, restart abandons and starts again. Case closed reads a v2 session's stats as v1's |
+
+Cost per room is v1's: three to six Flash perception calls, one Flash verification call, one Pro
+call (the author call replaces the prose call and is about the same size).
+
+Tests: `deno test --allow-read --allow-env` in `supabase/functions` (generation per mode with a fake
+provider, the door and face failures, the author's fallbacks and option renames, `play()` from v1's
+empty state to the end); `scripts/test-db.sh` (`supabase/tests/04_gameplay_v2.sql`: the v2 check,
+publishing, the session, load and save, the stale-save guard, completion); `npx jest src/play2`.
+
+**To ship it:** `supabase db push` (the migration), then `supabase functions deploy generation-worker`
+and `supabase functions deploy play-action`. Until the migration is in, new jobs still ask for
+schema 1 and everything plays as in chunk 2.
+
+**Not yet:** a crime contradiction mechanic beyond the board, paranormal room drift (objects that
+move between visits), MirrorFog, Sequence, Arrange and Dig, and telemetry-driven pacing (phase 4).

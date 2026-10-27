@@ -15,6 +15,9 @@ import { ModeScope, useModeTheme } from "@/game/mode";
 import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import { useSceneSources } from "@/game/useSceneSources";
+import { useBoxPatch } from "@/render/removalPatch";
+import { PresenceMeter } from "@/render/PresenceMeter";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { SceneSource } from "@/render/SceneView";
 import { Toast } from "@/render/Toast";
 import { ref } from "@/theme/tokens";
@@ -56,7 +59,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const theme = useModeTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
-  const { phase, def, scene, state, cards: casebookCards, hints, canHint, completed, ending, busy, error, act, hint, restart, cooldown } = v2;
+  const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, act, hint, restart, cooldown } = v2;
   const sources = useSceneSources(roomId, scene);
 
   const [view, setView] = useState(0);
@@ -71,6 +74,35 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // Glints: on by default; off is the hard way (nothing catches the light). Show interactives keeps a faint outline on everything.
   const [glints, setGlints] = useState(true);
   const { hotspotAssist } = usePreferences();
+  // Crime scene: the evidence board's crossed-out options, the player's own notes, kept per room on the device.
+  const [struck, setStruck] = useState<string[]>([]);
+  const boardKey = `escapd.v2.board.${roomId}`;
+  useEffect(() => {
+    AsyncStorage.getItem(boardKey).then((raw) => raw && setStruck(JSON.parse(raw) as string[])).catch(() => {});
+  }, [boardKey]);
+  const strike = (id: string) => {
+    feedback.tick();
+    setStruck((list) => {
+      const next = list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+      AsyncStorage.setItem(boardKey, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  // The removable object's fill, baked in idle moments once its photo is up; drawn once it's taken.
+  const removable = def?.objects.find((o) => o.removable);
+  const removablePhoto = removable ? scene?.photos[removable.photo_index] : undefined;
+  const patch = useBoxPatch(
+    removable && sources.kind === "ready" && sources.sources[removable.photo_index] !== undefined
+      ? {
+        id: removable.id,
+        source: sources.sources[removable.photo_index],
+        cacheKey: removablePhoto && "photo_id" in removablePhoto ? removablePhoto.photo_id : undefined,
+        box: removable.box,
+      }
+      : null,
+    def?.mode,
+  );
 
   const fallback = phase.kind === "fallback" ? phase.reason : null;
   useEffect(() => {
@@ -262,6 +294,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         <View style={styles.titles}>
           <Text style={[ref.type.serifTitle, { color: theme.ink }]} numberOfLines={1}>{def.title}</Text>
           <Text style={[ref.type.meta, { color: theme.inkMuted }]} numberOfLines={2} testID="v2-objective">{def.objective}</Text>
+          {def.mode === "paranormal" && progress.total > 0 ? (
+            // The presence answers each step the player takes toward the ritual; at the end it is gone.
+            <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
+          ) : null}
         </View>
         <Pressable onPress={() => setCasebook(true)} accessibilityRole="button" accessibilityLabel="Casebook" hitSlop={8} style={[styles.square, { backgroundColor: theme.raised }]} testID="v2-casebook-open">
           <Text style={[ref.type.headline, { color: theme.ink }]}>☰</Text>
@@ -277,6 +313,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             genre={def.mode}
             objects={stageObjects}
             overlays={overlays}
+            patch={patch && removable && removable.photo_index === view && objectState(removable.id).removed ? patch : null}
             glints={glints}
             assist={hotspotAssist}
             onLook={look}
@@ -360,6 +397,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       {casebook ? (
         <Casebook
           objective={def.objective}
+          board={def.finale.kind === "accusation"
+            ? [
+              { title: "Who", options: def.finale.suspects },
+              { title: "Why", options: def.finale.motives },
+              { title: "How", options: def.finale.methods },
+            ]
+            : undefined}
+          struck={struck}
+          onStrike={strike}
           cards={casebookCards}
           items={heldItems.map((i) => ({ id: i.id, name: i.name, examinable: !!(i.card || i.archetype === "Decoder") }))}
           hints={hints}

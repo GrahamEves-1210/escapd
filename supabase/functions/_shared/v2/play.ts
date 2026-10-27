@@ -38,6 +38,8 @@ export interface PlayResponse {
   hint?: { text: string; rung: number } | null;
   /** False once every required step is solved. */
   can_hint: boolean;
+  /** Required steps solved, of all of them (paranormal's presence fades with it). */
+  progress: { solved: number; total: number };
   /** Epoch ms while a cooldown runs, else null. */
   cooldown_until: number | null;
   completed: boolean;
@@ -131,6 +133,10 @@ export function play(
     hints: renderHints(secret, stored.hints),
     ...(hint !== undefined ? { hint } : {}),
     can_hint: nextStep(secret, stored.solved) !== null,
+    progress: {
+      solved: secret.steps.filter((s) => !s.optional && stored.solved.includes(s.id)).length,
+      total: secret.steps.filter((s) => !s.optional).length,
+    },
     cooldown_until: locked,
     completed: stored.completed,
     ...(stored.completed ? { ending: secret.ending } : {}),

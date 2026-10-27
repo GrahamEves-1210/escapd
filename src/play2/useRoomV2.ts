@@ -53,6 +53,7 @@ interface View {
   cards: FoundCardV2[];
   hints: string[];
   canHint: boolean;
+  progress: { solved: number; total: number };
   cooldownUntil: number;
   completed: boolean;
   ending: string | null;
@@ -63,6 +64,7 @@ const viewOf = (r: PlayResponse): View => ({
   cards: r.cards,
   hints: r.hints,
   canHint: r.can_hint,
+  progress: r.progress ?? { solved: 0, total: 0 },
   // The server's clock may differ from the device's: never wait longer than one cooldown from now.
   cooldownUntil: r.cooldown_until === null ? 0 : Math.min(r.cooldown_until, Date.now() + COOLDOWN_MS),
   completed: r.completed,
@@ -268,6 +270,7 @@ export function useRoomV2(roomId: string) {
     cards: view?.cards ?? [],
     hints: view?.hints ?? [],
     canHint: view?.canHint ?? false,
+    progress: view?.progress ?? { solved: 0, total: 0 },
     hintsUsed: view?.hints.length ?? 0,
     cooldown,
     completed: view?.completed ?? false,
