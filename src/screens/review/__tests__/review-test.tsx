@@ -9,8 +9,9 @@
 import { Dimensions, StyleSheet } from "react-native";
 import { act, render, screen, userEvent, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { addPlate, clearPlates, getPlates, getSlots, removePlate, replacePlate } from "@/capture/roll";
-import { MAX_PLATES, MIN_PLATES, promptFor } from "@/capture/slots";
+import { addPlate, clearPlates, getPlates, getSlots, removePlate, replacePlate, setRollLens } from "@/capture/roll";
+import { MAX_PLATES, MIN_PLATES, platePrompts, promptFor } from "@/capture/slots";
+import { dialStops } from "@/capture/turn";
 import { SQUARE_SLOP } from "@/capture/ui/rangefinder/SquareButton";
 import { setMode } from "@/game/mode";
 import { modeThemes, ref } from "@/theme/tokens";
@@ -47,6 +48,8 @@ const viewsWhere = (root: Node, match: (style: Record<string, unknown>) => boole
   root.queryAll((node) => node.type === "View" && match(styleOf(node)));
 /** The kit's ghost pill (the shell's) draws its 1 pt hairline on an inner layer. */
 const ghostEdges = (pill: Node) => viewsWhere(pill, (s) => s.borderColor === GHOST.border && s.borderWidth === GHOST.borderWidth);
+// The roll's prompts: 1x's 6 (also the plan before any camera has said which lens), 0.5x's 5.
+const SIX = platePrompts(dialStops(6));
 /** The header: the title and the count, read as one ("Your photos, 4 of 6 photos taken"). */
 const headerName = (count: number) => `${COPY.title}, ${COPY.countSpoken(count, MAX_PLATES)}`;
 
@@ -87,15 +90,15 @@ describe("layout and copy", () => {
       expect(cell.getByText(name)).toBeTruthy();
     });
     expect(screen.getByLabelText("Photo 1, Start")).toBeTruthy();
-    expect(plateLabelSpoken(promptFor(3))).toBe("Photo 4, Behind");
+    expect(plateLabelSpoken(promptFor(3, SIX))).toBe("Photo 4, Behind");
     // Named by where each looks from the middle; the last word is held to the one before it.
-    expect(plateName(promptFor(1))).toBe("Front\u00A0right");
-    expect(plateName(promptFor(5))).toBe("Front\u00A0left");
+    expect(plateName(promptFor(1, SIX))).toBe("Front\u00A0right");
+    expect(plateName(promptFor(5, SIX))).toBe("Front\u00A0left");
     expect(screen.getByText("Tap a photo to retake it")).toBeTruthy();
     expect(screen.getByRole("header", { name: "Before you build" })).toBeTruthy();
     for (const line of COPY.checks) expect(screen.getByText(line)).toBeTruthy();
     expect(screen.getByLabelText("1. Stand in the middle and turn all the way round.")).toBeTruthy();
-    expect(screen.getByLabelText("2. Keep people, mail, and screens out of the shot.")).toBeTruthy();
+    expect(screen.getByLabelText("2. Keep faces out of the shot.")).toBeTruthy();
     expect(screen.getByLabelText("3. Turn the lights on and hold steady.")).toBeTruthy();
     expect(screen.getByText("Your photos are only used to build your case. No one else sees them.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add a photo" })).toBeTruthy();
@@ -275,6 +278,40 @@ describe("photos", () => {
     await renderAt();
     expect(screen.queryByRole("button", { name: COPY.add })).toBeNull();
     expect(screen.queryByTestId("add-plate")).toBeNull();
+  });
+});
+
+describe("a roll on 0.5x: 5 photos", () => {
+  function fillWide(count: number) {
+    clearPlates();
+    setRollLens("wide");
+    for (let i = 0; i < count; i++) addPlate({ uri: `file:///plate-${i}.jpg`, width: 3, height: 4 });
+  }
+
+  it("counts against 5 and names each photo by where it looks, 72 degrees apart", async () => {
+    fillWide(4);
+    await renderAt();
+    expect(screen.getByRole("header", { name: "Your photos, 4 of 5 photos taken" })).toBeTruthy();
+    expect(screen.getByText("4 of 5 taken")).toBeTruthy();
+    ["Start", "Right", "Back\u00A0right", "Back\u00A0left"].forEach((name, i) => {
+      expect(within(screen.getByTestId(`plate-${i}`)).getByText(name)).toBeTruthy();
+    });
+    expect(screen.getByLabelText("Photo 2, Right")).toBeTruthy();
+    expect(screen.getByRole("button", { name: COPY.add })).toBeTruthy();
+  });
+
+  it("hides Add a photo once 5 are taken, and offers it again for a removed photo's open slot", async () => {
+    fillWide(5);
+    const { unmount } = await renderAt();
+    expect(screen.getByText("5 of 5 taken")).toBeTruthy();
+    expect(within(screen.getByTestId("plate-4")).getByText("Left")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: COPY.add })).toBeNull();
+    await unmount();
+    removePlate(1);
+    await renderAt();
+    expect(screen.getByText("4 of 5 taken")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Take photo 2, Right. This photo is open." })).toBeTruthy();
+    expect(screen.getByRole("button", { name: COPY.add })).toBeTruthy();
   });
 });
 

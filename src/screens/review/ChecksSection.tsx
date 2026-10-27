@@ -35,7 +35,7 @@ export function ChecksSection({ style }: { style?: StyleProp<ViewStyle> }) {
 }
 
 // The disc's numeral is drawn only; the tip reads with its number
-// ("1. Keep people out of the shot.") as one text element.
+// ("1. Stand in the middle and turn all the way round.") as one text element.
 function Tip({ mark, text, palette }: { mark: string; text: string; palette: CapturePalette }) {
   return (
     <View style={styles.tip} testID="tip">

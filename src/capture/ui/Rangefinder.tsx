@@ -15,18 +15,22 @@
 // ring in the mode's stamp colour, and the last photo in the mode's baked
 // treatment. The live feed itself is never treated.
 // The player turns all the way round the room, a photo at each stop: the
-// lens sets how far (src/capture/turn.ts, the ultra-wide by default where the
-// phone has one) and the turn dial on the feed shows the stops and, where the
-// phone's motion can be read, how far the player has turned since the last
-// photo's shutter. The turn prompts and the live turn only apply when the next
+// lens in use sets how many and how far (the roll's plan, src/capture/roll.ts
+// and turn.ts: 5 photos 72 apart on 0.5x, the default where the phone has
+// one; 6 60 apart on 1x) and the turn dial on the feed shows the stops and,
+// where the phone's motion can be read, how far the player has turned since
+// the last photo's shutter. A lens switch mid-roll keeps the photos taken
+// where they are and re-spaces the stops still to take for the new lens (the
+// count never drops below the photos taken); once every stop is taken a
+// switch changes nothing. The turn prompts and the live turn only apply when the next
 // photo follows the one the player just took here; otherwise (an open slot, a
 // removed last photo, a camera reopened on photos already taken) the prompt
 // places the photo by its neighbours and the dial marks its place, static.
 // Feedback: the shutter cue (a thud and the shutter's sound) as it fires,
-// error on a failed shot, success when the 6th photo fills the set, tick on
+// error on a failed shot, success when the plan's last photo fills the set, tick on
 // flash, grid and lens changes and when a turn is far enough, press on the
 // square buttons and the thumbnail (inside those components).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   BackHandler,
@@ -40,9 +44,8 @@ import type { CameraView } from "expo-camera";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
-import { addPlate, firstOpenSlot, getPlates, replacePlate, usePlates, useSlots } from "@/capture/roll";
-import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
-import { turnPlan } from "@/capture/turn";
+import { addPlate, firstOpenSlot, getPlates, getRollPlan, getRollPlanState, replacePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
+import { MIN_PLATES, platePrompts } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
@@ -91,7 +94,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const feedback = useFeedback();
   const palette = useCapturePalette();
   const library = useLibraryImport({ retakeIndex });
-  const lenses = useLenses(camera);
+  // The camera opens on the lens the roll is being taken on, so reopening it mid-roll keeps the plan.
+  const lenses = useLenses(camera, getRollPlanState().lens);
   const [ready, setReady] = useState(false);
   const [mountFailed, setMountFailed] = useState(false);
   const [shooting, setShooting] = useState(false);
@@ -112,25 +116,30 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const retake = retakeIndex !== null;
   const busy = shooting || library.busy;
   const live = ready && !mountFailed;
-  // The slot this shot fills: the retake's, or the first open one (MAX_PLATES once all 6 are filled).
-  const nextIndex = retakeIndex ?? firstOpenSlot(slots) ?? MAX_PLATES;
-  const full = !retake && plates.length >= MAX_PLATES;
+  // The 360 for the lens in use, live: a lens switch changes the plan, its
+  // stops and its words at once. Until the phone's lenses are known (iOS
+  // reads them once the camera is ready) the roll's lens stands, or on a new
+  // roll the ultra-wide most iPhones have, so the count doesn't change as the
+  // camera starts (a phone without one re-plans for 1x once it says so).
+  const plan = useRollPlan(lenses.settled ? lenses.choice : (getRollPlanState().lens ?? "wide"));
+  const prompts = useMemo(() => platePrompts(plan.stops), [plan.stops]);
+  // The slot this shot fills: the retake's, or the first open one (the plan's count once every photo is in).
+  const nextIndex = retakeIndex ?? firstOpenSlot(slots, plan.shots) ?? plan.shots;
+  const full = !retake && plates.length >= plan.shots;
   // Retake mode on a slot the player emptied: a first take of that slot, not a retake.
   const filling = retake && slots[retakeIndex] == null;
-  const filled = Array.from({ length: MAX_PLATES }, (_, i) => slots[i] != null);
+  const filled = Array.from({ length: plan.shots }, (_, i) => slots[i] != null);
   // The next photo follows the one the player just took here (still kept), so
   // they stand one stop back from it: the turn prompts and the live turn apply.
   const followsLast = anchor !== null && nextIndex > 0 && anchor.slot === nextIndex - 1 && filled[anchor.slot];
   // Photo 1 of an empty roll starts the turn; anything else out of turn is placed by its neighbours.
   const inTurn = !retake && (nextIndex === 0 ? plates.length === 0 : followsLast);
 
-  // The 360 for the lens in use, live: a lens switch changes the plan and its words at once.
-  const plan = turnPlan(lenses.choice);
-
   // While a capture or an import is busy, the prompt, counter and shutter hold
   // the plate it started on, so they change (and are announced) once, as it ends.
   const at = {
     ...(busy && held !== null ? held : { index: nextIndex, taken: plates.length, inTurn }),
+    prompts,
     retake,
     filling,
     filled,
@@ -145,10 +154,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const turnTarget = full ? null : Math.min(at.index, plan.shots - 1);
   const turnListening = live && !retake && !full;
   const turnActive = turnListening && !busy && followsLast;
-  const taken = filled.slice(0, plan.shots);
   const onTurned = feedback.tick;
   // On 1x where the phone has 0.5: say the photos only just meet, and point to 0.5.
-  const lensNote = live && !full && lenses.ultraWide !== null && !plan.overlaps ? COPY.lensNote : null;
+  const lensNote = live && !full && lenses.ultraWide !== null && lenses.choice === "main" && !plan.overlaps ? COPY.lensNote : null;
 
   // Waits under ~1 s show nothing more; past it the thinking line takes the subtitle slot.
   const showThinking = useShowAfter(busy, L.thinkingDelay);
@@ -226,14 +234,15 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       }
       const plate = await processPhoto(picture);
       if (retakeIndex === null) {
-        // The 6th photo fills the set: an outcome the prompt also states.
-        if (addPlate(plate) && getPlates().length >= MAX_PLATES) feedback.success();
+        // The plan's last photo fills the set: an outcome the prompt also states.
+        if (addPlate(plate) && getPlates().length >= getRollPlan().shots) feedback.success();
       } else if (mounted.current) {
         // A retake that outlives the screen is dropped: its photo stays as it was.
         const before = getPlates().length;
+        const target = getRollPlan().shots;
         replacePlate(retakeIndex, plate);
         // Filling the last open slot completes the set too.
-        if (before < MAX_PLATES && getPlates().length >= MAX_PLATES) feedback.success();
+        if (before < target && getPlates().length >= target) feedback.success();
         router.back();
       }
     } catch {
@@ -255,8 +264,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     try {
       const result = await library.pick();
       if (result && result.failed > 0) setNotice(libraryError(result.failed));
-      // Picks that fill the set to 6: the same outcome haptic as a 6th shot.
-      if (!retake && before < MAX_PLATES && getPlates().length >= MAX_PLATES) feedback.success();
+      // Picks that fill the set: the same outcome haptic as its last shot.
+      const target = getRollPlan().shots;
+      if (!retake && before < target && getPlates().length >= target) feedback.success();
     } finally {
       inFlight.current = false;
       setHeld(null);
@@ -316,15 +326,14 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             lensNote={lensNote}
             overlay={
               <TurnDial
-                shots={plan.shots}
-                step={plan.step}
-                taken={taken}
+                stops={plan.stops}
+                taken={filled}
                 target={turnTarget}
                 listening={turnListening}
                 active={turnActive}
                 resetKey={anchor?.key ?? "none"}
-                line={turnCopy(at, plan.shots, false).line}
-                accessibilityLabel={(reached) => turnCopy(at, plan.shots, reached).accessibilityLabel}
+                line={turnCopy(at, false).line}
+                accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}
                 onReached={onTurned}
               />
             }
@@ -356,7 +365,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
         lensDisabled={busy}
       />
       <View style={styles.bottomRow}>
-        <PlateCounter current={counter.current} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
+        <PlateCounter current={counter.current} count={plan.shots} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
         <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full} busy={busy} onPress={shoot} testID="shutter" />
         <LastPlate
           uri={lastUri}

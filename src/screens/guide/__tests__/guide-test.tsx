@@ -567,7 +567,7 @@ describe("photo guide: the 360", () => {
     expect(STEPS.map((step) => step.title)).toEqual(["Stand in the middle", "Turn right, shoot again", "All the way round", "Just the room"]);
     expect(STEPS[1].body).toBe("Turn a little. Keep part of the last photo in view.");
     expect(STEPS[2].body).toBe("The camera shows each turn until you're back at the start.");
-    expect(STEPS[3].body).toBe("Leave out people, mail, and screens. Lights on, hold steady.");
+    expect(STEPS[3].body).toBe("Keep faces out of the shot. Lights on, hold steady.");
     // No spot-by-spot photos, no darkroom words.
     expect(JSON.stringify(STEPS)).not.toMatch(/doorway|corner|busiest|close view|plate|develop|darkroom/i);
   });

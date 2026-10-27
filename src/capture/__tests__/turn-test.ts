@@ -5,17 +5,23 @@ import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
 import {
   LENS_FOV,
   MAX_SAMPLE_GAP,
+  MIN_OVERLAP,
+  TARGET_OVERLAP,
   TURN_DEADBAND,
   TURN_REACHED,
   arcPath,
   dialPoint,
   dialStops,
+  firstLens,
   integrateTurn,
   isTurnReached,
   quantizeProgress,
   rateAxes,
+  rollPlan,
   smoothGravity,
+  switchLens,
   turnPlan,
+  turnStep,
   turnProgress,
   turnRate,
 } from "@/capture/turn";
@@ -46,11 +52,16 @@ describe("turnPlan: photos and turn per lens", () => {
     expect(LENS_FOV.main).toBeLessThanOrEqual(Math.ceil(main(24)));
   });
 
-  it("takes 6 photos 60 degrees apart on the ultra-wide, neighbours sharing about a third", () => {
+  it("aims for neighbours sharing about a fifth: enough to stitch, without near-duplicates", () => {
+    expect(TARGET_OVERLAP).toBe(0.2);
+    expect(MIN_OVERLAP).toBe(0.1);
+  });
+
+  it("takes 5 photos 72 degrees apart on the ultra-wide, neighbours sharing about a fifth", () => {
     const plan = turnPlan("wide");
-    expect(plan.shots).toBe(6);
-    expect(plan.step).toBe(60);
-    expect(plan.overlap).toBeCloseTo(32 / 92, 5);
+    expect(plan.shots).toBe(5);
+    expect(plan.step).toBe(72);
+    expect(plan.overlap).toBeCloseTo(20 / 92, 5);
     expect(plan.overlaps).toBe(true);
   });
 
@@ -66,9 +77,9 @@ describe("turnPlan: photos and turn per lens", () => {
 
   it("would take more, smaller turns on the main lens if the limit allowed it", () => {
     const plan = turnPlan("main", 12);
-    expect(plan.shots).toBe(10);
-    expect(plan.step).toBe(36);
-    expect(plan.overlap).toBeCloseTo(19 / 55, 5);
+    expect(plan.shots).toBe(9);
+    expect(plan.step).toBe(40);
+    expect(plan.overlap).toBeCloseTo(15 / 55, 5);
   });
 
   it("never plans fewer than the minimum or more than the maximum, and always goes all the way round", () => {
@@ -79,6 +90,78 @@ describe("turnPlan: photos and turn per lens", () => {
       expect(plan.shots * plan.step).toBeCloseTo(360, 5);
     }
     expect(turnPlan("wide", 6, 8).shots).toBe(6);
+  });
+});
+
+describe("rollPlan: the stops, and a lens switch mid-roll", () => {
+  it("puts an even circle's stops a turn apart from photo 1 at 0: 5 at 72 on 0.5x, 6 at 60 on 1x", () => {
+    expect(rollPlan("wide").stops).toEqual([0, 72, 144, 216, 288]);
+    expect(rollPlan("main").stops).toEqual([0, 60, 120, 180, 240, 300]);
+    expect(rollPlan("wide")).toMatchObject(turnPlan("wide"));
+    expect(rollPlan("main")).toMatchObject(turnPlan("main"));
+  });
+
+  it("keeps the stops of photos already placed and shares the rest of the circle evenly", () => {
+    // 3 taken on 0.5x, then 1x: 216 degrees left need 5 gaps of at most 44, held to 6 photos: 3 more, 54 apart.
+    const plan = rollPlan("main", [0, 72, 144]);
+    expect(plan.shots).toBe(6);
+    expect(plan.stops).toEqual([0, 72, 144, 198, 252, 306]);
+    expect(plan.step).toBe(54);
+    // 54 on a 55 degree view: neighbours only just meet.
+    expect(plan.overlaps).toBe(false);
+  });
+
+  it("re-spaces for 0.5x after photos on 1x, at least as many as taken and never more than 6", () => {
+    const plan = rollPlan("wide", [0, 60, 120]);
+    expect(plan.shots).toBe(6);
+    expect(plan.stops).toEqual([0, 60, 120, 180, 240, 300]);
+    expect(plan.overlaps).toBe(true);
+    for (let kept = 1; kept <= 6; kept += 1) {
+      for (const lens of ["wide", "main"] as const) {
+        const stops = dialStops(6).slice(0, kept);
+        const p = rollPlan(lens, stops);
+        expect(p.shots).toBeGreaterThanOrEqual(Math.max(kept, MIN_PLATES));
+        expect(p.shots).toBeLessThanOrEqual(MAX_PLATES);
+        expect(p.stops.slice(0, kept)).toEqual(stops);
+        expect(p.stops).toHaveLength(p.shots);
+      }
+    }
+  });
+
+  it("switchLens: none taken is the new lens's even circle", () => {
+    expect(switchLens(rollPlan("wide"), 0, "main").stops).toEqual(rollPlan("main").stops);
+    expect(switchLens(rollPlan("main"), 0, "wide").stops).toEqual(rollPlan("wide").stops);
+  });
+
+  it("switchLens: never fewer stops than the slots in use, and back again on the first lens", () => {
+    const main = switchLens(rollPlan("wide"), 3, "main");
+    expect(main.stops).toEqual([0, 72, 144, 198, 252, 306]);
+    expect(switchLens(main, 3, "wide").stops).toEqual([0, 72, 144, 216, 288]);
+    // 1 taken on 1x: 0.5x's own 5.
+    expect(switchLens(rollPlan("main"), 1, "wide").shots).toBe(5);
+    // 5 of 6 taken on 1x, then 0.5x: still 6, the last 60 on.
+    expect(switchLens(rollPlan("main"), 5, "wide").stops).toEqual([0, 60, 120, 180, 240, 300]);
+  });
+
+  it("switchLens: once every stop is reached the stops stay, and only the overlap follows the lens", () => {
+    const wide = rollPlan("wide");
+    const after = switchLens(wide, 5, "main");
+    expect(after.stops).toBe(wide.stops);
+    expect(after.shots).toBe(5);
+    expect(after.overlaps).toBe(false);
+  });
+
+  it("firstLens: photos in before the lens was known get its even circle when it holds them", () => {
+    expect(firstLens(rollPlan("main"), 3, "wide").stops).toEqual([0, 72, 144, 216, 288]);
+    expect(firstLens(rollPlan("main"), 6, "wide").stops).toEqual(rollPlan("main").stops);
+  });
+
+  it("turnStep: the turn into a stop from the one before, round past the start for photo 1", () => {
+    const stops = [0, 72, 144, 198, 252, 306];
+    expect(turnStep(stops, 1)).toBe(72);
+    expect(turnStep(stops, 3)).toBe(54);
+    expect(turnStep(stops, 0)).toBe(54);
+    expect(turnStep([], 0)).toBe(0);
   });
 });
 
@@ -124,7 +207,9 @@ describe("DeviceMotion's units (expo-sensors 58, as installed)", () => {
       turned = integrateTurn(turned, turnRate(rateAxes(sample.rotationRate, "ios"), gravity), dt);
     }
     expect(Math.abs(turned)).toBeCloseTo(60, 3);
-    expect(isTurnReached(turnProgress(turned, turnPlan("wide").step))).toBe(true);
+    // One 1x stop (60); on 0.5x (72) not yet far enough.
+    expect(isTurnReached(turnProgress(turned, turnPlan("main").step))).toBe(true);
+    expect(isTurnReached(turnProgress(turned, turnPlan("wide").step))).toBe(false);
     // The same turn misread as rad/s (1.047) would be under the deadband: no turn at all.
     expect(integrateTurn(0, (60 * Math.PI) / 180, 1 / 30)).toBe(0);
   });
@@ -195,6 +280,7 @@ describe("the turn from motion", () => {
 describe("the dial's geometry", () => {
   it("puts photo 1 at the top and the rest clockwise, a turn apart", () => {
     expect(dialStops(6)).toEqual([0, 60, 120, 180, 240, 300]);
+    expect(dialStops(5)).toEqual([0, 72, 144, 216, 288]);
     const top = dialPoint(14, 14, 10, 0);
     expect(top.x).toBeCloseTo(14, 5);
     expect(top.y).toBeCloseTo(4, 5);

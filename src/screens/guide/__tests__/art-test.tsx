@@ -180,7 +180,7 @@ describe("guide line art", () => {
     expect(beams).toHaveLength(1);
   });
 
-  it("turns the phone in place: facing the far wall in step 1, one 60 degree turn right in step 2, the same distance from the middle", () => {
+  it("turns the phone in place: facing the far wall in step 1, one 72 degree turn right in step 2 (0.5x's 5 photos), the same distance from the middle", () => {
     const middle = [116, 132];
     const at = (n: number) => {
       const list = drawList(SCENES[n - 1], "t");
@@ -189,7 +189,7 @@ describe("guide line art", () => {
       return { bearing: ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360, arm: Math.hypot(x, y) };
     };
     expect(at(1).bearing).toBeCloseTo(0, 2);
-    expect(at(2).bearing).toBeCloseTo(60, 2);
+    expect(at(2).bearing).toBeCloseTo(72, 2);
     expect(at(2).arm).toBeCloseTo(at(1).arm, 2);
   });
 
@@ -201,7 +201,7 @@ describe("guide line art", () => {
     expect(list.ops.length).toBe(SCENES[1].marks.length);
   });
 
-  it("step 3 shows the camera's turn dial on the held phone's screen: five lit stops and the next one dark", () => {
+  it("step 3 shows the camera's turn dial on the held phone's screen: 0.5x's five stops, four lit and the next one dark", () => {
     const list = drawList(SCENES[2], "t");
     const phone = pathBounds(heroOps(list)[0].d);
     const P = G.phone;
@@ -214,7 +214,7 @@ describe("guide line art", () => {
     });
     const lit = onScreen.filter((op) => gradientOf(list, op.fill)?.stops === G.fill.panel.stops);
     const dark = onScreen.filter((op) => gradientOf(list, op.fill)?.stops === G.fill.tag.stops);
-    expect(lit).toHaveLength(5);
+    expect(lit).toHaveLength(4);
     expect(dark).toHaveLength(1);
   });
 

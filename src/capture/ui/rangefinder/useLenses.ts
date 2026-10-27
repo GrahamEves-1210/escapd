@@ -1,12 +1,15 @@
 // The 0.5x lens (docs/DESIGN.md 02): the default wherever the phone reports
 // an ultra-wide back lens, because the 360 (src/capture/turn.ts) goes round
-// in 6 photos with a third of overlap only on the ultra-wide. Everywhere else
-// the main lens (1x). The player can still switch. expo-camera 58 lists
-// lenses on iOS only (getAvailableLensesAsync, onAvailableLensesChanged); the
-// list is read once the camera is ready, so the feed starts on 1x and moves
-// to 0.5x as soon as the ultra-wide is reported. Android (whose `zoom` can't
+// in 5 photos that overlap only on the ultra-wide (1x needs 6 that only just
+// meet). Everywhere else the main lens (1x). The player can still switch, and
+// the camera starts on the lens the roll was being taken on (`initial`), so
+// reopening it mid-roll doesn't switch lens. expo-camera 58 lists lenses on
+// iOS only (getAvailableLensesAsync, onAvailableLensesChanged); the list is
+// read once the camera is ready, so the feed starts on 1x and moves to 0.5x
+// as soon as the ultra-wide is reported. Until then the lens isn't `settled`
+// and the camera keeps the roll's plan as it was. Android (whose `zoom` can't
 // go below 1x), iPhones without an ultra-wide and the web get 1x and no lens
-// control.
+// control, settled at once.
 import { useCallback, useState, type RefObject } from "react";
 import { Platform } from "react-native";
 import type { AvailableLenses, CameraView, LensInfo } from "expo-camera";
@@ -37,21 +40,33 @@ export interface Lenses {
   read: () => void;
   /** CameraView `onAvailableLensesChanged`. */
   onChanged: (event: AvailableLenses) => void;
+  /** The phone's lenses are known (iOS: the list has been read, or failed to), so `choice` is the lens in use. */
+  settled: boolean;
 }
 
-export function useLenses(camera: RefObject<CameraView | null>): Lenses {
+export function useLenses(camera: RefObject<CameraView | null>, initial: LensChoice | null = null): Lenses {
   const [lenses, setLenses] = useState<readonly LensInfo[]>([]);
-  // Null until the player picks a lens: then the default follows the hardware.
-  const [choice, setChoice] = useState<LensChoice | null>(null);
+  const [listed, setListed] = useState(Platform.OS !== "ios");
+  // Null until the player picks a lens (or the roll was on one): then the default follows the hardware.
+  const [choice, setChoice] = useState<LensChoice | null>(initial);
 
   const read = useCallback(() => {
     if (Platform.OS !== "ios") return;
     const view = camera.current;
     if (!view) return;
-    view.getAvailableLensesAsync().then(setLenses, () => {});
+    view.getAvailableLensesAsync().then(
+      (list) => {
+        setLenses(list);
+        setListed(true);
+      },
+      () => setListed(true),
+    );
   }, [camera]);
 
-  const onChanged = useCallback((event: AvailableLenses) => setLenses(event.lenses), []);
+  const onChanged = useCallback((event: AvailableLenses) => {
+    setLenses(event.lenses);
+    setListed(true);
+  }, []);
 
   const ultraWide = lenses.find((lens) => lens.deviceType === ULTRA_WIDE_LENS)?.deviceType ?? null;
   const current = lensFor(ultraWide, choice);
@@ -63,5 +78,6 @@ export function useLenses(camera: RefObject<CameraView | null>): Lenses {
     selectedLens: current === "wide" && ultraWide ? ultraWide : undefined,
     read,
     onChanged,
+    settled: listed,
   };
 }

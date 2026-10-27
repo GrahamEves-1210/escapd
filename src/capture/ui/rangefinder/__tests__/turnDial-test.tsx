@@ -1,5 +1,6 @@
 import { AccessibilityInfo, Platform } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
+import { dialPoint, dialStops } from "@/capture/turn";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { COPY } from "../copy";
@@ -50,8 +51,7 @@ const flush = () => act(async () => {});
 
 function props(overrides: Partial<TurnDialProps> = {}): TurnDialProps {
   return {
-    shots: 6,
-    step: 60,
+    stops: dialStops(6),
     taken: [true, false, false, false, false, false],
     target: 1,
     listening: true,
@@ -110,6 +110,18 @@ describe("turn dial: the static face", () => {
     await render(<TurnDial {...props({ active: false, taken: Array(6).fill(true), target: null, line: "6 of 6 taken" })} />);
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
     expect(screen.queryByTestId("turn-dial-target", hidden)).toBeNull();
+  });
+
+  it("draws 0.5x's five stops 72 apart: photo 3 at 144", async () => {
+    await render(<TurnDial {...props({ active: false, stops: dialStops(5), taken: [true, true, false, false, false], target: 2, line: "Photo 3 of 5" })} />);
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(2);
+    expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(2);
+    const C = ref.layout.camera.turn.dial / 2;
+    const R = C - ref.layout.camera.turn.ring;
+    const at = dialPoint(C, C, R, 144);
+    const target = screen.getByTestId("turn-dial-target", hidden);
+    expect(target.props.cx).toBeCloseTo(at.x, 5);
+    expect(target.props.cy).toBeCloseTo(at.y, 5);
   });
 });
 
@@ -210,6 +222,18 @@ describe("turn dial: live tracking", () => {
     expect(onReached).toHaveBeenCalledTimes(1);
   });
 
+  it("measures a re-spaced turn from the stop before the target (54 after a switch to 1x)", async () => {
+    const onReached = jest.fn();
+    const stops = [0, 72, 144, 198, 252, 306];
+    await render(<TurnDial {...props({ onReached, stops, taken: [true, true, true, false, false, false], target: 3 })} />);
+    await flush();
+    // 50 of 54: not yet far enough; 52 is.
+    await turn(50, 1);
+    expect(onReached).not.toHaveBeenCalled();
+    await turn(60, 1 / 30);
+    expect(onReached).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the turn when the step changes mid-turn (a lens switch), measuring it against the new step", async () => {
     const onReached = jest.fn();
     const view = await render(<TurnDial {...props({ onReached })} />);
@@ -217,7 +241,7 @@ describe("turn dial: live tracking", () => {
     await turn(60, 0.5);
     expect(onReached).not.toHaveBeenCalled();
     // 30 degrees turned; a plan of 40-degree turns: 75 % there, not back to 0.
-    await view.rerender(<TurnDial {...props({ onReached, step: 40 })} />);
+    await view.rerender(<TurnDial {...props({ onReached, stops: dialStops(9) })} />);
     const C = ref.layout.camera.turn.dial / 2;
     const R = C - ref.layout.camera.turn.ring;
     await turn(60, 0.1);

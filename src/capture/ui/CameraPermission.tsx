@@ -22,8 +22,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Linking, StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { getPlates } from "@/capture/roll";
-import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
+import { getPlates, useRollPlan } from "@/capture/roll";
+import { MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { ThinkingStates, useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
@@ -51,6 +51,7 @@ interface Notice {
 
 export function CameraPermission({ permission, checking, requestPermission, retakeIndex, plateCount, onClose }: CameraPermissionProps) {
   const library = useLibraryImport({ retakeIndex });
+  const rollPlan = useRollPlan();
   const feedback = useFeedback();
   const { paper } = useCapturePalette();
   const thinkingGround = paper ? "paper" : "dark";
@@ -94,10 +95,11 @@ export function CameraPermission({ permission, checking, requestPermission, reta
   const denied = permission !== null && !permission.granted && !permission.canAskAgain;
   const copyKey = denied ? "denied" : "default";
   const copy = PERMISSION_COPY[copyKey];
-  // Roll ready (3-5 plates) adds the light-table button; Roll full (6) puts it
-  // in the quiet button's slot. Retake mode has neither.
+  // Roll ready (3 up to the plan's count) adds the light-table button; Roll
+  // full (the plan's count: 5 on 0.5x, 6 on 1x or before any camera has said)
+  // puts it in the quiet button's slot. Retake mode has neither.
   const rollCount = heldCount ?? plateCount;
-  const full = !retake && rollCount >= MAX_PLATES;
+  const full = !retake && rollCount >= rollPlan.shots;
   const rollReady = !retake && !full && rollCount >= MIN_PLATES;
   const busy = library.busy;
 

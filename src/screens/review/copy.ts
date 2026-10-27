@@ -31,12 +31,12 @@ export const COPY = {
   issues: {
     too_few_objects:
       "The case needs a little more to work with. Turn the lights on and retake from the middle of the room. If a photo is open, use it for a close view of a busy desk or shelf.",
-    didnt_come_together: "The case didn't come together from these photos. Six clear photos, all the way round the room, help.",
+    didnt_come_together: "The case didn't come together from these photos. Clear photos, turning all the way round the room, help.",
     couldnt_use: "These photos couldn't be used. Try photos that leave out people, documents, and screens.",
     photo_missing: "A photo didn't come through. Retake it or choose another, then build again.",
   } satisfies Record<SetIssue, string>,
   checksTitle: "Before you build",
-  checks: ["Stand in the middle and turn all the way round.", "Keep people, mail, and screens out of the shot.", "Turn the lights on and hold steady."],
+  checks: ["Stand in the middle and turn all the way round.", "Keep faces out of the shot.", "Turn the lights on and hold steady."],
   privacy: "Your photos are only used to build your case. No one else sees them.",
   develop: "Build the case",
   flaggedHelp: "Retake the marked photos, then build the case.",

@@ -119,7 +119,7 @@ export function describeFailure(job: Pick<GenerationJob, "error_code" | "error_m
       const flagged = flaggedPhotos(job.error_message);
       return {
         title: "A few photos need a retake",
-        body: "They show a person, or something private like mail, documents, or a screen. Retake the marked photos without them.",
+        body: "Someone's face is in the marked photos. Retake them without it.",
         action: "retake",
         plates: flagged.map((f) => f.slot),
         flagged,
@@ -150,7 +150,7 @@ export function describeFailure(job: Pick<GenerationJob, "error_code" | "error_m
     case "spend_cap":
       return {
         title: "The case didn't come together",
-        body: "These photos didn't give the puzzle enough to work with. Try six clear photos, turning all the way round the room.",
+        body: "These photos didn't give the puzzle enough to work with. Try clear photos, turning all the way round the room.",
         action: "retake",
         ...none,
         issue: "didnt_come_together",

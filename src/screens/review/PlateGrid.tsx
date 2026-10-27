@@ -51,6 +51,8 @@ const ASPECT = ref.layout.camera.frameAspect;
 export interface PlateGridProps {
   /** The slots up to the last filled one; null is a slot the player emptied. */
   slots: readonly Slot[];
+  /** The roll's prompts (its plan's, one per photo): each tile's numeral and name. */
+  prompts: readonly PlatePrompt[];
   /** Photos still marked by a failed build, by URI, with the reason. */
   marks: ReadonlyMap<string, RetakeReason>;
   /** Retake a photo in place, or take an open slot: both open the camera on that slot. */
@@ -58,7 +60,7 @@ export interface PlateGridProps {
   onRemove: (slot: number) => void;
 }
 
-export function PlateGrid({ slots, marks, onRetake, onRemove }: PlateGridProps) {
+export function PlateGrid({ slots, prompts, marks, onRetake, onRemove }: PlateGridProps) {
   const { width } = useWindowDimensions();
   const tile = (width - ref.space.edge * 2 - G.gap * (G.columns - 1)) / G.columns;
   const size = { width: tile, height: tile / ASPECT };
@@ -77,6 +79,7 @@ export function PlateGrid({ slots, marks, onRetake, onRemove }: PlateGridProps) 
               <PlateCell
                 key={plate.uri}
                 index={i}
+                prompt={promptFor(i, prompts)}
                 plate={plate}
                 size={size}
                 reason={marks.get(plate.uri) ?? null}
@@ -84,7 +87,7 @@ export function PlateGrid({ slots, marks, onRetake, onRemove }: PlateGridProps) 
                 onRemove={onRemove}
               />
             ) : (
-              <OpenCell key={`open-${i}`} index={i} size={size} onTake={onRetake} />
+              <OpenCell key={`open-${i}`} index={i} prompt={promptFor(i, prompts)} size={size} onTake={onRetake} />
             );
           })}
         </View>
@@ -100,6 +103,7 @@ interface Size {
 
 interface PlateCellProps {
   index: number;
+  prompt: PlatePrompt;
   plate: Plate;
   size: Size;
   /** Set while the photo is marked for a retake. */
@@ -108,8 +112,7 @@ interface PlateCellProps {
   onRemove: (slot: number) => void;
 }
 
-function PlateCell({ index, plate, size, reason, onRetake, onRemove }: PlateCellProps) {
-  const prompt = promptFor(index);
+function PlateCell({ index, prompt, plate, size, reason, onRetake, onRemove }: PlateCellProps) {
   const tileFocus = useFocusRing();
   const removeFocus = useFocusRing();
   const feedback = useFeedback();
@@ -184,8 +187,7 @@ function PlateCell({ index, plate, size, reason, onRetake, onRemove }: PlateCell
  * the camera glyph and "Take this photo", then its name as usual. Tapping it
  * opens the camera on exactly this slot.
  */
-function OpenCell({ index, size, onTake }: { index: number; size: Size; onTake: (slot: number) => void }) {
-  const prompt = promptFor(index);
+function OpenCell({ index, prompt, size, onTake }: { index: number; prompt: PlatePrompt; size: Size; onTake: (slot: number) => void }) {
   const focus = useFocusRing();
   const feedback = useFeedback();
   const palette = useCapturePalette();

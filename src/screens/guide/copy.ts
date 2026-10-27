@@ -15,7 +15,7 @@ export const STEPS: readonly GuideStep[] = [
   { title: "Stand in the middle", body: "Face any wall and take the first photo." },
   { title: "Turn right, shoot again", body: "Turn a little. Keep part of the last photo in view." },
   { title: "All the way round", body: "The camera shows each turn until you're back at the start." },
-  { title: "Just the room", body: "Leave out people, mail, and screens. Lights on, hold steady." },
+  { title: "Just the room", body: "Keep faces out of the shot. Lights on, hold steady." },
 ];
 
 export const LAST_STEP = STEPS.length - 1;

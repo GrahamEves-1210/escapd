@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "../process-photo";
-import { addPlate, clearPlates, getPlates } from "../roll";
+import { addPlate, clearPlates, getPlates, setRollLens } from "../roll";
 import { MAX_PLATES } from "../slots";
 import { useLibraryImport, type LibraryImportResult } from "../useLibraryImport";
 
@@ -62,6 +62,20 @@ describe("useLibraryImport", () => {
     expect(result.current.busy).toBe(false);
     expect(result.current.progress).toBeNull();
     expect(back).not.toHaveBeenCalled();
+  });
+
+  it("offers only the room left in the roll's plan: 5 on 0.5x", async () => {
+    setRollLens("wide");
+    seedRoll(3);
+    launch.mockResolvedValue(picked("file://picked-a.jpg", "file://picked-b.jpg", "file://picked-c.jpg"));
+    const { result } = await renderHook(() => useLibraryImport({ retakeIndex: null }));
+    let outcome: LibraryImportResult | null = null;
+    await act(async () => {
+      outcome = await result.current.pick();
+    });
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ selectionLimit: 2 }));
+    expect(getPlates()).toHaveLength(5);
+    expect(outcome).toMatchObject({ total: 2, added: 2 });
   });
 
   it("is busy with real progress while the photos are re-encoded, and idle while the picker is open", async () => {

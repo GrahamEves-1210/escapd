@@ -7,8 +7,8 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
 import { addPlate, clearPlates, getPlates, getSlots, removePlate } from "@/capture/roll";
-import { MAX_PLATES, PLATE_PROMPTS } from "@/capture/slots";
-import { dialPoint } from "@/capture/turn";
+import { platePrompts } from "@/capture/slots";
+import { dialPoint, dialStops } from "@/capture/turn";
 import { setMode } from "@/game/mode";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import { Rangefinder } from "../../Rangefinder";
@@ -82,6 +82,9 @@ const push = jest.mocked(router.push);
 const back = jest.mocked(router.back);
 const announce = jest.mocked(AccessibilityInfo.announceForAccessibility);
 const hidden = { includeHiddenElements: true } as const;
+// The roll's prompts: 0.5x's 5 photos 72 apart, 1x's 6 60 apart.
+const FIVE = platePrompts(dialStops(5));
+const SIX = platePrompts(dialStops(6));
 
 const raw = (name: string): RawPhoto => ({ uri: `file://raw-${name}.jpg`, width: 3000, height: 4000 });
 const plateFor = (photo: RawPhoto): ProcessedPlate => ({ uri: photo.uri.replace("raw", "plate"), width: 1200, height: 1600 });
@@ -154,7 +157,8 @@ describe("Rangefinder: camera starting", () => {
   it("opens on plate I with the controls that need the camera dimmed, and back and library live", async () => {
     await renderCamera();
     expect(prompt()).toBe("Start here. Stand in the middle. Face any wall.");
-    expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
+    // An iPhone's lenses are read once the camera is ready; a new roll starts on the ultra-wide's 5.
+    expect(counter()).toBe("Next: photo 1. 0 of 5 photos taken.");
     expect(screen.getByText("1", hidden)).toBeTruthy();
     expect(screen.getByText(COPY.privacy)).toBeTruthy();
     expect(stateOf(screen.getByRole("button", { name: "Take photo 1, Start here" }))).toMatchObject({ disabled: true });
@@ -271,7 +275,7 @@ describe("Rangefinder: capture", () => {
     expect(develop).toHaveBeenCalledWith(raw("shot"));
     expect(getPlates().map((p) => p.uri)).toEqual(["file://plate-shot.jpg"]);
     expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
-    expect(counter()).toBe("Next: photo 2. 1 of 6 photos taken.");
+    expect(counter()).toBe("Next: photo 2. 1 of 5 photos taken.");
     expect(screen.getByRole("button", { name: "Take photo 2, Turn right a little" })).toBeTruthy();
     expect(thumbnailUri()).toBe("file://plate-shot.jpg");
     // The privacy note is only for plate I.
@@ -287,7 +291,7 @@ describe("Rangefinder: capture", () => {
     await cameraReady();
     const user = userEvent.setup();
     // A camera opened on a photo already taken: photo 2 is placed by photo 1, not a turn from where the player stands.
-    await user.press(screen.getByRole("button", { name: "Take photo 2, Front right" }));
+    await user.press(screen.getByRole("button", { name: "Take photo 2, Right" }));
     await flush();
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: true });
     await user.press(screen.getByTestId("shutter"));
@@ -298,7 +302,7 @@ describe("Rangefinder: capture", () => {
     expect(stateOf(screen.getByRole("switch", { name: "Framing grid" }))).toMatchObject({ disabled: false });
     expect(stateOf(screen.getByRole("button", { name: "Close the camera" })).disabled).toBeFalsy();
     // The prompt holds the plate being developed.
-    expect(prompt()).toBe("Front right. From the middle, face photo 1's view, then turn right a little.");
+    expect(prompt()).toBe("Right. From the middle, face photo 1's view, then turn right a little.");
     await act(async () => pending[0].finish());
     // Photo 2 taken here: photo 3 is the next turn from it.
     expect(prompt()).toBe("Keep turning. Keep part of the last photo in view.");
@@ -372,19 +376,35 @@ describe("Rangefinder: the photos taken", () => {
     expect(push).toHaveBeenCalledWith("/capture/review");
   });
 
-  it("gives the success haptic when the 6th photo fills the set, and only then", async () => {
-    seedRoll(MAX_PLATES - 2);
+  it("gives the success haptic when the 5th photo fills the set on 0.5x, and only then", async () => {
+    seedRoll(3);
     await renderCamera();
     await cameraReady();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(getPlates()).toHaveLength(MAX_PLATES - 1);
+    expect(getPlates()).toHaveLength(4);
     expect(mockFeedback.success).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(getPlates()).toHaveLength(MAX_PLATES);
+    expect(getPlates()).toHaveLength(5);
     expect(mockFeedback.success).toHaveBeenCalledTimes(1);
     expect(mockFeedback.shutter).toHaveBeenCalledTimes(2);
+    expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
+  });
+
+  it("gives it at the 6th on 1x, where the phone has no ultra-wide", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([]);
+    seedRoll(4);
+    await renderCamera();
+    await cameraReady();
+    expect(counter()).toBe("Next: photo 5. 4 of 6 photos taken.");
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(mockFeedback.success).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByTestId("shutter"));
+    await flush();
+    expect(getPlates()).toHaveLength(6);
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
   });
 
   it("presses lightly on the square header buttons and the last-photo thumbnail", async () => {
@@ -397,17 +417,26 @@ describe("Rangefinder: the photos taken", () => {
     expect(mockFeedback.press).toHaveBeenCalledTimes(2);
   });
 
-  it("holds 6 photos: the most-a-case-takes prompt, 6 on the counter, shutter and library off, flash and grid live", async () => {
-    seedRoll(MAX_PLATES);
+  it("is full at 5 photos on 0.5x: all the way round, 5 on the counter, shutter and library off, flash and grid live", async () => {
+    seedRoll(5);
     await renderCamera();
     await cameraReady();
-    expect(prompt()).toBe(`${COPY.fullTitle}. ${COPY.fullDetail}`);
-    expect(counter()).toBe("6 of 6 photos taken. That's the most a case takes.");
-    expect(counterCopy({ index: MAX_PLATES, retake: false })).toMatchObject({ current: MAX_PLATES - 1, numeral: "6", solo: false });
+    expect(prompt()).toBe("All the way round. Review your photos.");
+    expect(counter()).toBe("5 of 5 photos taken. That's all the way round.");
+    expect(counterCopy({ index: 5, retake: false, prompts: FIVE })).toMatchObject({ current: 4, numeral: "5", solo: false });
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("button", { name: "Choose photos from your library" }))).toMatchObject({ disabled: true });
     expect(stateOf(screen.getByRole("switch", { name: "Flash" }))).toMatchObject({ disabled: false });
-    expect(stateOf(screen.getByRole("button", { name: "Review your photos, 6 photos taken. Ready to build." }))).toMatchObject({ disabled: false });
+    expect(stateOf(screen.getByRole("button", { name: "Review your photos, 5 photos taken. Ready to build." }))).toMatchObject({ disabled: false });
+  });
+
+  it("is full at 6 photos on 1x", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([]);
+    seedRoll(6);
+    await renderCamera();
+    await cameraReady();
+    expect(counter()).toBe("6 of 6 photos taken. That's all the way round.");
+    expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
   });
 
   it("imports library picks one by one and counts the failures in the error line", async () => {
@@ -419,7 +448,7 @@ describe("Rangefinder: the photos taken", () => {
     await renderCamera();
     await fireEvent.press(screen.getByRole("button", { name: "Choose photos from your library" }));
     await flush();
-    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ allowsMultipleSelection: true, selectionLimit: MAX_PLATES }));
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ allowsMultipleSelection: true, selectionLimit: 5 }));
     expect(getPlates().map((p) => p.uri)).toEqual(["file://plate-a.jpg", "file://plate-c.jpg"]);
     // Library photos weren't taken from where the player stands: photo 3 is placed by photo 2.
     expect(prompt()).toBe(`Back right. ${libraryError(1)}`);
@@ -444,11 +473,11 @@ describe("Rangefinder: the photos taken", () => {
       await act(async () => pending[0].finish());
       expect(getPlates()).toHaveLength(1);
       expect(prompt()).toBe("Start here. Preparing 2 photos");
-      expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
+      expect(counter()).toBe("Next: photo 1. 0 of 5 photos taken.");
       expect(screen.getByText("Preparing photo 2 of 2", hidden)).toBeTruthy();
       await act(async () => pending[1].finish());
       expect(prompt()).toBe("Back right. From the middle, face photo 2's view, then turn right a little.");
-      expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
+      expect(counter()).toBe("Next: photo 3. 2 of 5 photos taken.");
       expect(screen.queryByTestId("thinking", hidden)).toBeNull();
     } finally {
       jest.useRealTimers();
@@ -463,14 +492,14 @@ describe("Rangefinder: photos keep their slots", () => {
     await renderCamera();
     await cameraReady();
     // Out of turn: the open slot's view and where to aim, between its neighbours (not "Turn right a little").
-    expect(prompt()).toBe("Front right. From the middle, aim between photos 1 and 3.");
-    expect(counter()).toBe("Next: photo 2. 3 of 6 photos taken.");
-    expect(screen.getByRole("button", { name: "Take photo 2, Front right" })).toBeTruthy();
+    expect(prompt()).toBe("Right. From the middle, aim between photos 1 and 3.");
+    expect(counter()).toBe("Next: photo 2. 3 of 5 photos taken.");
+    expect(screen.getByRole("button", { name: "Take photo 2, Right" })).toBeTruthy();
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
     // The shot fills slot 2; the others never moved.
     expect(getSlots().map((p) => p?.uri)).toEqual(["file://old-0.jpg", "file://plate-shot.jpg", "file://old-2.jpg", "file://old-3.jpg"]);
-    expect(counter()).toBe("Next: photo 5. 4 of 6 photos taken.");
+    expect(counter()).toBe("Next: photo 5. 4 of 5 photos taken.");
   });
 
   it("takes an open slot from the review screen as a first take, not a retake, then returns", async () => {
@@ -497,12 +526,12 @@ describe("Rangefinder: retake mode", () => {
     seedRoll(3);
     const { onClose } = await renderCamera(1);
     // Out of turn: the view's name and where to aim, between its neighbours round the circle.
-    expect(prompt()).toBe("Front right. From the middle, aim between photos 1 and 3.");
+    expect(prompt()).toBe("Right. From the middle, aim between photos 1 and 3.");
     expect(counter()).toBe("Retaking photo 2.");
     // The retaken plate's numeral shows alone: its neighbours are hidden.
     expect(flat(screen.getByText("2", hidden)).opacity).toBeUndefined();
     for (const neighbour of ["1", "3"]) expect(flat(screen.getByText(neighbour, hidden))).toMatchObject({ opacity: 0 });
-    expect(screen.getByRole("button", { name: "Retake photo 2, Front right" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retake photo 2, Right" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Choose a photo instead" })).toBeTruthy();
     expect(screen.queryByText(COPY.privacy)).toBeNull();
     // The thumbnail shows the plate being replaced, with no ring, and cancels.
@@ -651,18 +680,25 @@ describe("Rangefinder: hit areas and focus outlines", () => {
     expect(ringsIn(thumbnail)).toHaveLength(0);
   });
 
-  it("caps the counter's numerals at 1.25 and lays them on one wide strip, so none wraps", async () => {
+  it("caps the counter's numerals at 1.25 and lays the plan's numerals on one wide strip, so none wraps", async () => {
     seedRoll(2);
     await renderCamera();
     const C = ref.layout.camera.counter;
     expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ width: C.width, height: C.height, overflow: "hidden" });
     const strip = screen.getByTestId("plate-counter-strip", hidden);
-    expect(flat(strip)).toMatchObject({ flexDirection: "row", gap: C.gap, width: C.width * PLATE_PROMPTS.length });
-    for (const { numeral } of PLATE_PROMPTS) {
+    expect(flat(strip)).toMatchObject({ flexDirection: "row", gap: C.gap, width: C.width * 5 });
+    for (const { numeral } of FIVE) {
       const text = screen.getByText(numeral, hidden);
       expect(text.props.maxFontSizeMultiplier).toBe(C.maxFontScale);
       expect(text.parent?.props.testID).toBe("plate-counter-strip");
     }
+    // 0.5x's plan has no photo 6.
+    expect(screen.queryByText("6", hidden)).toBeNull();
+    // On 1x the strip grows to 6.
+    await cameraReady();
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    expect(flat(screen.getByTestId("plate-counter-strip", hidden)).width).toBe(C.width * 6);
+    expect(screen.getByText("6", hidden)).toBeTruthy();
   });
 });
 
@@ -774,7 +810,7 @@ describe("Rangefinder: Once's look", () => {
     await renderCamera();
     expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: ref.color.void, borderRadius: ref.radius.nested });
     expect(flat(screen.getByText("3", hidden))).toMatchObject({ ...ref.type.counter });
-    expect(counterCopy({ index: 2, retake: false })).toMatchObject({ current: 2, numeral: "3", solo: false });
+    expect(counterCopy({ index: 2, retake: false, prompts: FIVE })).toMatchObject({ current: 2, numeral: "3", solo: false });
   });
 
   it("builds the shutter: a shade ring glowing upward around the gradient disk and its white magnifier", async () => {
@@ -826,7 +862,8 @@ describe.each([
       accessible,
       screenReaderFocusable: true,
       accessibilityRole: "text",
-      accessibilityLabel: "Next: photo 1. 0 of 6 photos taken.",
+      // iOS starts on the ultra-wide's 5; Android has no lens list, so 1x's 6.
+      accessibilityLabel: `Next: photo 1. 0 of ${os === "ios" ? 5 : 6} photos taken.`,
     });
     // Their texts stay out of Android's accessibility tree: each element is read once, by its label.
     for (const text of ["Start here", "Stand in the middle. Face any wall.", "1"]) {
@@ -852,28 +889,50 @@ describe("copy", () => {
     expect(thinkingCopy(null, "3").line).toBe("Preparing photo 3");
   });
 
-  it("words the 360: start in the middle, turn right a little each time, back to the start", () => {
-    expect(PLATE_PROMPTS.map((p) => p.title)).toEqual(["Start here", "Turn right a little", "Keep turning", "Halfway round", "Nearly round", "Last turn"]);
-    expect(PLATE_PROMPTS[0].detail).toBe("Stand in the middle. Face any wall.");
-    expect(PLATE_PROMPTS[1].detail).toBe("Keep part of the last photo in view.");
-    expect(PLATE_PROMPTS[5].detail).toBe("After this one, you're back at the start.");
-    expect(PLATE_PROMPTS.map((p) => p.name)).toEqual(["Start", "Front right", "Back right", "Behind", "Back left", "Front left"]);
+  it("words 1x's 360: start in the middle, turn right a little each time, back to the start", () => {
+    expect(SIX.map((p) => p.title)).toEqual(["Start here", "Turn right a little", "Keep turning", "Halfway round", "Nearly round", "Last turn"]);
+    expect(SIX[0].detail).toBe("Stand in the middle. Face any wall.");
+    expect(SIX[1].detail).toBe("Keep part of the last photo in view.");
+    expect(SIX[3].detail).toBe("You're facing away from photo 1.");
+    expect(SIX[5].detail).toBe("After this one, you're back at the start.");
+    expect(SIX.map((p) => p.name)).toEqual(["Start", "Front right", "Back right", "Behind", "Back left", "Front left"]);
+    expect(SIX.map((p) => p.numeral)).toEqual(["1", "2", "3", "4", "5", "6"]);
     // No spot-by-spot prompts, no darkroom words.
-    const all = JSON.stringify(PLATE_PROMPTS);
+    const all = JSON.stringify([SIX, FIVE]);
     expect(all).not.toMatch(/doorway|corner|busiest|close view|plate|roll|develop/i);
   });
 
+  it("words 0.5x's 360 in 5: no photo straight behind, so no halfway stop, and compass names that fit 72 degrees apart", () => {
+    expect(FIVE.map((p) => p.title)).toEqual(["Start here", "Turn right a little", "Keep turning", "Nearly round", "Last turn"]);
+    expect(FIVE.map((p) => p.detail)).toEqual([
+      "Stand in the middle. Face any wall.",
+      "Keep part of the last photo in view.",
+      "Keep part of the last photo in view.",
+      "Keep part of the last photo in view.",
+      "After this one, you're back at the start.",
+    ]);
+    expect(FIVE.map((p) => p.name)).toEqual(["Start", "Right", "Back right", "Back left", "Left"]);
+    expect(FIVE.map((p) => p.numeral)).toEqual(["1", "2", "3", "4", "5"]);
+    // Stops re-spaced after a lens switch keep their names by where they look.
+    expect(platePrompts([0, 72, 144, 198, 252, 306]).map((p) => p.name)).toEqual(["Start", "Right", "Back right", "Behind", "Left", "Front left"]);
+    expect(platePrompts([0, 72, 144, 198, 252, 306])[3].title).toBe("Halfway round");
+  });
+
   it("aims a retake between the photos either side of it, round the circle", () => {
-    expect(promptCopy({ index: 0, retake: true })).toEqual({ title: "Start", detail: "From the middle, aim between photos 6 and 2." });
-    expect(promptCopy({ index: 3, retake: true })).toEqual({ title: "Behind", detail: "From the middle, aim between photos 3 and 5." });
-    expect(promptCopy({ index: 5, retake: true })).toEqual({ title: "Front left", detail: "From the middle, aim between photos 5 and 1." });
-    expect(shutterLabel({ index: 3, retake: true })).toBe("Retake photo 4, Behind");
-    expect(shutterLabel({ index: 3, retake: true, filling: true })).toBe("Take photo 4, Behind");
+    expect(promptCopy({ index: 0, retake: true, prompts: SIX })).toEqual({ title: "Start", detail: "From the middle, aim between photos 6 and 2." });
+    expect(promptCopy({ index: 3, retake: true, prompts: SIX })).toEqual({ title: "Behind", detail: "From the middle, aim between photos 3 and 5." });
+    expect(promptCopy({ index: 5, retake: true, prompts: SIX })).toEqual({ title: "Front left", detail: "From the middle, aim between photos 5 and 1." });
+    expect(shutterLabel({ index: 3, retake: true, prompts: SIX })).toBe("Retake photo 4, Behind");
+    expect(shutterLabel({ index: 3, retake: true, filling: true, prompts: SIX })).toBe("Take photo 4, Behind");
+    // On 0.5x photo 1 sits between 5 and 2.
+    expect(promptCopy({ index: 0, retake: true, prompts: FIVE })).toEqual({ title: "Start", detail: "From the middle, aim between photos 5 and 2." });
+    expect(promptCopy({ index: 3, retake: true, prompts: FIVE })).toEqual({ title: "Back left", detail: "From the middle, aim between photos 3 and 5." });
+    expect(promptCopy({ index: 4, retake: true, prompts: FIVE })).toEqual({ title: "Left", detail: "From the middle, aim between photos 4 and 1." });
   });
 
   it("places a photo out of turn by the neighbours that exist, never a turn from where the player happens to stand", () => {
     const filled = (...slots: number[]) => Array.from({ length: 6 }, (_, i) => slots.includes(i));
-    const out = (index: number, f: boolean[]) => promptCopy({ index, retake: false, inTurn: false, filled: f });
+    const out = (index: number, f: boolean[]) => promptCopy({ index, retake: false, inTurn: false, filled: f, prompts: SIX });
     expect(out(2, filled(0, 1, 3))).toEqual({ title: "Back right", detail: "From the middle, aim between photos 2 and 4." });
     expect(out(3, filled(0, 1, 2))).toEqual({ title: "Behind", detail: "From the middle, face photo 3's view, then turn right a little." });
     expect(out(0, filled(1, 2, 3))).toEqual({ title: "Start", detail: "From the middle, face photo 2's view, then turn left a little." });
@@ -881,23 +940,33 @@ describe("copy", () => {
     expect(out(0, filled(1, 5))).toEqual({ title: "Start", detail: "From the middle, aim between photos 6 and 2." });
     expect(out(5, filled(0, 4))).toEqual({ title: "Front left", detail: "From the middle, aim between photos 5 and 1." });
     // In turn, the turn prompts; a retake is always placed.
-    expect(promptCopy({ index: 3, retake: false, inTurn: true }).title).toBe("Halfway round");
-    expect(promptCopy({ index: 3, retake: true, filled: filled(0, 1, 2, 3) }).detail).toBe("From the middle, face photo 3's view, then turn right a little.");
+    expect(promptCopy({ index: 3, retake: false, inTurn: true, prompts: SIX }).title).toBe("Halfway round");
+    expect(promptCopy({ index: 3, retake: true, filled: filled(0, 1, 2, 3), prompts: SIX }).detail).toBe("From the middle, face photo 3's view, then turn right a little.");
+    // On 0.5x the last photo's neighbour round the circle is photo 1.
+    const five = (...slots: number[]) => Array.from({ length: 5 }, (_, i) => slots.includes(i));
+    expect(promptCopy({ index: 4, retake: false, inTurn: false, filled: five(0, 1, 2), prompts: FIVE })).toEqual({
+      title: "Left",
+      detail: "From the middle, face photo 1's view, then turn left a little.",
+    });
   });
 
   it("words 1.0's turn edge to edge: its photos only just meet, so there is no part of the last one to keep in view", () => {
-    expect(promptCopy({ index: 1, retake: false, edgeToEdge: true })).toEqual({ title: "Turn right a little", detail: COPY.edgeDetail });
-    expect(promptCopy({ index: 1, retake: false, edgeToEdge: false }).detail).toBe("Keep part of the last photo in view.");
+    expect(promptCopy({ index: 1, retake: false, edgeToEdge: true, prompts: SIX })).toEqual({ title: "Turn right a little", detail: COPY.edgeDetail });
+    expect(promptCopy({ index: 1, retake: false, edgeToEdge: false, prompts: SIX }).detail).toBe("Keep part of the last photo in view.");
     // The other details aren't about overlap and stay.
-    expect(promptCopy({ index: 3, retake: false, edgeToEdge: true }).detail).toBe("You're facing away from photo 1.");
-    expect(promptCopy({ index: 5, retake: false, edgeToEdge: true }).detail).toBe("After this one, you're back at the start.");
+    expect(promptCopy({ index: 3, retake: false, edgeToEdge: true, prompts: SIX }).detail).toBe("You're facing away from photo 1.");
+    expect(promptCopy({ index: 5, retake: false, edgeToEdge: true, prompts: SIX }).detail).toBe("After this one, you're back at the start.");
   });
 
-  it("counts the turn dial's photos, and says when all are taken", () => {
-    expect(turnCopy({ index: 1, retake: false }, 6, false)).toEqual({ line: "Photo 2 of 6", accessibilityLabel: "Photo 2 of 6." });
-    expect(turnCopy({ index: 1, retake: false }, 6, true).accessibilityLabel).toBe(`Photo 2 of 6. ${COPY.turnReached}`);
-    expect(turnCopy({ index: 6, retake: false }, 6, false)).toEqual({ line: "6 of 6 taken", accessibilityLabel: "6 of 6 taken, all the way round." });
-    expect(turnCopy({ index: 2, retake: true }, 6, false).line).toBe("Photo 3 of 6");
+  it("counts the turn dial's photos against the plan, and says when all are taken", () => {
+    expect(turnCopy({ index: 1, retake: false, prompts: SIX }, false)).toEqual({ line: "Photo 2 of 6", accessibilityLabel: "Photo 2 of 6." });
+    expect(turnCopy({ index: 1, retake: false, prompts: SIX }, true).accessibilityLabel).toBe(`Photo 2 of 6. ${COPY.turnReached}`);
+    expect(turnCopy({ index: 6, retake: false, prompts: SIX }, false)).toEqual({ line: "6 of 6 taken", accessibilityLabel: "6 of 6 taken, all the way round." });
+    expect(turnCopy({ index: 2, retake: true, prompts: SIX }, false).line).toBe("Photo 3 of 6");
+    expect(turnCopy({ index: 1, retake: false, prompts: FIVE }, false).line).toBe("Photo 2 of 5");
+    expect(turnCopy({ index: 5, retake: false, prompts: FIVE }, false)).toEqual({ line: "5 of 5 taken", accessibilityLabel: "5 of 5 taken, all the way round." });
+    expect(counterCopy({ index: 3, retake: false, prompts: FIVE }).accessibilityLabel).toBe("Next: photo 4. 3 of 5 photos taken.");
+    expect(promptCopy({ index: 5, retake: false, prompts: FIVE })).toEqual({ title: "All the way round", detail: "Review your photos." });
   });
 });
 
@@ -907,34 +976,51 @@ describe("Rangefinder: the turn dial", () => {
   it("counts the photos round the room on the feed, and stays static with no motion sensor (as under Jest)", async () => {
     await renderCamera();
     await cameraReady();
-    expect(dial().props.accessibilityLabel).toBe("Photo 1 of 6.");
-    expect(screen.getByText("Photo 1 of 6", hidden)).toBeTruthy();
+    expect(dial().props.accessibilityLabel).toBe("Photo 1 of 5.");
+    expect(screen.getByText("Photo 1 of 5", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(4);
     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
     expect(screen.queryAllByTestId("turn-dial-taken", hidden)).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
-    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
+    expect(screen.getByText("Photo 2 of 5", hidden)).toBeTruthy();
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(1);
     expect(screen.queryByTestId("turn-dial-arc", hidden)).toBeNull();
     // Its words sit in the viewfinder, after the feed and before the privacy note.
     expect(screen.getByTestId("viewfinder-well")).toContainElement(dial());
   });
 
-  it("plans the same 6 stops on either lens (the photo limit), and says when all are taken", async () => {
-    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
-    seedRoll(MAX_PLATES);
+  it("plans 5 stops on 0.5x and 6 on 1x before the first photo", async () => {
     await renderCamera();
     await cameraReady();
-    expect(screen.getByText("6 of 6 taken", hidden)).toBeTruthy();
-    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
+    expect(screen.getByText("Photo 1 of 5", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(4);
     await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
-    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
+    expect(screen.getByText("Photo 1 of 6", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(5);
+    expect(counter()).toBe("Next: photo 1. 0 of 6 photos taken.");
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.ultraWide }));
+    expect(screen.getByText("Photo 1 of 5", hidden)).toBeTruthy();
+  });
+
+  it("says when all are taken, and keeps a full roll as it is when the lens changes", async () => {
+    seedRoll(5);
+    await renderCamera();
+    await cameraReady();
+    expect(screen.getByText("5 of 5 taken", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(5);
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    // The 5 already go all the way round: no 6th stop, still full, and no 1.0 note.
+    expect(screen.getByText("5 of 5 taken", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(5);
+    expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
+    expect(screen.queryByText(COPY.lensNote)).toBeNull();
   });
 
   it("marks the retaken photo's stop in retake mode", async () => {
     seedRoll(4);
     await renderCamera(2);
-    expect(screen.getByText("Photo 3 of 6", hidden)).toBeTruthy();
+    expect(screen.getByText("Photo 3 of 5", hidden)).toBeTruthy();
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(3);
     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
   });
@@ -947,23 +1033,30 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
   };
-  /** The next stop's ring sits at this slot's place round the dial (60 apart, photo 1 at the top). */
+  /** The next stop's ring sits at this place round the dial (degrees, photo 1 at the top). */
+  const expectTargetAtDeg = (deg: number) => {
+    const ring = screen.getByTestId("turn-dial-target", hidden);
+    const p = dialPoint(C, C, R, deg);
+    expect(ring.props.cx).toBeCloseTo(p.x, 3);
+    expect(ring.props.cy).toBeCloseTo(p.y, 3);
+  };
+  /** The next stop's ring sits at this slot's place round the dial (0.5x: 72 apart, photo 1 at the top). */
   const expectTargetAt = (slot: number) => {
     const ring = screen.getByTestId("turn-dial-target", hidden);
-    const p = dialPoint(C, C, R, slot * 60);
+    const p = dialPoint(C, C, R, slot * 72);
     expect(ring.props.cx).toBeCloseTo(p.x, 3);
     expect(ring.props.cy).toBeCloseTo(p.y, 3);
   };
   const arc = () => screen.queryByTestId("turn-dial-arc", hidden);
 
-  /** Photos 1 to `count` with the camera, turning a stop between each: the player ends facing photo `count`'s view. */
+  /** Photos 1 to `count` with the camera on 0.5x, turning a stop (72) between each: the player ends facing photo `count`'s view. */
   async function walkRound(count: number) {
     sensors.DeviceMotion.isAvailableAsync.mockResolvedValue(true);
     await renderCamera();
     await cameraReady();
     await flush();
     for (let i = 0; i < count; i += 1) {
-      if (i > 0) await turnPhone(60, 1);
+      if (i > 0) await turnPhone(72, 1);
       await shoot();
     }
     expect(getPlates()).toHaveLength(count);
@@ -973,9 +1066,12 @@ describe("Rangefinder: the turn after a photo is removed", () => {
   it("tracks the turn live between photos taken in order", async () => {
     await walkRound(2);
     expect(prompt()).toBe("Keep turning. Keep part of the last photo in view.");
-    await turnPhone(60, 0.5);
+    await turnPhone(72, 0.5);
     expect(arc()).toBeTruthy();
-    await turnPhone(60, 0.5);
+    // 60 of 72: not yet far enough on 0.5x.
+    await turnPhone(48, 0.5);
+    expect(mockFeedback.tick).not.toHaveBeenCalled();
+    await turnPhone(72, 1 / 6);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("turn-dial-target-reached", hidden)).toBeTruthy();
   });
@@ -986,20 +1082,20 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     await act(async () => {
       removePlate(3);
     });
-    expect(counter()).toBe("Next: photo 4. 3 of 6 photos taken.");
-    expect(screen.getByText("Photo 4 of 6", hidden)).toBeTruthy();
+    expect(counter()).toBe("Next: photo 4. 3 of 5 photos taken.");
+    expect(screen.getByText("Photo 4 of 5", hidden)).toBeTruthy();
     expectTargetAt(3);
-    // Not "Halfway round" plus a live turn: that sent the player a stop past photo 4's place.
-    expect(prompt()).toBe("Behind. From the middle, face photo 3's view, then turn right a little.");
-    expect(screen.getByRole("button", { name: "Take photo 4, Behind" })).toBeTruthy();
-    await turnPhone(60, 1);
+    // Not "Nearly round" plus a live turn: that sent the player a stop past photo 4's place.
+    expect(prompt()).toBe("Back left. From the middle, face photo 3's view, then turn right a little.");
+    expect(screen.getByRole("button", { name: "Take photo 4, Back left" })).toBeTruthy();
+    await turnPhone(72, 1);
     expect(arc()).toBeNull();
     expect(mockFeedback.tick).not.toHaveBeenCalled();
     await shoot();
     expect(getSlots()).toHaveLength(4);
-    // Photo 4 taken again here: the turn picks up from it toward photo 5.
-    expect(prompt()).toBe("Nearly round. Keep part of the last photo in view.");
-    await turnPhone(60, 1);
+    // Photo 4 taken again here: the turn picks up from it toward photo 5, the last.
+    expect(prompt()).toBe("Last turn. After this one, you're back at the start.");
+    await turnPhone(72, 1);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
   });
 
@@ -1008,27 +1104,28 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     await act(async () => {
       removePlate(2);
     });
-    expect(counter()).toBe("Next: photo 3. 3 of 6 photos taken.");
-    expect(screen.getByText("Photo 3 of 6", hidden)).toBeTruthy();
+    expect(counter()).toBe("Next: photo 3. 3 of 5 photos taken.");
+    expect(screen.getByText("Photo 3 of 5", hidden)).toBeTruthy();
     expectTargetAt(2);
     expect(prompt()).toBe("Back right. From the middle, aim between photos 2 and 4.");
-    await turnPhone(60, 1);
+    await turnPhone(72, 1);
     expect(arc()).toBeNull();
     expect(mockFeedback.tick).not.toHaveBeenCalled();
     await shoot();
     expect(getSlots()[2]?.uri).toBe("file://plate-shot.jpg");
     // Next is photo 5, after photo 4: the player is at photo 3's place, so the camera says where 5 goes.
-    expect(counter()).toBe("Next: photo 5. 4 of 6 photos taken.");
+    expect(counter()).toBe("Next: photo 5. 4 of 5 photos taken.");
     expectTargetAt(4);
-    expect(prompt()).toBe("Back left. From the middle, face photo 4's view, then turn right a little.");
-    await turnPhone(60, 1);
+    // Both its neighbours are in (4, and 1 round the circle): between them.
+    expect(prompt()).toBe("Left. From the middle, aim between photos 4 and 1.");
+    await turnPhone(72, 1);
     expect(mockFeedback.tick).not.toHaveBeenCalled();
+    expect(mockFeedback.success).not.toHaveBeenCalled();
     await shoot();
-    // Photo 5 taken in turn after 4's place: live again toward 6.
-    expect(prompt()).toBe("Last turn. After this one, you're back at the start.");
-    expectTargetAt(5);
-    await turnPhone(60, 1);
-    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    // Photo 5 fills 0.5x's plan: all the way round, with the success haptic.
+    expect(prompt()).toBe("All the way round. Review your photos.");
+    expect(screen.getByText("5 of 5 taken", hidden)).toBeTruthy();
+    expect(mockFeedback.success).toHaveBeenCalledTimes(1);
   });
 
   it("removing the first photo: slot 1 next, aimed back from photo 2", async () => {
@@ -1036,11 +1133,11 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     await act(async () => {
       removePlate(0);
     });
-    expect(counter()).toBe("Next: photo 1. 3 of 6 photos taken.");
-    expect(screen.getByText("Photo 1 of 6", hidden)).toBeTruthy();
+    expect(counter()).toBe("Next: photo 1. 3 of 5 photos taken.");
+    expect(screen.getByText("Photo 1 of 5", hidden)).toBeTruthy();
     expectTargetAt(0);
     expect(prompt()).toBe("Start. From the middle, face photo 2's view, then turn left a little.");
-    await turnPhone(60, 1);
+    await turnPhone(72, 1);
     expect(arc()).toBeNull();
     expect(mockFeedback.tick).not.toHaveBeenCalled();
   });
@@ -1054,20 +1151,20 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     const user = userEvent.setup();
     await user.press(screen.getByTestId("shutter"));
     await act(async () => pending[0].finish());
-    await turnPhone(60, 1);
+    await turnPhone(72, 1);
     await user.press(screen.getByTestId("shutter"));
     await flush();
     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ busy: true });
     // The player turns on as soon as they hear the shutter, while photo 2 is still being prepared.
-    await turnPhone(60, 0.5);
+    await turnPhone(72, 0.5);
     expect(arc()).toBeNull();
     mockFeedback.tick.mockClear();
     await act(async () => pending[1].finish());
     await flush();
     expect(prompt()).toBe("Keep turning. Keep part of the last photo in view.");
-    // 30 of the 60 already turned: half way, not back at the start.
+    // 36 of the 72 already turned: half way, not back at the start.
     expect(arc()).toBeTruthy();
-    await turnPhone(60, 0.5);
+    await turnPhone(72, 0.5);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
   });
 
@@ -1078,7 +1175,7 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     await cameraReady();
     await flush();
     expect(prompt()).toBe("Back right. From the middle, face photo 2's view, then turn right a little.");
-    await turnPhone(60, 1);
+    await turnPhone(72, 1);
     expect(arc()).toBeNull();
     expect(mockFeedback.tick).not.toHaveBeenCalled();
   });
@@ -1096,11 +1193,57 @@ describe("Rangefinder: the turn after a photo is removed", () => {
     expect(arc()).toBeTruthy();
     expect(prompt()).toBe(`Turn right a little. ${COPY.edgeDetail}`);
     expect(screen.getByText(COPY.lensNote)).toBeTruthy();
+    // One photo in: 1.0's own even 6, 60 apart.
+    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
     await turnPhone(60, 0.5);
     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("radio", { name: COPY.ultraWide }));
     expect(screen.queryByText(COPY.lensNote)).toBeNull();
     expect(prompt()).toBe("Turn right a little. Keep part of the last photo in view.");
+    expect(screen.getByText("Photo 2 of 5", hidden)).toBeTruthy();
+  });
+
+  it("switching to 1.0 after 3 photos keeps them where they are and re-spaces the other 3 photos for 1.0, 54 apart", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+    await walkRound(3);
+    expect(screen.getByText("Photo 4 of 5", hidden)).toBeTruthy();
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    mockFeedback.tick.mockClear();
+    // 3 taken at 0, 72 and 144; 3 more at 198, 252 and 306.
+    expect(counter()).toBe("Next: photo 4. 3 of 6 photos taken.");
+    expect(screen.getByText("Photo 4 of 6", hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(3);
+    expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(2);
+    expectTargetAtDeg(198);
+    // Still the turn from photo 3, the player's place: "Halfway round", worded edge to edge.
+    expect(prompt()).toBe("Halfway round. You're facing away from photo 1.");
+    expect(screen.getByText(COPY.lensNote)).toBeTruthy();
+    await turnPhone(54, 1);
+    expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+    await shoot();
+    expect(prompt()).toBe(`Nearly round. ${COPY.edgeDetail}`);
+    expectTargetAtDeg(252);
+    // A switch back once photo 4 is in: the 4 keep their places, and the last
+    // 162 degrees still need 2 more photos on 0.5x (81 apart would share too
+    // little), so the count stays 6: it never drops below what the turn needs.
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.ultraWide }));
+    expect(counter()).toBe("Next: photo 5. 4 of 6 photos taken.");
+    expectTargetAtDeg(252);
+    expect(prompt()).toBe("Nearly round. Keep part of the last photo in view.");
+  });
+
+  it("opens again on the lens the roll was being taken on, with its plan", async () => {
+    camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+    await walkRound(2);
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
+    await screen.unmount();
+    await renderCamera();
+    // Before the lenses are read and after: still 1.0's plan.
+    expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
+    await cameraReady();
+    expect(stateOf(screen.getByRole("radio", { name: COPY.mainLens }))).toMatchObject({ selected: true });
+    expect(counter()).toBe("Next: photo 3. 2 of 6 photos taken.");
   });
 
   it("never points to 0.5 where the phone has no ultra-wide, but still words 1.0's turn edge to edge", async () => {
@@ -1122,7 +1265,7 @@ describe("Rangefinder: inside a mode", () => {
     await renderCamera();
     expect(flat(screen.getByTestId("rangefinder-root"))).toMatchObject({ backgroundColor: theme.surface });
     expect(flat(screen.getByTestId("back"))).toMatchObject({ backgroundColor: theme.raised, borderColor: theme.rim });
-    const placed = promptCopy({ index: 2, retake: false, inTurn: false, filled: [true, true] });
+    const placed = promptCopy({ index: 2, retake: false, inTurn: false, filled: [true, true], prompts: FIVE });
     expect(flat(screen.getByText(placed.title))).toMatchObject({ ...ref.type.serifTitle, color: theme.ink });
     expect(flat(screen.getByText(placed.detail)).color).toBe(theme.inkMuted);
     expect(flat(screen.getByTestId("viewfinder-well"))).toMatchObject({ backgroundColor: theme.ground });

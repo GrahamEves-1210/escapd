@@ -2,8 +2,9 @@
 // little between photos until they are back where they started (docs/DESIGN.md
 // 02, the turn dial). Pure maths, shared by the camera's turn dial, its
 // sensor hook and their tests:
-// - turnPlan: how many photos and how far to turn between them, from the
-//   lens's field of view and the photo limits;
+// - rollPlan / turnPlan: how many photos and how far to turn between them,
+//   from the lens's field of view, a target overlap and the photo limits, and
+//   switchLens: the plan re-spaced when the lens changes mid-roll;
 // - the sensor maths: how far the phone has turned about the vertical since
 //   the last photo, from DeviceMotion's rotation rate and gravity;
 // - the dial's geometry.
@@ -20,42 +21,115 @@ import { MAX_PLATES, MIN_PLATES } from "./slots";
  */
 export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 92, main: 55 };
 
-/** Neighbouring photos should share about a third of their width. */
-export const TARGET_OVERLAP = 1 / 3;
+/**
+ * Neighbouring photos should share about a fifth of their width: enough for
+ * the photos to stitch round the loop, without the near-duplicates a third
+ * gave (6 photos on 0.5x). The photo count follows from it: 0.5x (92) goes
+ * round in 5 photos 72 apart, sharing 20 degrees. Set it to 0 and 0.5x takes
+ * 4 photos 90 apart, which only just meet (2 degrees shared), so the turn
+ * prompts word the turn edge to edge, as on 1x.
+ */
+export const TARGET_OVERLAP = 0.2;
+
+/**
+ * Neighbours sharing less than this only just meet: there's no "part of the
+ * last photo" to keep in view, so the turn prompts word the turn edge to edge.
+ */
+export const MIN_OVERLAP = 0.1;
 
 export interface TurnPlan {
   /** Photos all the way round. */
   shots: number;
-  /** Degrees to turn between photos (360 / shots). */
+  /** Degrees to turn between the photos still to take (360 / shots on an even circle). */
   step: number;
   /** The share of a photo its neighbour also shows; negative is a gap between them. */
   overlap: number;
   /**
-   * Neighbours share part of the view, so "keep part of the last photo in
-   * view" is something the player can do. False where the photo limit holds
-   * the lens to turns wider than it sees (1x): the photos only just meet.
+   * Neighbours share enough of the view (MIN_OVERLAP) that "keep part of the
+   * last photo in view" is something the player can do. False where the
+   * photo limit holds the lens to turns about as wide as it sees (1x): the
+   * photos only just meet.
    */
   overlaps: boolean;
 }
 
-/**
- * The fewest photos that go all the way round with TARGET_OVERLAP, held to
- * the photo limits; the turn is then an even share of the circle. The
- * ultra-wide (92) needs 6 photos 60 apart, about a third overlapping. The
- * main lens (55) would need 10; held to 6, its turn is also 60, so neighbours
- * just meet (5 degrees of gap): a smaller turn would make them overlap but
- * stop short of the start, and the photos are shown as a loop round the room
- * (the build wait, the play screen), so the plan always closes the circle.
- * The camera says so on 1x and points to 0.5 where the phone has it.
- */
-export function turnPlan(lens: LensChoice, max = MAX_PLATES, min = MIN_PLATES): TurnPlan {
+/** The plan for a roll: the turn plus each photo's stop round the circle. */
+export interface RollPlan extends TurnPlan {
+  /** Each photo's stop, degrees clockwise from photo 1 (always 0): `shots` of them, in slot order. */
+  stops: readonly number[];
+}
+
+/** The widest turn that keeps TARGET_OVERLAP on this lens. */
+const idealStep = (lens: LensChoice) => LENS_FOV[lens] * (1 - TARGET_OVERLAP);
+
+function overlapOf(lens: LensChoice, step: number): Pick<TurnPlan, "overlap" | "overlaps"> {
   const fov = LENS_FOV[lens];
-  const ideal = fov * (1 - TARGET_OVERLAP);
-  // The epsilon keeps 360 / 60 at 6, not 7, through floating point.
-  const shots = Math.min(Math.max(Math.ceil(360 / ideal - 1e-9), min), max);
-  const step = 360 / shots;
   const overlap = (fov - step) / fov;
-  return { shots, step, overlap, overlaps: overlap > 0 };
+  return { overlap, overlaps: overlap >= MIN_OVERLAP };
+}
+
+/**
+ * The roll's stops for `lens`. The photos already placed keep their stops
+ * (`kept`, slots 0 on, in order; none for a new roll); the rest of the circle,
+ * from the last kept stop back round to photo 1, is shared evenly between the
+ * fewest more photos that keep TARGET_OVERLAP on this lens, held to the photo
+ * limits (never fewer than the photos kept). With nothing kept it is an even
+ * circle: 0.5x (92) 5 photos 72 apart, sharing about a fifth; the main lens
+ * (55) would need 9, so held to 6 its turn is 60 and neighbours just meet (5
+ * degrees of gap): a smaller turn would make them overlap but stop short of
+ * the start, and the photos are shown as a loop round the room (the build
+ * wait, the play screen), so the plan always closes the circle. The camera
+ * says so on 1x and points to 0.5 where the phone has it.
+ */
+export function rollPlan(lens: LensChoice, kept: readonly number[] = [], max = MAX_PLATES, min = MIN_PLATES): RollPlan {
+  // Photo 1 is the start, at 0, whatever lens it was taken on.
+  const fixed = kept.length > 0 ? kept : [0];
+  const from = fixed[fixed.length - 1];
+  const arc = 360 - from;
+  // The epsilon keeps 360 / 72 at 5, not 6, through floating point.
+  const gaps = Math.max(1, Math.ceil(arc / idealStep(lens) - 1e-9));
+  const shots = Math.max(Math.min(Math.max(fixed.length + gaps - 1, min), max), fixed.length);
+  const step = arc / (shots - fixed.length + 1);
+  const stops = [...fixed, ...Array.from({ length: shots - fixed.length }, (_, i) => from + step * (i + 1))];
+  return { shots, step, stops, ...overlapOf(lens, step) };
+}
+
+/** The even circle for a lens: how many photos and how far to turn between them. */
+export function turnPlan(lens: LensChoice, max = MAX_PLATES, min = MIN_PLATES): TurnPlan {
+  const { shots, step, overlap, overlaps } = rollPlan(lens, [], max, min);
+  return { shots, step, overlap, overlaps };
+}
+
+/**
+ * The roll's plan once the lens in use changes to `lens`, with `inUse` slots
+ * (up to the last photo, removed ones included) already placed. The photos
+ * taken keep their stops and the rest re-space for the new lens, so the count
+ * never drops below the photos taken. With none taken it is the lens's even
+ * circle. Once every stop is reached the photos already go all the way
+ * round, so the stops stay as they are.
+ */
+export function switchLens(plan: RollPlan, inUse: number, lens: LensChoice): RollPlan {
+  if (inUse >= plan.shots) return { ...plan, ...overlapOf(lens, plan.step) };
+  return rollPlan(lens, plan.stops.slice(0, inUse));
+}
+
+/**
+ * The roll's plan when a camera first says which lens it uses. The photos
+ * already in (library picks, or a roll begun before the lenses were known)
+ * weren't taken on the plan's stops, so it is the lens's even circle when
+ * that holds them; with more photos than it has, they keep their stops
+ * (switchLens).
+ */
+export function firstLens(plan: RollPlan, inUse: number, lens: LensChoice): RollPlan {
+  const even = rollPlan(lens);
+  return inUse <= even.shots ? even : switchLens(plan, inUse, lens);
+}
+
+/** Degrees from the stop before `index` to its own (round past the start for photo 1). */
+export function turnStep(stops: readonly number[], index: number): number {
+  if (stops.length === 0) return 0;
+  const at = Math.min(Math.max(index, 0), stops.length - 1);
+  return at > 0 ? stops[at] - stops[at - 1] : 360 - stops[stops.length - 1] + stops[0];
 }
 
 export interface Vec3 {
@@ -137,7 +211,7 @@ export function turnProgress(turned: number, step: number): number {
   return Math.min(Math.abs(turned) / step, 1);
 }
 
-/** Far enough: within 5 % of the turn (3 degrees at 60), well inside the overlap's margin. */
+/** Far enough: within 5 % of the turn (4 degrees at 72), well inside the overlap's margin. */
 export const TURN_REACHED = 0.95;
 
 export const isTurnReached = (progress: number) => progress >= TURN_REACHED;
@@ -161,7 +235,7 @@ export function dialPoint(cx: number, cy: number, radius: number, deg: number): 
   return { x: cx + Math.sin(deg * DEG) * radius, y: cy - Math.cos(deg * DEG) * radius };
 }
 
-/** Each photo's stop round the dial: photo 1 at the top, the rest clockwise, `step` apart. */
+/** An even circle's stops: photo 1 at the top, the rest clockwise, `step` apart. */
 export function dialStops(shots: number, step = 360 / shots): number[] {
   return Array.from({ length: shots }, (_, i) => i * step);
 }

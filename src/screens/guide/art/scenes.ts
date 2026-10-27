@@ -73,9 +73,9 @@ function heldPhone(): Mark[] {
 // other steps), the doorway a gap in it, a shelf along the right wall and a
 // table in the far left corner. The player stands on the spot in the middle
 // (a context ring) and holds the phone out a little, its view a lit wedge out
-// to the walls. Views are the ultra-wide's 90 degrees, so two photos a turn
-// apart (60) share a third; every view's rays are context and fade before the
-// walls.
+// to the walls. Views are about the ultra-wide's (92 degrees, drawn 90), so
+// two photos a turn apart (72) share about a fifth; every view's rays are
+// context and fade before the walls.
 const ROOM = { left: 52, top: 18, right: 180, bottom: 246 };
 const WALL = 5;
 const DOOR_GAP = { left: 62, right: 94 };
@@ -84,8 +84,10 @@ const HALF_VIEW = 45;
 const MIDDLE: Point = [(ROOM.left + ROOM.right) / 2, (ROOM.top + ROOM.bottom) / 2];
 /** How far out from the middle the phone is held (to its centre). */
 const ARM = 32;
-/** One turn: the ultra-wide's 60 (src/capture/turn.ts). */
-const TURN = 60;
+/** One turn: the ultra-wide's 72, 5 photos all the way round (src/capture/turn.ts). */
+const TURN = 72;
+/** The ultra-wide's stops all the way round: photo 1 at the top, a turn apart. */
+const STOPS = [0, 1, 2, 3, 4].map((i) => i * TURN);
 
 /** Distance from `from` along `deg` to the room's inner wall. */
 function toWall(from: Point, deg: number): number {
@@ -183,7 +185,7 @@ const middle: Scene = {
 
 // Step 2 · Turn right, shoot again. The same plan one turn later: the first
 // photo's view still in place (its rays, back), the phone turned right by one
-// turn (hero, its view lit) so the two views share a third, and an arrow round
+// turn (hero, its view lit) so the two views share about a fifth, and an arrow round
 // the spot turning clockwise.
 const SECOND = facing(TURN);
 const turn: Scene = {
@@ -199,10 +201,10 @@ const turn: Scene = {
 };
 
 // Step 3 · All the way round. The phone held in front shows the camera's turn
-// dial on its screen: a ring with a stop for each photo, five taken (lit
-// dots), the next a dark ring, the turn toward it an arc. Behind the phone a
-// large clockwise arrow (back) goes round with the same six stops on it, its
-// head arriving back at the start.
+// dial on its screen: a ring with a stop for each photo (the ultra-wide's
+// five), four taken (lit dots), the next a dark ring, the turn toward it an
+// arc. Behind the phone a large clockwise arrow (back) goes round with the
+// same stops on it, its head arriving back at the start.
 const ROUND: Point = [130, 112];
 const ROUND_R = 76;
 const DIAL: Point = [130, 172];
@@ -216,8 +218,8 @@ function roundArrow(): Mark[] {
   return [
     { d: arc(ROUND, ROUND_R, from, end), ink: "back" },
     { d: polyline([polar(tip, back - 35, 8), tip, polar(tip, back + 35, 8)]), ink: "back" },
-    // The six stops on it (the one under the phone is hidden by it).
-    ...[0, 60, 120, 180, 240, 300].map((deg): Mark => ({ d: circle(polar(ROUND, deg, ROUND_R), 3.5), ink: "back", fill: "tag" })),
+    // The stops on it (any under the phone are hidden by it).
+    ...STOPS.map((deg): Mark => ({ d: circle(polar(ROUND, deg, ROUND_R), 3.5), ink: "back", fill: "tag" })),
   ];
 }
 
@@ -225,11 +227,11 @@ function dial(): Mark[] {
   const stop = (deg: number) => polar(DIAL, deg, DIAL_R);
   return [
     { d: circle(DIAL, DIAL_R), ink: "back" },
-    // The turn so far, from the fifth stop toward the sixth.
-    { d: arc(DIAL, DIAL_R, 240, 286), ink: "mid" },
-    ...[0, 60, 120, 180, 240].map((deg): Mark => ({ d: circle(stop(deg), 2.6), ink: "mid", fill: "panel" })),
-    { d: circle(stop(300), 3.2), ink: "mid", fill: "tag" },
-    // "Photo 6 of 6" under it, as print.
+    // The turn so far, from the fourth stop toward the last.
+    { d: arc(DIAL, DIAL_R, STOPS[3], STOPS[3] + 55), ink: "mid" },
+    ...STOPS.slice(0, -1).map((deg): Mark => ({ d: circle(stop(deg), 2.6), ink: "mid", fill: "panel" })),
+    { d: circle(stop(STOPS[STOPS.length - 1]), 3.2), ink: "mid", fill: "tag" },
+    // "Photo 5 of 5" under it, as print.
     { d: "M117 197H143", ink: "textDim" },
   ];
 }

@@ -9,10 +9,11 @@
 // the top.
 //
 // Top to bottom: the camera's header (the square back button, the serif
-// title "Your photos" over the grey count "4 of 6 taken"); then a scrolling
+// title "Your photos" over the grey count "4 of 5 taken", counted against the
+// roll's plan: 5 on 0.5x, 6 on 1x); then a scrolling
 // column: the whole-set note (if any), the lead line, the photos (02's last
 // photo grown into 3:4 tiles, two to a row), the retake hint, "Add a photo"
-// (the guide's ghost pill; gone at MAX_PLATES), and "Before you build" with
+// (the guide's ghost pill; gone once the plan's count is in), and "Before you build" with
 // its tips and the privacy line; then the guide's pinned foot with "Build
 // the case". The column slips under the foot and the header through soft
 // fades of the page colour; text follows the system size.
@@ -28,8 +29,8 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { decodeFlags, decodeIssue, type RetakeReason } from "@/capture/failure";
-import { getSlots, removePlate, usePlates, useSlots } from "@/capture/roll";
-import { MAX_PLATES, MIN_PLATES } from "@/capture/slots";
+import { getSlots, removePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
+import { MIN_PLATES, platePrompts } from "@/capture/slots";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { AddPlateButton } from "./AddPlateButton";
@@ -48,6 +49,8 @@ const GAP = L.gap;
 export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?: string }) {
   const slots = useSlots();
   const plates = usePlates();
+  const plan = useRollPlan();
+  const prompts = useMemo(() => platePrompts(plan.stops), [plan.stops]);
   const insets = useSafeAreaInsets();
   const palette = useCapturePalette();
   // Pin each flag to the photo in its slot at that moment (recomputed only
@@ -74,7 +77,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
 
   return (
     <View style={[styles.root, { backgroundColor: palette.page }]} testID="review-root">
-      <ReviewHeader top={insets.top} count={plates.length} max={MAX_PLATES} onBack={back} />
+      <ReviewHeader top={insets.top} count={plates.length} max={plan.shots} onBack={back} />
       <View style={styles.body}>
         <ScrollView contentContainerStyle={styles.content} testID="review-scroll">
           {issue ? (
@@ -89,6 +92,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
             <View style={styles.grid}>
               <PlateGrid
                 slots={slots}
+                prompts={prompts}
                 marks={marks}
                 onRetake={(slot) => router.push({ pathname: "/capture", params: { retake: String(slot) } })}
                 onRemove={(slot) => removePlate(slot)}
@@ -96,7 +100,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
             </View>
           ) : null}
           {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
-          {plates.length < MAX_PLATES ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
+          {plates.length < plan.shots ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
           <ChecksSection style={styles.checks} />
         </ScrollView>
         <PageFade color={palette.page} height={GAP.top} solidAt="top" style={styles.topFade} />

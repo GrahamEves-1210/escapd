@@ -810,7 +810,7 @@ export const ref = {
       note: { inset: 16, padX: 12, padY: 8, fillOpacity: 0.6 },
       // The turn dial: the privacy note's see-through black pill, `inset`
       // below the viewfinder's top, a `dial` circle at its left end (`padLeft`
-      // in) and "Photo 2 of 6" `gap` after it. On the dial, a `ringWidth`
+      // in) and "Photo 2 of 5" `gap` after it. On the dial, a `ringWidth`
       // textTertiary ring `ring` in from its edge carries each photo's stop:
       // taken ones a white dot (`taken`), the next a white ring (`target`, its
       // line `targetLine`, filled once the turn is far enough), the rest a

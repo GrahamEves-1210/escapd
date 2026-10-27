@@ -57,7 +57,7 @@ export interface CameraPermissionProps {
    * photo, which replaces the plate before router.back() to the light table.
    */
   retakeIndex: number | null;
-  /** Plates on the roll now (usePlates().length): the light-table buttons depend on it (3–5 plates, or a full roll of 6). */
+  /** Plates on the roll now (usePlates().length): the light-table buttons depend on it (3 up to the plan's count, or a full roll at it). */
   plateCount: number;
   /** Same as RangefinderProps.onClose. The back arrow is live in every state, Checking included. */
   onClose: () => void;

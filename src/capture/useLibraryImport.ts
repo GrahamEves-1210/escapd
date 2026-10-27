@@ -1,5 +1,7 @@
 // Photos from the library, for 02's library button and 03's "Choose photos
-// instead". The picker offers the room left on the roll (1 in retake mode).
+// instead". The picker offers the room left on the roll (1 in retake mode):
+// up to its plan's count (src/capture/roll.ts; 5 on 0.5x, 6 on 1x or before
+// any camera has said which lens).
 // Each pick is re-encoded on the phone (processPhoto: EXIF and location
 // dropped), one at a time and each in its own try/catch, so a photo that
 // fails never drops the picks after it (docs/DESIGN.md 02, Library). It then
@@ -10,8 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto } from "./process-photo";
-import { addPlate, getPlates, replacePlate } from "./roll";
-import { MAX_PLATES } from "./slots";
+import { addPlate, getPlates, getRollPlan, replacePlate } from "./roll";
 
 export interface LibraryImportProgress {
   /** Photos finished so far, used or not. The photo being worked on is the (done + 1)th. */
@@ -67,7 +68,7 @@ export function useLibraryImport({ retakeIndex }: LibraryImportOptions): Library
   }, []);
 
   const pick = useCallback(async (): Promise<LibraryImportResult | null> => {
-    const room = retakeIndex !== null ? 1 : MAX_PLATES - getPlates().length;
+    const room = retakeIndex !== null ? 1 : getRollPlan().shots - getPlates().length;
     if (running.current || room <= 0) return null;
     running.current = true;
     try {

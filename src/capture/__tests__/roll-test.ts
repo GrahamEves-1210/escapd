@@ -5,10 +5,13 @@ import {
   firstOpenSlot,
   getPlates,
   getRollGenre,
+  getRollPlan,
+  getRollPlanState,
   getSlots,
   removePlate,
   replacePlate,
   setRollGenre,
+  setRollLens,
   setTicketRoom,
 } from "../roll";
 
@@ -20,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("photos by slot", () => {
-  it("keeps up to six photos and replaces one in place", () => {
+  it("keeps up to six photos (1x, or no camera yet) and replaces one in place", () => {
     for (let i = 0; i < 6; i++) expect(addPlate(plate(i))).toBe(true);
     expect(addPlate(plate(6))).toBe(false);
     expect(getPlates()).toHaveLength(6);
@@ -108,5 +111,73 @@ describe("the roll's mode", () => {
     addPlate(plate(0));
     clearPlates();
     expect(getRollGenre()).toBe("crime_scene");
+  });
+});
+
+describe("the roll's plan: its target and stops", () => {
+  it("plans 1x's 6 (the server's cap) until a camera says which lens", () => {
+    expect(getRollPlanState().lens).toBeNull();
+    expect(getRollPlan().shots).toBe(6);
+  });
+
+  it("aims at 5 on 0.5x: the 6th photo is refused and the 5th fills the roll", () => {
+    setRollLens("wide");
+    expect(getRollPlan().stops).toEqual([0, 72, 144, 216, 288]);
+    for (let i = 0; i < 5; i++) expect(addPlate(plate(i))).toBe(true);
+    expect(firstOpenSlot()).toBeNull();
+    expect(addPlate(plate(5))).toBe(false);
+    expect(replacePlate(5, plate(5))).toBe(false);
+    expect(getPlates()).toHaveLength(5);
+  });
+
+  it("removing from a 5-photo plan leaves the slot open and the next photo fills it, within 5", () => {
+    setRollLens("wide");
+    for (let i = 0; i < 5; i++) addPlate(plate(i));
+    removePlate(2);
+    expect(firstOpenSlot()).toBe(2);
+    expect(addPlate(plate(9))).toBe(true);
+    expect(uris()[2]).toBe("file://plate-9.jpg");
+    expect(firstOpenSlot()).toBeNull();
+    // Removing the last leaves 4 in use: the 5th stop is still the target.
+    removePlate(4);
+    expect(firstOpenSlot()).toBe(4);
+    expect(getRollPlan().shots).toBe(5);
+  });
+
+  it("re-spaces the stops still to take when the lens changes mid-roll, never below the photos taken", () => {
+    setRollLens("wide");
+    for (let i = 0; i < 3; i++) addPlate(plate(i));
+    setRollLens("main");
+    expect(getRollPlan().stops).toEqual([0, 72, 144, 198, 252, 306]);
+    // Back on 0.5x before the next photo: its own 5 again.
+    setRollLens("wide");
+    expect(getRollPlan().stops).toEqual([0, 72, 144, 216, 288]);
+  });
+
+  it("keeps the plan once every stop is taken: 5 on 0.5x stays 5 on 1x", () => {
+    setRollLens("wide");
+    for (let i = 0; i < 5; i++) addPlate(plate(i));
+    setRollLens("main");
+    expect(getRollPlan().shots).toBe(5);
+    expect(addPlate(plate(5))).toBe(false);
+  });
+
+  it("starts an even circle again for the lens in use once the roll is empty, and clearPlates forgets the lens", () => {
+    setRollLens("wide");
+    for (let i = 0; i < 3; i++) addPlate(plate(i));
+    setRollLens("main");
+    for (let i = 2; i >= 0; i--) removePlate(i);
+    expect(getRollPlan().stops).toEqual([0, 60, 120, 180, 240, 300]);
+    expect(getRollPlanState().lens).toBe("main");
+    clearPlates();
+    expect(getRollPlanState().lens).toBeNull();
+  });
+
+  it("a lens change keeps the photos and the build ticket", () => {
+    addPlate(plate(0));
+    const ticket = currentTicket();
+    setRollLens("wide");
+    expect(currentTicket()).toBe(ticket);
+    expect(getPlates()).toHaveLength(1);
   });
 });
