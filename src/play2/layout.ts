@@ -7,16 +7,18 @@ export const V2 = {
     /** The beam's radius, as a share of the photo's width. */
     radius: 0.26,
     /** How dark the room is outside the beam, per mode. */
-    darkness: { noir: 0.84, crime_scene: 0.62, paranormal: 0.88 } satisfies Record<Genre, number>,
+    darkness: { noir: 0.93, crime_scene: 0.86, paranormal: 0.95 } satisfies Record<Genre, number>,
     /** A lit lamp's pool of light, as a multiple of its box's long side. */
     lampReach: 2.6,
     /** Where the beam rests before the first touch (image fractions). */
     rest: { x: 0.5, y: 0.45 },
   },
   glint: {
-    stroke: 2,
-    blur: 6,
-    radius: 10,
+    /** A faint soft ring hugging the object (an ellipse inside its box), not a box. */
+    stroke: 1.5,
+    blur: 9,
+    inset: 0.12,
+    peak: 0.45,
     /** An object already looked at glints this much as the beam passes. */
     seen: 0.35,
     /** "Show interactives": every object keeps a faint outline. */

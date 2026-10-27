@@ -78,7 +78,11 @@ function holds(state: PlayState, cond: Condition, secret: RoomSecretV2, submitte
 function triggerMatches(t: Trigger, a: Action): boolean {
   switch (t.on) {
     case "inspect": return a.type === "inspect" && a.object === t.object;
-    case "control": return a.type === "set_control" && a.target === t.target && a.control === t.control;
+    // Looking at an object again re-checks its controls' rules: a cushion lifted before its step was
+    // open still gives up what's under it once the player comes back, without lifting it twice.
+    case "control":
+      return (a.type === "set_control" && a.target === t.target && a.control === t.control) ||
+        (a.type === "inspect" && a.object === t.target);
     case "use": return a.type === "use_item" && a.item === t.item && a.object === t.object;
     case "combine":
       return a.type === "combine" &&

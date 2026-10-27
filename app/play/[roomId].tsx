@@ -16,7 +16,8 @@ export default function PlayScreen() {
   const [v1, setV1] = useState(v === "1");
   // The room tone under the case, in its mode.
   useRoomTone(true);
-  const exit = () => (router.canGoBack() ? router.back() : router.replace("/"));
+  // Back always goes home (the menu), never back into the camera the case was built from.
+  const exit = () => router.dismissTo("/");
   const complete = ({ message, exitMessage, genre, title, accused }: CompletionSummary) =>
     router.replace({
       pathname: "/play/complete/[roomId]",

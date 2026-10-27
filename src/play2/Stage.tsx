@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
-  BlurMask, Canvas, Circle, Group, Paint, RadialGradient, Rect, RoundedRect, vec,
+  BlurMask, Canvas, Circle, Group, Oval, Paint, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
@@ -49,6 +49,8 @@ export interface StageProps {
   marks?: { object: string; box: Box; text: string }[];
   /** The object under the beam's centre as it moves (UV checks it after a moment). */
   onHover?: (objectId: string | null) => void;
+  /** An object being looked at closely: the light swings onto it. */
+  focus?: Box | null;
   /** The photo's frame in window points, once laid out (drops from the tray are hit-tested against it). */
   onFrame?: (frame: { x: number; y: number; width: number; height: number }) => void;
   /** Show interactives (accessibility): a faint outline on every object, always. */
@@ -71,7 +73,7 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], onHover, onFrame,
+  uv = false, marks = [], onHover, onFrame, focus = null,
 }: StageProps) {
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -85,7 +87,6 @@ export function Stage({
   const size = useSharedValue({ w: 0, h: 0 });
   useEffect(() => size.set({ w: W, h: H }), [size, W, H]);
 
-  const look = (x: number, y: number) => onLook(hitTest(objects, x, y));
   // What the beam's centre is on, worked out on the UI thread; JS hears only when it changes.
   const boxes = objects.map((o) => [o.box.x, o.box.y, o.box.w, o.box.h, o.box.w * o.box.h] as const);
   const ids = objects.map((o) => o.id);
@@ -128,15 +129,23 @@ export function Stage({
       }
     },
   });
+  // A tap points the light there; looking closer is the magnifier's (dragged onto something).
   const tap = useTapGesture({
     maxDistance: 12,
     onActivate: (e) => {
       "worklet";
       const s = size.get();
       if (s.w <= 0) return;
-      scheduleOnRN(look, e.x / s.w, e.y / s.h);
+      tx.set(withTiming(e.x / s.w, { duration: 160 }));
+      ty.set(withTiming(e.y / s.h, { duration: 160 }));
     },
   });
+  // The close-up's object: the light swings onto it while its sheet is up.
+  useEffect(() => {
+    if (!focus) return;
+    tx.set(withTiming(focus.x + focus.w / 2, { duration: 380 }));
+    ty.set(withTiming(focus.y + focus.h / 2, { duration: 380 }));
+  }, [focus, tx, ty]);
   const gesture = useCompetingGestures(pan, tap);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -160,7 +169,7 @@ export function Stage({
           >
             <TreatedImage
               source={source}
-              genre={genre}
+              genre={null}
               cacheKey={cacheKey}
               style={StyleSheet.absoluteFill}
               contentFit="fill"
@@ -202,9 +211,9 @@ export function Stage({
               {/* The UV flashlight: its beam glows violet. */}
               {uv ? <Beam tx={tx} ty={ty} w={W} h={H} r={R} tint="rgba(150,95,255,0.30)" /> : null}
               {/* Glints: an outline that catches the beam. */}
-              {glints || assist
+              {glints
                 ? objects.map((o) => (
-                    <Glint key={o.id} box={o.box} seen={o.seen} tx={tx} ty={ty} w={W} h={H} r={R} assist={assist} beam={glints} color={theme.ink} />
+                    <Glint key={o.id} box={o.box} seen={o.seen} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} />
                   ))
                 : null}
             </Canvas>
@@ -212,6 +221,8 @@ export function Stage({
             {marks.map((m) => (
               <InkMark key={m.object} mark={m} w={W} h={H} tx={tx} ty={ty} r={R} always={lamps.length > 0} uv={uv} />
             ))}
+            {/* The flashlight in hand, bottom right, aimed at the beam. */}
+            <HeldLight tx={tx} ty={ty} w={W} h={H} uv={uv} />
             {/* One button per object for screen readers; no touch handlers, so the gestures above get every touch. */}
             {objects.map((o) => (
               <View
@@ -230,7 +241,7 @@ export function Stage({
         // Measure the photo first: the frame is laid out once its aspect is known.
         <TreatedImage
           source={source}
-          genre={genre}
+          genre={null}
           cacheKey={cacheKey}
           style={styles.probe}
           contentFit="contain"
@@ -288,23 +299,23 @@ function InkMark({ mark, w, h, tx, ty, r, always, uv }: {
   );
 }
 
-function Glint({ box, seen, tx, ty, w, h, r, assist, beam, color }: {
-  box: Box; seen: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number;
-  assist: boolean; beam: boolean; color: string;
+function Glint({ box, seen, tx, ty, w, h, r, color }: {
+  box: Box; seen: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
 }) {
-  const x = box.x * w, y = box.y * h, bw = box.w * w, bh = box.h * h;
+  const inset = V2.glint.inset;
+  const x = (box.x + box.w * inset) * w, y = (box.y + box.h * inset) * h;
+  const bw = box.w * (1 - 2 * inset) * w, bh = box.h * (1 - 2 * inset) * h;
   const cx = x + bw / 2, cy = y + bh / 2;
-  const reach = r + Math.max(bw, bh) / 2;
+  // Only where the beam is: nothing glints in the dark.
   const opacity = useDerivedValue(() => {
     const d = Math.hypot(tx.get() * w - cx, ty.get() * h - cy);
-    const lit = beam ? Math.max(0, 1 - d / reach) : 0;
-    const strength = (seen ? V2.glint.seen : 1) * lit * lit;
-    return Math.max(assist ? V2.glint.assist : 0, strength);
+    const lit = Math.max(0, 1 - d / (r * 0.9));
+    return (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
   });
   return (
-    <RoundedRect x={x} y={y} width={bw} height={bh} r={V2.glint.radius} color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={opacity}>
+    <Oval x={x} y={y} width={bw} height={bh} color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={opacity}>
       <BlurMask blur={V2.glint.blur} style="solid" />
-    </RoundedRect>
+    </Oval>
   );
 }
 
@@ -329,7 +340,42 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
   }
 }
 
+/**
+ * The flashlight, first person: held low in the bottom-right corner, its
+ * body turning to point at the beam, foreshortened as it aims deeper into the
+ * room. Follows the light smoothly; never touchable.
+ */
+function HeldLight({ tx, ty, w, h, uv }: { tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; uv: boolean }) {
+  const pivotX = w - 26;
+  const pivotY = h - 14;
+  const reach = Math.hypot(w, h);
+  const style = useAnimatedStyle(() => {
+    const dx = tx.get() * w - pivotX;
+    const dy = ty.get() * h - pivotY;
+    const angle = Math.atan2(dy, dx);
+    // Aimed far (high in the frame): the body points away and looks shorter.
+    const far = Math.min(1, Math.hypot(dx, dy) / reach);
+    return { transform: [{ rotate: `${angle}rad` }, { scaleX: 1 - 0.35 * far }] };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.held, { left: pivotX, top: pivotY - LIGHT.body / 2 }, style]}>
+      <View style={styles.heldBody} />
+      <View style={styles.heldHead}>
+        <View style={[styles.heldLens, { backgroundColor: uv ? "rgb(170,120,255)" : "rgb(255,236,190)" }]} />
+      </View>
+    </Animated.View>
+  );
+}
+const LIGHT = { length: 96, body: 18, head: 28 } as const;
+
 const styles = StyleSheet.create({
+  held: { position: "absolute", width: LIGHT.length, height: LIGHT.body, flexDirection: "row", alignItems: "center", transformOrigin: "0% 50%" },
+  heldBody: { flex: 1, height: LIGHT.body, borderRadius: 6, backgroundColor: "rgb(38,38,42)", borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  heldHead: {
+    width: 26, height: LIGHT.head, borderRadius: 7, backgroundColor: "rgb(56,56,62)", alignItems: "flex-end", justifyContent: "center",
+    borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+  },
+  heldLens: { width: 6, height: LIGHT.head - 8, borderRadius: 3, marginRight: -1 },
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },

@@ -31,7 +31,7 @@ export function FrameTilt({ target, state, onSet, busy, width }: MechanismProps)
   const w = Math.min(width - 2 * ref.space.xxl, 180);
   // Turn about the nail: the frame hangs from its top centre.
   const frameStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -FRAME_H / 2 }, { rotate: `${progress.get() * MAX_DEG}deg` }, { translateY: FRAME_H / 2 }],
+    transform: [{ translateY: -FRAME_H / 2 }, { rotate: `${-progress.get() * MAX_DEG}deg` }, { translateY: FRAME_H / 2 }],
   }));
   const patchStyle = useAnimatedStyle(() => ({ opacity: interpolate(Math.abs(progress.get()), [0, 1], [0, 1]) }));
 

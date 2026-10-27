@@ -308,7 +308,7 @@ class Builder {
       if (!p) return null;
       const b = this.bind(p, thread, "contain", "submit");
       const m = this.mint(b.variant as "digits" | "letters" | "symbols");
-      const code = this.slot("code", m.value, m.text, `Lock on the ${b.inv.label}`);
+      const code = this.slot("code", m.value, m.text);
       const up = this.info([code], budget - 1, thread, depth + 1);
       if (!up) return null;
       const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.", `The ${b.inv.label} has a three-wheel lock; the code is written somewhere.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
@@ -334,7 +334,8 @@ class Builder {
     const clock = b.archetype === "ClockHands";
     const kind = clock ? "time" : "freq";
     const m = this.mint(kind);
-    const input = this.slot(kind, m.value, undefined, clock ? `Time for the ${b.inv.label}` : `Frequency for the ${b.inv.label}`);
+    // No "for the clock": which thing a value belongs to is the player's to work out.
+    const input = this.slot(kind, m.value);
     if (clock) b.initial.time = this.mint("time").value;
     const up = this.info([input], budget - 1, thread, depth + 1);
     if (!up) return null;

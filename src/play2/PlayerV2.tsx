@@ -7,15 +7,15 @@
 // back to the v1 player (`onFallback`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { CaretLeftIcon, CaretRightIcon, ListIcon, ArrowLeftIcon } from "phosphor-react-native";
-import { useSharedValue } from "react-native-reanimated";
+import { CaretLeftIcon, CaretRightIcon, ListIcon, ArrowLeftIcon, MagnifyingGlassIcon } from "phosphor-react-native";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Image } from "expo-image";
 import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { ModeScope, useModeTheme } from "@/game/mode";
 import { useFeedback } from "@/game/feedback";
-import { usePreferences } from "@/game/preferences";
 import { useSceneSources } from "@/game/useSceneSources";
 import { useBoxPatch } from "@/render/removalPatch";
 import { PresenceMeter } from "@/render/PresenceMeter";
@@ -26,7 +26,7 @@ import { ref } from "@/theme/tokens";
 import { Casebook } from "./Casebook";
 import { Ending } from "./Ending";
 import { InspectView, type Content } from "./InspectView";
-import { DragGhost, ItemTray, isUvLight } from "./ItemTray";
+import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { hitTest, Stage, type StageObject } from "./Stage";
@@ -40,6 +40,9 @@ export interface PlayerV2Props {
 }
 
 type Open = { kind: "object"; id: string } | { kind: "item"; id: string };
+
+/** The magnifier's id while it is dragged (never an item id: those are minted "prop_…", "key_…"). */
+const LENS = "__lens__";
 
 const TOAST = {
   nothing: "Nothing happens.",
@@ -81,10 +84,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [selected, setSelected] = useState<string[]>([]);
   const [casebook, setCasebook] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [aspects, setAspects] = useState<Record<number, number>>({});
+  const [objectiveOpen, setObjectiveOpen] = useState(false);
   // Glints: on by default; off is the hard way (nothing catches the light). Show interactives keeps a faint outline on everything.
   const [glints, setGlints] = useState(true);
-  const { hotspotAssist } = usePreferences();
+
   // Crime scene: the evidence board's crossed-out options, the player's own notes, kept per room on the device.
   const [struck, setStruck] = useState<string[]>([]);
   const boardKey = `escapd.v2.board.${roomId}`;
@@ -280,6 +283,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       objectId = hitTest(stageObjectsNow, (x - frame.x) / frame.width, (y - frame.y) / frame.height);
     }
     if (!objectId) return;
+    // The magnifier: look closer at what it was dropped on.
+    if (itemId === LENS) {
+      look(objectId);
+      return;
+    }
     feedback.press();
     const result = await act({ type: "use_item", item: itemId, object: objectId });
     if (open?.kind === "object") takeAt(objectId, result);
@@ -383,26 +391,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     />
   );
 
-  return (
-    <View style={[styles.root, { backgroundColor: theme.ground }]} testID="v2-player">
-      <View style={[styles.top, { paddingTop: insets.top + ref.space.xs }]}>
-        <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.square, { backgroundColor: theme.raised }]} testID="v2-back">
-          <ArrowLeftIcon size={22} weight="bold" color={theme.ink} />
-        </Pressable>
-        <View style={styles.titles}>
-          {/* The objective, in full: no case name competing with it. */}
-          <Text style={[ref.type.body, { color: theme.ink }]} testID="v2-objective">{def.objective}</Text>
-          {def.mode === "paranormal" && progress.total > 0 ? (
-            // The presence answers each step the player takes toward the ritual; at the end it is gone.
-            <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
-          ) : null}
-        </View>
-        <Pressable onPress={() => setCasebook(true)} accessibilityRole="button" accessibilityLabel="Casebook" hitSlop={8} style={[styles.square, { backgroundColor: theme.raised }]} testID="v2-casebook-open">
-          <ListIcon size={22} weight="bold" color={theme.ink} />
-        </Pressable>
-      </View>
+  const selectedItem = selected.length === 1 ? itemById(selected[0]) : undefined;
+  const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
 
-      <View style={styles.stage}>
+  return (
+    <View style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player">
+      {/* The room fills the screen; the controls sit over it. */}
+      <View style={StyleSheet.absoluteFill}>
         {source ? (
           <Stage
             key={view}
@@ -413,9 +408,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             overlays={overlays}
             patch={patch && removable && removable.photo_index === view && objectState(removable.id).removed ? patch : null}
             glints={glints}
-            assist={hotspotAssist}
+            assist={false}
             uv={uvOn}
             marks={marks}
+            focus={targetObject && targetObject.photo_index === view ? targetObject.box : null}
             onHover={onHover}
             onFrame={setFrame}
             onLook={look}
@@ -423,53 +419,79 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`View ${view + 1} of ${photos}`}
           />
         ) : null}
-        {photos > 1 ? (
-          <>
-            <Pressable
-              onPress={() => { feedback.tick(); setView((v) => (v - 1 + photos) % photos); }}
-              accessibilityRole="button"
-              accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
-              hitSlop={12}
-              testID="v2-prev"
-              style={[styles.edge, styles.edgeLeft]}
-            >
-              <CaretLeftIcon size={44} weight="bold" color="#FFFFFF" />
-            </Pressable>
-            <Pressable
-              onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }}
-              accessibilityRole="button"
-              accessibilityLabel={`Next view (${view + 1} of ${photos})`}
-              hitSlop={12}
-              testID="v2-next"
-              style={[styles.edge, styles.edgeRight]}
-            >
-              <CaretRightIcon size={44} weight="bold" color="#FFFFFF" />
-            </Pressable>
-          </>
-        ) : null}
-        <View style={styles.toasts} pointerEvents="none">
-          {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
-        </View>
       </View>
 
-      <View style={[styles.foot, { paddingBottom: insets.bottom + ref.space.sm }]}>
-        {selected.length === 2 ? (
-          <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
-            <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
-          </Pressable>
-        ) : null}
-        {heldItems.length ? tray : <Text style={[ref.type.meta, styles.instruction, { color: theme.inkMuted }]}>Drag across the photo to shine your flashlight.</Text>}
+      <View style={[styles.top, { paddingTop: insets.top + ref.space.xs }]} pointerEvents="box-none">
+        <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={styles.glass} testID="v2-back">
+          <ArrowLeftIcon size={20} weight="bold" color="#FFFFFF" />
+        </Pressable>
+        {/* The objective: one quiet line; tap for all of it. */}
+        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
+          <Text style={styles.objectiveText} numberOfLines={objectiveOpen ? undefined : 1}>{def.objective}</Text>
+          {def.mode === "paranormal" && progress.total > 0 ? (
+            // The presence answers each step the player takes toward the ritual; at the end it is gone.
+            <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
+          ) : null}
+        </Pressable>
+        <Pressable onPress={() => setCasebook(true)} accessibilityRole="button" accessibilityLabel="Casebook" hitSlop={8} style={styles.glass} testID="v2-casebook-open">
+          <ListIcon size={20} weight="bold" color="#FFFFFF" />
+        </Pressable>
       </View>
+
+      {photos > 1 && !open ? (
+        <>
+          <Pressable
+            onPress={() => { feedback.tick(); setView((v) => (v - 1 + photos) % photos); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
+            hitSlop={12}
+            testID="v2-prev"
+            style={[styles.edge, styles.edgeLeft]}
+          >
+            <CaretLeftIcon size={44} weight="bold" color="#FFFFFF" />
+          </Pressable>
+          <Pressable
+            onPress={() => { feedback.tick(); setView((v) => (v + 1) % photos); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Next view (${view + 1} of ${photos})`}
+            hitSlop={12}
+            testID="v2-next"
+            style={[styles.edge, styles.edgeRight]}
+          >
+            <CaretRightIcon size={44} weight="bold" color="#FFFFFF" />
+          </Pressable>
+        </>
+      ) : null}
+      <View style={[styles.toasts, { top: insets.top + 64 }]} pointerEvents="none">
+        {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
+      </View>
+
+      {!open ? (
+        <View style={[styles.foot, { paddingBottom: insets.bottom + ref.space.sm }]} pointerEvents="box-none">
+          {/* What the selected item is: a clean card over the tray. */}
+          {selectedItem && !dragging ? (
+            <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
+              <Text style={[ref.type.headline, { color: theme.ink }]}>{selectedItem.name}</Text>
+              <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
+                {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
+              </Text>
+            </View>
+          ) : null}
+          {selected.length === 2 ? (
+            <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
+              <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
+            </Pressable>
+          ) : null}
+          <View style={styles.footRow} pointerEvents="box-none">
+            <Magnifier drag={drag} onDragStart={() => { feedback.tick(); setDragging(LENS); }} onDrop={(x, y) => drop(LENS, x, y)} />
+            <View style={styles.trayWrap}>{heldItems.length ? tray : null}</View>
+          </View>
+        </View>
+      ) : null}
 
       {open && target ? (
         <InspectView
           target={target}
-          photo={targetObject && sources.kind === "ready" && aspects[targetObject.photo_index] !== undefined
-            ? { source: sources.sources[targetObject.photo_index], cacheKey: photoKey(targetObject.photo_index), box: targetObject.box, aspect: aspects[targetObject.photo_index] }
-            : targetObject && sources.kind === "ready"
-              ? { source: sources.sources[targetObject.photo_index], cacheKey: photoKey(targetObject.photo_index), box: targetObject.box, aspect: 0.75 }
-              : undefined}
-          genre={def.mode}
           state={targetState}
           contents={contents[open.kind === "object" ? open.id : `item:${open.id}`] ?? []}
           note={note}
@@ -528,36 +550,48 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
-      {dragging && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
+      {dragging === LENS ? <LensGhost drag={drag} /> : dragging && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
 
-      {/* The photos' aspects, for the close-up's crop (measured once each, off screen). */}
-      <AspectProbe sources={sources.kind === "ready" ? sources.sources : []} known={aspects} onAspect={(i, a) => setAspects((m) => ({ ...m, [i]: a }))} />
     </View>
   );
 }
 
-function AspectProbe({ sources, known, onAspect }: { sources: SceneSource[]; known: Record<number, number>; onAspect: (i: number, a: number) => void }) {
+/** The magnifier, bottom left of the room: drag it onto something to look closer. */
+function Magnifier({ drag, onDragStart, onDrop }: { drag: DragState; onDragStart: () => void; onDrop: (x: number, y: number) => void }) {
+  const pan = usePanGesture({
+    minDistance: 4,
+    maxPointers: 1,
+    onActivate: (e) => {
+      "worklet";
+      drag.x.set(e.absoluteX);
+      drag.y.set(e.absoluteY);
+      scheduleOnRN(onDragStart);
+    },
+    onUpdate: (e) => {
+      "worklet";
+      drag.x.set(e.absoluteX);
+      drag.y.set(e.absoluteY);
+    },
+    onDeactivate: (e) => {
+      "worklet";
+      scheduleOnRN(onDrop, e.absoluteX, e.absoluteY);
+    },
+  });
   return (
-    <View style={styles.probe} pointerEvents="none">
-      {sources.map((s, i) =>
-        known[i] !== undefined ? null : (
-          <ProbeImage key={i} source={s} onAspect={(a) => onAspect(i, a)} />
-        ))}
-    </View>
+    <GestureDetector gesture={pan}>
+      <View style={styles.lens} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
+        <MagnifyingGlassIcon size={30} weight="bold" color="#FFFFFF" />
+      </View>
+    </GestureDetector>
   );
 }
 
-function ProbeImage({ source, onAspect }: { source: SceneSource; onAspect: (a: number) => void }) {
-  // expo-image reports the source size on load.
+function LensGhost({ drag }: { drag: DragState }) {
+  const style = useAnimatedStyle(() => ({ transform: [{ translateX: drag.x.get() - 36 }, { translateY: drag.y.get() - 36 }] }));
   return (
-    <Image
-      source={source}
-      style={styles.probeImage}
-      onLoad={(e) => {
-        const { width, height } = e.source;
-        if (width > 0 && height > 0) onAspect(width / height);
-      }}
-    />
+    <Animated.View pointerEvents="none" style={[styles.lensGhost, style]} testID="v2-lens-drag">
+      <MagnifyingGlassIcon size={46} weight="bold" color="#FFFFFF" />
+    </Animated.View>
   );
 }
 
@@ -565,22 +599,25 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", gap: ref.space.lg },
   back: { minHeight: ref.hit.min, justifyContent: "center" },
-  top: { flexDirection: "row", alignItems: "center", gap: ref.space.sm, paddingHorizontal: ref.space.lg, paddingBottom: ref.space.sm },
-  titles: { flex: 1, gap: 2 },
-  square: { width: ref.hit.min, height: ref.hit.min, borderRadius: ref.radius.square, alignItems: "center", justifyContent: "center" },
-  stage: { flex: 1 },
-  toasts: { position: "absolute", top: ref.space.sm, left: 0, right: 0, alignItems: "center" },
-  foot: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, gap: ref.space.sm },
+  top: { position: "absolute", left: 0, right: 0, top: 0, flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm, paddingHorizontal: ref.space.lg },
+  glass: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" },
+  objective: {
+    flex: 1, minHeight: 40, borderRadius: 20, paddingHorizontal: ref.space.lg, paddingVertical: ref.space.sm, justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.45)", gap: ref.space.xs,
+  },
+  objectiveText: { ...ref.type.meta, color: "rgba(255,255,255,0.92)", textAlign: "center" },
+  toasts: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   edge: {
     position: "absolute", top: "50%", marginTop: -32, width: 52, height: 64, alignItems: "center", justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.35)", zIndex: 10,
   },
   edgeLeft: { left: 0, borderTopRightRadius: 16, borderBottomRightRadius: 16 },
   edgeRight: { right: 0, borderTopLeftRadius: 16, borderBottomLeftRadius: 16 },
-  instruction: { textAlign: "center" },
+  foot: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: ref.space.lg, gap: ref.space.sm },
+  footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
+  trayWrap: { flex: 1, paddingRight: 96 },
+  lens: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)" },
+  lensGhost: { position: "absolute", left: 0, top: 0, width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.12)", zIndex: 200 },
+  itemCard: { alignSelf: "center", maxWidth: 340, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: ref.space.lg, paddingVertical: ref.space.sm + 2, gap: 2 },
   combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center" },
-  tray: { flexDirection: "row", flexWrap: "wrap", gap: ref.space.sm, minHeight: V2.tray.height, alignItems: "center", justifyContent: "center" },
-  chip: { minHeight: V2.tray.chip, paddingHorizontal: ref.space.lg, borderRadius: V2.tray.chip / 2, justifyContent: "center", maxWidth: 180 },
-  probe: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" },
-  probeImage: { width: 1, height: 1 },
 });

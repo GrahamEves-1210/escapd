@@ -55,7 +55,7 @@ export function Ending({ text, door, genre, onDone }: {
   return (
     <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: theme.ground }]} testID="v2-ending">
       {door ? (
-        <TreatedImage source={door.source} cacheKey={door.cacheKey} genre={genre} contentFit="fill" accessible={false} style={{ position: "absolute", width: imgW, height: imgH, left, top }} />
+        <TreatedImage source={door.source} cacheKey={door.cacheKey} genre={null} contentFit="fill" accessible={false} style={{ position: "absolute", width: imgW, height: imgH, left, top }} />
       ) : null}
       <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
         <Circle cx={width / 2} cy={height / 2} r={r}>
