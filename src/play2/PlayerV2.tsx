@@ -7,11 +7,9 @@
 // back to the v1 player (`onFallback`).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon, MagnifyingGlassIcon } from "phosphor-react-native";
+import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon } from "phosphor-react-native";
 import { Canvas, RadialGradient, Rect as SkRect, vec } from "@shopify/react-native-skia";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
-import { scheduleOnRN } from "react-native-worklets";
+import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
@@ -31,7 +29,7 @@ import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat } from "./PeekingCat";
-import { HeldFlashlight } from "./HeldFlashlight";
+import { Flashlight, LensGhost, Magnifier, TOOL } from "./Tools";
 import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
@@ -52,7 +50,7 @@ function tint(hex: string, alpha: number): string {
 }
 
 /** The cat's width on the ledge (points). */
-const CAT_W = 104;
+const CAT_W = 58;
 
 /** The magnifier's id while it is dragged (never an item id: those are minted "prop_…", "key_…"). */
 const LENS = "__lens__";
@@ -415,6 +413,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const unread = Math.max(0, casebookCards.length - cluesRead);
   const glass = { backgroundColor: tint(theme.ground, 0.72), borderColor: theme.rim };
   const middle = frame ? frame.y + frame.height / 2 : null;
+  const toolTop = frame ? Math.min(frame.y + frame.height, ledgeTop ?? windowHeight) - TOOL - ref.space.sm : 0;
   const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
 
   return (
@@ -514,8 +513,18 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
       </View>
 
-      {!open && ledgeTop !== null ? (
-        <HeldFlashlight beamX={beam.x} beamY={beam.y} frame={frame} pivot={{ x: screenW - 40, y: ledgeTop - 22 }} uv={uvOn} />
+
+      {/* The tools, on the photo's bottom corners (kept above the ledge). */}
+      {!open && frame ? (
+        <>
+          <Magnifier
+            at={{ left: frame.x + ref.space.sm, top: toolTop }}
+            drag={drag}
+            onDragStart={() => { feedback.tick(); setDragging(LENS); }}
+            onDrop={(x, y) => drop(LENS, x, y)}
+          />
+          <Flashlight at={{ left: frame.x + frame.width - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frame} uv={uvOn} />
+        </>
       ) : null}
 
       {!open ? (
@@ -551,7 +560,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             <View style={styles.cat} pointerEvents="none">
               <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} />
             </View>
-            <Magnifier drag={drag} onDragStart={() => { feedback.tick(); setDragging(LENS); }} onDrop={(x, y) => drop(LENS, x, y)} />
             <View style={styles.trayWrap}>{heldItems.length ? tray : null}</View>
           </View>
         </View>
@@ -624,46 +632,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   );
 }
 
-/** The magnifier, bottom left of the room: drag it onto something to look closer. */
-function Magnifier({ drag, onDragStart, onDrop }: { drag: DragState; onDragStart: () => void; onDrop: (x: number, y: number) => void }) {
-  const theme = useModeTheme();
-  const pan = usePanGesture({
-    minDistance: 4,
-    maxPointers: 1,
-    onActivate: (e) => {
-      "worklet";
-      drag.x.set(e.absoluteX);
-      drag.y.set(e.absoluteY);
-      scheduleOnRN(onDragStart);
-    },
-    onUpdate: (e) => {
-      "worklet";
-      drag.x.set(e.absoluteX);
-      drag.y.set(e.absoluteY);
-    },
-    onDeactivate: (e) => {
-      "worklet";
-      scheduleOnRN(onDrop, e.absoluteX, e.absoluteY);
-    },
-  });
-  return (
-    <GestureDetector gesture={pan}>
-      <View style={[styles.lens, { backgroundColor: theme.raised, borderColor: theme.stamp }]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
-        <MagnifyingGlassIcon size={30} weight="bold" color={theme.ink} />
-      </View>
-    </GestureDetector>
-  );
-}
-
-function LensGhost({ drag }: { drag: DragState }) {
-  const style = useAnimatedStyle(() => ({ transform: [{ translateX: drag.x.get() - 36 }, { translateY: drag.y.get() - 36 }] }));
-  return (
-    <Animated.View pointerEvents="none" style={[styles.lensGhost, style]} testID="v2-lens-drag">
-      <MagnifyingGlassIcon size={46} weight="bold" color="#FFFFFF" />
-    </Animated.View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", gap: ref.space.lg },
@@ -688,10 +656,8 @@ const styles = StyleSheet.create({
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, gap: ref.space.sm },
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
   ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: 1 },
-  cat: { position: "absolute", left: ref.space.lg + 64, bottom: "100%" },
-  trayWrap: { flex: 1, paddingRight: 96 },
-  lens: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
-  lensGhost: { position: "absolute", left: 0, top: 0, width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFFFFF", backgroundColor: "rgba(255,255,255,0.12)", zIndex: 200 },
+  cat: { position: "absolute", left: ref.space.xl, bottom: "100%" },
+  trayWrap: { flex: 1 },
   itemCard: {
     alignSelf: "center", maxWidth: 360, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.sm + 2,
     flexDirection: "row", alignItems: "center", gap: ref.space.sm, marginHorizontal: ref.space.lg,

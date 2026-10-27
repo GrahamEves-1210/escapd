@@ -164,9 +164,6 @@ export function Stage({
 
   return (
     <View style={styles.root} onLayout={onLayout} testID="v2-stage">
-      {/* The room carries on past the photo's edges: the same photo, blurred and dark, so the frame reads as the world, not a picture. */}
-      <Image source={source} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={36} accessible={false} transition={0} />
-      <View style={[StyleSheet.absoluteFill, styles.beyond]} pointerEvents="none" />
       {frame ? (
         <GestureDetector gesture={gesture}>
           <View
@@ -350,7 +347,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },
-  beyond: { backgroundColor: "rgba(0,0,0,0.8)" },
   ink: { position: "absolute", alignItems: "center", justifyContent: "center" },
   inkText: {
     color: "rgb(205,170,255)", fontWeight: "700", textAlign: "center", transform: [{ rotate: "-6deg" }],

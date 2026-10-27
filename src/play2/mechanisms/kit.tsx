@@ -183,6 +183,8 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
   const reversible = !!onUncommit;
   const enabled = useSharedValue(!busy && (!done || reversible));
   const doneSV = useSharedValue(done);
+  // Set once this drag has committed: it counts the moment it passes the point, not on release.
+  const fired = useSharedValue(false);
   const reduced = useSharedValue(reducedMotion);
 
   useEffect(() => {
@@ -221,6 +223,7 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
       cancelAnimation(progress);
       start.set(progress.get());
       live.set(true);
+      fired.set(false);
     },
     onUpdate: (e) => {
       "worklet";
@@ -230,6 +233,11 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
       // Locked: the front gives a few points and stops.
       if (lockedSV.get()) v = clamp(v, axis === "x" ? -0.05 : 0, 0.05);
       progress.set(v);
+      // Pulled far enough: it opens now, while the finger is still down.
+      if (!doneSV.get() && !lockedSV.get() && !fired.get() && Math.abs(v) >= COMMIT_AT) {
+        fired.set(true);
+        scheduleOnRN(commit);
+      }
     },
     onDeactivate: () => {
       "worklet";
@@ -251,9 +259,9 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
         }
         return;
       }
-      if (Math.abs(v) >= COMMIT_AT) {
+      if (fired.get() || Math.abs(v) >= COMMIT_AT) {
         progress.set(withTiming(v < 0 ? -1 : 1, back));
-        scheduleOnRN(commit);
+        if (!fired.get()) scheduleOnRN(commit);
       } else {
         progress.set(withTiming(0, back));
       }
