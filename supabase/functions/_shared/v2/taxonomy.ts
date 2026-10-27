@@ -74,3 +74,18 @@ export interface InventoryObject {
   salience: number;           // 0..1, how prominent it is
   fully_visible: boolean;     // false when cut off at the frame edge
 }
+
+/** What perception would typically report for each type. */
+export const TYPICAL_FEATURES: Partial<Record<ObjectType, Feature[]>> = {
+  desk: ["has_drawers", "holds_items"], nightstand: ["has_drawers", "holds_items"], dresser: ["has_drawers"],
+  wardrobe: ["has_doors", "can_open"], cabinet: ["has_doors", "can_open"], sideboard: ["has_doors", "has_drawers"],
+  filing_cabinet: ["has_drawers"], bookshelf: ["has_pages", "holds_items"], chest: ["can_open", "holds_items"],
+  trunk: ["can_open", "holds_items"], box: ["can_open", "can_lift", "holds_items"], suitcase: ["can_open"],
+  pillow: ["can_lift"], cushion: ["can_lift"], rug: ["can_lift"], blanket: ["can_lift"], plant_pot: ["can_lift"],
+  vase: ["can_lift"], book: ["has_pages", "can_lift"], book_stack: ["has_pages", "can_lift"], notebook: ["has_pages", "can_lift"],
+  framed_picture: ["wall_mounted"], poster: ["wall_mounted"], mirror: ["wall_mounted", "reflective"], calendar: ["wall_mounted"],
+  map: ["wall_mounted"], noticeboard: ["wall_mounted"], wall_clock: ["has_hands", "wall_mounted"], alarm_clock: ["has_hands", "can_lift"],
+  desk_lamp: ["light_source"], floor_lamp: ["light_source"], string_lights: ["light_source"], radio: ["has_dial"],
+  record_player: ["has_dial"], guitar: ["has_strings"], keyboard_instrument: ["has_keys"], door: ["is_door", "can_open"],
+  mug: ["can_lift"], trophy: ["can_lift"], figurine: ["can_lift"], jar: ["can_open", "can_lift"], basket: ["can_lift", "holds_items"],
+};
