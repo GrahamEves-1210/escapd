@@ -101,6 +101,20 @@ const WRONG_LABEL: Record<Genre, string> = {
   paranormal: "Missteps",
 };
 
+/** Each mode is a book in a series: its series line. */
+export const SERIES_LINE: Record<Genre, string> = {
+  noir: "A Detective Noir Mystery",
+  crime_scene: "A True Crime Club Mystery",
+  paranormal: "A Moonlit Mystery",
+};
+
+/** What the rating's marks are: the detective's magnifying glasses, or paranormal's moons. */
+export const RATING_MARK: Record<Genre, "magnifier" | "moon"> = {
+  noir: "magnifier",
+  crime_scene: "magnifier",
+  paranormal: "moon",
+};
+
 /**
  * What the rating is called, in the mode's voice: the detective's eye in noir
  * and crime scene; paranormal's case is felt as much as seen.
@@ -124,11 +138,10 @@ export function statLines(genre: Genre, summary: CaseSummary | null | undefined)
 
 /** When each part of the moment happens, in ms after case closed mounts. */
 export interface VictoryTimeline {
-  /** When the stamp (noir and crime scene: the only one; paranormal: CASE CLOSED) starts to fall. */
+  /** When the sticker (noir: CASE CLOSED; crime scene: GUILTY; paranormal: "The presence is gone") starts to fall. */
   stamp: number;
-  /** Paranormal: the room snaps to colour, and "The presence is gone." starts to fall. */
+  /** Paranormal: the room snaps back to its own colours, before its sticker. */
   snap?: number;
-  gone?: number;
   /** The last impact: the stats wait for it. */
   impact: number;
   /** Each stat's landing (a tick each). */
@@ -165,7 +178,7 @@ export function victoryTimeline({ genre, reduced, stats, rating, dataAt = 0 }: {
     const solved = start + (R.solved - R.stats);
     return {
       stamp: 0,
-      ...(genre === "paranormal" ? { snap: 0, gone: 0 } : {}),
+      ...(genre === "paranormal" ? { snap: 0 } : {}),
       impact: motion.reducedFade,
       stats: statTimes,
       rating: ratingAt,
@@ -187,7 +200,7 @@ export function victoryTimeline({ genre, reduced, stats, rating, dataAt = 0 }: {
   const solved = last + B.solved;
   return {
     stamp,
-    ...(paranormal ? { snap: B.snap, gone: B.gone } : {}),
+    ...(paranormal ? { snap: B.snap } : {}),
     impact,
     stats: statTimes,
     rating: ratingAt,

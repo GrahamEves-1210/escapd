@@ -1,101 +1,135 @@
-// Case closed, per mode (docs/DESIGN.md, Modes · Case closed), as the victory
-// moment of GAME_FEEL_PROMPT.md, 5: the most satisfying few seconds in the
-// app. The mode's ground, a centred column, then 07's pinned band of actions.
-// It fits one screen with no scroll at the default text size, down to an
-// iPhone SE (ref.layout.play.complete): the case (noir's folder, the accused's
-// card, the room) takes the column's spare height, from its compact size up to
-// its own maximum, and whatever is left is shared above and below the card.
-// Large text scrolls.
-// It now rates the case (1–3 magnifiers), on observation, not speed: hints
-// and wrong answers count, time does not (victory.ts, magnifierRating).
+// Case closed, per mode: the victory moment, made a collectible
+// (docs/ART_DIRECTION.md: pillar 4, "worth sharing", and the mystery-book
+// core: "case closed is the last page, or a library card stamped Solved").
+// One card she'd screenshot: a page of warm cream book paper, its bookmark
+// ribbon in the mode's sweet colour, the series line ("A Moonlit Mystery")
+// over a fleuron rule; the room's photo tucked into photo corners as a
+// polaroid with the case's name handwritten in its foot; a gold-foil seal
+// pressed on with the mode's word (noir: CASE CLOSED; crime scene: GUILTY;
+// paranormal: THE PRESENCE IS GONE, as the room snaps back to its own
+// colours); the sitting cat beside it, cheering; the ending's line set like
+// a book's last line; then the library card's record, each entry handwritten
+// on its ruled line (crime scene's culprit, motive and method; the time, the
+// tips taken, the wrong calls; the rating: magnifiers in brass, or
+// paranormal's "Second sight" in moons); and at its foot the app's name and a
+// library date stamp, SOLVED and the day, so a screenshot says where it's
+// from. Behind it, the mode's ground and its soft glow; a few twinkles; a
+// little confetti when the seal lands. Then the pinned actions.
 //
 // The moment, in order (victory.ts, victoryTimeline; ms in
 // ref.layout.play.complete.beat):
-// 1. The impact.
-//    - Noir: the case file (a folder, its title typed on a paper label)
-//      comes in, and CASE CLOSED slams onto it in brass.
-//    - Crime scene: the accused's card comes in and GUILTY slams onto it
-//      again (it slammed on the reveal; here it lands for the record).
-//    - Paranormal: the room comes in under its tint and snaps back to its own
-//      colours; "The presence is gone." drops onto it with weight (a thud),
-//      then CASE CLOSED slams.
-//    A stamp falls, overshoots and settles; its ink spreads; the `stamp` cue
-//    (haptic and sound) fires on impact and the case card is nudged.
-// 2. The stats land one by one, a `tick` each: time, tips taken, wrong codes
-//    (crime scene "Wrong calls", as its count includes accusations;
-//    paranormal "Missteps"; victory.ts, statLines). Only what the game holds
-//    (a v2 game's own count, or the completed session's); nothing is shown
-//    that it doesn't. Their numbers are lining figures in the system face, a
-//    size up from the label (the modes' display faces have old-style
-//    figures: 0 reads as o).
-// 3. The rating's magnifiers fill one by one, a `tick` each, then `solved`
-//    ("Observation"; paranormal's "Second sight": victory.ts, RATING_LABEL).
-// 4. The actions come in: the mode's next case first.
-// Reduced motion: no fall, nudge or stagger; it all fades in within about
-// 600 ms, the haptics kept.
+// 1. The page and polaroid are set down and the cat pops up; the seal is
+//    pressed on (it falls, overshoots and settles: slam.ts) with the `stamp`
+//    cue, the page is nudged, the cat cheers and the confetti bursts.
+//    Paranormal's room first snaps back to its own colours.
+// 2. The record's entries land one by one, a `tick` each (only what the
+//    game holds: a v2 game's own count, or the completed session's).
+// 3. The rating's marks fill one by one, a `tick` each, then `solved`.
+// 4. The actions come in.
+// Reduced motion: no fall, nudge, stagger or confetti; it all fades in within
+// about 600 ms, the haptics kept.
 //
-// Said once: where CASE CLOSED is stamped, a case line that only says "Case
-// closed." again is left out (the planner's endings end on it). Crime scene's
-// accused card is followed by why and how, when the accusation named them.
-// The column grows the case (folder, card, room) into a phone's spare height,
-// up to a size of its own, so nothing is left as one big gap over the
-// actions; the actions sit at least ref.space.lg off the bottom edge.
+// Said once: where the seal says CASE CLOSED (or the presence is gone), a
+// sentence of the case's lines that only says so again is left out.
 //
-// Sharing (not built): the stamp, title, stats and rating are one View, the
-// case card (`testID="case-card"`, held in `card`), so a share button can
-// capture it later (e.g. react-native-view-shot on that ref) and hand it to
-// `onShare`, which nothing calls yet.
+// It fits one screen with no scroll at the default text size on a 390 x 844
+// phone, and down to an iPhone SE for noir and paranormal: the polaroid is
+// sized to the height left over (from photo.min up to its share of the
+// page's width). Crime scene's longer record, and large text, scroll.
+//
+// Sharing (not built: neither react-native-view-shot nor expo-sharing is a
+// dependency): the page is one View (`testID="case-card"`, held in `card`),
+// so a share button can capture it later and hand it to `onShare`.
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from "react";
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import type { Genre } from "@/lib/puzzle-types";
-import { TreatedImage } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { setMode, themeFor } from "@/game/mode";
+import { SittingCat } from "@/play2/SittingCat";
 import { useTheme } from "@/theme/ThemeProvider";
-import type { ModeTheme } from "@/theme/tokens";
+import { LIGHT, PAGE, PAYOFF_TYPE, alpha, handType } from "@/theme/payoff";
 import { motion, ref } from "@/theme/tokens";
+import {
+  ClockMark, Confetti, CrossMark, FleuronRule, FoilSeal, LibraryStamp, POLAROID, Polaroid, TipMark, Twinkle, captionSize, look,
+} from "./keepsake";
 import { MagnifierRating } from "./MagnifierRating";
-import { Card } from "./parts";
 import type { SceneSource } from "./SceneView";
-import { useSlam } from "./slam";
-import { Stamp } from "./Stamp";
-import { SuspectFile, type SuspectFace } from "./SuspectFile";
-import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
-import { RATING_LABEL, magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
+import { suspectA11yLabel, type SuspectFace } from "./SuspectFile";
+import { RATING_LABEL, RATING_MARK, SERIES_LINE, magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
 
 export type { CaseSummary } from "./victory";
 
-const P = ref.layout.play;
-const C = P.complete;
-const GONE_LINE = /the presence is gone/i;
+const C = ref.layout.play.complete;
 
-/**
- * This screen's own sizes (over ref.layout.play.complete's compact ones): how
- * far the case grows on a tall phone, the stats' figures, the folder's form.
- */
+/** This screen's own sizes. */
 export const CLOSED_LAYOUT = {
-  /** The case's largest size: noir's folder (the accused's card keeps its token's); the room's aspect (width / height). */
-  folderMax: 300,
-  accusedMax: C.accused.max,
-  photoAspect: 4 / 3,
-  /** A stat's figures: lining, tabular, in the system face; units a step down. */
-  figure: { fontSize: 28, lineHeight: 34, fontWeight: "700", fontVariant: ["lining-nums", "tabular-nums"] } as const satisfies TextStyle,
-  unit: { fontSize: 15, lineHeight: 34, fontWeight: "600" } as const satisfies TextStyle,
-  statPadY: 14,
-  /** The folder: its back (with the tab) shows `lip` over the front; a paper sheet peeks between. */
-  folder: { tabHeight: 16, lip: 12, tabLine: 44, paperInset: 18, paperHeight: 26, frontEdge: ref.color.specularDark },
+  /** The page: `edge` from the screen's sides, `pad` inside, `radius` corners, its parts `gap` apart. */
+  edge: 16,
+  pad: 16,
+  radius: 22,
+  gap: 9,
+  /** The polaroid's photo (square): at least `min`, at most `max`, and no more than `share` of the page's inner width. */
+  photo: { min: 108, max: 232, share: 0.65 },
+  /** Room in the photo row for the polaroid's tilt and its corners. */
+  heroPad: 14,
+  /** The polaroid's tilt; the seal's. */
+  tilt: { polaroid: -3, seal: 9 },
+  /** The foil seal across. */
+  seal: 96,
+  /** The sitting cat beside the polaroid: at most this wide. */
+  cat: 80,
+  /** The series line and its fleuron rule. */
+  head: ref.type.series.lineHeight + 18,
+  /** The ending's line, set as a book's last line. */
+  last: PAYOFF_TYPE.last,
+  /** A record entry: its ruled line's height; its value handwritten at `value` pt; its icon. */
+  row: 30,
+  value: 20,
+  icon: 15,
+  /** The stats' row of cells: a label over a handwritten value. */
+  cell: 58,
+  /** A record value's figures: lining, tabular (the hand face's 0 still reads as 0). */
+  figure: { fontVariant: ["lining-nums", "tabular-nums"] } as const satisfies TextStyle,
+  /** The rating's marks. */
+  mark: 24,
+  /** The footer line. */
+  footer: 26,
+  /** The cat's line over the page, shown with `room` pt to spare. */
+  shelf: { size: 22, lineHeight: 28, gap: 14, room: 90 },
   /** The actions never sit closer than this to the bottom edge. */
   bottomMin: ref.space.lg,
+  /** The pinned band: its top pad, the pill, the gap, the quiet pill. */
+  actions: C.actions.pad + ref.button.ghost.height + ref.space.sm + ref.button.quiet.height,
 } as const;
 const L = CLOSED_LAYOUT;
 
-/** A line without the sentences that only say "Case closed." (the stamp says it). Empty when nothing else is left. */
-export function withoutCaseClosed(line: string): string {
+/** The cat's line over the page, on a tall phone. */
+export const SHELF_LINE = "Another one for your shelf \u2665";
+
+
+const CASE_CLOSED = /^\s*case closed[.!]*\s*$/i;
+const PRESENCE_GONE = /^\s*the presence is gone[.!]*\s*$/i;
+
+/** A line without the sentences that only say `said` (the seal says it). Empty when nothing else is left. */
+function without(line: string, said: RegExp): string {
   const sentences = line.match(/[^.!?]+[.!?]*\s*/g) ?? [line];
-  return sentences.filter((s) => !/^\s*case closed[.!]*\s*$/i.test(s)).join("").trim();
+  return sentences.filter((s) => !said.test(s)).join("").trim();
 }
+
+/** A line without the sentences that only say "Case closed." (the seal says it). Empty when nothing else is left. */
+export function withoutCaseClosed(line: string): string {
+  return without(line, CASE_CLOSED);
+}
+
+/** What the seal says, per mode (crime scene with an accused: GUILTY). */
+export const SEAL_WORD: Record<Genre, string> = {
+  noir: "Case closed",
+  crime_scene: "Case closed",
+  paranormal: "The presence is gone",
+};
 
 /** The case card's host view, for a capture. */
 export type CaseCard = ComponentRef<typeof View>;
@@ -109,9 +143,9 @@ export interface CaseClosedProps {
   summary?: CaseSummary | null;
   /** Crime scene: the suspect the player accused. */
   accused?: SuspectFace | null;
-  /** Crime scene: why and how, as the accusation named them (shown under the accused). */
+  /** Crime scene: why and how, as the accusation named them (the record's motive and method). */
   recap?: { why?: string; how?: string } | null;
-  /** Paranormal: the room, snapping back to full colour. */
+  /** The room's photo, for the polaroid (paranormal's snaps back to its own colours). Without one, the mode's drawn cover. */
   photo?: SceneSource | null;
   /** A closing line over the actions. */
   next?: string;
@@ -132,14 +166,23 @@ interface Plan {
   summary: CaseSummary | null;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Today as a library stamp has it: 28 Oct 2026. */
+export function stampDate(d = new Date()): string {
+  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** About how many lines `text` takes at `size` pt across `width` (the budget's estimate, not layout). */
+const linesFor = (text: string | undefined, size: number, width: number, max: number) =>
+  text ? Math.min(max, Math.max(1, Math.ceil((text.length * size * 0.5) / Math.max(1, width)))) : 0;
+
 export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, summary, accused, recap, photo, next, actions }: CaseClosedProps) {
   const theme = themeFor(genre);
+  const payoff = look(theme, genre);
   const { reducedMotion: reduced } = useTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
-  // The room grows no taller than the column's width at its aspect.
-  const { width } = useWindowDimensions();
-  const roomMax = Math.max(C.photo.min, (width - C.inset * 2) / L.photoAspect);
+  const { width, height } = useWindowDimensions();
   // Case closed is the mode's last screen: its parts take the mode's look.
   useLayoutEffect(() => setMode(genre), [genre]);
 
@@ -150,43 +193,33 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
   // The beats up to the impact need no data.
   const [head] = useState(() => victoryTimeline({ genre, reduced, stats: 0, rating: null }));
 
-  const guilty = genre === "crime_scene" && accused;
-  // Where CASE CLOSED is stamped, the case's lines don't say it again.
-  const stamped = !guilty;
-  const message = (rawMessage && stamped ? withoutCaseClosed(rawMessage) : rawMessage) || undefined;
-  const exit = (rawExit && stamped ? withoutCaseClosed(rawExit) : rawExit) || undefined;
-  // Paranormal says it once: not again when the case's own lines already do.
-  const gone = genre === "paranormal" && ![message, exit].some((line) => line && GONE_LINE.test(line));
+  const guilty = genre === "crime_scene" && !!accused;
+  const paranormal = genre === "paranormal";
+  // What the seal says, the case's lines don't say again.
+  const said = paranormal ? PRESENCE_GONE : CASE_CLOSED;
+  const trim = (line?: string) => (line ? without(without(line, said), CASE_CLOSED) : line) || undefined;
+  const message = trim(rawMessage);
+  const exit = trim(rawExit);
 
-  // The nudge: the case card jolts down and shakes once as a stamp hits.
+  // The nudge: the page jolts down and shakes once as the seal hits; the cat cheers; confetti.
   const nudgeX = useSharedValue(0);
   const nudgeY = useSharedValue(0);
-  const nudge = () => {
+  const [cheer, setCheer] = useState(0);
+  const landed = () => {
+    feedback.stamp();
+    setCheer((n) => n + 1);
     if (reduced) return;
     const { x, y, step } = C.slam.nudge;
     const t = (to: number) => withTiming(to, { duration: step });
     nudgeY.set(withSequence(t(y), t(-y / 2), t(0)));
     nudgeX.set(withSequence(t(x), t(-x), t(x / 2), t(0)));
   };
-  // The cat, peering over the top of the case, celebrates when the stamp lands.
-  const [catReaction, setCatReaction] = useState<CatReaction>(null);
-  const landed = () => {
-    nudge();
-    setCatReaction({ kind: "found", at: Date.now() });
-  };
-  const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
-  // Over noir's folder it sits on the folder's top edge, below the tab.
-  const peek = (onTab = false) => (
-    <View style={[styles.catPeek, onTab && { transform: [{ translateY: L.folder.tabHeight }] }]} pointerEvents="box-none">
-      <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} />
-    </View>
-  );
   const nudgeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: nudgeX.get() }, { translateY: nudgeY.get() }] }));
 
   // Paranormal: the tint comes off the room at its beat.
   const [snapped, setSnapped] = useState(reduced);
   useEffect(() => {
-    if (genre !== "paranormal" || snapped) return;
+    if (!paranormal || snapped) return;
     const timer = setTimeout(() => setSnapped(true), head.snap ?? 0);
     return () => clearTimeout(timer);
     // Once, on mount.
@@ -213,7 +246,7 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary, plan]);
 
-  // The plan's haptics: a tick per stat and per earned magnifier, then `solved`; and the actions come in.
+  // The plan's haptics: a tick per entry and per earned mark, then `solved`; and the actions come in.
   const ctaOpacity = useSharedValue(0);
   useEffect(() => {
     if (!plan) return;
@@ -231,323 +264,310 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
 
   // A late answer (after the plan gave up on it) shows without its beats.
   const late = plan && !plan.summary && summary ? summary : null;
-  const shown = plan?.summary ?? late;
+  const shown = plan ? (plan.summary ?? late) : null;
   const lines = statLines(genre, shown);
   const rating = magnifierRating(shown);
   const since = (t: number | undefined) => (late || t === undefined ? 0 : Math.max(0, t - (plan?.at ?? 0)));
   const statDelay = (i: number) => (reduced ? since(plan?.timeline.stats[0]) : since(plan?.timeline.stats[i]));
 
-  const caseStamp = (
-    <Stamp
-      text="Case closed"
-      size="medium"
-      slam
-      delay={head.stamp}
-      onLanded={landed}
-      style={styles.stamp}
-      testID="closed-stamp"
-    />
-  );
-  const titleText = (
-    <Text style={[C.title, styles.centre, { color: theme.ink }]} accessibilityRole="header" testID="closed-title">{title}</Text>
-  );
+  // Crime scene's record: the culprit, then why and how.
+  const caseRows = guilty && accused
+    ? ([["Culprit", accused.name], ["Motive", recap?.why], ["Method", recap?.how]] as [string, string | undefined][]).filter((r): r is [string, string] => !!r[1])
+    : [];
 
-  const room = genre === "paranormal" && photo;
-  const goneLine = gone ? (
-    <GoneLine
-      theme={theme}
-      delay={head.gone ?? 0}
-      reduced={reduced}
-      onPhoto={!!room}
-      onLanded={() => {
-        feedback.thud();
-        landed();
-      }}
-    />
-  ) : null;
+  // The polaroid takes the height left over, up to its share of the page's width.
+  const inner = width - 2 * (L.edge + L.pad);
+  const actionsHeight = L.actions + (next ? ref.layout.play.type.hint.lineHeight + ref.space.sm : 0) + Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin);
+  const lastHeight = linesFor(message, L.last.fontSize, inner, 3) * L.last.lineHeight + linesFor(exit, 15, inner, 2) * 20;
+  const parts = [L.head, lastHeight, caseRows.length * L.row, lines.length ? L.cell : 0, rating || lines.length ? L.mark + 8 : 0, L.footer].filter(Boolean);
+  const fixed = insets.top + 2 * C.pad + 2 * L.pad + L.heroPad + parts.length * L.gap + parts.reduce((a, b) => a + b, 0) + actionsHeight;
+  const side = Math.round(Math.max(L.photo.min, Math.min(L.photo.max, inner * L.photo.share, height - fixed - POLAROID.frame - POLAROID.foot)));
+  const polaroidW = side + POLAROID.frame * 2;
+  const polaroidH = side + POLAROID.frame + POLAROID.foot;
+  const heroH = polaroidH + L.heroPad;
+  const column = inner - polaroidW;
+  const catW = Math.round(Math.max(56, Math.min(L.cat, column - 12)));
+  // On a tall phone, the cat's line over the page: the book goes on her shelf.
+  const spare = height - fixed - polaroidH;
+  const shelfLine = spare > L.shelf.room;
+  const sealWord = guilty ? "Guilty" : SEAL_WORD[genre];
+  const sealTestID = guilty ? "closed-guilty" : paranormal ? "closed-gone" : "closed-stamp";
+  const sealSize = Math.min(L.seal, column + 34);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.ground, paddingTop: insets.top }]} testID={`case-closed-${genre}`}>
-      {/* The column fills the space over the actions: the case grows into what is spare, the rest is centred. */}
+      <Backdrop glow={payoff.glow} sweet={payoff.sweet} />
+      {/* The column fills the space over the actions: the page is centred in it. */}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="closed-scroll">
-        <Animated.View style={[styles.fill, nudgeStyle]}>
-          <View ref={card} collapsable={false} style={[styles.card, { backgroundColor: theme.ground }]} testID="case-card">
-            {genre === "noir" ? (
-              <Beat delay={0} reduced={reduced} style={styles.folder}>
-                <CaseFolder theme={theme} title={title} stamp={caseStamp} />
-                {peek(true)}
-              </Beat>
-            ) : null}
+        {shelfLine ? (
+          <Beat delay={reduced ? 0 : C.beat.cta * 6} reduced={reduced} style={styles.shelf}>
+            <Text style={[handType(L.shelf.size, L.shelf.lineHeight), styles.centre, { color: payoff.sweet }]} testID="closed-shelf">
+              {SHELF_LINE}
+            </Text>
+          </Beat>
+        ) : null}
+        <Beat delay={0} reduced={reduced} rise={16}>
+          <Animated.View style={nudgeStyle}>
+            {/* The page under it: the book's next leaf, a shade deeper. */}
+            <View style={[styles.leaf, { backgroundColor: PAGE.deep }]} />
+            <View
+              ref={card}
+              collapsable={false}
+              style={[styles.card, { backgroundColor: PAGE.paper, boxShadow: `0px 18px 44px ${alpha(theme.ground, 0.9)}, 0px 0px 60px ${alpha(payoff.glow, 0.14)}` }]}
+              testID="case-card"
+            >
+              <Ribbon color={payoff.sweet} />
 
-            {guilty ? (
-              <Beat delay={0} reduced={reduced} style={styles.accused}>
-                <SuspectFile
-                  suspect={accused}
-                  size="large"
-                  style={styles.accusedCard}
-                  testID="closed-accused"
-                  stamp={<Stamp text="Guilty" size="medium" slam delay={head.stamp} onLanded={landed} testID="closed-guilty" />}
-                  stampLabel="Guilty"
-                />
-                {peek()}
-              </Beat>
-            ) : null}
-            {guilty && recap && (recap.why || recap.how) ? (
-              <Beat delay={head.impact} reduced={reduced} style={styles.recap}>
-                <View
-                  style={styles.recapRow}
-                  accessible
-                  accessibilityLabel={[recap.why && `Why: ${recap.why}`, recap.how && `How: ${recap.how}`].filter(Boolean).join(". ")}
-                  testID="closed-recap"
-                >
-                  {([["Why", recap.why], ["How", recap.how]] as const).map(([label, value]) => (value ? (
-                    <View key={label} style={styles.recapItem}>
-                      <Text style={[ref.type.meta, styles.centre, styles.recapLabel, { color: theme.inkMuted }]}>{label}</Text>
-                      <Text style={[ref.type.headline, styles.centre, { color: theme.ink }]} numberOfLines={2}>{value}</Text>
-                    </View>
-                  ) : null))}
-                </View>
-              </Beat>
-            ) : null}
+              <View style={styles.head}>
+                <Text style={[ref.type.series, styles.centre, { color: payoff.pageInk }]} testID="closed-series">{SERIES_LINE[genre]}</Text>
+                <FleuronRule color={PAGE.foilOnPaper} width={Math.min(200, inner * 0.62)} />
+              </View>
 
-            {room ? (
-              // The room, with "The presence is gone." dropped onto it.
-              <View style={[styles.room, { maxHeight: roomMax }]} testID="closed-room">
-                <Beat delay={0} reduced={reduced} style={styles.photoFrame}>
-                  <TreatedImage
+              {/* The polaroid tucked into its corners, the seal on it, the cat beside it. */}
+              <View style={[styles.hero, { height: heroH }]} testID="closed-room">
+                <Beat delay={reduced ? 0 : 120} reduced={reduced} rise={14} style={[styles.polaroid, { top: L.heroPad / 2 }]}>
+                  <Polaroid
+                    width={polaroidW}
+                    photoHeight={side}
                     source={photo}
-                    genre="paranormal"
-                    original={snapped}
-                    style={StyleSheet.absoluteFill}
-                    accessible
-                    accessibilityLabel="The room, back to its own colours"
-                    testID="closed-photo"
+                    genre={genre}
+                    original={paranormal && snapped}
+                    caption={title}
+                    captionSize={captionSize(title, side)}
+                    lookOf={{ ...payoff, paper: PAGE.print }}
+                    tilt={L.tilt.polaroid}
+                    shade={PAGE.printShade}
+                    corners={PAGE.ink}
+                    photoLabel={paranormal ? "The room, back to its own colours" : "The room"}
+                    photoTestID="closed-photo"
+                    captionTestID="closed-title"
+                    testID="closed-polaroid"
                   />
                 </Beat>
-                {goneLine ? <View style={styles.roomLine} pointerEvents="none">{goneLine}</View> : null}
-                {peek()}
-              </View>
-            ) : goneLine}
 
-            {genre !== "noir" ? (
-              <>
-                {/* Crime scene's GUILTY takes CASE CLOSED's place. */}
-                {guilty ? null : caseStamp}
-                <Beat delay={0} reduced={reduced} style={styles.titleBlock}>{titleText}</Beat>
-              </>
-            ) : null}
-
-            {message || exit ? (
-              <Beat delay={head.impact} reduced={reduced} style={styles.titleBlock}>
-                {message ? <Text style={[P.type.body, styles.centre, { color: theme.ink }]}>{message}</Text> : null}
-                {exit ? <Text style={[ref.type.subtitle, styles.centre, message ? styles.exit : null, { color: theme.inkMuted }]}>{exit}</Text> : null}
-              </Beat>
-            ) : null}
-
-            {lines.length ? (
-              <View style={styles.stats} testID="closed-stats">
-                {lines.map((line, i) => (
-                  <Beat key={line.key} delay={statDelay(i)} reduced={reduced || !!late} rise style={styles.stat}>
-                    <Card style={styles.statCard}>
-                      <View accessible accessibilityLabel={`${line.label}: ${line.value}`} style={styles.statInner} testID={`closed-stat-${line.key}`}>
-                        <Figure value={line.value} color={theme.ink} />
-                        <Text style={[ref.type.meta, styles.centre, { color: theme.inkMuted }]}>{line.label}</Text>
-                      </View>
-                    </Card>
-                  </Beat>
-                ))}
-              </View>
-            ) : null}
-
-            {rating && plan ? (
-              <Beat delay={since(plan.timeline.rating)} reduced={reduced || !!late} style={styles.after}>
-                <MagnifierRating
-                  rating={rating}
-                  label={RATING_LABEL[genre]}
-                  theme={theme}
-                  reduced={reduced || !!late}
-                  delays={plan.timeline.magnifiers.map(since)}
-                  testID="closed-rating"
+                <FoilSeal
+                  text={sealWord}
+                  foil={payoff.foil}
+                  size={sealSize}
+                  fontSize={paranormal ? Math.round(sealSize * 0.11) : guilty ? Math.round(sealSize * 0.17) : Math.round(sealSize * 0.14)}
+                  tilt={L.tilt.seal}
+                  delay={head.stamp}
+                  reduced={reduced}
+                  onLanded={landed}
+                  style={[styles.seal, { left: Math.max(polaroidW - sealSize * 0.45, polaroidW + column / 2 - sealSize / 2 - 10) }]}
+                  testID={sealTestID}
                 />
-              </Beat>
-            ) : null}
-          </View>
-        </Animated.View>
+
+                <View style={styles.cat} pointerEvents="box-none">
+                  <SittingCat width={catW} delay={reduced ? 0 : 300} cheer={cheer} label="The black cat, very pleased with you" />
+                </View>
+
+                <Confetti
+                  fire={cheer}
+                  colors={[payoff.sweet, payoff.foil, theme.accent, payoff.glow]}
+                  x={Math.max(polaroidW - sealSize * 0.45, polaroidW + column / 2 - sealSize / 2 - 10) + sealSize / 2}
+                  y={sealSize / 2 + 4}
+                  reduced={reduced}
+                  testID="closed-confetti"
+                />
+              </View>
+
+              {message || exit ? (
+                <Beat delay={head.impact} reduced={reduced} style={styles.words}>
+                  {message ? <Text style={[L.last, styles.centre, { color: PAGE.ink }]} testID="closed-message">{message}</Text> : null}
+                  {exit ? <Text style={[styles.exit, styles.centre, { color: PAGE.muted }]}>{exit}</Text> : null}
+                </Beat>
+              ) : null}
+
+              {caseRows.length ? (
+                <Beat delay={head.impact} reduced={reduced}>
+                  <View
+                    accessible
+                    accessibilityLabel={[`Guilty. ${suspectA11yLabel(accused!)}`, recap?.why && `Why: ${recap.why}.`, recap?.how && `How: ${recap.how}.`].filter(Boolean).join(" ")}
+                    testID="closed-accused"
+                  >
+                    {caseRows.map(([label, value], i) => (
+                      <Entry
+                        key={label}
+                        label={label}
+                        value={value}
+                                                first={i === 0}
+                        testID={label === "Culprit" ? undefined : label === "Motive" ? "closed-recap" : "closed-recap-how"}
+                      />
+                    ))}
+                  </View>
+                </Beat>
+              ) : null}
+
+              {lines.length ? (
+                // The card's columns: one cell per stat, the label in small caps over the value, handwritten.
+                <Beat delay={statDelay(0)} reduced={reduced || !!late} style={[styles.columns, { borderColor: PAGE.rule }]} testID="closed-stats">
+                  {lines.map((line, i) => (
+                    <Beat key={line.key} delay={statDelay(i)} reduced={reduced || !!late} rise={8} style={[styles.cell, i > 0 && { borderLeftColor: PAGE.rule, borderLeftWidth: 1 }]}>
+                      <View style={styles.cellInner} accessible accessibilityLabel={`${line.label}: ${line.value}`} testID={`closed-stat-${line.key}`}>
+                        <View style={styles.entryLabel}>
+                          {line.key === "time" ? <ClockMark size={L.icon} color={payoff.pageInk} /> : line.key === "hints" ? <TipMark size={L.icon} color={payoff.pageInk} /> : <CrossMark size={L.icon} color={payoff.pageInk} />}
+                          <Figure value={line.value} />
+                        </View>
+                        <Text style={[styles.label, styles.cellLabel, { color: PAGE.muted }]} numberOfLines={1}>{line.label}</Text>
+                      </View>
+                    </Beat>
+                  ))}
+                </Beat>
+              ) : null}
+
+              {rating && plan ? (
+                <Beat delay={since(plan.timeline.rating)} reduced={reduced || !!late} style={styles.rating}>
+                  <MagnifierRating
+                    rating={rating}
+                    label={RATING_LABEL[genre]}
+                    mark={RATING_MARK[genre]}
+                    color={RATING_MARK[genre] === "moon" ? payoff.pageInk : PAGE.brass}
+                    emptyColor={alpha(PAGE.muted, 0.6)}
+                    labelColor={PAGE.muted}
+                                        size={L.mark}
+                    theme={theme}
+                    reduced={reduced || !!late}
+                    delays={plan.timeline.magnifiers.map(since)}
+                    testID="closed-rating"
+                  />
+                </Beat>
+              ) : null}
+
+              {/* Where a screenshot is from: the app, and the library's stamp. */}
+              <View style={styles.footer}>
+                <Text style={[styles.brand, { color: PAGE.muted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">ESCAPD</Text>
+                <LibraryStamp text={`Solved · ${stampDate()}`} ink={payoff.pageInk} testID="closed-date" />
+              </View>
+            </View>
+            <Twinkle size={16} color={payoff.glow} reduced={reduced} style={styles.twinkleA} />
+            <Twinkle size={11} color={payoff.sweet} delay={700} reduced={reduced} style={styles.twinkleB} />
+            <Twinkle size={13} color={payoff.foil} delay={1300} reduced={reduced} style={styles.twinkleC} />
+          </Animated.View>
+        </Beat>
       </ScrollView>
       <Animated.View style={[styles.actions, { paddingBottom: Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin) }, ctaStyle]} testID="closed-actions">
-        {next ? <Text style={[P.type.hint, styles.centre, { color: theme.inkMuted }]}>{next}</Text> : null}
+        {next ? <Text style={[ref.layout.play.type.hint, styles.centre, { color: theme.inkMuted }]}>{next}</Text> : null}
         {actions}
       </Animated.View>
     </View>
   );
 }
 
-/** Fades in `delay` ms after it mounts; `rise` also lifts it into place (not under reduced motion). */
-function Beat({ delay, reduced, rise = false, style, children }: {
+/** Fades in `delay` ms after it mounts; `rise` also lifts it into place by that many points (not under reduced motion). */
+function Beat({ delay, reduced, rise = 0, style, testID, children }: {
   delay: number;
   reduced: boolean;
-  rise?: boolean;
+  rise?: number;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
   children: ReactNode;
 }) {
   const opacity = useSharedValue(0);
-  const lift = useSharedValue(rise && !reduced ? C.beat.rise : 0);
+  const lift = useSharedValue(rise && !reduced ? rise : 0);
   useEffect(() => {
-    const duration = reduced ? motion.reducedFade : C.beat.enter;
+    const duration = reduced ? motion.reducedFade : C.beat.enter * 1.4;
     opacity.set(withDelay(delay, withTiming(1, { duration })));
     if (rise && !reduced) lift.set(withDelay(delay, withTiming(0, { duration })));
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const animated = useAnimatedStyle(() => ({ opacity: opacity.get(), transform: [{ translateY: lift.get() }] }));
-  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
+  return <Animated.View style={[style, animated]} testID={testID}>{children}</Animated.View>;
 }
 
-/** A stat's value: its figures large and lining, its units (min, h) a step down. */
-function Figure({ value, color }: { value: string; color: string }) {
-  const parts = value.split(/(\d+)/).filter(Boolean);
+/** One entry on the library card's record: the label in small caps on the left, the value handwritten on the ruled line. */
+function Entry({ label, value, first, testID }: {
+  label: string;
+  value: string;
+  first?: boolean;
+  testID?: string;
+}) {
   return (
-    <Text style={[L.figure, styles.centre, { color }]} numberOfLines={1} adjustsFontSizeToFit>
-      {parts.map((part, i) => (/\d/.test(part) ? part : <Text key={i} style={[L.unit, { color }]}>{part}</Text>))}
-    </Text>
-  );
-}
-
-/**
- * Noir's case file: a folder in two leaves, its depth in steps of lightness
- * (no shadows): the back, with its tab, shows a lip over the front; a sheet
- * of paper peeks out between them; the front leaf is a shade lighter, its
- * top edge catching the light. The case's name is typed on its paper label,
- * the stamp comes down on it.
- */
-function CaseFolder({ theme, title, stamp }: { theme: ModeTheme; title: string; stamp: ReactNode }) {
-  const F = C.folder;
-  const back = { backgroundColor: theme.surface, borderColor: theme.rim };
-  return (
-    <View style={styles.folderFill} testID="closed-folder">
-      <View style={[styles.tab, back]}>
-        <View style={[styles.tabLine, { backgroundColor: theme.inkMuted }]} />
-      </View>
-      <View style={[styles.folderBack, back]}>
-        <View style={[styles.paper, { backgroundColor: theme.ink }]} />
-        <View style={[styles.folderBody, { backgroundColor: theme.raised, borderColor: theme.rim, borderTopColor: L.folder.frontEdge }]}>
-          <View style={[styles.label, { backgroundColor: theme.ink, transform: [{ rotate: `${F.label.tilt}deg` }] }]}>
-            <Text style={[C.title, styles.centre, { color: theme.ground }]} accessibilityRole="header" testID="closed-title">{title}</Text>
-          </View>
-          {/* The stamp may run over the folder's edges, as a real one would; its word never wraps. */}
-          <View style={styles.folderStamp}>{stamp}</View>
-        </View>
-      </View>
+    <View style={[styles.entry, { borderBottomColor: PAGE.rule }, first && { borderTopColor: PAGE.rule, borderTopWidth: 1 }]} testID={testID}>
+      <Text style={[styles.label, { color: PAGE.muted }]} numberOfLines={1}>{label}</Text>
+      <Text style={[handType(L.value, L.row - 2), styles.value, { color: PAGE.ink }]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
-/**
- * Paranormal's "The presence is gone.", dropped like a stamp (a fade under
- * reduced motion): onto the room, on the player's see-through pill
- * (ref.layout.play.gone), or onto the page when there is no room to show.
- */
-function GoneLine({ theme, delay, reduced, onPhoto, onLanded }: {
-  theme: ModeTheme;
-  delay: number;
-  reduced: boolean;
-  onPhoto: boolean;
-  onLanded: () => void;
-}) {
-  const { body } = useSlam({ enabled: true, delay, from: C.slam.goneFrom, reducedMotion: reduced, onLanded });
+/** A stat's value, handwritten: its figures lining, its units (min, h) a step down. */
+function Figure({ value }: { value: string }) {
+  const parts = value.split(/(\d+)/).filter(Boolean);
   return (
-    <Animated.View style={[onPhoto && styles.gonePill, body]} testID="closed-gone">
-      {onPhoto ? <View style={[StyleSheet.absoluteFill, styles.goneFill, { backgroundColor: theme.ground }]} /> : null}
-      <Text style={[P.type.gone, styles.centre, { color: theme.ink }]}>The presence is gone.</Text>
-    </Animated.View>
+    <Text style={[handType(24, 28), L.figure, styles.centre, { color: PAGE.ink }]} numberOfLines={1}>
+      {parts.map((part, i) => (/\d/.test(part) ? part : <Text key={i} style={styles.unit}>{part}</Text>))}
+    </Text>
+  );
+}
+
+/** A bookmark ribbon hanging from the page's top edge, its tail notched. */
+function Ribbon({ color }: { color: string }) {
+  const w = 16;
+  const h = 46;
+  return (
+    <View style={styles.ribbon} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width={w} height={h}>
+        <Path d={`M0 0 H${w} V${h} L${w / 2} ${h - 7} L0 ${h} Z`} fill={color} />
+        <Path d={`M3 0 V${h - 4}`} stroke={LIGHT.white} strokeOpacity={0.25} strokeWidth={1} />
+      </Svg>
+    </View>
+  );
+}
+
+/** The mode's soft glow on the ground behind the page (a candle, a desk lamp, the moon), and a blush of its sweet colour low down. */
+function Backdrop({ glow, sweet }: { glow: string; sweet: string }) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Svg width="100%" height="100%">
+        <Defs>
+          <RadialGradient id="ccGlow" cx="50%" cy="30%" rx="80%" ry="48%" fx="50%" fy="30%">
+            <Stop offset={0} stopColor={glow} stopOpacity={0.22} />
+            <Stop offset={1} stopColor={glow} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="ccSweet" cx="12%" cy="88%" rx="60%" ry="35%" fx="12%" fy="88%">
+            <Stop offset={0} stopColor={sweet} stopOpacity={0.12} />
+            <Stop offset={1} stopColor={sweet} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#ccGlow)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#ccSweet)" />
+      </Svg>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
-  // At least the space over the actions, so the case can grow into it.
-  content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: C.inset, paddingVertical: C.pad },
-  fill: { flexGrow: 1 },
-  card: { flexGrow: 1, justifyContent: "center", alignItems: "center", gap: C.gap.head },
-  // Noir's folder grows from its compact size to folder.max.
-  catPeek: { position: "absolute", right: ref.space.xl, bottom: "100%" },
-  folder: { alignSelf: "stretch", flexGrow: 1, maxHeight: L.folderMax },
-  folderFill: { flexGrow: 1 },
-  tab: {
-    width: C.folder.tabWidth,
-    height: L.folder.tabHeight,
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    marginBottom: -P.hairline,
-    borderWidth: P.hairline,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: C.folder.tabRadius,
-    borderTopRightRadius: C.folder.tabRadius,
-    ...ref.curve,
-  },
-  tabLine: { width: L.folder.tabLine, height: 3, borderRadius: 1.5, opacity: 0.35 },
-  folderBack: {
-    flexGrow: 1,
-    paddingTop: L.folder.lip,
-    borderWidth: P.hairline,
-    borderRadius: C.folder.radius,
-    borderTopLeftRadius: 0,
-    ...ref.curve,
-  },
-  // A sheet of paper between the leaves: only its top shows, over the front's edge.
-  paper: {
-    position: "absolute",
-    top: L.folder.lip / 2 - 2,
-    left: L.folder.paperInset,
-    right: L.folder.paperInset * 1.6,
-    height: L.folder.paperHeight,
-    borderRadius: 2,
-    opacity: 0.6,
-    transform: [{ rotate: "0.8deg" }],
-  },
-  folderBody: {
-    flexGrow: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: C.folder.pad,
-    gap: ref.space.sm,
-    marginHorizontal: -P.hairline,
-    marginBottom: -P.hairline,
-    borderWidth: P.hairline,
-    borderRadius: C.folder.radius,
-    ...ref.curve,
-  },
-  folderStamp: { alignSelf: "stretch", alignItems: "center", marginHorizontal: -C.folder.pad * 2 },
-  label: {
-    alignSelf: "stretch",
-    paddingHorizontal: C.folder.label.padX,
-    paddingVertical: C.folder.label.padY,
-    borderRadius: C.folder.label.radius,
-  },
-  // The accused's card grows from its compact padding to accused.max, its words centred.
-  accused: { alignSelf: "stretch", flexGrow: 1, maxHeight: L.accusedMax },
-  recap: { alignSelf: "stretch" },
-  recapRow: { flexDirection: "row", justifyContent: "center", gap: ref.space.xl },
-  recapItem: { flexShrink: 1, alignItems: "center", gap: 2 },
-  recapLabel: { textTransform: "uppercase", letterSpacing: 1.2 },
-  accusedCard: { flexGrow: 1, justifyContent: "center", paddingVertical: C.accused.padY },
-  // The room grows from photo.min to the column's width at photo.aspect (set inline).
-  room: { alignSelf: "stretch", flexGrow: 1, minHeight: C.photo.min },
-  photoFrame: { ...StyleSheet.absoluteFill, borderRadius: C.photo.radius, overflow: "hidden", ...ref.curve },
-  roomLine: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", paddingHorizontal: ref.space.sm },
-  gonePill: { paddingHorizontal: P.gone.padX, paddingVertical: P.gone.padY, borderRadius: ref.radius.round, overflow: "hidden", ...ref.curve },
-  goneFill: { borderRadius: ref.radius.round, opacity: P.gone.fillOpacity },
-  stamp: { alignSelf: "center", marginVertical: C.stamp.room },
-  titleBlock: { alignItems: "center", alignSelf: "stretch" },
+  content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: L.edge, paddingVertical: C.pad },
+  shelf: { marginBottom: L.shelf.gap },
+  leaf: { ...StyleSheet.absoluteFill, borderRadius: L.radius, transform: [{ rotate: "1.2deg" }, { translateY: 5 }], ...ref.curve },
+  card: { padding: L.pad, gap: L.gap, borderRadius: L.radius, ...ref.curve },
+  ribbon: { position: "absolute", top: 0, right: 26 },
+  head: { alignItems: "center", gap: 2, height: L.head },
+  hero: { alignSelf: "stretch" },
+  polaroid: { position: "absolute", left: 4 },
+  seal: { position: "absolute", top: 0 },
+  cat: { position: "absolute", right: 2, bottom: 0 },
+  words: { alignItems: "center", alignSelf: "stretch", gap: 2, paddingHorizontal: 4 },
+  exit: { fontSize: 15, lineHeight: 20 },
   centre: { textAlign: "center" },
-  exit: { marginTop: C.gap.exit },
-  // A compact row: three of 07's cards, each its value over its label.
-  stats: { alignSelf: "stretch", flexDirection: "row", gap: ref.space.sm, marginTop: C.gap.card - C.gap.head },
-  stat: { flex: 1 },
-  statCard: { flex: 1, paddingHorizontal: C.stat.padX, paddingVertical: L.statPadY, justifyContent: "center" },
-  statInner: { alignItems: "center", gap: C.stat.gap },
-  after: { marginTop: C.gap.card - C.gap.head },
+  entry: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: L.row, borderBottomWidth: 1, gap: 12 },
+  entryLabel: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0 },
+  label: { fontSize: 12, lineHeight: 16, fontWeight: "700", letterSpacing: 1.1, textTransform: "uppercase" },
+  value: { flexShrink: 1, textAlign: "right" },
+  unit: { fontSize: 15 },
+  columns: { flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1 },
+  cell: { flex: 1 },
+  cellInner: { alignItems: "center", paddingVertical: 6, paddingHorizontal: 2, gap: 1 },
+  cellLabel: { letterSpacing: 0.5 },
+  rating: { paddingTop: 0 },
+  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: L.footer },
+  brand: PAYOFF_TYPE.brand,
+  twinkleA: { top: -8, left: 18 },
+  twinkleB: { top: 70, right: -6 },
+  twinkleC: { bottom: 64, left: -6 },
   // The photo guide's foot: its reading column, the pill to the quiet buttons ref.space.sm apart.
   actions: { paddingTop: C.actions.pad, paddingHorizontal: ref.space.reading, gap: ref.space.sm },
 });

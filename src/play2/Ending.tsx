@@ -1,18 +1,24 @@
 // The way out (gameplay v2 §2 pacing, "Payoff"): every room ends at its real
 // door. First a beat for the door itself (the close-up's last moment shows
 // under it, then the door's photo comes up and the view pushes in), then
-// light floods out of it and fills the screen, in the mode's light, and the
-// ending's lines come up in it. "Close the case" goes on to case closed.
+// light floods out of it and fills the screen in the mode's glow (candle,
+// desk lamp, spirit mint: theme.glow), settling to a warm page of that light,
+// and the ending comes up on it as the last page of her mystery novel
+// (docs/ART_DIRECTION.md, the mystery-book core). "Close the case" goes on to
+// case closed.
 //
-// The lines: a headline in the mode's voice and face (never one that says
-// what the ending's own text already says), the ending's text, the cat
-// sitting in the doorway light, centred in the screen; the button at the
-// foot, at least ref.space.lg off the bottom edge.
+// The page: the cat sitting in the doorway light with a few foil twinkles
+// round it; a headline in the mode's voice and display face (never one that
+// says what the ending's own text already says); the ending's text set as a
+// book's last line; a fleuron rule and "The End" in the cover face's italic,
+// in the mode's page ink. The button at the foot, at least ref.space.lg off
+// the bottom edge.
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { Canvas, Circle, RadialGradient, vec } from "@shopify/react-native-skia";
+import Svg, { Defs, RadialGradient as SvgRadial, Rect, Stop } from "react-native-svg";
 import type { Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { TreatedImage } from "@/components/noir";
@@ -21,6 +27,8 @@ import { themeFor } from "@/game/mode";
 import type { SceneSource } from "@/render/SceneView";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
+import { FleuronRule, Twinkle } from "@/render/keepsake";
+import { LIGHT, PAGE_INK, PAYOFF_TYPE, alpha, mix } from "@/theme/payoff";
 import { SittingCat } from "./SittingCat";
 
 /** The beats, in ms after the room is solved. */
@@ -44,15 +52,28 @@ const HEADLINES: Record<Genre, readonly string[]> = {
   paranormal: ["It lets you go.", "Into the light."],
 };
 
-/** Each mode's light: the glow's stops, the wash it settles to, and the ink that reads on it. */
-const LIGHT: Record<Genre, { glow: [string, string, string]; wash: string; ink: string }> = {
-  // Warm lamplight on a wet street.
-  noir: { glow: ["rgba(255,244,220,1)", "rgba(255,236,200,0.85)", "rgba(255,230,190,0)"], wash: "rgb(255,244,226)", ink: "rgb(36,28,20)" },
-  // Plain, cool daylight.
-  crime_scene: { glow: ["rgba(246,247,249,1)", "rgba(234,238,243,0.85)", "rgba(226,232,240,0)"], wash: "rgb(244,245,247)", ink: "rgb(30,24,24)" },
-  // A pale, clean dawn.
-  paranormal: { glow: ["rgba(240,250,248,1)", "rgba(222,242,240,0.85)", "rgba(210,236,234,0)"], wash: "rgb(238,247,245)", ink: "rgb(18,32,34)" },
-};
+/**
+ * Each mode's light, from its glow: the light's stops (white-hot at the
+ * door, the glow round it, fading out), the page of light it settles to (the
+ * glow, mostly white), and the inks that read on that page: the mode's ground
+ * for the words, its page ink (keepsake.PAGE_INK) for "The End".
+ */
+export function endingLight(genre: Genre): { glow: [string, string, string]; wash: string; ink: string; accent: string } {
+  const theme = themeFor(genre);
+  return {
+    glow: [mix(theme.glow, LIGHT.white, 0.75), alpha(mix(theme.glow, LIGHT.white, 0.35), 0.9), alpha(theme.glow, 0)],
+    wash: mix(theme.glow, LIGHT.white, 0.8),
+    ink: theme.ground,
+    accent: PAGE_INK[genre],
+  };
+}
+
+/** The last page's number: a book's length, the same for the same ending. */
+export function pageNumber(text: string): number {
+  let n = 0;
+  for (const ch of text) n = (n * 31 + ch.charCodeAt(0)) % 997;
+  return 180 + (n % 140);
+}
 
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
 
@@ -70,7 +91,7 @@ export function Ending({ text, door, genre, onDone }: {
   onDone: () => void;
 }) {
   const theme = themeFor(genre);
-  const look = LIGHT[genre];
+  const look = endingLight(genre);
   const feedback = useFeedback();
   const { reducedMotion } = useTheme();
   const insets = useSafeAreaInsets();
@@ -123,7 +144,18 @@ export function Ending({ text, door, genre, onDone }: {
           <RadialGradient c={vec(width / 2, height / 2)} r={r} colors={look.glow} positions={[0, 0.5, 1]} />
         </Circle>
       </Canvas>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.wash }, wash]} pointerEvents="none" />
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.wash }, wash]} pointerEvents="none">
+        {/* The page's edges warm in the glow, as a page does by candlelight. */}
+        <Svg width="100%" height="100%">
+          <Defs>
+            <SvgRadial id="endPage" cx="50%" cy="45%" rx="75%" ry="65%" fx="50%" fy="45%">
+              <Stop offset={0.55} stopColor={theme.glow} stopOpacity={0} />
+              <Stop offset={1} stopColor={theme.glow} stopOpacity={0.55} />
+            </SvgRadial>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#endPage)" />
+        </Svg>
+      </Animated.View>
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
@@ -135,10 +167,26 @@ export function Ending({ text, door, genre, onDone }: {
       >
         <View style={styles.middle}>
           {/* The cat saw you out. */}
-          <SittingCat width={112} delay={reducedMotion ? 0 : ENDING.lightAt + ENDING.light * 0.6 + 200} label="The black cat, sitting in the doorway light" />
-          <Text style={[styles.headline, { fontFamily: theme.display.fontFamily }, ink]} accessibilityRole="header" testID="v2-ending-headline">{headline}</Text>
-          {text ? <Text style={[styles.text, ink]}>{text}</Text> : null}
+          <View>
+            <SittingCat width={104} delay={reducedMotion ? 0 : ENDING.lightAt + ENDING.light * 0.6 + 200} label="The black cat, sitting in the doorway light" />
+            <Twinkle size={14} color={theme.foil} reduced={reducedMotion} style={styles.twinkleA} />
+            <Twinkle size={10} color={theme.sweet} delay={600} reduced={reducedMotion} style={styles.twinkleB} />
+            <Twinkle size={12} color={theme.foil} delay={1100} reduced={reducedMotion} style={styles.twinkleC} />
+          </View>
+          <View style={styles.heading}>
+            <Text style={[styles.chapter, { color: look.accent }]}>Chapter the last</Text>
+            <Text style={[styles.headline, { fontFamily: theme.display.fontFamily }, ink]} accessibilityRole="header" testID="v2-ending-headline">{headline}</Text>
+          </View>
+          {text ? <Text style={[styles.text, ink]} testID="v2-ending-text">{text}</Text> : null}
+          <View style={styles.end} accessible accessibilityLabel="The End" testID="v2-ending-end">
+            <FleuronRule color={look.accent} width={150} />
+            <Text style={[styles.theEnd, { color: look.accent }]}>The End</Text>
+          </View>
         </View>
+        {/* The page's number, as a book's last page has one. */}
+        <Text style={[styles.folio, { color: alpha(look.ink, 0.7) }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {`· ${pageNumber(text)} ·`}
+        </Text>
         <Pressable
           onPress={onDone}
           accessibilityRole="button"
@@ -158,7 +206,16 @@ const styles = StyleSheet.create({
   words: { paddingHorizontal: ref.space.xl },
   // The cat, the headline and the lines, centred in the screen over the button.
   middle: { flex: 1, alignItems: "center", justifyContent: "center", gap: ref.space.lg },
-  headline: { fontSize: 30, lineHeight: 36, textAlign: "center" },
-  text: { fontSize: 17, lineHeight: 24, fontWeight: "500", textAlign: "center", maxWidth: 320 },
+  heading: { alignItems: "center", gap: 4 },
+  chapter: PAYOFF_TYPE.chapter,
+  folio: { ...PAYOFF_TYPE.folio, textAlign: "center", marginBottom: ref.space.sm },
+  headline: { fontSize: 28, lineHeight: 34, textAlign: "center" },
+  // The book's last line.
+  text: { ...PAYOFF_TYPE.lastLarge, textAlign: "center", maxWidth: 320 },
+  end: { alignItems: "center", gap: 2, marginTop: -ref.space.xs },
+  theEnd: { ...PAYOFF_TYPE.theEnd, textAlign: "center" },
+  twinkleA: { top: 8, left: -14 },
+  twinkleB: { top: 36, right: -12 },
+  twinkleC: { bottom: 18, left: -20 },
   button: { alignSelf: "stretch", minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center" },
 });

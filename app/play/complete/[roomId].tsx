@@ -1,8 +1,9 @@
 // Case closed for a custom room, per mode (src/render/CaseClosed.tsx): the
-// victory moment. Noir's CASE CLOSED slammed onto the case file, crime
-// scene's accused under GUILTY (and why and how), paranormal's room snapping
-// back to its own colours; then how the game went (time, hints, wrong
-// answers) and the magnifier rating they earn.
+// victory moment as the last page of her mystery. The room's polaroid with
+// the case's name, the mode's gold seal (CASE CLOSED; crime scene's GUILTY
+// with the culprit, motive and method; paranormal's THE PRESENCE IS GONE as
+// the room snaps back to its own colours); then how the game went (time,
+// tips, wrong answers) and the rating they earn.
 //
 // The player passes the mode, the case's name, its lines, the accused
 // suspect's id and (a v2 game) its own stats as params, and the case in the
@@ -10,8 +11,9 @@
 // reload). The stats are the v2 game's own count when there is one, else the
 // completed session's (a v1 game is played on the server). After a reload
 // with nothing kept, the case's name and the accused are read from the
-// completed session's definition (a v2 room's: its name only). Paranormal's
-// photo is signed again when it isn't in memory.
+// completed session's definition (a v2 room's: its name only). The room's
+// photo (the polaroid on case closed's last page) is signed again when it
+// isn't in memory.
 //
 // Then the pinned actions: Start a new case in the same mode (the photo
 // guide's pill, openCapture({ genre })), or Done (home).
@@ -92,11 +94,10 @@ export default function PlayCompleteScreen() {
     };
   }, [roomId, suspect, needsDefinition, needsSession]);
 
-  // Paranormal's room: the player's photo in memory, else signed again (a reload), waiting a moment for it.
-  const paranormal = genre === "paranormal";
+  // The room's photo: the player's in memory, else signed again (a reload), waiting a moment for it.
   const [fetchedPhoto, setFetchedPhoto] = useState<SceneSource | null | undefined>(undefined);
   const photo = stash?.photo ?? fetchedPhoto;
-  const needsPhoto = loaded && paranormal && !stash?.photo;
+  const needsPhoto = loaded && !stash?.photo;
   useEffect(() => {
     if (!needsPhoto) return;
     let cancelled = false;
@@ -120,8 +121,8 @@ export default function PlayCompleteScreen() {
     openCapture({ genre, replace: true }).catch(() => router.replace("/capture"));
   };
 
-  // A reload: the moment starts once the case (and paranormal's room) is in hand.
-  if (!loaded || (paranormal && photo === undefined)) {
+  // A reload: the moment starts once the case (and its room's photo, or a moment's wait for it) is in hand.
+  if (!loaded || photo === undefined) {
     return <View style={{ flex: 1, backgroundColor: themeFor(genre).ground }} testID="case-closed-loading" />;
   }
 
@@ -134,7 +135,7 @@ export default function PlayCompleteScreen() {
       summary={summary}
       accused={accused}
       recap={stash?.motive || stash?.method ? { why: stash.motive, how: stash.method } : undefined}
-      photo={paranormal ? photo : undefined}
+      photo={photo}
       actions={(
         <>
           <ModePill variant="ghost" label={PLAY_COPY.newCase} onPress={newCase} testID="complete-new-case" />

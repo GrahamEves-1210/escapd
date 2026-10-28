@@ -1,7 +1,7 @@
 // The victory moment's data (victory.ts): the session's stats as they are,
 // the magnifier rating's rule, and the moment's beats.
 import { motion } from "@/theme/tokens";
-import { RATING_LABEL, caseSummary, caseSummaryFromStats, magnifierRating, statDuration, statLines, victoryTimeline } from "../victory";
+import { RATING_LABEL, RATING_MARK, SERIES_LINE, caseSummary, caseSummaryFromStats, magnifierRating, statDuration, statLines, victoryTimeline } from "../victory";
 
 const done = { started_at: "2026-10-25T10:00:00.000Z", completed_at: "2026-10-25T10:08:00.000Z", hints_used: 1, wrong_answer_count: 3 };
 
@@ -34,6 +34,16 @@ describe("caseSummaryFromStats: a v2 game's own count", () => {
 describe("RATING_LABEL", () => {
   it("is the detective's eye in noir and crime scene, second sight in paranormal", () => {
     expect(RATING_LABEL).toEqual({ noir: "Observation", crime_scene: "Observation", paranormal: "Second sight" });
+  });
+
+  it("earns magnifiers in noir and crime scene, moons in paranormal", () => {
+    expect(RATING_MARK).toEqual({ noir: "magnifier", crime_scene: "magnifier", paranormal: "moon" });
+  });
+});
+
+describe("SERIES_LINE", () => {
+  it("names each mode's book in the series", () => {
+    expect(SERIES_LINE).toEqual({ noir: "A Detective Noir Mystery", crime_scene: "A True Crime Club Mystery", paranormal: "A Moonlit Mystery" });
   });
 });
 
@@ -81,10 +91,9 @@ describe("victoryTimeline", () => {
     expect(t.cta).toBeLessThanOrEqual(3000);
   });
 
-  it("paranormal: the snap and the gone line come before CASE CLOSED", () => {
+  it("paranormal: the room snaps back before its seal (the presence is gone) comes down", () => {
     const t = victoryTimeline({ genre: "paranormal", reduced: false, stats: 3, rating: 3 });
-    expect(t.snap!).toBeLessThan(t.gone!);
-    expect(t.gone!).toBeLessThan(t.stamp);
+    expect(t.snap!).toBeLessThan(t.stamp);
     expect(t.cta).toBeLessThanOrEqual(3000);
   });
 

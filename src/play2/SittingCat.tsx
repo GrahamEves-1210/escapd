@@ -1,7 +1,8 @@
 // The cat, sitting (assets/characters/cat_sit.png): for the way out and case
 // closed. It moves as the peeking cat does, at 12 frames a second: it pops up
-// with a squash and stretch and a burst of sparkles (`cheer` changes for
-// another), breathes, and now and then gives a little happy hop. Its art never
+// with a squash and stretch and a burst of sparkles in the mode's sweet
+// colour (`cheer` changes for another), breathes, and now and then gives a
+// little happy hop; a tap gets a hop and a heart. Its art never
 // changes. Under reduced motion it simply sits.
 import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
@@ -100,7 +101,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
       </Animated.View>
       {burst !== null && !reducedMotion ? (
         <View style={[styles.burst, { left: width * 0.5, top: height * 0.12 }]} pointerEvents="none">
-          <Burst key={burst.at} text={burst.text} size={width * 0.7} color={theme.accent} glyph={{ color: theme.accent, fontFamily: theme.display.fontFamily }} />
+          <Burst key={burst.at} text={burst.text} size={width * 0.7} color={theme.sweet} glyph={{ color: theme.sweet, fontFamily: theme.hand.fontFamily }} />
         </View>
       ) : null}
     </View>

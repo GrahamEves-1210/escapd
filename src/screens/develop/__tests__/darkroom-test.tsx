@@ -16,7 +16,7 @@ import type { GenerationJob } from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import DarkroomScreen from "../../../../app/capture/develop";
-import { HOME_LABEL, LEAVE_LABEL, TYPEWRITER_GAP } from "../BuildWait";
+import { CHAPTER, HOME_LABEL, LEAVE_LABEL, TYPEWRITER_GAP } from "../BuildWait";
 import {
   BUILDING_LABEL,
   BUILDING_LINES,
@@ -27,7 +27,8 @@ import {
   sendingLine,
   waitStatus,
 } from "../copy";
-import { panoramaLayout, wrapOffset } from "../RoomPanorama";
+import { SEAL } from "@/render/keepsake";
+import { TILE_ASPECT, panoramaLayout, wrapOffset } from "../RoomPanorama";
 
 let mockStage: DevStage = { kind: "checking" };
 const mockRetry = jest.fn();
@@ -174,9 +175,9 @@ describe("the words", () => {
 });
 
 describe("the room's arithmetic", () => {
-  it("lays out tiles as tall as the frame, a centre crop of each photo, with enough copies that the loop never shows a gap", () => {
+  it("lays out a slot per print, a share of the frame's height across, with enough copies that the loop never shows a gap", () => {
     const { tile, pitch, loop, copies } = panoramaLayout(6, 353, 400);
-    expect(tile).toBe(Math.round(400 * D.tile.aspect));
+    expect(tile).toBe(Math.round(400 * TILE_ASPECT));
     expect(pitch).toBe(tile + D.tile.gap);
     expect(loop).toBe(6 * pitch);
     // The copies always reach a frame's width past the end of one turn.
@@ -207,7 +208,8 @@ describe("the wait: one visual, one title, one line", () => {
     expect(screen.getByTestId("build-room", hidden)).toBeTruthy();
     expect(screen.getByRole("header", { name: "Building your case" })).toBeTruthy();
     expect(screen.getByTestId("build-status")).toBeTruthy();
-    expect(screen.getAllByRole("button")).toHaveLength(1);
+    // The only control is the close (the cat over the room can be petted, which is play, not a control).
+    expect(screen.getAllByRole("button").filter((b) => b.props.testID !== "v2-cat-pet")).toHaveLength(1);
     expect(screen.container.queryAll((node) => node.type === "ActivityIndicator")).toHaveLength(0);
   });
 
@@ -222,6 +224,7 @@ describe("the wait: one visual, one title, one line", () => {
   it("rotates the running lines under one fixed label, every status.hold", async () => {
     await renderScreen(running, true);
     const shown = (text: string) => screen.queryAllByText(text, hidden).filter((node) => styleOf(node).color === ref.color.textSecondary);
+    expect(screen.getByTestId("build-status").props.accessibilityLiveRegion).toBe("polite");
     expect(shown("Finding the objects")).toHaveLength(1);
     await advance(T.gap + T.swap + D.status.hold);
     expect(shown("Choosing what to hide")).toHaveLength(1);
@@ -230,12 +233,12 @@ describe("the wait: one visual, one title, one line", () => {
     expect(screen.getByTestId("build-status").props.accessibilityLabel).toBe(BUILDING_LABEL);
   });
 
-  it("sets the status line at the feature size, in a box sized to every count", async () => {
+  it("sets the status line large and handwritten, centred in a box that never resizes as the count climbs", async () => {
     await renderScreen(sending(0), true);
     const line = screen.getAllByText("Sending photo 1 of 6", hidden);
-    expect(line.some((node) => styleOf(node).fontSize === ref.type.status.fontSize)).toBe(true);
-    expect(ref.type.status.fontSize).toBeGreaterThanOrEqual(20);
-    for (let n = 1; n <= 6; n++) expect(screen.getAllByText(sendingLine(n, 6), hidden).length).toBeGreaterThan(0);
+    expect(line.some((node) => (styleOf(node).fontSize as number) >= 20)).toBe(true);
+    expect(styleOf(screen.getByTestId("build-status"))).toMatchObject({ alignSelf: "stretch", alignItems: "center" });
+    expect(sendingLine(6, 6).length).toBeLessThanOrEqual(STATUS_MAX);
     await goTo(sending(1), true);
     await advance(motion.reducedFade);
     expect(screen.getByTestId("build-status").props.accessibilityLabel).toBe("Sending photo 2 of 6");
@@ -249,14 +252,16 @@ describe("the wait: one visual, one title, one line", () => {
     expect(screen.getByRole("header", { name: "Building your case" })).toBeTruthy();
   });
 
-  it("plays the mode's room tone, quietly, while the wait and the ready moment are on screen; not on the asks", async () => {
+  it("plays no room tone (the mode's music only)", async () => {
     await renderScreen(running);
-    expect(useRoomTone).toHaveBeenLastCalledWith(true);
     await goTo(ready);
-    expect(useRoomTone).toHaveBeenLastCalledWith(true);
-    jest.mocked(useRoomTone).mockClear();
-    await goTo({ kind: "error", message: "Couldn't connect." });
     expect(useRoomTone).not.toHaveBeenCalled();
+  });
+
+  it("is the case's first chapter: the kicker over the title, and the status line handwritten", async () => {
+    await renderScreen(running, true);
+    expect(screen.getByText(CHAPTER, hidden)).toBeTruthy();
+    expect(styleOf(screen.getAllByText("Finding the objects", hidden)[0])).toMatchObject({ fontFamily: ref.font.hand });
   });
 });
 
@@ -387,7 +392,7 @@ describe("the way out", () => {
   it("isn't offered while the photos are still sending: nothing to press", async () => {
     const backPress = jest.spyOn(BackHandler, "addEventListener");
     await renderScreen(sending(2));
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryAllByRole("button").filter((b) => b.props.testID !== "v2-cat-pet")).toHaveLength(0);
     expect(backPress).not.toHaveBeenCalled();
     backPress.mockRestore();
   });
@@ -589,13 +594,12 @@ describe("inside a mode", () => {
   beforeEach(() => setMode("paranormal"));
   afterEach(() => act(() => setMode(null)));
 
-  it("takes the mode's ground, its display face for the title, and its colours for the line's sweep", async () => {
+  it("takes the mode's ground, its display face for the title, and its colours for the line", async () => {
     await renderScreen(running);
     expect(styleOf(screen.getByTestId("darkroom-root")).backgroundColor).toBe(theme.surface);
     expect(styleOf(screen.getByTestId("build-room", hidden)).backgroundColor).toBe(theme.ground);
     expect(styleOf(screen.getByRole("header", { name: "Building your case" }))).toMatchObject({
       fontFamily: theme.display.fontFamily,
-      textTransform: "uppercase",
       fontSize: D.titleSize.paranormal,
       color: theme.ink,
     });
@@ -603,10 +607,11 @@ describe("inside a mode", () => {
     expect(styleOf(screen.getByRole("button", { name: LEAVE_LABEL })).backgroundColor).toBe(theme.raised);
   });
 
-  it("the stamp in the mode's stamp colour, and the pill in its accent", async () => {
+  it("the CASE READY seal pressed in gold foil, and the pill in its accent", async () => {
     await renderScreen(ready);
     await advance(D.ready.stampDelay + STAMP.slam + D.ready.success + 16);
-    expect(styleOf(screen.getByText("CASE READY", hidden)).color).toBe(theme.stamp);
+    expect(styleOf(screen.getByText("CASE READY", hidden)).color).toBe(SEAL.ink);
+    expect(screen.getByTestId("build-stamp", hidden)).toBeTruthy();
     expect(styleOf(screen.getByTestId("open-case")).backgroundColor).toBe(theme.accent);
     expect(styleOf(screen.getByText("Open the case")).color).toBe(theme.accentInk);
   });

@@ -1,11 +1,13 @@
 // The way out (Ending.tsx): a headline in the mode's voice that never repeats
 // the ending's own text, the beats (the door gets its moment before the light
-// floods), the lines centred over the button, the button off the bottom edge.
+// floods), the last page in the mode's glow (the book's last line, a fleuron
+// and "The End", a page number), the button off the bottom edge.
 import { StyleSheet } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
-import { ENDING, Ending, endingHeadline } from "../Ending";
+import { PAYOFF_TYPE } from "@/theme/payoff";
+import { ENDING, Ending, endingHeadline, endingLight, pageNumber } from "../Ending";
 
 jest.mock("@shopify/react-native-skia", () => {
   const base = jest.requireActual("../../../jest/skia-mock");
@@ -60,5 +62,35 @@ describe("Ending", () => {
     await render(<ThemeProvider reducedMotion><Ending text="" genre="paranormal" onDone={() => {}} /></ThemeProvider>);
     expect(flat(screen.getByTestId("v2-ending-headline"))).toMatchObject({ fontFamily: modeThemes.paranormal.display.fontFamily });
     expect(flat(screen.getByTestId("v2-ending-words")).paddingBottom).toBeGreaterThanOrEqual(ref.space.lg);
+  });
+});
+
+describe("the last page", () => {
+  const lum = (c: string) => {
+    const n = parseInt(c.slice(1, 7), 16);
+    const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it("is lit in each mode's glow, its words and The End readable on it", () => {
+    for (const genre of ["noir", "crime_scene", "paranormal"] as const) {
+      const light = endingLight(genre);
+      expect(light.ink).toBe(modeThemes[genre].ground);
+      expect(contrast(light.ink, light.wash)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(light.accent, light.wash)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("ends as a book does: the last line, a fleuron and The End, a page number", async () => {
+    await render(<ThemeProvider reducedMotion><Ending text="The lock gives." genre="crime_scene" onDone={() => {}} /></ThemeProvider>);
+    expect(flat(screen.getByTestId("v2-ending-text"))).toMatchObject(PAYOFF_TYPE.lastLarge);
+    expect(screen.getByLabelText("The End")).toBeTruthy();
+    expect(screen.getByText("Chapter the last")).toBeTruthy();
+    expect(screen.getByText(`· ${pageNumber("The lock gives.")} ·`, { includeHiddenElements: true })).toBeTruthy();
+    expect(pageNumber("The lock gives.")).toBe(pageNumber("The lock gives."));
   });
 });
