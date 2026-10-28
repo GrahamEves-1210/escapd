@@ -17,9 +17,12 @@ import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono/500Me
 import { JetBrainsMono_600SemiBold } from "@expo-google-fonts/jetbrains-mono/600SemiBold";
 import { RobotoSerif_400Regular } from "@expo-google-fonts/roboto-serif/400Regular";
 import { CrimsonText_400Regular_Italic } from "@expo-google-fonts/crimson-text/400Regular_Italic";
-import { CrimsonText_600SemiBold_Italic } from "@expo-google-fonts/crimson-text/600SemiBold_Italic";
 import { Archivo_800ExtraBold } from "@expo-google-fonts/archivo/800ExtraBold";
-import { Archivo_900Black } from "@expo-google-fonts/archivo/900Black";
+import { Fraunces_900Black } from "@expo-google-fonts/fraunces/900Black";
+import { Fraunces_600SemiBold_Italic } from "@expo-google-fonts/fraunces/600SemiBold_Italic";
+import { Fraunces_700Bold } from "@expo-google-fonts/fraunces/700Bold";
+import { Fraunces_500Medium_Italic } from "@expo-google-fonts/fraunces/500Medium_Italic";
+import { PatrickHand_400Regular } from "@expo-google-fonts/patrick-hand/400Regular";
 import { CourierPrime_400Regular } from "@expo-google-fonts/courier-prime/400Regular";
 import { CourierPrime_700Bold } from "@expo-google-fonts/courier-prime/700Bold";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
@@ -47,10 +50,15 @@ export default function RootLayout() {
     RobotoSerif_400Regular,
     CrimsonText_400Regular_Italic,
     Archivo_800ExtraBold,
-    // The modes' names (modeThemes[genre].display).
+    // The modes' names (modeThemes[genre].display): each mode a book in a series.
     PlayfairDisplay_900Black,
-    Archivo_900Black,
-    CrimsonText_600SemiBold_Italic,
+    Fraunces_900Black,
+    Fraunces_600SemiBold_Italic,
+    // Book-cover titles and series lines (ref.font.cover, ref.font.coverItalic).
+    Fraunces_700Bold,
+    Fraunces_500Medium_Italic,
+    // Handwriting for anything written in the world (ref.font.hand, theme.hand).
+    PatrickHand_400Regular,
     // The play screen's typewriter face for game moments (ref.layout.play.type: notes, tags, the informant).
     CourierPrime_400Regular,
     CourierPrime_700Bold,

@@ -1,15 +1,17 @@
-// ESCAPD design tokens: "The Darkroom Dossier & Brass Mechanism".
-// Soot, walnut, and tarnished brass for the instrument. Manila and carbon ink
-// for anything the player has to read. Room photos keep their own colour.
+// ESCAPD design tokens: "velvet & ink" (docs/ART_DIRECTION.md), the
+// mystery-book core. Jewel-tone grounds lit like candlelight, never flat grey;
+// tarnished brass for the instrument; warm cream paper and handwriting for
+// anything written in the world; gold foil on the covers. Room photos take
+// their mode's treatment.
 import type { TextStyle, ViewStyle } from "react-native";
 import type { Genre } from "@/lib/puzzle-types";
 
 export const color = {
-  canvas: "#090807",
-  surface: "#14110E",
-  raised: "#1E1915",
-  text: "#F2ECE1",
-  textSecondary: "#A89C8A",
+  canvas: "#110B14",
+  surface: "#1B1320",
+  raised: "#261B2C",
+  text: "#F8EEF1",
+  textSecondary: "#B9A8B8",
   hairline: "rgba(200, 157, 84, 0.32)",
   accent: "#C89D54",
   accentPressed: "#DFB66C",
@@ -18,15 +20,15 @@ export const color = {
 
   onAccent: "#171411",
   accentMuted: "rgba(200, 157, 84, 0.16)",
-  photoScrim: "rgba(9, 8, 7, 0.78)",
-  sheetScrim: "rgba(9, 8, 7, 0.55)",
-  bracketShadow: "rgba(9, 8, 7, 0.72)",
+  photoScrim: "rgba(17, 11, 20, 0.78)",
+  sheetScrim: "rgba(17, 11, 20, 0.58)",
+  bracketShadow: "rgba(17, 11, 20, 0.72)",
 
   manila: "#E8DFC8",
   ink: "#171411",
   verdigris: "#4E7A72",
   wax: "#A63429",
-  rim: "rgba(255, 255, 255, 0.10)",
+  rim: "rgba(255, 214, 230, 0.12)",
   brassRule: "rgba(200, 157, 84, 0.25)",
   velvet: "#2A1216",
 } as const;
@@ -42,6 +44,10 @@ export const font = {
   wordmark: "PlayfairDisplay_700Bold",
   mono: "JetBrainsMono_500Medium",
   monoBold: "JetBrainsMono_600SemiBold",
+  /** Handwriting (ref.font.hand): notes and anything written in the world. */
+  hand: "PatrickHand_400Regular",
+  /** Book-cover titles (ref.font.cover). */
+  cover: "Fraunces_700Bold",
 } as const;
 
 // Sizes from the plan. Text always honours system scaling; never shrink to fit.
@@ -81,7 +87,9 @@ export const radius = {
   mount: 30,
   thumb: 14,
   thumbRing: 18,
-  sheet: 20,
+  sheet: 24,
+  /** Cards and panels (art direction: sheets and cards ~24). */
+  card: 24,
   control: 8,
   slip: 8,
   round: 999,
@@ -134,8 +142,8 @@ export type Tokens = typeof tokens;
 // The reference look, for the hub, camera, permission, photo guide and Pro
 // screens: the four screenshots in docs/refs (Opal 01, Once 02, pushr 03,
 // Apple Health 04), measured on a 393 x 852 pt iPhone (safe areas 59 / 34).
-// Neutral greys, flat grounds, pills, discs and hairlines; the only brass is
-// the focus ring. /play and the light table keep the live theme above.
+// Their geometry (pills, discs, flat grounds) is kept; their greys are now
+// velvet plum and their hairlines tinted rims. The only brass is the focus ring. /play and the light table keep the live theme above.
 // Gradient angles are CSS angles (180 = top to bottom, 90 = left to right).
 
 /**
@@ -153,93 +161,93 @@ export interface GradientStop {
 const refColor = {
   // Grounds, darkest first, then the light screen.
   /** Pure black: 01 and 04's ground; the inset wells (empty viewfinder, zoom track, counter pill). */
-  void: "#0B0B0E",
+  void: "#130D18",
   /** The camera screen's ground (02); fill of 01's round header chips. */
-  ground: "#17171B",
+  ground: "#1E1525",
   /** Faintest fill above black: the ghost pill. */
-  shade: "#0A0A0A",
+  shade: "#150F1A",
   /** Near-black rims on 02: the shutter ring and the last-photo frame (measured #070707). */
-  well: "#070707",
+  well: "#0C080F",
   /** 02's zoom thumb (measured #1A1A1A to #1B1B1B). */
-  thumb: "#26262A",
+  thumb: "#2E2236",
   /** Raised controls on dark (square buttons); the primary pill on paper; glyphs and quiet labels on paper. */
-  raised: "#2A2A2F",
+  raised: "#2C2034",
   /** The light permission screen and its sheet (03). */
-  paper: "#FFFFFF",
+  paper: "#FFF8F4",
   /** The cool grey illustration panel at the top of 03's sheet. */
-  panel: "#F3F5F7",
+  panel: "#F6EEF0",
 
   // Text on dark.
   /** Titles, header titles, active labels, icons, pill labels, the hero illustration line. */
-  textPrimary: "#FFFFFF",
+  textPrimary: "#FBF1F4",
   /** Tag text on 01's game cards (white 82 %). */
-  textLabel: "rgba(255, 255, 255, 0.82)",
+  textLabel: "rgba(251, 241, 244, 0.84)",
   /** Subtitles, meta lines and one-line instructions (6.3 to 6.9:1). */
-  textSecondary: "#ADADB2",
+  textSecondary: "#C6B3C8",
   /** The same grey as white 60 %, for a glyph over 01's glow (the dismiss X). */
-  textSecondaryAlpha: "rgba(255, 255, 255, 0.60)",
+  textSecondaryAlpha: "rgba(251, 236, 244, 0.64)",
   /** Inactive segment label only (2.8:1). */
-  textTertiary: "#5A5A5A",
+  textTertiary: "#6E5A73",
   /** The shot counter's neighbouring numerals (white 24 % on black); decorative only. */
-  textDim: "#3F3F3F",
+  textDim: "#47384D",
 
   // Text on paper.
   /** 03's sheet title; the solid outline of 03's illustration. */
-  inkDisplay: "#000000",
+  inkDisplay: "#1A0F17",
   /** 03's sheet body (4.7:1 on paper). */
-  inkMuted: "#737373",
+  inkMuted: "#76626E",
 
   // Hairlines, glass and highlights.
   /** White 10 %: 01's divider peak and tag-pill stroke. */
-  rim: "rgba(255, 255, 255, 0.10)",
+  rim: "rgba(255, 214, 230, 0.12)",
   /** The rim as a solid colour on black: the ghost pill's 1 pt edge (measured #1C1C1C top-left, #181818 bottom-right). */
-  hairline: "#1A1A1A",
+  hairline: "#2A1F30",
   /** White 5 %: the 1 pt rim of 02's square buttons and last-photo image. */
-  rimFaint: "rgba(255, 255, 255, 0.05)",
+  rimFaint: "rgba(255, 214, 230, 0.06)",
   /** White 3.5 %: 01's game-card glass over the floor glow. */
-  glassFill: "rgba(255, 255, 255, 0.035)",
+  glassFill: "rgba(255, 228, 238, 0.04)",
   /** Black 13 %: 01's dismiss disc over the floor glow. */
-  dismissFill: "rgba(0, 0, 0, 0.13)",
+  dismissFill: "rgba(10, 4, 12, 0.18)",
   /** 04's light grey glass dismiss disc on black. */
-  glassDisc: "#848484",
+  glassDisc: "#A08CA6",
   /** White 14 %: the brightest point of the diagonal 1 pt ring on 01's chips. */
-  specularDark: "rgba(255, 255, 255, 0.14)",
+  specularDark: "rgba(255, 224, 236, 0.16)",
   /** The glass disc's ring highlight, lower right. */
-  specularLight: "#B6B6B6",
+  specularLight: "#C9B6CC",
   /** The glass disc's ring highlight, upper left. */
-  specularLightAlt: "#AAAAAA",
+  specularLightAlt: "#BBA6BF",
   /** The 1 pt highlight along the top inside edge of 02's shutter disk (peak, leaning top right). */
-  bevel: "#3A3A3A",
+  bevel: "#40324A",
   /** White 20 %: the halo around 02's shutter (with a negative spread, effect.shutterGlow). */
-  shutterGlow: "rgba(255, 255, 255, 0.20)",
+  shutterGlow: "rgba(255, 217, 168, 0.22)",
 
   // 01's accent line and floor glow.
   /** Hero line-icon gradient, top left. */
-  lineStart: "#CEFEB4",
+  lineStart: "#FFD9A8",
   /** Hero line-icon gradient, bottom right. */
-  lineEnd: "#ADFCF1",
+  lineEnd: "#F4A7C0",
   /** Floor glow, the flat bright area on the left half. */
-  glowOlive: "#243425",
+  glowOlive: "#2E1A2E",
   /** Floor glow, the flat bright area on the right half. */
-  glowTeal: "#1E342C",
+  glowTeal: "#251B36",
 
   // Illustration depth on dark (04), brightest first; the hero line is textPrimary.
   /** The object at middle depth. */
-  lineMid: "#DDDDDD",
+  lineMid: "#E8DCE6",
   /** The back object. */
-  lineBack: "#7F7F7F",
+  lineBack: "#8C7992",
   /** Hand and inner-screen context lines, fading to black. */
-  lineContext: "#555555",
+  lineContext: "#5E4D65",
 
   // 03's light illustration and haze.
   /** The single highlight band on the solid phone outline. */
-  illustrationBevel: "#929090",
+  illustrationBevel: "#9A8E98",
   /** The centre of the grey haze behind the status bar. */
-  ambientCore: "#D4D4D6",
+  ambientCore: "#E2D6DC",
 
   // Pressed states. The screenshots show none: these are proposals.
   /** The primary pill pressed: raised at the live Button's 82 % over paper. */
-  raisedPressed: "#474747",
+  raisedPressed: "#46354F",
 } as const;
 
 // The non-system faces (loaded in app/_layout.tsx). Every other style is
@@ -254,10 +262,24 @@ const refFont = {
   grotesk: "Archivo_800ExtraBold",
   /** DETECTIVE NOIR's name (modeThemes.noir.display): Playfair Display Black. */
   noirDisplay: "PlayfairDisplay_900Black",
-  /** CRIME SCENE's name (modeThemes.crime_scene.display): Archivo Black. */
-  crimeDisplay: "Archivo_900Black",
-  /** PARANORMAL's name (modeThemes.paranormal.display): Crimson Text SemiBold Italic. */
-  paranormalDisplay: "CrimsonText_600SemiBold_Italic",
+  /** CRIME SCENE's name (modeThemes.crime_scene.display): Fraunces Black, a cozy-mystery cover's chunky serif. */
+  crimeDisplay: "Fraunces_900Black",
+  /** PARANORMAL's name (modeThemes.paranormal.display): Fraunces SemiBold Italic, a moonlit cover's script-like italic. */
+  paranormalDisplay: "Fraunces_600SemiBold_Italic",
+  /**
+   * Book-cover titles outside a mode's name (the mystery-book core): a case's
+   * title, chapter headings, "Solved", the series line. Fraunces Bold.
+   */
+  cover: "Fraunces_700Bold",
+  /** The cover face's italic: series lines ("A Moonlit Mystery"), epigraphs, a chapter's subtitle. */
+  coverItalic: "Fraunces_500Medium_Italic",
+  /**
+   * Handwriting for anything written in the world: notes, the casebook's
+   * annotations, the cat's speech (docs/ART_DIRECTION.md, Type). Patrick
+   * Hand: the most legible friendly hand at 15 to 18 pt (Caveat's small,
+   * narrow x-height needs about 1.25 x the size to read as well).
+   */
+  hand: "PatrickHand_400Regular",
   /** The play screen's typewriter (ref.layout.play.type: notes, evidence tags, the informant): Courier Prime. */
   typewriter: "CourierPrime_400Regular",
   typewriterBold: "CourierPrime_700Bold",
@@ -277,30 +299,30 @@ export const ref = {
       fadeStart: 0.58,
       fadeEnd: 0.79,
       stops: [
-        stop(0, "#141C12"),
+        stop(0, "#1A1220"),
         stop(0.25, refColor.glowOlive),
         stop(0.43, refColor.glowOlive),
-        stop(0.5, "#213529"),
+        stop(0.5, "#2A1B33"),
         stop(0.56, refColor.glowTeal),
         stop(0.69, refColor.glowTeal),
-        stop(1, "#111B19"),
+        stop(1, "#16112A"),
       ],
     },
     // 01's game card as it looks over the glow (glassFill on bottomGlow), as an opaque fill.
     card: {
       angle: 180,
-      stops: [stop(0, "#0A0A0A"), stop(0.31, "#0F0F0F"), stop(0.5, "#141513"), stop(1, "#283628")],
+      stops: [stop(0, "#140D18"), stop(0.31, "#180F1D"), stop(0.5, "#1D1324"), stop(1, "#33213A")],
     },
     // The card's 1 pt rim, fading out down the card. Opal's measures white
     // ≈5 % along the top, 2–2.5 % down the sides to half height, gone by 0.85.
     cardRim: {
       angle: 180,
-      stops: [stop(0, "#FFFFFF", 0.05), stop(0.15, "#FFFFFF", 0.025), stop(0.5, "#FFFFFF", 0.02), stop(0.85, "#FFFFFF", 0)],
+      stops: [stop(0, "#FFD6E6", 0.12), stop(0.15, "#FFD6E6", 0.06), stop(0.5, "#FFD6E6", 0.03), stop(0.85, "#FFD6E6", 0)],
     },
     // 01's 1 pt divider under the header, brightest in the middle.
     divider: {
       angle: 90,
-      stops: [stop(0.1, "#FFFFFF", 0), stop(0.5, "#FFFFFF", 0.1), stop(0.94, "#FFFFFF", 0)],
+      stops: [stop(0.1, "#FFD6E6", 0), stop(0.5, "#FFD6E6", 0.16), stop(0.94, "#FFD6E6", 0)],
     },
     // 01's hero line icons: one gradient across the whole icon, not one per stroke.
     line: {
@@ -312,19 +334,19 @@ export const ref = {
     // measured #1E to #26 across the 67 disk itself.
     shutterDisk: {
       angle: 210,
-      stops: [stop(0, "#1C1C1C"), stop(1, "#2A2A2A")],
+      stops: [stop(0, "#221927"), stop(1, "#33263B")],
     },
     // The disk one notch darker while pressed (proposal).
     shutterDiskPressed: {
       angle: 210,
-      stops: [stop(0, "#171717"), stop(1, "#252525")],
+      stops: [stop(0, "#1C1421"), stop(1, "#2C2133")],
     },
     // The opaque fill inside 04's device outlines, as measured down the
     // reference's phone (#3E at 4 %, #34 at 12 %, #23 at 24 %, #10 at 36 %,
     // #0C at 42 %, black from about 56 %).
     deviceFill: {
       angle: 180,
-      stops: [stop(0, "#424242"), stop(0.13, "#343434"), stop(0.28, "#1E1E1E"), stop(0.42, "#0C0C0C"), stop(0.56, "#000000")],
+      stops: [stop(0, "#4A3B50"), stop(0.13, "#3A2E40"), stop(0.28, "#231A28"), stop(0.42, "#110C14"), stop(0.56, "#0C080F")],
     },
     // pushr's haze as fitted on 03 (rms 2.7 grey levels against the
     // reference), shared by 03 and 05 (kit: PaperHaze). Not a centred circle:
@@ -380,6 +402,14 @@ export const ref = {
     label: { fontSize: 13, lineHeight: 16, fontWeight: "600" },
     /** 01's game-card tags: Semibold 13, +0.4, uppercase, textLabel. */
     tag: { fontSize: 13, lineHeight: 16, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
+    /** Handwriting at body size (ref.font.hand): a note, an annotation, the cat's speech. */
+    hand: { fontFamily: refFont.hand, fontSize: 18, lineHeight: 24 },
+    /** A small handwritten label: a polaroid caption, a sticky tab. Never below this. */
+    handSmall: { fontFamily: refFont.hand, fontSize: 15, lineHeight: 20 },
+    /** A book-cover title (a case's name, "Chapter One"): Fraunces Bold 28. */
+    cover: { fontFamily: refFont.cover, fontSize: 28, lineHeight: 34 },
+    /** A series line under a cover title ("A Moonlit Mystery"): Fraunces Medium Italic 16. */
+    series: { fontFamily: refFont.coverItalic, fontSize: 16, lineHeight: 22 },
     /** 06's status line, the feature line under the build wait's title: Medium 22, centred. One line at 375 for every line it shows. */
     status: { fontSize: 22, lineHeight: 28, fontWeight: "500" },
   } as const satisfies Record<string, TextStyle>,
@@ -421,8 +451,10 @@ export const ref = {
     knob: 12,
     /** 02's 44 pt square header buttons. */
     square: 14,
-    /** 03's sheet top corners; 02's segment track. */
-    sheet: 16,
+    /** Cards and panels on a sheet (the casebook's cards, a mechanism's panel), and the default focus ring: rounder, softer (art direction ~24). */
+    sheet: 24,
+    /** A card: the same 24, by its own name. */
+    card: 24,
     /** 02's last-photo image (24 minus the 4 frame) and counter pill. */
     nested: 20,
     /** 02's last-photo frame. */
@@ -632,14 +664,14 @@ export const ref = {
           cover: 0.36,
           peek: 40,
           tilt: [2.5, -2, 2],
-          shadow: "0px -10px 24px 0px rgba(0, 0, 0, 0.62)",
+          shadow: "0px -10px 24px 0px rgba(10, 4, 14, 0.62)",
           // Light along each card's top edge, inside its rim (between the corners): white 0 to 16 % to 0 across.
           edge: {
             angle: 90,
             stops: [stop(0, refColor.textPrimary, 0), stop(0.5, refColor.textPrimary, 0.16), stop(1, refColor.textPrimary, 0)],
           },
         },
-        radius: 20,
+        radius: 24,
         rim: 1,
         pad: 18,
         plate: 0.72,
@@ -678,7 +710,7 @@ export const ref = {
       // has risen (or sooner under reduced motion), and returns to How you
       // play after the exit (or motion.reducedFade) plus `focusMargin` (ms).
       sheet: {
-        scrim: "rgba(0, 0, 0, 0.55)",
+        scrim: "rgba(12, 6, 16, 0.58)",
         maxHeight: "64%",
         exit: 200,
         scrimIn: 200,
@@ -709,7 +741,7 @@ export const ref = {
         heading: { fontSize: 14, lineHeight: 20, fontWeight: "700" } as const satisfies TextStyle,
         headingGap: 8,
         section: 16,
-        radius: 8,
+        radius: 20,
         fill: refColor.raised,
         divider: refColor.rim,
         rowHeight: 48,
@@ -781,7 +813,7 @@ export const ref = {
       hairline: 1,
       // The square buttons' rim as measured (#222 to #242424 over the raised
       // fill; rimFaint composites to #292929 there, a visibly brighter edge).
-      squareRim: "#232323",
+      squareRim: "#33263B",
       // Glyphs as measured: the back arrow 14.3 wide with a 1.5 to 1.7 stroke
       // is Phosphor bold at 18 (Images matches it); the control row's bolt
       // (20.3 tall) and the flip slot (16.6 wide) are 22.
@@ -952,9 +984,9 @@ export const ref = {
           angle: 135,
           stops: [
             stop(0.15, refColor.specularLightAlt),
-            stop(0.25, "#A0A0A0"),
-            stop(0.5, "#8D8D8D"),
-            stop(0.75, "#939393"),
+            stop(0.25, "#B39FB7"),
+            stop(0.5, "#9C88A2"),
+            stop(0.75, "#A592AA"),
             stop(0.85, refColor.specularLight),
           ],
         },
@@ -974,7 +1006,7 @@ export const ref = {
       titleGap: 3,
       // The body's grey, a touch lighter than the shared textSecondary: the
       // reference's blurred glyph cores read #95-#9B and peak at #A5-#AA.
-      bodyText: "#999999",
+      bodyText: "#B8A6BB",
       // Body's last line to the button top (y 700-762; measured 62.5), and the
       // replay status line (ref.type.meta, 16) inside it, 23 clear each side.
       ctaGap: 62,
@@ -997,10 +1029,10 @@ export const ref = {
       // their last endFade instead.
       ink: {
         thin: 1,
-        screenBottom: "#323232",
-        text: "#A8A8A8",
-        textDim: "#585858",
-        ridge: "#3C3C3C",
+        screenBottom: "#352A3B",
+        text: "#B9A9BC",
+        textDim: "#5F5065",
+        ridge: "#413447",
         fade: { from: 170, to: 266 },
         endFade: 40,
       },
@@ -1009,8 +1041,8 @@ export const ref = {
       // to black three quarters across) and the small tag (its box label,
       // #474747 to #0D0D0D top to bottom).
       fill: {
-        panel: { angle: 235, stops: [stop(0, "#6B6B6B"), stop(0.75, refColor.void)] },
-        tag: { angle: 180, stops: [stop(0, "#474747"), stop(1, "#0D0D0D")] },
+        panel: { angle: 235, stops: [stop(0, "#75627A"), stop(0.75, refColor.void)] },
+        tag: { angle: 180, stops: [stop(0, "#4C3C52"), stop(1, "#120C15")] },
       },
       // The hero phone (measured 70 x 137, corners 10.5; inner screen inset 13
       // at the sides, 24.5 at the top and 27 at the bottom, corners 10; a thin
@@ -1177,7 +1209,7 @@ export const ref = {
       top: 8,
       promptTop: 3,
       metaGap: 3,
-      squareRim: "#232323",
+      squareRim: "#33263B",
       headerIcon: { size: 18, weight: "bold" },
       // Bands: the squares to the photo area, the photo area to the tray,
       // between the tray's rows, and the tray to the bottom safe area.
@@ -1243,7 +1275,7 @@ export const ref = {
         dim: 0.5,
         fadeFrom: 1,
         fadeTo: 1.6,
-        shadow: "0px 3px 10px 0px rgba(0, 0, 0, 0.55)",
+        shadow: "0px 3px 10px 0px rgba(10, 4, 14, 0.55)",
         marked: 7,
         markedRing: 1.5,
         span: 124,
@@ -1516,13 +1548,13 @@ export const ref = {
         holeInset: 6,
         materials: {
           noir: {
-            leather: "#1C1712", edge: "#080605", stitch: "rgba(200, 157, 84, 0.55)", well: "#100D0A", wellEdge: "#040302", tag: "#2A231C",
+            leather: "#22182A", edge: "#0C0810", stitch: "rgba(233, 184, 166, 0.55)", well: "#150F1A", wellEdge: "#08050A", tag: "#30243A",
           },
           crime_scene: {
-            leather: "#1F1110", edge: "#090505", stitch: "rgba(236, 228, 211, 0.4)", well: "#130A0A", wellEdge: "#050202", tag: "#2E1A18",
+            leather: "#2A141A", edge: "#0E0608", stitch: "rgba(255, 220, 205, 0.42)", well: "#170A0E", wellEdge: "#070204", tag: "#38202A",
           },
           paranormal: {
-            leather: "#111A1E", edge: "#05090B", stitch: "rgba(191, 228, 236, 0.45)", well: "#0A1114", wellEdge: "#030607", tag: "#1C292E",
+            leather: "#171A36", edge: "#080920", stitch: "rgba(184, 166, 247, 0.5)", well: "#0E1028", wellEdge: "#05061A", tag: "#232748",
           },
         },
       },
@@ -1562,9 +1594,9 @@ export const ref = {
         stackScale: 1.3,
         paperDelay: 260,
         papers: {
-          noir: { paper: "#EAE3D2", ink: "#1A1611", inkMuted: "#574F45", rule: "rgba(26, 22, 17, 0.13)", margin: "rgba(200, 157, 84, 0.7)", frame: "#F1EEE7", shade: "rgba(0, 0, 0, 0.35)" },
-          crime_scene: { paper: "#E8E0CF", ink: "#1C1210", inkMuted: "#5B4C46", rule: "rgba(28, 18, 16, 0.13)", margin: "rgba(163, 32, 31, 0.65)", frame: "#EFEAE0", shade: "rgba(0, 0, 0, 0.4)" },
-          paranormal: { paper: "#E3EBED", ink: "#0F1C21", inkMuted: "#475A61", rule: "rgba(15, 28, 33, 0.13)", margin: "rgba(110, 160, 172, 0.75)", frame: "#EDF2F3", shade: "rgba(0, 0, 0, 0.35)" },
+          noir: { paper: "#F3E8DE", ink: "#2A1620", inkMuted: "#68505E", rule: "rgba(42, 22, 32, 0.13)", margin: "rgba(226, 140, 160, 0.7)", frame: "#FBF5EF", shade: "rgba(24, 10, 28, 0.38)" },
+          crime_scene: { paper: "#F4E8D6", ink: "#2A1216", inkMuted: "#6A4E4B", rule: "rgba(42, 18, 22, 0.13)", margin: "rgba(200, 61, 80, 0.6)", frame: "#FBF4EA", shade: "rgba(28, 8, 12, 0.42)" },
+          paranormal: { paper: "#F0EAF0", ink: "#1A1838", inkMuted: "#59577A", rule: "rgba(26, 24, 56, 0.13)", margin: "rgba(150, 130, 230, 0.7)", frame: "#F9F5F9", shade: "rgba(12, 12, 36, 0.38)" },
         },
       },
       // Ask the informant: a silhouette (`figure` across) in a booth panel
@@ -1833,14 +1865,34 @@ export interface ModeTheme {
   readonly accentInk: `#${string}`;
   /** Stamps (OPEN, IN PROGRESS, CLOSED, CONTRADICTED, GUILTY) and any text in the mode's colour. 4.5:1 or more on ground, surface and raised. */
   readonly stamp: `#${string}`;
-  /** 1 pt edges and dividers. */
+  /** 1 pt edges and dividers: a tinted glow edge, never a grey hairline (docs/ART_DIRECTION.md, Shapes). */
   readonly rim: string;
-  /** A soft glow colour (paranormal: the presence meter, the apparition). */
-  readonly glow?: `#${string}`;
+  /**
+   * The mode's one soft light (candle, desk lamp, spirit mint): torch and lens
+   * light, glints, halos, the presence meter, the apparition. A light, not a
+   * text colour, though it reads at 4.5:1 on every ground.
+   */
+  readonly glow: `#${string}`;
+  /**
+   * The mode's colour for delight (blush, sticky-note yellow, orchid): hearts,
+   * stickers, the cat's marks, washi tape. Sparingly. Reads at 4.5:1 on every ground.
+   */
+  readonly sweet: `#${string}`;
+  /**
+   * Gold foil (the mystery-book core): foil-stamped titles, seals, ornamental
+   * rules and fleurons, a bookmark's tip. Readable as text on every ground.
+   */
+  readonly foil: `#${string}`;
   /** A tiny accent, used sparingly (crime scene: the police-tape yellow). */
   readonly detail?: `#${string}`;
   /** The mode's name in its display face: family, size, tracking and case. */
   readonly display: TextStyle;
+  /**
+   * Handwriting for anything written in the world (notes, the casebook's
+   * annotations, the cat's speech): ref.font.hand at body size. Spread it and
+   * override the size: { ...theme.hand, fontSize: 20, lineHeight: 26 }.
+   */
+  readonly hand: TextStyle;
   /** The baked photo look; null in the shell (photos show as they are). */
   readonly treatment: PhotoTreatment | null;
 }
@@ -1902,51 +1954,77 @@ function toe({
   return [...rows, 0, 0, 0, 1, 0];
 }
 
-/** Every mode's look. Home shows them in this order: noir, crime_scene, paranormal. */
+/**
+ * Gold foil, the mystery-book core's one shared touch (docs/ART_DIRECTION.md):
+ * foil-stamped titles, seals, ornamental rules, fleurons, a bookmark's tip.
+ * One gold for the whole series, 7:1 or more on every ground (tokens-test).
+ */
+const FOIL = "#D9B26A" as const;
+
+/** Handwriting at body size; screens spread it and set their own size. */
+const HAND: TextStyle = { fontFamily: refFont.hand, fontSize: 18, lineHeight: 24 };
+
+/**
+ * Every mode's look: "velvet & ink" (docs/ART_DIRECTION.md, Palettes). Each
+ * mode is a book in a series: a jewel-tone ground (never flat grey), warm
+ * light (`glow`), one colour for delight (`sweet`), gold foil, a tinted rim.
+ * Home shows them in this order: noir, crime_scene, paranormal.
+ */
 export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
-  // Monochrome with warm brass: the reference look's greys, the live theme's brass.
+  // "Velvet Noir": midnight plum, rose gold, candlelight, blush.
   noir: {
     genre: "noir",
     name: "Detective Noir",
     tagline: "Solve the case",
-    ground: "#17171A",
-    surface: "#232327",
-    raised: "#303035",
-    ink: "#F2EFE9",
-    inkMuted: "#BDB8AF",
-    accent: color.accent,
-    accentInk: color.onAccent,
-    stamp: color.accent,
-    rim: "rgba(255, 255, 255, 0.10)",
+    ground: "#18121D",
+    surface: "#241A2B",
+    raised: "#32253A",
+    ink: "#F8EEF1",
+    inkMuted: "#BFAFC0",
+    accent: "#E9B8A6",
+    accentInk: "#2A1620",
+    // Rose gold reads as text too (8:1 on raised).
+    stamp: "#E9B8A6",
+    rim: "rgba(255, 214, 230, 0.12)",
+    glow: "#FFD9A8",
+    sweet: "#F4A7C0",
+    foil: FOIL,
     display: { fontFamily: refFont.noirDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 1, textTransform: "uppercase" },
-    // Grey, a hard contrast pivoted low so dark rooms keep their midtones, heavy grain, a deep vignette.
-    // The toe holds black at 9/255 and keeps the shadows' steps (the grade alone clips everything under 0.094 grey).
+    hand: HAND,
+    // Monochrome with a plum cast: a hard contrast pivoted low so dark rooms keep their midtones, heavy grain,
+    // a deep vignette. Every pixel takes one luma (saturation 0); the toe holds black on a plum near-black
+    // (14, 10, 17) and keeps the shadows' steps, and the gain leans the mids faintly to plum.
     treatment: {
-      matrix: grade({ saturation: 0, contrast: 1.4, pivot: 0.38, offset: 0.02 }),
-      toe: toe({ saturation: 0, black: [0.035, 0.035, 0.035], slope: [0.8, 0.8, 0.8] }),
+      matrix: grade({ saturation: 0, contrast: 1.4, pivot: 0.38, offset: 0.02, gain: [1, 0.95, 1.02] }),
+      toe: toe({ saturation: 0, black: [0.055, 0.04, 0.065], slope: [0.8, 0.76, 0.82] }),
       grain: 0.14,
       vignette: 0.6,
       bloom: 0,
     },
   },
-  // Near-black (warm), blood red, bone white; police-tape yellow only as a detail.
+  // "True Crime Club": oxblood night, cherry, desk-lamp gold, sticky-note yellow.
   crime_scene: {
     genre: "crime_scene",
     name: "Crime Scene",
     tagline: "Find the killer",
-    ground: "#19130F",
-    surface: "#261D19",
-    raised: "#332621",
-    ink: "#ECE4D3",
-    inkMuted: "#C2B8A8",
-    // The user's range (#8E1B1B to #A3201F), at its brightest: a fill under bone text (6.5:1).
-    accent: "#A3201F",
-    accentInk: "#F3EDE1",
-    // The same red lifted until stamp text reads at 4.5:1 on every crime-scene ground.
-    stamp: "#E2524C",
-    rim: "rgba(236, 228, 211, 0.10)",
-    detail: "#E9C33B",
-    display: { fontFamily: refFont.crimeDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 2.4, textTransform: "uppercase" },
+    ground: "#1C0F12",
+    surface: "#2A161B",
+    raised: "#3A1F25",
+    ink: "#FBEFE8",
+    inkMuted: "#CDB3AC",
+    // Cherry (#E8475D in the doc), one shade deeper so its cream label reads at 4.5:1. An accent, never a ground.
+    accent: "#C83D50",
+    accentInk: "#FFF4EE",
+    // The same cherry lifted until stamp text reads at 4.5:1 on every crime-scene ground.
+    stamp: "#EB6174",
+    rim: "rgba(255, 220, 205, 0.12)",
+    glow: "#FFE3A3",
+    sweet: "#F6D776",
+    foil: FOIL,
+    // The police tape: the sticky-note yellow.
+    detail: "#F6D776",
+    display: { fontFamily: refFont.crimeDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 1.6, textTransform: "uppercase" },
+    hand: HAND,
     // Nearly grey, a harsh flash contrast, red pushed into the shadows. The grade alone clips red under
     // 0.09 grey and green and blue under 0.15; the toe sets black at (23, 0, 0) and keeps the shadows'
     // steps in red, with green and blue held low and harsh.
@@ -1958,25 +2036,29 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
       bloom: 0,
     },
   },
-  // Pale, cold blue-green (ectoplasm) kept grey and between 188° and 200° so it never reads as mint; cold white; a soft glow.
+  // "Moonlit": deep indigo, lavender, spirit mint, orchid.
   paranormal: {
     genre: "paranormal",
     name: "Paranormal",
     tagline: "Face the unknown",
-    ground: "#111A1D",
-    surface: "#1B272B",
-    raised: "#26353A",
-    ink: "#EDF3F5",
-    inkMuted: "#AFC2C8",
-    accent: "#A7C7CE",
-    accentInk: "#0A1316",
-    stamp: "#B8D7DD",
-    rim: "rgba(190, 228, 236, 0.12)",
-    glow: "#BFE4EC",
-    display: { fontFamily: refFont.paranormalDisplay, fontSize: 32, lineHeight: 38, letterSpacing: 1.6, textTransform: "uppercase" },
-    // Cool blue-green, lifted blacks (the grade keeps black on its lift, so no toe), a soft glow, light grain.
+    ground: "#10122A",
+    surface: "#191C38",
+    raised: "#252949",
+    ink: "#EEF0FF",
+    inkMuted: "#ABB0D6",
+    accent: "#B8A6F7",
+    accentInk: "#15132E",
+    stamp: "#B8A6F7",
+    rim: "rgba(200, 205, 255, 0.14)",
+    // Spirit mint: the one green in the app, and only ever as light.
+    glow: "#9FF2D8",
+    sweet: "#F3B6E6",
+    foil: FOIL,
+    display: { fontFamily: refFont.paranormalDisplay, fontSize: 34, lineHeight: 40, letterSpacing: 0.4 },
+    hand: HAND,
+    // Moonlight: cool indigo lifted blacks (the grade keeps black on its lift, so no toe), a soft glow, light grain.
     treatment: {
-      matrix: grade({ saturation: 0.1, contrast: 1.05, pivot: 0.4, offset: 0.02, gain: [0.8, 0.96, 1], lift: [0.04, 0.09, 0.11] }),
+      matrix: grade({ saturation: 0.12, contrast: 1.05, pivot: 0.4, offset: 0.02, gain: [0.86, 0.9, 1], lift: [0.055, 0.06, 0.15] }),
       toe: null,
       grain: 0.07,
       vignette: 0.5,
@@ -1986,9 +2068,10 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
 };
 
 /**
- * The shell's neutral theme (no mode): today's reference-look colours, so a
- * screen that reads useModeTheme() outside a mode looks as it did before the
- * modes. Photos stay untreated.
+ * The shell's theme (no mode: home, settings, the guide, Pro, capture outside
+ * a mode): velvet plum, the series' bookshelf. Its grounds are ref.color's,
+ * so a screen that reads useModeTheme() outside a mode matches one that
+ * reads ref.color. Photos stay untreated.
  */
 export const shellTheme: ModeTheme = {
   genre: null,
@@ -1999,11 +2082,16 @@ export const shellTheme: ModeTheme = {
   raised: refColor.raised,
   ink: refColor.textPrimary,
   inkMuted: refColor.textSecondary,
-  accent: refColor.paper,
-  accentInk: refColor.ground,
-  stamp: refColor.textPrimary,
+  // Blush: the shell's one strong action.
+  accent: "#F2B8C9",
+  accentInk: "#2A1220",
+  stamp: "#F4A7C0",
   rim: refColor.rim,
-  display: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
+  glow: "#FFD9A8",
+  sweet: "#F4A7C0",
+  foil: FOIL,
+  display: { fontFamily: refFont.cover, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
+  hand: HAND,
   treatment: null,
 };
 

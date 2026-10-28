@@ -35,7 +35,7 @@ function hueOf(hex: string) {
   return { hue: (h * 60 + 360) % 360, saturation };
 }
 
-const HEX_ROLES = ["ground", "surface", "raised", "ink", "inkMuted", "accent", "accentInk", "stamp", "glow", "detail"] as const;
+const HEX_ROLES = ["ground", "surface", "raised", "ink", "inkMuted", "accent", "accentInk", "stamp", "glow", "sweet", "foil", "detail"] as const;
 
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -68,7 +68,8 @@ describe("modeThemes", () => {
   it.each(THEMES)("%s: every text colour reads at 4.5:1 or more on every ground it sits on", (_name, theme) => {
     const grounds = { ground: theme.ground, surface: theme.surface, raised: theme.raised };
     const pairs: [string, string, number][] = [];
-    for (const text of ["ink", "inkMuted", "stamp"] as const) {
+    // glow, sweet and foil are lights and touches, but each is sometimes a word (a label, a sticker, a foil title).
+    for (const text of ["ink", "inkMuted", "stamp", "glow", "sweet", "foil"] as const) {
       for (const [ground, value] of Object.entries(grounds)) pairs.push([`${text} on ${ground}`, theme[text], contrast(theme[text], value)]);
     }
     pairs.push(["accentInk on accent", theme.accentInk, contrast(theme.accentInk, theme.accent)]);
@@ -78,31 +79,47 @@ describe("modeThemes", () => {
 
   it("paranormal's glow, a meter and a haze rather than text, still stands out at 3:1 on its grounds", () => {
     const { glow, ground, surface } = modeThemes.paranormal;
-    expect(contrast(glow!, ground)).toBeGreaterThanOrEqual(3);
-    expect(contrast(glow!, surface)).toBeGreaterThanOrEqual(3);
+    expect(contrast(glow, ground)).toBeGreaterThanOrEqual(3);
+    expect(contrast(glow, surface)).toBeGreaterThanOrEqual(3);
   });
 
-  it("no theme has a green or mint colour; paranormal stays cold, between 185° and 205°", () => {
+  it.each(THEMES)("%s: no ground is a flat neutral grey (velvet & ink: jewel tones)", (name, theme) => {
+    for (const role of ["ground", "surface", "raised"] as const) {
+      const { saturation } = hueOf(theme[role]);
+      expect({ name, role, tinted: saturation >= 0.15 }).toEqual({ name, role, tinted: true });
+    }
+    // The rim is a tinted glow edge, not a white hairline.
+    expect(theme.rim).not.toMatch(/rgba\(255, 255, 255/);
+  });
+
+  it("green appears only as paranormal's spirit-mint glow, and Moonlit stays cool", () => {
     for (const [name, theme] of THEMES) {
       for (const role of HEX_ROLES) {
         const value = theme[role];
-        if (!value) continue;
+        if (!value || (name === "paranormal" && role === "glow")) continue;
         const { hue, saturation } = hueOf(value);
         expect({ name, role, greenOrMint: saturation > 0.1 && hue >= 75 && hue <= 175 }).toEqual({ name, role, greenOrMint: false });
       }
     }
-    const { accent, glow, stamp, ink, inkMuted } = modeThemes.paranormal;
-    for (const value of [accent, glow!, stamp, ink, inkMuted]) {
+    // Indigo grounds, moon-white ink, lavender: blue to violet.
+    const { ground, surface, raised, ink, inkMuted, accent, stamp } = modeThemes.paranormal;
+    for (const value of [ground, surface, raised, ink, inkMuted, accent, stamp]) {
       const { hue } = hueOf(value);
-      expect({ value, cold: hue >= 185 && hue <= 205 }).toEqual({ value, cold: true });
+      expect({ value, cool: hue >= 220 && hue <= 280 }).toEqual({ value, cool: true });
     }
   });
 
-  it("keeps noir's brass and the brief's crime-scene reds", () => {
-    expect(modeThemes.noir.accent).toBe("#C89D54");
-    // The accent sits in the user's range, #8E1B1B to #A3201F; the stamp is the same hue, lifted for text.
-    expect(modeThemes.crime_scene.accent).toBe("#A3201F");
-    expect(hueOf(modeThemes.crime_scene.stamp).hue).toBeLessThan(5);
+  it("takes the art direction's palettes (docs/ART_DIRECTION.md, Palettes)", () => {
+    const doc = {
+      noir: { ground: "#18121D", surface: "#241A2B", raised: "#32253A", ink: "#F8EEF1", inkMuted: "#BFAFC0", accent: "#E9B8A6", accentInk: "#2A1620", glow: "#FFD9A8", sweet: "#F4A7C0", rim: "rgba(255, 214, 230, 0.12)" },
+      crime_scene: { ground: "#1C0F12", surface: "#2A161B", raised: "#3A1F25", ink: "#FBEFE8", inkMuted: "#CDB3AC", accentInk: "#FFF4EE", glow: "#FFE3A3", sweet: "#F6D776", rim: "rgba(255, 220, 205, 0.12)" },
+      paranormal: { ground: "#10122A", surface: "#191C38", raised: "#252949", ink: "#EEF0FF", inkMuted: "#ABB0D6", accent: "#B8A6F7", accentInk: "#15132E", glow: "#9FF2D8", sweet: "#F3B6E6", rim: "rgba(200, 205, 255, 0.14)" },
+    };
+    for (const [genre, roles] of Object.entries(doc)) expect(modeThemes[genre as keyof typeof doc]).toMatchObject(roles);
+    // Cherry (#E8475D) one shade deeper for its cream label, the same hue; its stamp the same hue lifted.
+    for (const value of [modeThemes.crime_scene.accent, modeThemes.crime_scene.stamp]) expect(Math.abs(hueOf(value).hue - hueOf("#E8475D").hue)).toBeLessThan(3);
+    // One gold foil across the series.
+    expect(new Set(THEMES.map(([, t]) => t.foil)).size).toBe(1);
   });
 
   it("sets each mode's name in a loaded Google face", () => {
@@ -110,6 +127,9 @@ describe("modeThemes", () => {
     const faces = Object.values(modeThemes).map((t) => t.display.fontFamily);
     expect(faces).toEqual([ref.font.noirDisplay, ref.font.crimeDisplay, ref.font.paranormalDisplay]);
     for (const face of faces) expect(layout).toMatch(new RegExp(`^\\s*${face},$`, "m"));
+    // Book-cover titles and handwriting load with them; every theme writes in the hand.
+    for (const face of [ref.font.cover, ref.font.coverItalic, ref.font.hand]) expect(layout).toMatch(new RegExp(`^\\s*${face},$`, "m"));
+    for (const [, theme] of THEMES) expect(theme.hand.fontFamily).toBe(ref.font.hand);
     expect(layout).not.toMatch(/Outfit|Inter_/);
   });
 });
@@ -138,16 +158,23 @@ describe("photo treatments", () => {
     for (const row of [0, 1, 2]) expect(floor[row * 5 + 4]).toBeGreaterThanOrEqual(0);
   });
 
-  it("noir is grey: every row the same, so red, green and blue come out equal", () => {
+  it("noir is monochrome with a plum cast: hue never changes a pixel, black lands on a plum near-black", () => {
     const t = modeThemes.noir.treatment!;
+    // Saturation 0: within each row the three channel weights keep luma's proportions, so a red and a green of equal luma come out the same.
     for (const m of [t.matrix, t.toe!]) {
-      expect(m.slice(0, 5)).toEqual(m.slice(5, 10));
-      expect(m.slice(0, 5)).toEqual(m.slice(10, 15));
+      for (const row of [0, 1, 2]) {
+        const [r, g, b] = m.slice(row * 5, row * 5 + 3);
+        expect(g / r).toBeCloseTo(0.7152 / 0.2126, 5);
+        expect(b / r).toBeCloseTo(0.0722 / 0.2126, 5);
+      }
     }
-    // Black lands near black, 8 to 12/255, not on it.
-    const [black] = treat(t, grey(0));
-    expect(black * 255).toBeGreaterThanOrEqual(8);
-    expect(black * 255).toBeLessThanOrEqual(12);
+    // Black lands near black (8 to 20/255), plum: red and blue above green.
+    const [r, g, b] = treat(t, grey(0)).map((v) => v * 255);
+    for (const v of [r, g, b]) {
+      expect(v).toBeGreaterThanOrEqual(8);
+      expect(v).toBeLessThanOrEqual(20);
+    }
+    expect(Math.min(r, b)).toBeGreaterThan(g);
     // High contrast: a step in the midtones comes out steeper.
     const [dark] = treat(t, grey(0.3));
     const [light] = treat(t, grey(0.6));
@@ -170,7 +197,7 @@ describe("photo treatments", () => {
     expect(gg - gr).toBeLessThan(0.1);
   });
 
-  it("paranormal lifts black to a cold blue-green and glows", () => {
+  it("paranormal lifts black to a moonlit indigo and glows", () => {
     const { matrix, bloom } = modeThemes.paranormal.treatment!;
     const [r, g, b] = apply(matrix, [0, 0, 0]);
     expect(b).toBeGreaterThan(g);

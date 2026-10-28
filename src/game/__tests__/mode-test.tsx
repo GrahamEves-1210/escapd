@@ -44,10 +44,10 @@ describe("the active mode", () => {
     expect(inShell.current).toBe(shellTheme);
   });
 
-  it("the shell's theme is today's reference look, with no photo treatment", () => {
+  it("the shell's theme is the velvet-plum bookshelf, on ref.color's grounds, with no photo treatment", () => {
     expect(themeFor(null)).toBe(shellTheme);
     expect(themeFor("noir")).toBe(modeThemes.noir);
-    expect(shellTheme).toMatchObject({ genre: null, ground: "#000000", ink: "#FFFFFF", inkMuted: "#949494", treatment: null });
+    expect(shellTheme).toMatchObject({ genre: null, ground: "#130D18", ink: "#FBF1F4", inkMuted: "#C6B3C8", treatment: null });
   });
 });
 
