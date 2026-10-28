@@ -10,11 +10,16 @@ import type { PlatePrompt } from "@/capture/slots";
 export const COPY = {
   backLabel: "Back to the camera",
   title: "Your photos",
-  /** The header's grey meta line, under the title (the camera's plate detail). */
-  count: (count: number, max: number) => `${count} of ${max} taken`,
+  /**
+   * The header's grey meta line, under the title (the camera's plate detail).
+   * "photos", not "taken": some may have been chosen from the library.
+   */
+  count: (count: number, max: number) => `${count} of ${max} photos`,
   /** The same for screen readers, with the header. */
-  countSpoken: (count: number, max: number) => `${count} of ${max} photos taken`,
+  countSpoken: (count: number, max: number) => `${count} of ${max} photos`,
   lead: "Retake anything dark or blurred. Together they should go all the way round.",
+  /** The lead with no photos yet: nothing to retake. */
+  leadEmpty: "No photos yet. Stand in the middle of the room and take them turning all the way round.",
   add: "Add a photo",
   hint: "Tap a photo to retake it",
   // A flagged photo's reason, under its name (and in its tile's label).

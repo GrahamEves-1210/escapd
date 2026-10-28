@@ -6,7 +6,9 @@
 // room under a torch beam, one title, one status line, and a square close in
 // the header. The asks and failures are the shared StateScreen. Inside a mode
 // (openCapture({ genre }) sets it) every state takes the mode's colours
-// (src/capture/ui/palette.ts) and the photos its baked treatment.
+// (src/capture/ui/palette.ts) and the photos its baked treatment. ?from=hub
+// (openCapture's monthly-cap branch, before any photo is taken) only checks
+// access: its cap state says nothing about photos.
 import { useCallback, useEffect, useRef } from "react";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { encodeFlags } from "@/capture/failure";
@@ -17,10 +19,12 @@ import { BuildWait } from "@/screens/develop/BuildWait";
 import { StateScreen } from "@/components/StateScreen";
 
 export default function DarkroomScreen() {
-  const { roomId } = useLocalSearchParams<{ roomId?: string }>();
+  const { roomId, from } = useLocalSearchParams<{ roomId?: string; from?: string }>();
   const { stage, retry } = useDevelopment(roomId || undefined);
   // The photos in slot order: the 360, round the room from photo 1.
   const plates = usePlates();
+  // Reached from home's access check (or with no photos at all): nothing taken to talk about.
+  const noPhotos = from === "hub" || plates.length === 0;
   const feedback = useFeedback();
 
   // Coming back from the account screen: check again.
@@ -68,14 +72,18 @@ export default function DarkroomScreen() {
       return stage.reason === "entitlement" ? (
         <StateScreen
           title="Your own rooms are part of ESCAPD Pro"
-          body="Pro isn't on sale in this test build. If you're testing, ask for test access for your account, then try again."
+          body="ESCAPD Pro isn't on sale in this test build. If you're testing, ask for test access for your account, then try again."
           primary={{ label: "Try again", onPress: () => retry() }}
           secondary={{ label: "Back to your photos", onPress: back }}
         />
       ) : (
         <StateScreen
           title="You've built every case this month allows"
-          body="Your allowance comes back over the next few days. Your photos stay on this phone until you close the app."
+          body={
+            noPhotos
+              ? "Your allowance comes back over the next few days. Come back then to build your next case."
+              : "Your allowance comes back over the next few days. Your photos stay on this phone until you close the app."
+          }
           primary={{ label: "Back to home", onPress: home }}
         />
       );

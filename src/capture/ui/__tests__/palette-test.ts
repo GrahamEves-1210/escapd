@@ -21,11 +21,11 @@ const contrast = (a: string, b: string) => {
 };
 
 describe("capture palette", () => {
-  it("keeps the shell exactly as the capture screens were before the modes", () => {
+  it("keeps the shell as the capture screens were before the modes, with 03's sheet dark", () => {
     const shell = capturePalette(shellTheme);
     expect(shell).toMatchObject({
       genre: null,
-      paper: true,
+      paper: false,
       page: ref.color.ground,
       well: ref.color.void,
       raised: ref.color.raised,
@@ -43,13 +43,13 @@ describe("capture palette", () => {
       guideBody: ref.layout.guide.bodyText,
       closeFill: ref.button.dismissGlass.fill,
       closeGlyph: ref.button.dismissGlass.glyph,
-      sheetGround: ref.color.paper,
-      sheet: ref.color.paper,
-      panel: ref.color.panel,
-      sheetInk: ref.color.inkDisplay,
-      sheetMuted: ref.color.inkMuted,
-      phone: ref.color.inkDisplay,
-      phoneLight: ref.color.illustrationBevel,
+      sheetGround: ref.color.void,
+      sheet: ref.color.ground,
+      panel: ref.color.raised,
+      sheetInk: ref.color.textPrimary,
+      sheetMuted: ref.color.textSecondary,
+      phone: ref.color.void,
+      phoneLight: ref.color.textSecondary,
     });
     // The shell's primary is the photo guide's own pill everywhere (round 6).
     expect(shell.primary).toBe(ref.button.ghost.fill);
@@ -112,6 +112,6 @@ describe("capture palette", () => {
     await act(() => setMode("crime_scene"));
     expect(result.current).toBe(capturePalette(modeThemes.crime_scene));
     await act(() => setMode(null));
-    expect(result.current.paper).toBe(true);
+    expect(result.current).toBe(capturePalette(shellTheme));
   });
 });

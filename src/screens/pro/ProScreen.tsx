@@ -1,13 +1,12 @@
-// 05 · Pro, the test paywall, in the reference look of 03 (pushr): the same
-// kind of decision in the same capture flow. A paper ground with pushr's
-// static haze, and a full-bleed sheet rising from the bottom: the cool grey
-// panel with the case-file art, the extended black title, three grey benefit
-// lines, the note row (test note, info or error), the black 64 pt pill and the
-// grey quiet pill. Every visible line is lowercase, as the reference; screen
-// readers hear the sentence-case copy. No visible back control, as in pushr:
-// "not now", Android back, the iOS edge swipe and VoiceOver's escape gesture
-// are the exits.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+// 05 · Pro, the test paywall, laid out as 03 (the camera permission): the
+// same kind of decision in the same capture flow, on the app's dark look in
+// the capture palette (the shell's, or the active mode's). A flat dark ground
+// and a full-bleed dark sheet rising from the bottom: the raised panel with
+// the case-file art, the ESCAPD Pro kicker, the title in the theme's display
+// face, three grey benefit lines, the note row (test note, info or error),
+// the pill and the quiet pill, all in sentence case. "Not now", Android back,
+// the iOS edge swipe and VoiceOver's escape gesture are the exits.
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -21,15 +20,17 @@ import {
   type ViewStyle,
 } from "react-native";
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import { setStatusBarStyle } from "expo-status-bar";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WarningIcon, WifiSlashIcon } from "@/components/icons";
-import { PaperHaze, PillButton, sheetRiseTiming, useShowAfter } from "@/components/noir";
+import { sheetRiseTiming, useShowAfter } from "@/components/noir";
+import { ModePill } from "@/capture/ui/ModePill";
+import { useCapturePalette } from "@/capture/ui/palette";
+import { useModeTheme } from "@/game/mode";
 import type { TextRef } from "@/components/Text";
 import { testPurchasesEnabled } from "@/capture/testPurchase";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { ctaBottomPad, motion, ref } from "@/theme/tokens";
 import { CaseFilePanel } from "./CaseFilePanel";
 import * as copy from "./copy";
 import { ProNoticeLine } from "./ProNoticeLine";
@@ -50,22 +51,17 @@ export function ProScreen() {
   const [hostHeight, setHostHeight] = useState(0);
   const [controlsHeight, setControlsHeight] = useState(0);
   useFocusOnOpen(titleRef, view.kind === "ready");
-  // Paper ground: dark status-bar glyphs while /pro has focus (as 03's sheet),
-  // back to the app's light ones when it loses it.
-  useFocusEffect(
-    useCallback(() => {
-      setStatusBarStyle("dark");
-      return () => setStatusBarStyle("light");
-    }, []),
-  );
+  const palette = useCapturePalette();
+  const theme = useModeTheme();
+  // The shell's quiet kit pill is white on dark; a mode's is its muted ink.
+  const quietGround = palette.genre === null ? "dark" : "paper";
 
   // Test builds offer the purchase; otherwise the sheet says Pro isn't on sale yet.
   const testBuild = testPurchasesEnabled();
   const working = busy !== "idle";
   // The last button's bottom sits ref.space.ctaBottom above the home
-  // indicator; with no bottom inset (iPhone SE, Android buttons) that is too
-  // tight, so it's ref.space.lg (as 03).
-  const bottomPad = insets.bottom > 0 ? insets.bottom + S.ctaBottom : S.lg;
+  // indicator, never closer than ref.space.ctaFloor to the screen's edge.
+  const bottomPad = ctaBottomPad(insets.bottom);
   // The sheet's top never rises above ref.space.lg below the safe top (as 03).
   const capTop = insets.top + S.lg;
   // Large text: drop the decorative panel once the sheet would pass the cap,
@@ -92,7 +88,7 @@ export function ProScreen() {
       accessible={false}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={styles.note}
+      style={[styles.note, { color: palette.sheetMuted }]}
       testID="pro-test-note"
     >
       {copy.TEST_NOTE}
@@ -103,22 +99,21 @@ export function ProScreen() {
 
   return (
     <View
-      style={styles.root}
+      style={[styles.root, { backgroundColor: palette.sheetGround }]}
       // VoiceOver's two-finger scrub: the same as "not now".
       onAccessibilityEscape={leave}
       testID={view.kind === "loading" ? "pro-loading" : "pro-screen"}
     >
-      <PaperHaze testID="pro-haze" />
       {view.kind === "loading" ? (
-        // Loading (no ?cap): paper and haze only; the indicator only if the check outlasts the delay.
+        // Loading (no ?cap): the ground only; the indicator only if the check outlasts the delay.
         <View pointerEvents="none" style={styles.centre}>
-          <LoadingIndicator />
+          <LoadingIndicator color={palette.inkMuted} />
         </View>
       ) : (
         // The sheet sits on the bottom edge and grows upward with its content,
         // never past the cap; past it the panel goes, then the text scrolls.
         <View style={[styles.fill, { paddingTop: capTop }]} onLayout={onHost} testID="pro-host">
-          <SheetEnter enter={view.fadeIn} style={styles.sheet}>
+          <SheetEnter enter={view.fadeIn} style={[styles.sheet, { backgroundColor: palette.sheet, borderColor: palette.rim }]}>
             {showPanel ? <CaseFilePanel /> : null}
             {/* Scrollable only while it overflows (large text), so a block that
                 fits is never an Android keyboard stop (keyboard focus: the
@@ -132,13 +127,14 @@ export function ProScreen() {
               onLayout={overflow.onLayout}
               onContentSizeChange={overflow.onContentSizeChange}
             >
-              <Text ref={titleRef} accessibilityRole="header" style={styles.title}>
+              <Text style={[styles.kicker, { color: palette.sheetMuted }]}>{copy.KICKER}</Text>
+              <Text ref={titleRef} accessibilityRole="header" style={[theme.display, styles.title, { color: palette.sheetInk }]}>
                 {copy.TITLE}
               </Text>
               {/* Each line is one screen-reader element (a Text), never a keyboard stop. */}
               <View style={styles.lines} testID="pro-lines">
                 {copy.benefitRows(view.cap).map((line) => (
-                  <Text key={line} style={styles.line}>
+                  <Text key={line} style={[styles.line, { color: palette.sheetMuted }]}>
                     {line}
                   </Text>
                 ))}
@@ -157,9 +153,8 @@ export function ProScreen() {
                 {restingLine}
               </View>
               {testBuild ? (
-                <PillButton
-                  label={copy.lower(copy.UNLOCK)}
-                  accessibilityLabel={copy.UNLOCK}
+                <ModePill
+                  label={copy.UNLOCK}
                   accessibilityHint={copy.UNLOCK_HINT}
                   busy={busy === "purchasing"}
                   spinner
@@ -168,9 +163,8 @@ export function ProScreen() {
                   style={styles.pill}
                 />
               ) : (
-                <PillButton
-                  label={copy.lower(copy.CHECK_AGAIN)}
-                  accessibilityLabel={copy.CHECK_AGAIN}
+                <ModePill
+                  label={copy.CHECK_AGAIN}
                   busy={busy === "checking"}
                   spinner
                   onPress={checkAgain}
@@ -178,12 +172,11 @@ export function ProScreen() {
                   style={styles.pill}
                 />
               )}
-              {/* The kit's quiet pill on paper: grey, darkening while pressed. */}
-              <PillButton
+              {/* The quiet way out. */}
+              <ModePill
                 variant="quiet"
-                ground="paper"
-                label={copy.lower(copy.NOT_NOW)}
-                accessibilityLabel={copy.NOT_NOW}
+                ground={quietGround}
+                label={copy.NOT_NOW}
                 disabled={working}
                 onPress={leave}
                 testID="pro-not-now"
@@ -199,13 +192,13 @@ export function ProScreen() {
 
 /**
  * Loading's short wait with no status line: a small native ActivityIndicator
- * in `raised` on paper (03's Checking indicator), shown only once the check
+ * in the palette's muted ink (03's Checking indicator), shown only once the check
  * has run past ref.layout.pro.spinnerDelay, so a faster check shows nothing.
  * It keeps the platform's own motion under reduced motion. One screen-reader
  * element (role progressbar, "Loading"), never a keyboard stop: on Android
  * `accessible` would make it focusable, so it uses screenReaderFocusable there.
  */
-function LoadingIndicator() {
+function LoadingIndicator({ color }: { color: string }) {
   const shown = useShowAfter(true, L.spinnerDelay);
   if (!shown) return null;
   return (
@@ -220,7 +213,7 @@ function LoadingIndicator() {
     >
       <ActivityIndicator
         size="small"
-        color={ref.color.raised}
+        color={color}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
         testID="pro-spinner-indicator"
@@ -259,31 +252,35 @@ function SheetEnter({ enter, style, children }: { enter: boolean; style: StylePr
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: ref.color.paper },
+  root: { flex: 1 },
   fill: { flex: 1, justifyContent: "flex-end" },
   // The indicator centred on the screen: (196.5, 426) on 393 x 852.
   centre: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
-  // Full-bleed paper, 16 continuous top corners, square bottom corners, no
-  // shadow, hairline, grabber or scrim. It shrinks (and its text scrolls) only
-  // when large text would push it past the top.
+  // Full-bleed, 16 continuous top corners with a 1 pt rim, square bottom
+  // corners, no shadow, grabber or scrim. It shrinks (and its text scrolls)
+  // only when large text would push it past the top.
   sheet: {
     flexShrink: 1,
     overflow: "hidden",
-    backgroundColor: ref.color.paper,
+    borderTopWidth: ref.layout.hub.hairline,
+    borderLeftWidth: ref.layout.hub.hairline,
+    borderRightWidth: ref.layout.hub.hairline,
     borderTopLeftRadius: ref.radius.bottomSheet,
     borderTopRightRadius: ref.radius.bottomSheet,
     ...ref.curve,
   },
   scroll: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: S.xl, paddingTop: S.xl },
-  // pushr's title: Archivo Black 30/36, lowercase (ref.type.display), black.
-  title: { ...ref.type.display, color: ref.color.inkDisplay },
-  // Title baseline to first body baseline 39, as pushr's.
+  // ESCAPD Pro, over the title.
+  kicker: { ...ref.type.meta, marginBottom: S.sm },
+  // The theme's display face (the shell's serif, a mode's own), in sentence case.
+  title: { textTransform: "none" },
+  // Title baseline to first body baseline 39, as 03's.
   lines: { marginTop: L.titleGap },
-  // The body: system 17/22, the reference's grey, lowercase.
-  line: { ...ref.type.body, color: ref.color.inkMuted, textTransform: "lowercase" },
+  // The body: system 17/22, the sheet's grey.
+  line: { ...ref.type.body },
   actions: { paddingHorizontal: S.xl, paddingTop: S.sm },
-  note: { ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase" },
+  note: { ...ref.type.meta },
   pill: { marginTop: S.band },
   quiet: { marginTop: S.sm },
 });

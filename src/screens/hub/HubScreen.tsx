@@ -6,12 +6,14 @@
 // lies partly over the one above, turned a little, casting a soft shadow up
 // onto it (deck.ts). A short screen or large text scrolls them.
 // A card's tap (one at a time):
-// - First time: each mode shows its one-screen intro (/mode/intro/<genre>),
-//   whose button starts a new case.
-// - After that, with a case to go back to in that mode (caseStatus.ts,
-//   caseToContinue): the continue prompt (ResumeSheet) over home in the
-//   mode's colours: Continue resumes it (/play/<id> or the build wait);
-//   Start a new case runs openCapture({ genre }).
+// - With a case to go back to in that mode (caseStatus.ts, caseToContinue):
+//   the continue prompt (ResumeSheet) over home in the mode's colours, even
+//   the first time on a device: Continue resumes it (/play/<id> or the build
+//   wait); Start a new case runs openCapture({ genre }) (through the intro
+//   if it hasn't shown yet).
+// - First time, with no case open: each mode shows its one-screen intro
+//   (/mode/intro/<genre>), whose button starts a new case. When home can't
+//   find out (offline) the intro still shows.
 // - Otherwise a new case straight away: openCapture({ genre }) (guide,
 //   camera, photos, build; a guest to /account, no Pro to /pro). If the
 //   access check can't run it carries on to /capture, whose backstop shows
@@ -19,14 +21,12 @@
 // The tap uses this focus's fetch once it has landed; until then the card
 // goes busy while it waits for it. A failure shows the notice.
 // Home is the shell, so it clears the active mode each time it gains focus.
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance, type ViewStyle } from "react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance, type ViewStyle } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Defs, LinearGradient, Rect } from "react-native-svg";
 import { openCapture } from "@/capture/openCapture";
-import { gradientLine, gradientStops } from "@/components/noir";
 import { GENRES, setMode } from "@/game/mode";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
 import { isNetworkError } from "@/lib/escapd-api";
@@ -44,11 +44,11 @@ import { ModeCard } from "./ModeCard";
 import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
-import { ART as WINDOW_ART, WindowBackdrop } from "./WindowBackdrop";
+import { WindowBackdrop, windowGeometry } from "./WindowBackdrop";
+import { focusForAccessibility } from "@/lib/a11y";
 
 const H = ref.layout.hub;
 const M = H.modes;
-const DIVIDER = ref.gradient.divider;
 /** The 6 between a chip's 48 hit box and its 36 disc. */
 const CHIP_PAD = (ref.button.chip.hit - ref.button.chip.size) / 2;
 /** The header's height under the safe top: the chip row and the divider under it. */
@@ -74,7 +74,7 @@ export function HubScreen() {
   const insets = useSafeAreaInsets();
   // The logo falls in with the cards, a beat after the window.
   const logoIn = useFallIn(0);
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { reducedMotion } = useTheme();
   const hub = useHubData();
   const [busy, setBusy] = useState<Genre | null>(null);
@@ -89,14 +89,22 @@ export function HubScreen() {
   const action = useRef<AbortController | null>(null);
   const failures = useRef(0);
   const focusReturn = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dividerId = `divider${useId().replace(/[^A-Za-z0-9]/g, "")}`;
 
-  // The deck: the scroll view's height (measured; until then from the window), and each card's words.
-  const [viewport, setViewport] = useState<number | null>(null);
+  // The deck: the scroll view's top and height (measured; until then from the window), and each card's words.
+  const [viewport, setViewport] = useState<{ y: number; height: number } | null>(null);
   const [words, setWords] = useState<Partial<Record<Genre, number>>>({});
-  const column = viewport ?? windowHeight - insets.top - HEADER;
+  const columnTop = viewport?.y ?? insets.top + HEADER;
+  const column = viewport?.height ?? windowHeight - insets.top - HEADER;
   // The deck takes most of the column, leaving the window's sill clear for the cat.
-  const deck = deckLayout((column - M.top - insets.bottom - M.foot) * DECK_SHARE, Math.max(0, ...Object.values(words)), GENRES.length);
+  const deckRoom = column - M.top - insets.bottom - M.foot;
+  const deck = deckLayout(deckRoom * DECK_SHARE, Math.max(0, ...Object.values(words)), GENRES.length);
+  const fits = deck.height <= deckRoom;
+  // The cat sits on the sill, under the deck: as large as the room between
+  // them allows, and left out where there's too little (or the deck scrolls).
+  const sillTop = windowHeight - windowGeometry(windowWidth, windowHeight).sill;
+  const deckBottom = columnTop + M.top + deck.height + tiltOverhang(windowWidth - 2 * M.edge);
+  const catWidth = Math.min(CAT.width, (sillTop + CAT.sink - deckBottom - CAT.gap) / CAT.aspect);
+  const showCat = fits && catWidth >= CAT.minWidth;
 
   // Home is the shell: no mode while it is in front.
   useModeOnFocus(null);
@@ -158,14 +166,20 @@ export function HubScreen() {
     const run: { signal: AbortSignal | null } = { signal: null };
     const working = () => (run.signal ??= begin(genre));
     try {
-      if (!(await hasSeenIntro(genre))) {
-        router.push(introHref(genre));
-        return;
-      }
+      const seen = await hasSeenIntro(genre);
+      // An open case comes first, even before the intro (a new device, an
+      // existing account): the intro's button only starts a new case.
       let data = hub.fresh();
       if (!data) {
         const signal = working();
-        data = await hub.entry();
+        try {
+          data = await hub.entry();
+        } catch (error) {
+          // Can't tell whether there's a case: the intro needs no network.
+          if (seen) throw error;
+          if (!signal.aborted) router.push(introHref(genre));
+          return;
+        }
         if (signal.aborted) return;
       }
       const target = data.cases[genre];
@@ -174,6 +188,10 @@ export function HubScreen() {
         run.signal = null;
         prompts.current += 1;
         setPrompt({ genre, target, key: prompts.current });
+        return;
+      }
+      if (!seen) {
+        router.push(introHref(genre));
         return;
       }
       await startNew(genre, working());
@@ -205,7 +223,7 @@ export function HubScreen() {
       focusReturn.current = setTimeout(() => {
         focusReturn.current = null;
         const node = target();
-        if (node) AccessibilityInfo.sendAccessibilityEvent(node, "focus");
+        focusForAccessibility(node);
       }, exit + H.sheet.focusMargin);
     },
     [reducedMotion, cancelFocusReturn],
@@ -236,7 +254,7 @@ export function HubScreen() {
   const openRoute = (route: SettingsRoute) => {
     cancelFocusReturn();
     sheetLeaving.current = true;
-    if (route === "/account") router.push({ pathname: "/account", params: { next: "back" } });
+    if (route === "/account") router.push({ pathname: "/account", params: { next: "back", from: "settings" } });
     else router.push(route);
   };
 
@@ -267,11 +285,19 @@ export function HubScreen() {
     router.push(continueHref(open.target));
     return true;
   };
-  // Start a new case: once the new case's route has opened, the sheet slides away the same way.
+  // Start a new case: once the new case's route has opened, the sheet slides
+  // away the same way. A mode whose intro hasn't shown yet goes through it
+  // (its button starts the new case).
   const resumeFresh = async (open: Prompt) => {
     if (action.current) return false;
     const signal = begin(open.genre);
     try {
+      if (!(await hasSeenIntro(open.genre))) {
+        if (signal.aborted) return false;
+        leaving.current = true;
+        router.push(introHref(open.genre));
+        return true;
+      }
       await startNew(open.genre, signal);
       if (signal.aborted) return false;
       leaving.current = true;
@@ -339,7 +365,10 @@ export function HubScreen() {
         <ScrollView
           style={styles.column}
           contentContainerStyle={[styles.cards, { paddingBottom: insets.bottom + M.foot }]}
-          onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
+          onLayout={(e) => {
+            const { y, height } = e.nativeEvent.layout;
+            setViewport((v) => (v && v.y === y && v.height === height ? v : { y, height }));
+          }}
           testID="hub-cards"
         >
           {/* Reading order is the deck's order; later cards lie on top (no zIndex). */}
@@ -347,7 +376,8 @@ export function HubScreen() {
             <FallIn
               key={genre}
               index={i + 1}
-              style={{ marginTop: i === 0 ? 0 : -deck.overlap, transform: [{ rotate: `${deckTilt(i)}deg` }] }}
+              tilt={deckTilt(i)}
+              style={{ marginTop: i === 0 ? 0 : -deck.overlap }}
             >
             <ModeCard
               ref={(node) => {
@@ -370,15 +400,17 @@ export function HubScreen() {
         </ScrollView>
 
         {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
-        <View style={[styles.sillCat, { bottom: windowHeight * WINDOW_ART.sill - 6 }]} pointerEvents="box-none">
-          <SittingCat width={64} delay={FALL.delay + 4 * FALL.stagger} label="The black cat, on the window sill" />
-        </View>
+        {showCat ? (
+          <View style={[styles.sillCat, { bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
+            <SittingCat width={Math.floor(catWidth)} delay={FALL.delay + 4 * FALL.stagger} label="The black cat, on the window sill" />
+          </View>
+        ) : null}
 
-        {/* Always mounted: Android speaks a polite live region when its content changes, never one that has just mounted. Over the last card's foot. */}
+        {/* Always mounted: Android speaks a polite live region when its content changes, never one that has just mounted. Over the last card's foot, clear of the cat on the sill. */}
         <View
           accessibilityLiveRegion="polite"
           pointerEvents="box-none"
-          style={[styles.noticeSlot, { bottom: insets.bottom + M.foot + M.pad }]}
+          style={[styles.noticeSlot, { bottom: fits ? windowHeight - deckBottom + M.pad : insets.bottom + M.foot + M.pad }]}
           testID="hub-notice-slot"
         >
           {notice ? <HubNotice key={notice.id} offline={notice.offline} /> : null}
@@ -406,6 +438,19 @@ export function HubScreen() {
 /** How much of the column the deck fills: smaller cards, the sill and the cat in view below them. */
 const DECK_SHARE = 0.8;
 
+/**
+ * The sill cat: `width` at most, never under `minWidth` (else it's left
+ * out); its art's height / width (assets/characters/cat_sit.png); its feet
+ * `sink` below the sill's top edge; at least `gap` clear of the deck.
+ */
+const CAT = { width: 64, minWidth: 34, aspect: 640 / 444, sink: 6, gap: 6 } as const;
+
+/** How far the turned cards reach below their unturned box: half the card's width times the steepest tilt's sine. */
+function tiltOverhang(cardWidth: number): number {
+  const steepest = Math.max(...ref.layout.hub.modes.deck.tilt.map(Math.abs));
+  return Math.ceil((cardWidth / 2) * Math.sin((steepest * Math.PI) / 180));
+}
+
 /** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
 const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620 } as const;
 
@@ -421,9 +466,17 @@ function useFallIn(index: number) {
   }));
 }
 
-function FallIn({ index, style, children }: { index: number; style: ViewStyle; children: ReactNode }) {
+/**
+ * A card falling into the deck. The tilt is on a still wrapper: the fall's
+ * animated transform (translateY) would replace a rotate in the same style.
+ */
+function FallIn({ index, tilt, style, children }: { index: number; tilt: number; style: ViewStyle; children: ReactNode }) {
   const fall = useFallIn(index);
-  return <Animated.View style={[style, styles.card, fall]}>{children}</Animated.View>;
+  return (
+    <View style={[style, { transform: [{ rotate: `${tilt}deg` }] }]}>
+      <Animated.View style={[styles.card, fall]}>{children}</Animated.View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

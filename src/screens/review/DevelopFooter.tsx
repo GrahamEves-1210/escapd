@@ -11,7 +11,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import { ModePill } from "@/capture/ui/ModePill";
 import { useCapturePalette } from "@/capture/ui/palette";
-import { ref } from "@/theme/tokens";
+import { ctaBottomPad, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
 import { PageFade } from "./PageFade";
 
@@ -28,7 +28,7 @@ export interface DevelopFooterProps {
 export function DevelopFooter({ bottom, blocked, onDevelop }: DevelopFooterProps) {
   const palette = useCapturePalette();
   return (
-    <View style={[styles.footer, { backgroundColor: palette.page, paddingBottom: bottom + ref.space.ctaBottom }]} testID="develop-footer">
+    <View style={[styles.footer, { backgroundColor: palette.page, paddingBottom: ctaBottomPad(bottom) }]} testID="develop-footer">
       <PageFade color={palette.page} height={F.fade} solidAt="bottom" style={styles.fade} />
       {blocked ? (
         <Text

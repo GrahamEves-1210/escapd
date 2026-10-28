@@ -1,6 +1,6 @@
 // 03 · Camera permission: the sheet that holds the screen's one decision
-// (docs/DESIGN.md 03, Hosting, Layout and States). pushr's sheet: full-bleed
-// ref.color.paper rising from below, top corners ref.radius.bottomSheet
+// (docs/DESIGN.md 03, Hosting, Layout and States). A dark sheet (the capture
+// palette's `sheet`): full-bleed, rising from below, top corners ref.radius.bottomSheet
 // (continuous), square at the foot, no shadow, scrim, grabber, hairline or
 // grain. It is the route's own state, not a modal: nothing suggests it can be
 // dragged or tapped away. It slides up on ref.motion.sheetRise (a
@@ -11,12 +11,12 @@
 // slot) in the ref.space.xl gutter, then the pinned controls. Content-sized
 // and bottom-anchored: when its content changes height, its top moves with
 // ref.motion.sheetRise and its bottom stays fixed, the buttons with it. With
-// large text it grows up to ref.space.lg below the safe top; past that the
+// large text it grows up to just under the close square; past that the
 // panel is dropped, then the text scrolls while the controls stay pinned.
-// Inside a mode the sheet, title and body take the mode's sheet colours
-// (src/capture/ui/palette.ts): a dark `surface` sheet, ink and muted ink.
+// The sheet, title and body take the capture palette's sheet colours
+// (src/capture/ui/palette.ts), the title the theme's display face in sentence case.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, ScrollView, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent } from "react-native";
+import { ScrollView, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -26,10 +26,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { useModeTheme } from "@/game/mode";
+import { ctaBottomPad, motion, ref } from "@/theme/tokens";
 import { sheetEntering, sheetExiting, toEasing } from "@/components/noir";
 import { useCapturePalette } from "../palette";
 import { IllustrationPanel } from "./IllustrationPanel";
+import { focusForAccessibility } from "@/lib/a11y";
 
 const P = ref.layout.permission;
 const RISE = sheetEntering(false);
@@ -41,8 +43,8 @@ const RESIZE = LinearTransition.duration(ref.motion.sheetRise.duration).easing(t
 const FADE_IN = FadeIn.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 const FADE_OUT = FadeOut.duration(motion.reducedFade).reduceMotion(ReduceMotion.Never);
 
-/** The sheet's top never rises above this far below the safe top. */
-export const CAP_BELOW_SAFE_TOP = ref.space.lg;
+/** The sheet's top never rises above this far below the safe top: clear of the screen's close square. */
+export const CAP_BELOW_SAFE_TOP = ref.layout.camera.top + ref.button.square.size + ref.space.sm;
 
 export interface SheetNotice {
   /** The slot's identity: a new key crossfades it. */
@@ -68,14 +70,15 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
   const insets = useSafeAreaInsets();
   const { reducedMotion } = useTheme();
   const palette = useCapturePalette();
+  const theme = useModeTheme();
   const titleRef = useRef<HostInstance>(null);
   const [hostHeight, setHostHeight] = useState(0);
   const [textHeight, setTextHeight] = useState(0);
   const [controlsHeight, setControlsHeight] = useState(0);
 
   // The last button's bottom edge sits ref.space.ctaBottom above the home
-  // indicator; with no bottom inset, that is too tight, so it's ref.space.lg.
-  const bottomPad = insets.bottom > 0 ? insets.bottom + ref.space.ctaBottom : ref.space.lg;
+  // indicator, never closer than ref.space.ctaFloor to the screen's edge.
+  const bottomPad = ctaBottomPad(insets.bottom);
   const capTop = insets.top + CAP_BELOW_SAFE_TOP;
 
   // Large text: drop the decorative panel once the sheet would pass the cap,
@@ -93,7 +96,7 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
     const timer = setTimeout(
       () => {
         const node = titleRef.current;
-        if (node) AccessibilityInfo.sendAccessibilityEvent(node, "focus");
+        focusForAccessibility(node);
       },
       reducedMotion ? motion.reducedFade : P.titleFocusDelay,
     );
@@ -110,7 +113,7 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
     <LayoutAnimationConfig skipEntering skipExiting>
       <View style={styles.text} onLayout={onText} testID="permission-text">
         <Animated.View key={`title-${copyKey}`} entering={FADE_IN} exiting={FADE_OUT}>
-          <Text ref={titleRef} accessibilityRole="header" style={[styles.title, { color: palette.sheetInk }]}>
+          <Text ref={titleRef} accessibilityRole="header" style={[theme.display, styles.title, { color: palette.sheetInk }]}>
             {title}
           </Text>
         </Animated.View>
@@ -168,7 +171,7 @@ export function PermissionSheet({ copyKey, title, body, notice, children, testID
 
 const styles = StyleSheet.create({
   host: { justifyContent: "flex-end" },
-  // pushr's sheet: white, full-bleed, ref.radius.bottomSheet continuous top corners,
+  // Full-bleed, ref.radius.bottomSheet continuous top corners,
   // square at the screen's foot, clipping the panel. Opaque, no shadow.
   sheet: {
     flexShrink: 1,
@@ -180,12 +183,11 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0, flexShrink: 1 },
   // Title box ref.space.xl below the panel (or the sheet's top when the panel is dropped).
   text: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.xl },
-  // pushr's title: Archivo Black 30/36, lowercase (ref.type.display), black, left-aligned.
-  title: { ...ref.type.display },
-  // The body: the system font 17/22, the reference's grey, lowercase, ragged right; its box
-  // titleToBody 14 below the title's (title baseline to first body baseline 39, as measured).
+  // The theme's display face (the shell's serif, a mode's own), in sentence case, left-aligned.
+  title: { textTransform: "none" },
+  // The body: the system font 17/22, grey, ragged right; its box titleToBody 14 below the title's.
   body: { marginTop: P.titleToBody },
-  bodyText: { ...ref.type.body, textTransform: "lowercase" },
+  bodyText: { ...ref.type.body },
   notice: { marginTop: ref.space.sm },
   // The pill sits ref.space.band below the body's box (or the notice); the quiet buttons ref.space.sm below it, and apart.
   controls: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.band, gap: ref.space.sm },

@@ -50,7 +50,7 @@ const viewsWhere = (root: Node, match: (style: Record<string, unknown>) => boole
 const ghostEdges = (pill: Node) => viewsWhere(pill, (s) => s.borderColor === GHOST.border && s.borderWidth === GHOST.borderWidth);
 // The roll's prompts: 1x's 6 (also the plan before any camera has said which lens), 0.5x's 5.
 const SIX = platePrompts(dialStops(6));
-/** The header: the title and the count, read as one ("Your photos, 4 of 6 photos taken"). */
+/** The header: the title and the count, read as one ("Your photos, 4 of 6 photos"). */
 const headerName = (count: number) => `${COPY.title}, ${COPY.countSpoken(count, MAX_PLATES)}`;
 
 function fill(count: number) {
@@ -75,10 +75,10 @@ describe("layout and copy", () => {
     fill(4);
     await renderAt();
     // The camera's header: the serif title over the grey count, one screen-reader header, read politely as it changes.
-    const header = screen.getByRole("header", { name: "Your photos, 4 of 6 photos taken" });
+    const header = screen.getByRole("header", { name: "Your photos, 4 of 6 photos" });
     expect(header.props.accessibilityLiveRegion).toBe("polite");
     expect(screen.getByText("Your photos")).toBeTruthy();
-    expect(screen.getByText("4 of 6 taken")).toBeTruthy();
+    expect(screen.getByText("4 of 6 photos")).toBeTruthy();
     expect(screen.getByText(COPY.count(4, MAX_PLATES))).toBeTruthy();
     expect(screen.getByText("Retake anything dark or blurred. Together they should go all the way round.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Back to the camera" })).toBeTruthy();
@@ -291,8 +291,8 @@ describe("a roll on 0.5x: 5 photos", () => {
   it("counts against 5 and names each photo by where it looks, 72 degrees apart", async () => {
     fillWide(4);
     await renderAt();
-    expect(screen.getByRole("header", { name: "Your photos, 4 of 5 photos taken" })).toBeTruthy();
-    expect(screen.getByText("4 of 5 taken")).toBeTruthy();
+    expect(screen.getByRole("header", { name: "Your photos, 4 of 5 photos" })).toBeTruthy();
+    expect(screen.getByText("4 of 5 photos")).toBeTruthy();
     ["Start", "Right", "Back\u00A0right", "Back\u00A0left"].forEach((name, i) => {
       expect(within(screen.getByTestId(`plate-${i}`)).getByText(name)).toBeTruthy();
     });
@@ -303,13 +303,13 @@ describe("a roll on 0.5x: 5 photos", () => {
   it("hides Add a photo once 5 are taken, and offers it again for a removed photo's open slot", async () => {
     fillWide(5);
     const { unmount } = await renderAt();
-    expect(screen.getByText("5 of 5 taken")).toBeTruthy();
+    expect(screen.getByText("5 of 5 photos")).toBeTruthy();
     expect(within(screen.getByTestId("plate-4")).getByText("Left")).toBeTruthy();
     expect(screen.queryByRole("button", { name: COPY.add })).toBeNull();
     await unmount();
     removePlate(1);
     await renderAt();
-    expect(screen.getByText("4 of 5 taken")).toBeTruthy();
+    expect(screen.getByText("4 of 5 photos")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Take photo 2, Right. This photo is open." })).toBeTruthy();
     expect(screen.getByRole("button", { name: COPY.add })).toBeTruthy();
   });
@@ -420,12 +420,12 @@ describe("build pill", () => {
     fill(MIN_PLATES);
     await renderAt();
     expect(screen.queryByTestId("develop-helper")).toBeNull();
-    // The guide's foot: its reading column, the pill's foot ref.space.ctaBottom over the (here zero) safe area.
+    // The guide's foot: its reading column, the pill's foot ref.space.ctaBottom over the (here zero) safe area, counted as at least ctaFloor.
     expect(styleOf(screen.getByTestId("develop-footer"))).toMatchObject({
       backgroundColor: ref.color.ground,
       paddingTop: L.footer.pad,
       paddingHorizontal: ref.space.reading,
-      paddingBottom: ref.space.ctaBottom,
+      paddingBottom: ref.space.ctaFloor + ref.space.ctaBottom,
     });
     // In the shell, the guide's own ghost pill: 52 tall, the full column, its 1 pt hairline, the headline label.
     const bar = screen.getByTestId("develop");

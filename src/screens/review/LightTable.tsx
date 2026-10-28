@@ -9,7 +9,7 @@
 // the top.
 //
 // Top to bottom: the camera's header (the square back button, the serif
-// title "Your photos" over the grey count "4 of 5 taken", counted against the
+// title "Your photos" over the grey count "4 of 5 photos", counted against the
 // roll's plan: 5 on 0.5x, 6 on 1x); then a scrolling
 // column: the whole-set note (if any), the lead line, the photos (02's last
 // photo grown into 3:4 tiles, two to a row), the retake hint, "Add a photo"
@@ -73,6 +73,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
 
   const back = () => (router.canGoBack() ? router.back() : router.replace("/capture"));
   const [gridH, setGridH] = useState(0);
+  // With none yet the lead says so, in place of the retake advice.
   const hasPlates = plates.length > 0;
 
   return (
@@ -87,7 +88,7 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
             </View>
           ) : null}
           <Text style={[styles.lead, { color: palette.inkMuted }]} testID="review-lead">
-            {COPY.lead}
+            {hasPlates ? COPY.lead : COPY.leadEmpty}
           </Text>
           {/* The retake hint right under the lead, by the photos it's about. */}
           {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}

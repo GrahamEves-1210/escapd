@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ModePill } from "@/capture/ui/ModePill";
 import { ThinkingStates } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
-import { ref } from "@/theme/tokens";
+import { ctaBottomPad, ref } from "@/theme/tokens";
 
 const L = ref.layout.state;
 
@@ -78,7 +78,7 @@ export function StateScreen({ title, body, icon, primary, secondary, loading }: 
 export function StateActions({ primary, secondary, bottom }: { primary?: StateAction; secondary?: StateAction; bottom: number }) {
   if (!primary && !secondary) return <View style={{ height: bottom }} />;
   return (
-    <View style={[styles.actions, { paddingBottom: bottom + ref.space.ctaBottom }]} testID="state-actions">
+    <View style={[styles.actions, { paddingBottom: ctaBottomPad(bottom) }]} testID="state-actions">
       {primary ? (
         <ModePill
           variant="ghost"

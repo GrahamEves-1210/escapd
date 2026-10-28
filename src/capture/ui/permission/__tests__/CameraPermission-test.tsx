@@ -1,5 +1,5 @@
-// 03 · Camera permission (docs/DESIGN.md 03): pushr's look and every state's
-// behaviour. The sheet's own frame rules are in PermissionSheet-test.tsx, the
+// 03 · Camera permission (docs/DESIGN.md 03): the app's dark look and every
+// state's behaviour. The sheet's own frame rules are in PermissionSheet-test.tsx, the
 // route shell's in captureRoute-test.tsx.
 import { AccessibilityInfo, BackHandler, Linking, Platform, StyleSheet, processColor } from "react-native";
 import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
@@ -11,7 +11,7 @@ import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/proc
 import { addPlate, clearPlates, getPlates, usePlates } from "@/capture/roll";
 import { setMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { modeThemes, ref } from "@/theme/tokens";
+import { modeThemes, ref, shellTheme } from "@/theme/tokens";
 import { CameraPermission } from "../../CameraPermission";
 import type { CameraPermissionProps } from "../../types";
 import { COPY, PERMISSION_COPY } from "../copy";
@@ -112,7 +112,8 @@ async function renderScreen(overrides: Partial<ScreenProps> = {}, reducedMotion 
   return props;
 }
 
-const buttonLabels = () => screen.queryAllByRole("button").map((b) => b.props.accessibilityLabel);
+/** The decision's buttons (the close square, always first, is checked on its own). */
+const buttonLabels = () => screen.queryAllByRole("button").map((b) => b.props.accessibilityLabel).filter((label) => label !== COPY.close);
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
 /** Opacity applied to a control by its own style or by an ancestor's. */
 function opacityOf(node: { props: { style?: unknown }; parent: unknown } | null): number {
@@ -154,13 +155,14 @@ describe("Checking", () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it("is the white ground and its haze alone, with a thinking line only past ~1 s", async () => {
+  it("is the dark ground and the close square alone, with a thinking line only past ~1 s", async () => {
     await renderScreen({ permission: null, checking: true });
     expect(screen.queryByTestId("permission-sheet", hidden)).toBeNull();
     expect(buttonLabels()).toEqual([]);
+    expect(screen.getByRole("button", { name: COPY.close })).toBeTruthy();
     const ground = screen.getByTestId("permission-ground", hidden);
-    expect(styleOf(ground)).toMatchObject({ backgroundColor: ref.color.paper });
-    expect(inner(ground).some((n) => String(n.type).includes("RadialGradient"))).toBe(true);
+    expect(styleOf(ground)).toMatchObject({ backgroundColor: ref.color.void });
+    expect(screen.queryByTestId("permission-haze", hidden)).toBeNull();
 
     expect(screen.queryByTestId("permission-checking", hidden)).toBeNull();
     await act(() => jest.advanceTimersByTime(P.thinkingDelay - 1));
@@ -168,7 +170,7 @@ describe("Checking", () => {
     expect(announce).not.toHaveBeenCalled();
 
     await act(() => jest.advanceTimersByTime(1));
-    // The status is the line's wrapper; the drawn line inside it is hidden and lowercase.
+    // The status is the line's wrapper; the drawn line inside it is hidden.
     expect(screen.getByTestId("permission-checking").props).toMatchObject({
       accessible: true,
       screenReaderFocusable: true,
@@ -176,8 +178,8 @@ describe("Checking", () => {
       accessibilityLabel: COPY.checking,
       accessibilityLiveRegion: "polite",
     });
-    expect(screen.queryByText("opening the camera")).toBeNull();
-    expect(screen.getAllByText("opening the camera", hidden).length).toBeGreaterThan(0);
+    expect(screen.queryByText(COPY.checking)).toBeNull();
+    expect(screen.getAllByText(COPY.checking, hidden).length).toBeGreaterThan(0);
     expect(announce).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith(COPY.checking);
   });
@@ -193,49 +195,50 @@ describe("Checking", () => {
 });
 
 describe("Default", () => {
-  it("sets out the decision in pushr's look: the wide black title, the grey body, the black pill and a grey quiet way out", async () => {
+  it("sets out the decision on the app's dark sheet: the display title, the grey body, the pill and a quiet way out, in sentence case", async () => {
     await renderScreen();
+    expect(styleOf(screen.getByTestId("permission-ground", hidden)).backgroundColor).toBe(ref.color.void);
+    expect(styleOf(screen.getByTestId("permission-sheet")).backgroundColor).toBe(ref.color.ground);
     const title = screen.getByRole("header", { name: PERMISSION_COPY.default.title });
-    expect(styleOf(title)).toMatchObject({ ...ref.type.display, color: ref.color.inkDisplay, textTransform: "lowercase" });
-    expect(styleOf(screen.getByText(PERMISSION_COPY.default.body))).toMatchObject({
-      ...ref.type.body,
-      color: ref.color.inkMuted,
-      textTransform: "lowercase",
-    });
+    expect(styleOf(title)).toMatchObject({ ...shellTheme.display, color: ref.color.textPrimary, textTransform: "none" });
+    expect(styleOf(screen.getByText(PERMISSION_COPY.default.body))).toMatchObject({ ...ref.type.body, color: ref.color.textSecondary });
+    expect(styleOf(screen.getByText(PERMISSION_COPY.default.body)).textTransform).toBeUndefined();
 
-    // The kit's 64 pt black pill, full width, its label lowercase; screen readers hear the copy.
+    // The kit's 64 pt pill, full width, its label the copy itself.
     const pill = screen.getByRole("button", { name: "Allow the camera" });
     expect(styleOf(pill)).toMatchObject({ minHeight: ref.button.primary.height, alignSelf: "stretch" });
-    expect(within(pill).getByText("allow the camera")).toBeTruthy();
+    expect(within(pill).getByText("Allow the camera")).toBeTruthy();
 
-    // The kit's quiet pill on paper: no fill, 48 tall, label + 16 each side, centred; headline type in the reference's grey, lowercase.
+    // The kit's quiet pill on dark: no fill, 48 tall, label + 16 each side, centred; headline type.
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
     expect(styleOf(quiet)).toMatchObject({ minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignSelf: "center" });
     expect(styleOf(quiet).backgroundColor).toBeUndefined();
-    expect(styleOf(within(quiet).getByText("choose photos instead"))).toMatchObject(ref.type.headline);
-    expect(ref.button.quiet.paper.label).toBe(ref.color.inkMuted);
+    expect(styleOf(within(quiet).getByText("Choose photos instead"))).toMatchObject(ref.type.headline);
     expect(screen.queryByRole("button", { name: "Review your photos" })).toBeNull();
   });
 
-  it("has no back control, as the reference: focus moves from the pill to the quiet button only", async () => {
-    await renderScreen();
-    expect(buttonLabels()).toEqual(["Allow the camera", "Choose photos instead"]);
+  it("has a visible way out: the close square first, then the pill and the quiet button", async () => {
+    const props = await renderScreen();
+    const labels = screen.queryAllByRole("button").map((b) => b.props.accessibilityLabel);
+    expect(labels).toEqual([COPY.close, "Allow the camera", "Choose photos instead"]);
+    await fireEvent.press(screen.getByRole("button", { name: COPY.close }));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("draws the phone on the light grey panel: a black frame, its grey lights and the island, cropped at the panel's foot", async () => {
+  it("draws the phone on the raised panel: a dark frame, its grey lights and the island, cropped at the panel's foot", async () => {
     await renderScreen();
     // Decoration: present, but hidden from screen readers.
     expect(screen.queryByTestId("permission-illustration")).toBeNull();
     const panel = screen.getByTestId("permission-illustration", hidden);
-    expect(styleOf(panel)).toMatchObject({ height: P.panel, backgroundColor: ref.color.panel, overflow: "hidden" });
+    expect(styleOf(panel)).toMatchObject({ height: P.panel, backgroundColor: ref.color.raised, overflow: "hidden" });
     const art = inner(panel);
     const svg = art.find((n) => n.type === "RNSVGSvgView");
     expect(svg?.props).toMatchObject({ bbHeight: P.panel });
     const shapes = art.filter((n) => n.type === "RNSVGPath" || n.type === "RNSVGRect");
     const fills = shapes.map((n) => solid(n.props.fill));
-    // The frame and the island in black, the open screen in the panel's grey.
-    expect(fills.filter((c) => c === processColor(ref.color.inkDisplay))).toHaveLength(2);
-    expect(fills.filter((c) => c === processColor(ref.color.panel))).toHaveLength(1);
+    // The frame and the island in the ground, the open screen in the panel's fill.
+    expect(fills.filter((c) => c === processColor(ref.color.void))).toHaveLength(2);
+    expect(fills.filter((c) => c === processColor(ref.color.raised))).toHaveLength(1);
     // The lights are gradients (illustrationBevel at stop opacities): the left wall, the right wall and the two gloss lines.
     expect(art.filter((n) => n.type === "RNSVGLinearGradient")).toHaveLength(5);
   });
@@ -263,7 +266,7 @@ describe("Default", () => {
     const pill = screen.getByRole("button", { name: "Allow the camera" });
     expect(pill.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
     // The kit's busy pill: full opacity, its label kept, the white spinner at its right.
-    expect(within(pill).getByText("allow the camera")).toBeTruthy();
+    expect(within(pill).getByText("Allow the camera")).toBeTruthy();
     expect(screen.getByTestId("permission-primary-spinner", hidden).props.color).toBe(ref.button.primary.label);
     expect(opacityOf(pill)).toBe(1);
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
@@ -313,13 +316,12 @@ describe("Default", () => {
     expect(notice.props.accessible).toBe(false);
     expect(notice.props.accessibilityLabel).toBeUndefined();
     expect(notice.props.accessibilityLiveRegion).toBe("polite");
-    // The Warning is an icon, hidden from screen readers; the words are meta, grey and lowercase.
+    // The Warning is an icon, hidden from screen readers; the words are meta and grey.
     expect(screen.queryByTestId("permission-notice-icon")).toBeNull();
     expect(screen.getByTestId("permission-notice-icon", hidden)).toBeTruthy();
     expect(styleOf(screen.getByText("The camera didn't answer. Try again."))).toMatchObject({
       ...ref.type.meta,
-      color: ref.color.inkMuted,
-      textTransform: "lowercase",
+      color: ref.color.textSecondary,
     });
     // Keyboard and switch focus: the pill, then the quiet button.
     expect(buttonLabels()).toEqual(["Allow the camera", "Choose photos instead"]);
@@ -337,7 +339,7 @@ describe("inside a mode: the mode's dark sheet", () => {
     expect(screen.queryByTestId("permission-haze", hidden)).toBeNull();
     expect(styleOf(screen.getByTestId("permission-sheet")).backgroundColor).toBe(theme.surface);
     const title = screen.getByRole("header", { name: PERMISSION_COPY.default.title });
-    expect(styleOf(title)).toMatchObject({ ...ref.type.display, color: theme.ink, textTransform: "lowercase" });
+    expect(styleOf(title)).toMatchObject({ ...theme.display, color: theme.ink, textTransform: "none" });
     expect(styleOf(screen.getByText(PERMISSION_COPY.default.body)).color).toBe(theme.inkMuted);
   });
 
@@ -345,11 +347,11 @@ describe("inside a mode: the mode's dark sheet", () => {
     await renderScreen();
     const pill = screen.getByRole("button", { name: "Allow the camera" });
     expect(styleOf(pill)).toMatchObject({ minHeight: ref.button.primary.height, alignSelf: "stretch", backgroundColor: theme.accent });
-    expect(styleOf(within(pill).getByText("allow the camera"))).toMatchObject({ ...ref.type.ctaLabel, color: theme.accentInk });
+    expect(styleOf(within(pill).getByText("Allow the camera"))).toMatchObject({ ...ref.type.ctaLabel, color: theme.accentInk });
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
     expect(styleOf(quiet)).toMatchObject({ minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignSelf: "center" });
     expect(styleOf(quiet).backgroundColor).toBeUndefined();
-    expect(styleOf(within(quiet).getByText("choose photos instead"))).toMatchObject({ ...ref.type.headline, color: theme.inkMuted });
+    expect(styleOf(within(quiet).getByText("Choose photos instead"))).toMatchObject({ ...ref.type.headline, color: theme.inkMuted });
   });
 
   it("draws the phone dark on the mode's raised panel", async () => {
@@ -396,7 +398,7 @@ describe("Denied, can't ask again", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Choose photos instead" })).toBeTruthy();
     const pill = screen.getByRole("button", { name: "Open Settings" });
-    expect(within(pill).getByText("open settings")).toBeTruthy();
+    expect(within(pill).getByText("Open Settings")).toBeTruthy();
     await fireEvent.press(pill);
     expect(Linking.openSettings).toHaveBeenCalledTimes(1);
   });
@@ -439,7 +441,7 @@ describe("Choose photos instead", () => {
     expect(screen.queryByTestId("permission-notice-icon", hidden)).toBeNull();
     expect(styleOf(screen.getByText("1 photo taken. A case needs at least 3."))).toMatchObject({
       ...ref.type.meta,
-      color: ref.color.inkMuted,
+      color: ref.color.textSecondary,
     });
     expect(push).not.toHaveBeenCalled();
   });
@@ -462,13 +464,13 @@ describe("Choose photos instead", () => {
     expect(screen.getByTestId("permission-notice-icon", hidden)).toBeTruthy();
   });
 
-  it("Library busy: a thinking line on paper with real progress; the pill dims, and the quiet button is busy and keeps its label and focus", async () => {
+  it("Library busy: a thinking line on the dark sheet with real progress; the pill dims, and the quiet button is busy and keeps its label and focus", async () => {
     launch.mockResolvedValue(picked("file://picked-a.jpg", "file://picked-b.jpg"));
     const pending = holdProcessing();
     await renderScreen();
     await userEvent.setup().press(screen.getByRole("button", { name: "Choose photos instead" }));
 
-    // The status is the line's wrapper; the moving copies inside it are hidden and lowercase.
+    // The status is the line's wrapper; the moving copies inside it are hidden.
     expect(screen.getByTestId("permission-busy").props).toMatchObject({
       accessible: true,
       screenReaderFocusable: true,
@@ -477,24 +479,24 @@ describe("Choose photos instead", () => {
       accessibilityLiveRegion: "polite",
     });
     expect(announce).toHaveBeenCalledWith("Preparing your photos");
-    expect(screen.queryByText("preparing photo 1 of 2")).toBeNull();
-    const drawn = screen.getAllByText("preparing photo 1 of 2", hidden).map(styleOf);
-    // On paper, under reduced motion: a still line in the reference's grey.
-    expect(drawn.some((s) => s.color === ref.motion.thinking.shimmerPaper.still && s.fontSize === ref.type.meta.fontSize)).toBe(true);
+    expect(screen.queryByText("Preparing photo 1 of 2")).toBeNull();
+    const drawn = screen.getAllByText("Preparing photo 1 of 2", hidden).map(styleOf);
+    // On dark, under reduced motion: a still line in the reference's grey.
+    expect(drawn.some((s) => s.color === ref.motion.thinking.shimmer.still && s.fontSize === ref.type.meta.fontSize)).toBe(true);
 
     const pill = screen.getByRole("button", { name: "Allow the camera" });
     expect(pill.props.accessibilityState).toMatchObject({ disabled: true });
-    expect(within(pill).getByText("allow the camera")).toBeTruthy();
+    expect(within(pill).getByText("Allow the camera")).toBeTruthy();
     expect(opacityOf(pill)).toBe(DIMMED);
     const quiet = screen.getByRole("button", { name: "Choose photos instead" });
     expect(quiet.props.accessibilityState).toMatchObject({ disabled: true, busy: true });
-    expect(within(quiet).getByText("choose photos instead")).toBeTruthy();
+    expect(within(quiet).getByText("Choose photos instead")).toBeTruthy();
     expect(inner(quiet).some((n) => n.type === "ActivityIndicator")).toBe(false);
     expect(quiet.props.focusable).toBe(true);
     expect(opacityOf(quiet)).toBe(DIMMED);
 
     await act(async () => pending[0].finish());
-    expect(screen.getAllByText("preparing photo 2 of 2", hidden).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Preparing photo 2 of 2", hidden).length).toBeGreaterThan(0);
     // The fixed status is spoken once; the count changes are not announced.
     expect(announce.mock.calls.filter(([text]) => text === "Preparing your photos")).toHaveLength(1);
     await act(async () => pending[1].finish());

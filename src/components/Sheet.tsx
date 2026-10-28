@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { AccessibilityInfo, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -9,6 +9,7 @@ import { sheetEntering, sheetExiting } from "./noir/motion";
 import { IconButton } from "./IconButton";
 import { ICON_SIZE, ICON_WEIGHT, XIcon } from "./icons";
 import { Text, type TextRef } from "./Text";
+import { focusForAccessibility } from "@/lib/a11y";
 
 export interface SheetProps {
   title: string;
@@ -37,7 +38,7 @@ export function Sheet({ title, titleStyle = "narrative", eyebrow, onClose, child
 
   useEffect(() => {
     const t = setTimeout(() => {
-      if (titleRef.current) AccessibilityInfo.sendAccessibilityEvent(titleRef.current, "focus");
+      focusForAccessibility(titleRef.current);
     }, reducedMotion ? 50 : 300);
     return () => clearTimeout(t);
   }, [reducedMotion]);

@@ -67,11 +67,14 @@ export function useModeScroll() {
 export function ModeHeader({
   theme,
   scrollY,
+  banner = L.banner,
   onBack,
   backTestID,
 }: {
   theme: ModeTheme;
   scrollY: SharedValue<number>;
+  /** The banner's height below the safe top (default L.banner). */
+  banner?: number;
   onBack: () => void;
   backTestID?: string;
 }) {
@@ -80,7 +83,7 @@ export function ModeHeader({
   const H = L.header;
   const below = L.top + SQ.size + H.below;
   // The scroll at which the banner's foot reaches the backing's foot.
-  const covered = L.banner - below;
+  const covered = banner - below;
   const backing = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [covered - H.fade, covered], [0, 1], Extrapolation.CLAMP),
   }));

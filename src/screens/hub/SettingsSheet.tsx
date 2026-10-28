@@ -30,7 +30,7 @@
 // kit's, which presses too.
 // Render it conditionally: it animates in on mount and out on unmount.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Platform, Pressable, StyleSheet, Switch, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, StyleSheet, Switch, Text, View, useWindowDimensions } from "react-native";
 import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
@@ -39,6 +39,7 @@ import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import { currentSession, ensureSession, isNetworkError } from "@/lib/escapd-api";
 import { ref } from "@/theme/tokens";
+import { announce } from "@/lib/a11y";
 
 const H = ref.layout.hub;
 const S = H.settings;
@@ -139,7 +140,7 @@ export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
       prefs.update({ [key]: !value }).catch(() => {});
       const message = isNetworkError(error) ? COPY.offline : COPY.failed;
       setNote(message);
-      AccessibilityInfo.announceForAccessibility(message);
+      announce(message);
     } finally {
       setPending((p) => {
         const next = { ...p };
@@ -298,7 +299,9 @@ function SwitchRow({
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityHint={hint ?? detail}
-      accessibilityState={{ checked: value }}
+      accessibilityState={{ checked: !!value }}
+      // The web reads aria-checked, not accessibilityState; always a boolean, even before a value has loaded.
+      aria-checked={!!value}
       onPress={() => {
         // Not awaited: the switch shows its new value at once while it saves.
         onChange(!value);

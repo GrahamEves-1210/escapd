@@ -1,4 +1,4 @@
-// The illustration band between the close disc and the text block (docs/
+// The illustration band between the close button and the text block (docs/
 // DESIGN.md 04, Layout: Illustration; States: Large text). The drawing floats
 // alone on the black ground, as in the reference: no mount, frame or glow. On
 // 393 x 852 its 240 x 266 box sits at y 266-532, 147 below the disc and 81

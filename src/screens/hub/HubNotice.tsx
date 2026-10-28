@@ -12,12 +12,13 @@
 // Mount a new one per failure (key it), so a repeat failure fades in and is
 // announced again.
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { ICON_WEIGHT, WarningIcon, WifiSlashIcon } from "@/components/icons";
 import { controlTiming } from "@/components/noir";
 import { ref } from "@/theme/tokens";
 import { NOTICE_FAILED, NOTICE_OFFLINE } from "./caseStatus";
+import { announce } from "@/lib/a11y";
 
 const H = ref.layout.hub;
 const T = ref.type.meta;
@@ -35,7 +36,7 @@ export function HubNotice({ offline }: { offline: boolean }) {
 
   useEffect(() => {
     // Android speaks it through the slot's polite live region.
-    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(text);
+    if (Platform.OS === "ios") announce(text);
   }, [text]);
 
   return (

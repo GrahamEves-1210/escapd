@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { AccessibilityInfo, type HostInstance } from "react-native";
+import type { HostInstance } from "react-native";
 import { useNavigation, type NativeStackNavigationProp } from "expo-router";
+import { focusForAccessibility } from "@/lib/a11y";
 
 /**
  * Moves screen-reader focus to `target` once, when `ready` is true and the
@@ -24,6 +25,6 @@ export function useFocusOnOpen(target: RefObject<HostInstance | null>, ready: bo
   useEffect(() => {
     if (!ready || !opened || done.current || !target.current) return;
     done.current = true;
-    AccessibilityInfo.sendAccessibilityEvent(target.current, "focus");
+    focusForAccessibility(target.current);
   }, [ready, opened, target]);
 }

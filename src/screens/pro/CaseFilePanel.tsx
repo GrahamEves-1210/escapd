@@ -1,8 +1,8 @@
 // The sheet's illustration panel (05 · Layout "Panel" and "Case-file art"):
-// 03's cool grey panel (ref.color.panel, ref.layout.pro.panelHeight, square
-// bottom corners; the sheet clips its top corners) holding ESCAPD's case file
-// drawn as 03's phone (src/capture/ui/permission/IllustrationPanel.tsx): the
-// same heavy black frame, elliptical outer corners and tight inner ones,
+// 03's panel in the capture palette (its `panel`, ref.layout.pro.panelHeight,
+// square bottom corners; the sheet clips its top corners) holding ESCAPD's
+// case file drawn as 03's phone (src/capture/ui/permission/IllustrationPanel.tsx):
+// the same heavy frame in the palette's `phone`, lit in its `phoneLight`, elliptical outer corners and tight inner ones,
 // turned in the same perspective (top falling to the right, sides upright)
 // and cropped by the panel's foot, with a folder's tab in its top edge and a
 // label in place of the island. Its lights are 03's: the lit inner wall down
@@ -12,11 +12,11 @@
 import { useId } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import Svg, { Defs, G, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import { useCapturePalette, type CapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 
 const L = ref.layout.pro;
 const A = L.art;
-const SHADE = ref.color.illustrationBevel;
 
 // The frame in its own upright space: x right from its left edge, y down from
 // the tab's top edge, drawn A.length long (past the panel's foot).
@@ -101,21 +101,24 @@ const LABEL_CY = LABEL_Y + LABEL_R;
 /** The panel: full-bleed, ref.layout.pro.panelHeight tall, clipped by the sheet's top corners. */
 export function CaseFilePanel() {
   const { width } = useWindowDimensions();
+  const palette = useCapturePalette();
   return (
     <View
       pointerEvents="none"
       accessible={false}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={styles.panel}
+      style={[styles.panel, { backgroundColor: palette.panel }]}
       testID="pro-panel"
     >
-      <CaseFileDrawing width={width} />
+      <CaseFileDrawing width={width} palette={palette} />
     </View>
   );
 }
 
-function CaseFileDrawing({ width }: { width: number }) {
+function CaseFileDrawing({ width, palette }: { width: number; palette: CapturePalette }) {
+  // Every light is this colour at a stop opacity.
+  const SHADE = palette.phoneLight;
   const id = `file${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   // The frame's origin in the panel, and the shear about it: x' = x, y' = y + slope * x.
   const frame = `matrix(1 ${A.slope} 0 1 ${width / 2 + A.dx} ${A.top})`;
@@ -154,12 +157,12 @@ function CaseFileDrawing({ width }: { width: number }) {
 
       <G transform={frame}>
         {/* The solid frame, its lights, then the open inside in the panel's grey, then the label. */}
-        <Path d={OUTER} fill={ref.color.inkDisplay} />
+        <Path d={OUTER} fill={palette.phone} />
         <Path d={BEVEL} fill="none" stroke={`url(#${id}bevel)`} strokeWidth={A.bevel.width} />
         <Path d={SHEEN} fill="none" stroke={`url(#${id}sheen)`} strokeWidth={S.width} />
         <Path d={GLOSS} fill="none" stroke={`url(#${id}gloss)`} strokeWidth={GL.width} strokeLinecap="round" strokeLinejoin="round" />
-        <Path d={SCREEN} fill={ref.color.panel} />
-        <Rect x={LB.left} y={LABEL_Y} width={LB.width} height={LB.height} rx={LABEL_R} ry={LABEL_R} fill={ref.color.inkDisplay} testID="pro-art-label" />
+        <Path d={SCREEN} fill={palette.panel} />
+        <Rect x={LB.left} y={LABEL_Y} width={LB.width} height={LB.height} rx={LABEL_R} ry={LABEL_R} fill={palette.phone} testID="pro-art-label" />
         <Path
           d={`M${LABEL_CX + LB.gloss.from} ${LABEL_CY + LB.gloss.v}L${LABEL_CX + LB.gloss.to} ${LABEL_CY + LB.gloss.v}`}
           fill="none"
@@ -173,5 +176,5 @@ function CaseFileDrawing({ width }: { width: number }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { height: L.panelHeight, overflow: "hidden", backgroundColor: ref.color.panel },
+  panel: { height: L.panelHeight, overflow: "hidden" },
 });

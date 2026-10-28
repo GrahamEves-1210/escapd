@@ -9,7 +9,7 @@ import { WifiSlashIcon } from "@/components/icons";
 import * as api from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { ref, shellTheme } from "@/theme/tokens";
 import * as copy from "../copy";
 import { ProNoticeLine } from "../ProNoticeLine";
 import { ProScreen } from "../ProScreen";
@@ -160,45 +160,42 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(copy.benefitRows(1)[2]).toBe("Up to 1 new case a month.");
   });
 
-  it("sets every visible line in lowercase while screen readers hear sentence case", async () => {
+  it("sets every line in sentence case, as screen readers hear it", async () => {
     await render(<ProScreen />);
-    // Text: the sentence-case copy with a lowercase transform.
-    expect(styleOf(screen.getByRole("header", { name: copy.TITLE })).textTransform).toBe("lowercase");
-    for (const row of ROWS) expect(styleOf(screen.getByText(row)).textTransform).toBe("lowercase");
-    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).textTransform).toBe("lowercase");
-    // The kit's pills: lowercased label strings, sentence-case accessibility labels.
+    expect(styleOf(screen.getByRole("header", { name: copy.TITLE })).textTransform).toBe("none");
+    for (const row of ROWS) expect(styleOf(screen.getByText(row)).textTransform).toBeUndefined();
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden)).textTransform).toBeUndefined();
     for (const name of [copy.UNLOCK, copy.NOT_NOW]) {
       const button = screen.getByRole("button", { name });
-      expect(within(button).getByText(copy.lower(name))).toBeTruthy();
-      expect(button.props.accessibilityLabel).toBe(name);
+      expect(within(button).getByText(name)).toBeTruthy();
     }
+    expect(screen.getByText(copy.KICKER)).toBeTruthy();
   });
 
-  it("is 03's sheet: paper, the cool grey panel, the black display title and the grey body", async () => {
+  it("is the app's dark sheet: the shell's ground, a raised panel, the display title and the grey body", async () => {
     await render(<ProScreen />);
-    expect(styleOf(screen.getByTestId("pro-screen")).backgroundColor).toBe(ref.color.paper);
+    expect(styleOf(screen.getByTestId("pro-screen")).backgroundColor).toBe(ref.color.void);
     expect(styleOf(screen.getByTestId("pro-sheet"))).toMatchObject({
-      backgroundColor: ref.color.paper,
+      backgroundColor: ref.color.ground,
       borderTopLeftRadius: ref.radius.bottomSheet,
       borderTopRightRadius: ref.radius.bottomSheet,
       overflow: "hidden",
     });
     expect(styleOf(screen.getByTestId("pro-panel", hidden))).toMatchObject({
-      backgroundColor: ref.color.panel,
+      backgroundColor: ref.color.raised,
       height: ref.layout.pro.panelHeight,
     });
-    expect(styleOf(screen.getByRole("header", { name: copy.TITLE }))).toMatchObject({ ...ref.type.display, color: ref.color.inkDisplay });
-    expect(styleOf(screen.getByText(ROWS[0]))).toMatchObject({ ...ref.type.body, color: ref.color.inkMuted });
-    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted });
-    // The kit's 64 pt primary pill and the grey quiet button.
+    expect(styleOf(screen.getByRole("header", { name: copy.TITLE }))).toMatchObject({ ...shellTheme.display, textTransform: "none", color: ref.color.textPrimary });
+    expect(styleOf(screen.getByText(ROWS[0]))).toMatchObject({ ...ref.type.body, color: ref.color.textSecondary });
+    expect(styleOf(screen.getByText(copy.TEST_NOTE, hidden))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
+    // The kit's 64 pt primary pill and the white quiet button on dark.
     expect(styleOf(screen.getByRole("button", { name: copy.UNLOCK })).minHeight).toBe(ref.button.primary.height);
-    expect(styleOf(screen.getByText(copy.lower(copy.UNLOCK)))).toMatchObject(ref.type.ctaLabel);
-    // The kit's quiet pill on paper: grey (Reanimated writes the animated colour as rgba).
+    expect(styleOf(screen.getByText(copy.UNLOCK))).toMatchObject(ref.type.ctaLabel);
     const notNow = screen.getByRole("button", { name: copy.NOT_NOW });
     expect(styleOf(notNow)).toMatchObject({ minHeight: ref.button.quiet.height, paddingHorizontal: ref.button.quiet.padX, alignSelf: "center" });
-    expect(styleOf(screen.getByText(copy.lower(copy.NOT_NOW)))).toMatchObject({ ...ref.type.headline, color: rgba(ref.button.quiet.paper.label) });
-    // pushr's haze over the paper.
-    expect(screen.getByTestId("pro-haze", hidden)).toBeTruthy();
+    expect(styleOf(screen.getByText(copy.NOT_NOW))).toMatchObject({ ...ref.type.headline, color: rgba(ref.button.quiet.dark.label) });
+    // No paper haze.
+    expect(screen.queryByTestId("pro-haze", hidden)).toBeNull();
   });
 
   it("draws the case-file art in pushr's style, hidden from screen readers", async () => {
@@ -207,15 +204,15 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(panel.props).toMatchObject({ accessible: false, importantForAccessibility: "no-hide-descendants", pointerEvents: "none" });
     expect(screen.queryByTestId("pro-art")).toBeNull();
     const art = screen.getByTestId("pro-art", hidden);
-    // 03's phone: a solid black frame, the open inside in the panel's grey on top, then the label.
+    // 03's phone: a solid frame in the ground, the open inside in the panel's raised fill on top, then the label.
     // react-native-svg hands its native views processed colours.
     const paint = (fill: unknown) => (fill as { payload?: unknown } | undefined)?.payload;
     const fills = art.queryAll((node) => typeof node.props.d === "string").map((node) => paint(node.props.fill));
-    expect(fills).toContain(processColor(ref.color.inkDisplay));
-    expect(fills).toContain(processColor(ref.color.panel));
+    expect(fills).toContain(processColor(ref.color.void));
+    expect(fills).toContain(processColor(ref.color.raised));
     const label = screen.getByTestId("pro-art-label", hidden);
     expect(label.props).toMatchObject({ width: ref.layout.pro.art.label.width, height: ref.layout.pro.art.label.height });
-    expect(paint(label.props.fill)).toBe(processColor(ref.color.inkDisplay));
+    expect(paint(label.props.fill)).toBe(processColor(ref.color.void));
   });
 
   it("caps the sheet ref.space.lg below the safe top and ends ctaBottom above the safe bottom", async () => {
@@ -224,9 +221,9 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(styleOf(screen.getByTestId("pro-controls")).paddingBottom).toBe(BASE.insets.bottom + ref.space.ctaBottom);
   });
 
-  it("keeps ref.space.lg under the last button when there is no bottom inset", async () => {
+  it("keeps the last button ctaFloor + ctaBottom off the screen's edge when there is no bottom inset", async () => {
     await renderIn(NO_BOTTOM);
-    expect(styleOf(screen.getByTestId("pro-controls")).paddingBottom).toBe(ref.space.lg);
+    expect(styleOf(screen.getByTestId("pro-controls")).paddingBottom).toBe(ref.space.ctaFloor + ref.space.ctaBottom);
   });
 
   it("lays out the pinned stack: note row, band, the pill, sm, not now", async () => {
@@ -238,11 +235,9 @@ describe("Default (test build, opened with ?cap)", () => {
     expect(styleOf(screen.getByRole("button", { name: copy.NOT_NOW })).marginTop).toBe(ref.space.sm);
   });
 
-  it("asks for dark status-bar glyphs while it has focus, and gives them back", async () => {
+  it("keeps the app's light status-bar glyphs (the sheet is dark)", async () => {
     await render(<ProScreen />);
-    expect(statusBar).toHaveBeenLastCalledWith("dark");
-    await screen.unmount();
-    expect(statusBar).toHaveBeenLastCalledWith("light");
+    expect(statusBar).not.toHaveBeenCalledWith("dark");
   });
 
   it("moves screen-reader focus to the title when the screen opens", async () => {
@@ -274,7 +269,7 @@ describe("Purchasing", () => {
     expect(unlock.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
     // The kit's busy pill: label kept, full opacity, the indicator in the label colour.
     expect(screen.getByTestId("pro-unlock-spinner", hidden).props.color).toBe(ref.button.primary.label);
-    expect(within(unlock).getByText(copy.lower(copy.UNLOCK))).toBeTruthy();
+    expect(within(unlock).getByText(copy.UNLOCK)).toBeTruthy();
     expect(styleOf(unlock).opacity).toBeUndefined();
     const notNow = screen.getByRole("button", { name: copy.NOT_NOW });
     expect(notNow.props.accessibilityState).toMatchObject({ disabled: true });
@@ -408,7 +403,7 @@ describe("Test purchases off", () => {
     expect(announce).not.toHaveBeenCalled();
     // The row reserves the info's two lines, so a one-line error moves nothing.
     expect(styleOf(screen.getByTestId("pro-note-row")).minHeight).toBe(ref.type.meta.lineHeight * fontScale * ref.layout.pro.infoLines);
-    expect(styleOf(screen.getByText(copy.NOT_ON_SALE))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase" });
+    expect(styleOf(screen.getByText(copy.NOT_ON_SALE))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
     expect(screen.queryByTestId("pro-info-icon", hidden)).toBeNull();
     expect(screen.getByRole("button", { name: copy.CHECK_AGAIN })).toBeTruthy();
     expect(screen.queryByRole("button", { name: copy.UNLOCK })).toBeNull();
@@ -501,17 +496,17 @@ describe.each([
 });
 
 describe("Notice look", () => {
-  it("draws the error glyph in raised ink (03's notice: no colour accent), with the text in 03's small grey", async () => {
+  it("draws the error glyph in the sheet's ink (03's notice: no colour accent), with the text in 03's small grey", async () => {
     const { fontScale } = Dimensions.get("window");
     await render(<ProNoticeLine kind="error" text={copy.OFFLINE} icon={WifiSlashIcon} testID="line" />);
-    expect(styleOf(screen.getByText(copy.OFFLINE))).toMatchObject({ ...ref.type.meta, color: ref.color.inkMuted, textTransform: "lowercase" });
+    expect(styleOf(screen.getByText(copy.OFFLINE))).toMatchObject({ ...ref.type.meta, color: ref.color.textSecondary });
     // The glyph box is one meta line tall, so the glyph centres on the first line.
     expect(styleOf(screen.getByTestId("line-icon", hidden)).height).toBe(ref.type.meta.lineHeight * fontScale);
     const glyph = screen.getByTestId("phosphor-react-native-wifi-slash-regular", hidden);
     expect(glyph.props).toMatchObject({
       width: ref.layout.pro.noticeIcon,
       height: ref.layout.pro.noticeIcon,
-      color: ref.color.raised,
+      color: ref.color.textPrimary,
     });
   });
 });
@@ -571,22 +566,22 @@ describe("Loading (opened without ?cap)", () => {
   beforeEach(() => params.mockReturnValue({}));
   afterEach(() => jest.useRealTimers());
 
-  it("shows paper and haze, the indicator only past its delay, then the sheet with the cap", async () => {
+  it("shows the dark ground, the indicator only past its delay, then the sheet with the cap", async () => {
     jest.useFakeTimers();
     const pending = deferred<MyAccess>();
     mocked.getMyAccess.mockImplementationOnce(() => pending.promise);
     await render(<ProScreen />);
-    expect(styleOf(screen.getByTestId("pro-loading")).backgroundColor).toBe(ref.color.paper);
+    expect(styleOf(screen.getByTestId("pro-loading")).backgroundColor).toBe(ref.color.void);
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.queryByTestId("pro-spinner", hidden)).toBeNull();
     // Nothing of Default yet: no sheet, title or buttons.
     expect(screen.queryByTestId("pro-sheet")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     await act(async () => jest.advanceTimersByTime(ref.layout.pro.spinnerDelay));
-    // One screen-reader element, never a keyboard stop; a small native indicator in raised.
+    // One screen-reader element, never a keyboard stop; a small native indicator in the muted ink.
     const indicator = screen.getByRole("progressbar", { name: copy.LOADING });
     expect(indicator.props).toMatchObject({ accessible: Platform.OS === "ios", screenReaderFocusable: true, focusable: false });
-    expect(within(indicator).getByTestId("pro-spinner-indicator", hidden).props).toMatchObject({ size: "small", color: ref.color.raised });
+    expect(within(indicator).getByTestId("pro-spinner-indicator", hidden).props).toMatchObject({ size: "small", color: ref.color.textSecondary });
     await act(async () => pending.resolve(access({ generations_cap: 15 })));
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(screen.getByText("Up to 15 new cases a month.")).toBeTruthy();

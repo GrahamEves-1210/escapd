@@ -50,22 +50,34 @@ export const MODE_INTRO: Record<Genre, ModeIntroCopy> = {
 export interface ResumeCopy {
   inProgress: string;
   building: string;
+  /** The prompt's title when the case has no name yet (still building). */
+  untitled: string;
 }
 
 export const RESUME_COPY: Record<Genre, ResumeCopy> = {
   noir: {
     inProgress: "You've still got a case open.",
     building: "Your next case is still coming together.",
+    untitled: "Next case",
   },
   crime_scene: {
     inProgress: "You have an open case on file.",
     building: "Your scene is still being processed.",
+    untitled: "New scene",
   },
   paranormal: {
     inProgress: "Something is still waiting for you.",
     building: "Something is still taking shape.",
+    untitled: "Something new",
   },
 };
+
+/**
+ * What Start a new case does to the open one, in plain words: nothing is
+ * deleted, but home offers each mode's newest sent case (caseStatus.ts), so
+ * once the new photos are sent Continue opens the new case.
+ */
+export const RESUME_NEW_NOTE = "Starting a new case puts this one aside: once the new photos are sent, Continue opens the new case.";
 
 /** The prompt's two pills, the same in every mode. */
 export const RESUME_ACTIONS = {

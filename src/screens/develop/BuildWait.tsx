@@ -30,7 +30,7 @@ import { useModeTheme } from "@/game/mode";
 import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
 import { Stamp } from "@/render/Stamp";
 import { useTheme } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { ctaBottomPad, ref } from "@/theme/tokens";
 import { BUILD_TITLE, READY_LINE, READY_TITLE, STAMP_TEXT, waitStatus, type WaitStage } from "./copy";
 import { RoomPanorama, type PanoramaPhoto } from "./RoomPanorama";
 
@@ -127,7 +127,7 @@ export function BuildWait({ stage, photos, onLeave, open }: {
   const titleSize = D.titleSize[palette.genre ?? "shell"];
   const title = ready ? READY_TITLE : BUILD_TITLE;
   const colors = { base: palette.inkMuted, highlight: palette.genre ? palette.stamp : palette.ink, still: palette.inkMuted };
-  const foot = ref.layout.state.footer.pad + ref.button.ghost.height + ref.space.ctaBottom + insets.bottom;
+  const foot = ref.layout.state.footer.pad + ref.button.ghost.height + ctaBottomPad(insets.bottom);
 
   return (
     <View style={[styles.root, { backgroundColor: palette.page, paddingTop: insets.top }]} testID="darkroom-root">

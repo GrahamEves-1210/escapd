@@ -9,33 +9,41 @@
 // its slot reserves the longer label's height, so the label swap on step 4
 // never moves the text or the drawing above it. Inside a mode it is the
 // mode's primary button (ModePill: the mode's accent capsule at the same
-// 52, src/capture/ui/palette.ts).
+// 52, src/capture/ui/palette.ts). In the shell it is the kit's raised primary
+// pill (64, ctaLabel, as on 03 and 05): the dark hairline ghost vanishes on
+// the guide's black.
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ModePill } from "@/capture/ui/ModePill";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
 import { COPY, stepAnnouncement } from "./copy";
 
-const GHOST = ref.button.ghost;
-const LABEL = ref.type.headline;
-// PillButton pads a filled pill's label to its height (52 - 22 = 15 above and
-// below), and a button that can show the spinner by 16 + 20 + 8 = 44 each side.
-const PAD_Y = GHOST.height - LABEL.lineHeight;
+// The pill's height and label type, by variant: the mode's ghost-sized
+// capsule, or the shell's primary.
+const PILL = {
+  ghost: { height: ref.button.ghost.height, label: ref.type.headline },
+  primary: { height: ref.button.primary.height, label: ref.type.ctaLabel },
+} as const;
+// A button that can show the spinner pads its label by 16 + 20 + 8 = 44 each side.
 const PAD_X = ref.space.lg + ref.icon.header + ref.space.sm;
 
 export function StepButton({ step, last, busy, onPress }: { step: number; last: boolean; busy: boolean; onPress: () => void }) {
   const [labelHeight, setLabelHeight] = useState(0);
-  const reserve = Math.max(GHOST.height, labelHeight + PAD_Y);
+  const variant = useCapturePalette().genre === null ? "primary" : "ghost";
+  const { height, label: labelType } = PILL[variant];
+  // PillButton pads a filled pill's label to its height (52 - 22 = 15 above and below).
+  const reserve = Math.max(height, labelHeight + height - labelType.lineHeight);
   return (
     <View style={[styles.slot, { minHeight: reserve }]}>
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.sizer}>
-        <Text style={[LABEL, styles.sizerLabel]} onLayout={(e) => setLabelHeight(e.nativeEvent.layout.height)}>
+        <Text style={[labelType, styles.sizerLabel]} onLayout={(e) => setLabelHeight(e.nativeEvent.layout.height)}>
           {COPY.openCamera}
         </Text>
       </View>
       <ModePill
         label={last ? COPY.openCamera : COPY.next}
-        variant="ghost"
+        variant={variant}
         busy={busy}
         spinner
         accessibilityHint={stepAnnouncement(step)}

@@ -17,7 +17,7 @@
 //   07 and 06) in `accent` with `accentInk`;
 // - stamps (06's CASE READY, and the sweep of its status line), the counter's current numeral and
 //   the camera's way-on ring in `stamp`;
-// - 03's white paper sheet becomes the mode's dark sheet (`surface` over
+// - 03's sheet is the mode's dark sheet (the shell's is dark too) (`surface` over
 //   `ground`, its panel `raised`, the phone drawn in `ground`).
 // Photos take the mode's baked treatment through TreatedImage (`genre`).
 // Neutral instrument greys (the shutter disk, the × halo, the framing grid,
@@ -30,9 +30,10 @@ export interface CapturePalette {
   /** The mode whose photo treatment the flow shows; null in the shell (photos as they are). */
   readonly genre: Genre | null;
   /**
-   * True in the shell: 03 is pushr's white paper (dark status bar glyphs, the
-   * kit's paper pills and thinking line, the grey haze). False in a mode,
-   * where 03 is the mode's dark sheet.
+   * True where 03 (and 05) would be pushr's white paper (dark status bar
+   * glyphs, the kit's paper pills and thinking line, the grey haze). Always
+   * false now: the shell's 03 and 05 are the app's dark sheet too, as every
+   * mode's is.
    */
   readonly paper: boolean;
 
@@ -89,10 +90,14 @@ export interface CapturePalette {
 
 const C = ref.color;
 
-/** The shell: the reference look's colours, exactly as these screens had them. */
+/**
+ * The shell: the reference look's colours, as these screens had them, except
+ * 03's sheet, which is the app's dark sheet (the shell's ground, a `ground`
+ * sheet with a `raised` panel, white and grey text) rather than pushr's paper.
+ */
 const SHELL: CapturePalette = {
   genre: null,
-  paper: true,
+  paper: false,
   page: C.ground,
   well: C.void,
   raised: C.raised,
@@ -112,14 +117,14 @@ const SHELL: CapturePalette = {
   guideBody: ref.layout.guide.bodyText,
   closeFill: ref.button.dismissGlass.fill,
   closeGlyph: ref.button.dismissGlass.glyph,
-  sheetGround: C.paper,
-  sheet: C.paper,
-  panel: C.panel,
-  sheetInk: C.inkDisplay,
-  sheetMuted: C.inkMuted,
-  noticeGlyph: C.raised,
-  phone: C.inkDisplay,
-  phoneLight: C.illustrationBevel,
+  sheetGround: C.void,
+  sheet: C.ground,
+  panel: C.raised,
+  sheetInk: C.textPrimary,
+  sheetMuted: C.textSecondary,
+  noticeGlyph: C.textPrimary,
+  phone: C.void,
+  phoneLight: C.textSecondary,
 };
 
 function fromTheme(theme: ModeTheme): CapturePalette {

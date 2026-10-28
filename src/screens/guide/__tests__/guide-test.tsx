@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { AccessibilityInfo, BackHandler, StyleSheet, processColor } from "react-native";
+import { AccessibilityInfo, BackHandler, StyleSheet } from "react-native";
 import { act, fireEvent, render, screen, userEvent, within } from "@testing-library/react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { createGestureController, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
@@ -122,42 +122,40 @@ describe("photo guide: after openCapture's check (every new room)", () => {
     expect(tree).not.toContain(color.accent);
   });
 
-  it("closes from the light grey glass disc: 48 of glassDisc in a 1 pt specular ring, the black X at 26, 10 below the safe top and 32 from the right", async () => {
+  it("closes from the capture flow's square at the top left, as the review, the build wait and the mode intro", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
-    const D = ref.button.dismissGlass;
+    const SQ = ref.button.square;
     const close = screen.getByTestId("guide-close");
-    expect(styleOf(close)).toMatchObject({ width: D.size + D.ringWidth * 2, height: D.size + D.ringWidth * 2, borderRadius: D.radius });
-    // react-native-svg hands the native circle a processed colour and a gradient brush.
-    const [disc] = screen.container.queryAll((node) => node.type === "RNSVGCircle");
-    expect(disc.props).toMatchObject({ fill: { type: 0, payload: processColor(D.fill) }, strokeWidth: D.ringWidth, r: D.size / 2 + D.ringWidth / 2 });
-    expect(disc.props.stroke).toMatchObject({ type: 1, brushRef: expect.stringMatching(/^guideRing/) });
-    expect(screen.getByTestId("phosphor-react-native-x-regular", hidden).props).toMatchObject({ color: D.glyph, width: D.icon });
-    const header = close.parent as Node;
-    expect(styleOf(header)).toMatchObject({ paddingRight: ref.layout.guide.close.right, justifyContent: "flex-end" });
+    expect(styleOf(close)).toMatchObject({ width: SQ.size, height: SQ.size, borderRadius: SQ.radius, backgroundColor: ref.color.raised });
+    const icon = ref.layout.camera.headerIcon;
+    expect(screen.getByTestId(`phosphor-react-native-x-${icon.weight}`, hidden).props).toMatchObject({ color: ref.color.textPrimary, width: icon.size });
+    let header = close.parent as Node;
+    while (header && styleOf(header).paddingHorizontal === undefined) header = header.parent as Node;
+    expect(styleOf(header)).toMatchObject({ paddingHorizontal: ref.layout.camera.edge, justifyContent: "flex-start" });
   });
 
   it("sets the drawing alone on the black ground, at the art box's full size, with no mount or frame", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     const G = ref.layout.guide;
     expect(styleOf(screen.getByTestId("guide-art-box", hidden))).toMatchObject({ width: G.art.width, height: G.art.height });
-    expect(viewsWhere((s) => s.borderWidth !== undefined && s.borderColor !== ref.button.ghost.border)).toHaveLength(0);
+    // The only edged views are the close square's.
+    expect(viewsWhere((s) => s.borderWidth !== undefined && s.borderColor !== ref.layout.camera.squareRim)).toHaveLength(0);
   });
 
-  it("shows the same dark hairline pill on every step: Next on steps 1-3, Open the camera on step 4", async () => {
+  it("shows the same raised primary pill on every step in the shell, never the dark hairline one: Next on steps 1-3, Open the camera on step 4", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
     const pill = () => screen.getByTestId("guide-step-button");
-    expect(styleOf(pill()).minHeight).toBe(ref.button.ghost.height);
-    expect(pillEdges()).toHaveLength(1);
-    expect(styleOf(screen.getByText("Next"))).toMatchObject({ ...ref.type.headline });
+    expect(styleOf(pill()).minHeight).toBe(ref.button.primary.height);
+    expect(pillEdges()).toHaveLength(0);
+    expect(styleOf(screen.getByText("Next"))).toMatchObject({ ...ref.type.ctaLabel });
     await next();
     expect(screen.getByRole("button", { name: "Next" }).props.accessibilityHint).toBe("Step 2 of 4");
     await next();
     await next();
     expect(screen.getByRole("button", { name: "Open the camera" }).props.accessibilityHint).toBe("Step 4 of 4");
-    // Still the ghost pill: same edge, same height, same label type.
-    expect(pillEdges()).toHaveLength(1);
-    expect(styleOf(pill()).minHeight).toBe(ref.button.ghost.height);
-    expect(styleOf(screen.getByText("Open the camera"))).toMatchObject({ ...ref.type.headline });
+    expect(pillEdges()).toHaveLength(0);
+    expect(styleOf(pill()).minHeight).toBe(ref.button.primary.height);
+    expect(styleOf(screen.getByText("Open the camera"))).toMatchObject({ ...ref.type.ctaLabel });
   });
 
   it("draws the brass focus ring round the disc and the pill while they have focus", async () => {
@@ -409,14 +407,16 @@ describe("photo guide: opened directly (?replay=1)", () => {
     await renderGuide(<PhotoGuide replay carry={{}} />);
     const button = () => screen.getByTestId("guide-step-button");
     const slot = () => styleOf(button().parent as Node);
-    const G = ref.button.ghost;
-    // One label line at the default size: the pill's 52.
-    expect(slot().minHeight).toBe(G.height);
-    // Larger text wraps the longer label (measured by the hidden sizer) to two 22 lines.
-    const lines = ref.type.headline.lineHeight * 2;
+    // The shell's step button: the kit's primary pill and its label type.
+    const P = ref.button.primary;
+    const label = ref.type.ctaLabel;
+    // One label line at the default size: the pill's own height.
+    expect(slot().minHeight).toBe(P.height);
+    // Larger text wraps the longer label (measured by the hidden sizer) to two lines.
+    const lines = label.lineHeight * 2;
     await fireEvent(screen.getByText("Open the camera", hidden), "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 229, height: lines } } });
-    // Its lines plus the pill's padding: 15 above and below.
-    expect(slot().minHeight).toBe(lines + G.height - ref.type.headline.lineHeight);
+    // Its lines plus the pill's padding above and below.
+    expect(slot().minHeight).toBe(lines + P.height - label.lineHeight);
   });
 
   it("a failed check shows the error line and a live button; a retry clears it and checks again", async () => {
@@ -515,11 +515,11 @@ describe("photo guide: inside a mode", () => {
     expect(styleOf(screen.getByText("Face any wall and take the first photo.")).color).toBe(theme.inkMuted);
   });
 
-  it("keeps the light glass disc with a dark X, in the mode's muted ink and ground", async () => {
+  it("draws the close square in the mode's raised fill, rim and ink", async () => {
     await renderGuide(<PhotoGuide replay={false} carry={{}} />);
-    const [disc] = screen.container.queryAll((node) => node.type === "RNSVGCircle");
-    expect(disc.props.fill).toEqual({ type: 0, payload: processColor(theme.inkMuted) });
-    expect(screen.getByTestId("phosphor-react-native-x-regular", hidden).props.color).toBe(theme.ground);
+    expect(styleOf(screen.getByTestId("guide-close"))).toMatchObject({ backgroundColor: theme.raised, borderColor: theme.rim });
+    const icon = ref.layout.camera.headerIcon;
+    expect(screen.getByTestId(`phosphor-react-native-x-${icon.weight}`, hidden).props.color).toBe(theme.ink);
   });
 
   it("makes the step button the mode's primary button, the same 52 pill, and every step still works", async () => {

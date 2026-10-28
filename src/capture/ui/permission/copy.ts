@@ -1,9 +1,6 @@
 // 03 · Camera permission copy, in plain language (photos, "build the case";
-// no film or darkroom words, nothing alarming). Written
-// in sentence case, which is what screen readers hear; the screen sets every
-// visible line in lowercase, as the reference does (textTransform for text,
-// lowercased strings for the drawn thinking lines). Every control label starts
-// with a verb.
+// no film or darkroom words, nothing alarming), in sentence case as shown and
+// heard. Every control label starts with a verb.
 
 /** The sheet's two copy sets. A switch between them crossfades the text. */
 export type PermissionCopyKey = "default" | "denied";
@@ -11,7 +8,7 @@ export type PermissionCopyKey = "default" | "denied";
 export const PERMISSION_COPY: Record<PermissionCopyKey, { title: string; body: string; action: string }> = {
   default: {
     // The space in "the camera" is a non-breaking space (U+00A0), so the
-    // title sets as "let escapd use / the camera" and never strands "camera".
+    // title never strands "camera" on a line of its own.
     title: "Let ESCAPD use the camera",
     body:
       "You'll take up to 6 photos, turning round one room. Each photo's location is removed on your phone first, and nothing is sent until you build the case.",
@@ -29,6 +26,8 @@ export const COPY = {
   choosePhotos: "Choose photos instead",
   choosePhoto: "Choose a photo instead",
   lightTable: "Review your photos",
+  /** The square close button at the top left: leaves the camera, as the system back does. */
+  close: "Close",
   /** Checking past ~1 s: the line and its accessibility label. */
   checking: "Opening the camera",
   /** Library busy: the container's fixed label, and the real progress line. */

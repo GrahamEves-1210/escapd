@@ -1,10 +1,9 @@
 // /pro's note row lines (05 · Layout "Note row", States "Error" and "Test
-// purchases off"), in 03's small grey style on paper.
-// - Error: a Phosphor glyph at ref.layout.pro.noticeIcon (16) in
-//   ref.color.raised (as 03's PermissionNotice: the reference has no colour
-//   accent), centred on the first meta line, ref.space.sm, then the message
-//   in ref.type.meta, inkMuted, lowercase on screen (screen readers hear the
-//   sentence-case copy). It fades in over the kit's
+// purchases off"), in 03's small grey style on the dark sheet.
+// - Error: a Phosphor glyph at ref.layout.pro.noticeIcon (16) in the sheet's
+//   ink (as 03's PermissionNotice: no colour accent), centred on the first
+//   meta line, ref.space.sm, then the message in ref.type.meta and the
+//   sheet's muted ink, in sentence case. It fades in over the kit's
 //   controlTiming and is announced: announceForAccessibility on iOS; on
 //   Android, the polite live region on the always-mounted region that holds
 //   it (ProScreen). The line itself is never a live region: Android sends a
@@ -16,11 +15,13 @@
 // One screen-reader element labelled by its text (`accessible` on iOS,
 // screenReaderFocusable on Android), never a keyboard or switch stop.
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { controlTiming, type NoirIcon } from "@/components/noir";
 import { ICON_WEIGHT } from "@/components/icons";
+import { useCapturePalette } from "@/capture/ui/palette";
 import { ref } from "@/theme/tokens";
+import { announce } from "@/lib/a11y";
 
 export type ProNoticeLineProps =
   | { kind: "error"; text: string; icon: NoirIcon; testID?: string }
@@ -32,6 +33,7 @@ export function ProNoticeLine(props: ProNoticeLineProps) {
   const error = kind === "error";
   const Icon = props.kind === "error" ? props.icon : null;
   const { fontScale } = useWindowDimensions();
+  const palette = useCapturePalette();
 
   // An opacity change, not movement, so it stays under reduced motion.
   const opacity = useSharedValue(error ? 0 : 1);
@@ -42,7 +44,7 @@ export function ProNoticeLine(props: ProNoticeLineProps) {
 
   useEffect(() => {
     // Android speaks it through the region's polite live region (see above).
-    if (error && Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(text);
+    if (error && Platform.OS === "ios") announce(text);
   }, [error, text]);
 
   return (
@@ -63,10 +65,10 @@ export function ProNoticeLine(props: ProNoticeLineProps) {
           style={[styles.iconBox, { height: ref.type.meta.lineHeight * fontScale }]}
           testID={testID ? `${testID}-icon` : undefined}
         >
-          <Icon size={ref.layout.pro.noticeIcon} color={ref.color.raised} weight={ICON_WEIGHT} />
+          <Icon size={ref.layout.pro.noticeIcon} color={palette.noticeGlyph} weight={ICON_WEIGHT} />
         </View>
       ) : null}
-      <Text style={[ref.type.meta, styles.text]}>{text}</Text>
+      <Text style={[ref.type.meta, styles.text, { color: palette.sheetMuted }]}>{text}</Text>
     </Animated.View>
   );
 }
@@ -75,5 +77,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
   iconBox: { justifyContent: "center" },
   // The message wraps beside the glyph; nothing shrinks.
-  text: { flexShrink: 1, color: ref.color.inkMuted, textTransform: "lowercase" },
+  text: { flexShrink: 1 },
 });

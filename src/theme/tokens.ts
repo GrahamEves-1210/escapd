@@ -406,6 +406,12 @@ export const ref = {
     reading: 38,
     /** Bottom of the last button above the bottom safe-area inset. */
     ctaBottom: 4,
+    /**
+     * The least bottom inset a pinned button counts on: with no home
+     * indicator (an older iPhone, Android's buttons, the web) it would
+     * otherwise sit ctaBottom from the screen's edge. See ctaBottomPad.
+     */
+    ctaFloor: 16,
   },
   // Continuous corners (curve) everywhere except the small tag pills.
   radius: {
@@ -2000,3 +2006,12 @@ export const shellTheme: ModeTheme = {
   display: { fontFamily: refFont.serif, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
   treatment: null,
 };
+
+/**
+ * The padding under a screen's pinned bottom button: ref.space.ctaBottom over
+ * the bottom safe-area inset, counting that inset as at least
+ * ref.space.ctaFloor so the button never sits on the screen's very edge.
+ */
+export function ctaBottomPad(insetBottom: number): number {
+  return Math.max(insetBottom, ref.space.ctaFloor) + ref.space.ctaBottom;
+}

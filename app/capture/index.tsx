@@ -77,10 +77,10 @@ export default function CaptureScreen() {
   const checking = permission === null || guide !== "seen";
   const granted = permission !== null && guide === "seen" && permission.granted;
 
-  // The status bar: dark glyphs on 03's white, back to the app's light ones
+  // The status bar: dark glyphs only on a paper 03 (the capture palette's
+  // `paper`; none today, as every 03 is dark), back to the app's light ones
   // once the camera's ground has faded in (and whenever /capture loses focus,
-  // so the light table and the rest of the app keep theirs). A mode's 03 is
-  // dark: light glyphs all along.
+  // so the light table and the rest of the app keep theirs).
   const cameraShown = useShowAfter(granted, reducedMotion ? motion.reducedFade : motion.sceneCrossfade);
   const lightGlyphs = cameraShown || !palette.paper;
   useFocusEffect(

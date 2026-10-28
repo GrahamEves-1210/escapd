@@ -10,7 +10,7 @@
 // whose backstop shows the guide first. Back leaves without remembering:
 // the intro shows again next time.
 import { useCallback, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,13 +18,15 @@ import { openCapture } from "@/capture/openCapture";
 import { ModePill } from "@/capture/ui/ModePill";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
 import type { Genre } from "@/lib/puzzle-types";
-import { modeThemes, ref } from "@/theme/tokens";
+import { ctaBottomPad, modeThemes, ref } from "@/theme/tokens";
 import { MODE_INTRO } from "./copy";
 import { markIntroSeen } from "./introSeen";
 import { FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
 
 const L = ref.layout.mode;
 const I = L.intro;
+/** The drawn cover's own proportions (home's cards): the banner never grows taller than the art at full width. */
+const COVER_ASPECT = 3 / 4;
 
 export function ModeIntro({ genre }: { genre: Genre }) {
   const theme = modeThemes[genre];
@@ -70,48 +72,60 @@ export function ModeIntro({ genre }: { genre: Genre }) {
     }
   };
 
-  const bannerHeight = insets.top + L.banner;
+  // The banner grows into the room the steps leave, up to the art's own
+  // proportions at full width; whatever room is still left centres the words
+  // between it and the button. A short screen or large text keeps the
+  // minimum banner and scrolls.
+  const { width } = useWindowDimensions();
+  const [scrollHeight, setScrollHeight] = useState(0);
+  const [columnHeight, setColumnHeight] = useState(0);
+  const spare = scrollHeight > 0 && columnHeight > 0 ? scrollHeight - insets.top - columnHeight - L.foot.pad : 0;
+  const banner = Math.round(Math.max(L.banner, Math.min(width * COVER_ASPECT, spare)));
+  const bannerHeight = insets.top + banner;
   const numeral = { fontFamily: theme.display.fontFamily, ...L.type.numeral };
 
   return (
     <View style={[styles.root, { backgroundColor: theme.ground }]} testID="mode-intro">
       {/* Back first in reading order, fixed over the banner, backed once the steps scroll under it (large text). */}
-      <ModeHeader theme={theme} scrollY={scroll.y} onBack={back} backTestID="mode-intro-back" />
+      <ModeHeader theme={theme} scrollY={scroll.y} banner={banner} onBack={back} backTestID="mode-intro-back" />
 
       <Animated.ScrollView style={styles.scroll} contentContainerStyle={styles.content} 
         {...scroll.props}
+        onLayout={(e) => setScrollHeight(e.nativeEvent.layout.height)}
         testID="mode-intro-scroll"
       >
         <View style={{ height: bannerHeight }}>
           <ModeBanner genre={genre} theme={theme} height={bannerHeight} />
         </View>
-        <View style={styles.column}>
-          <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>{intro.kicker}</Text>
-          <Text accessibilityRole="header" style={[theme.display, { color: theme.ink }]}>
-            {theme.name}
-          </Text>
-          <Text style={[L.type.tagline, styles.tagline, { color: theme.inkMuted }]}>{theme.tagline}</Text>
-          <View style={styles.steps}>
-            {steps.map((step, i) => (
-              <View
-                key={step.title}
-                accessible
-                accessibilityLabel={`Step ${i + 1} of ${steps.length}. ${step.title}. ${step.body}`}
-                style={styles.step}
-                testID={`mode-intro-step-${i + 1}`}
-              >
-                <Text style={[numeral, styles.numeral, { color: theme.stamp }]}>{i + 1}</Text>
-                <View style={styles.stepWords}>
-                  <Text style={[L.type.step, { color: theme.ink }]}>{step.title}</Text>
-                  <Text style={[L.type.body, styles.stepBody, { color: theme.inkMuted }]}>{step.body}</Text>
+        <View style={styles.middle}>
+          <View style={styles.column} onLayout={(e) => setColumnHeight(e.nativeEvent.layout.height)}>
+            <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>{intro.kicker}</Text>
+            <Text accessibilityRole="header" style={[theme.display, { color: theme.ink }]}>
+              {theme.name}
+            </Text>
+            <Text style={[L.type.tagline, styles.tagline, { color: theme.inkMuted }]}>{theme.tagline}</Text>
+            <View style={styles.steps}>
+              {steps.map((step, i) => (
+                <View
+                  key={step.title}
+                  accessible
+                  accessibilityLabel={`Step ${i + 1} of ${steps.length}. ${step.title}. ${step.body}`}
+                  style={styles.step}
+                  testID={`mode-intro-step-${i + 1}`}
+                >
+                  <Text style={[numeral, styles.numeral, { color: theme.stamp }]}>{i + 1}</Text>
+                  <View style={styles.stepWords}>
+                    <Text style={[L.type.step, { color: theme.ink }]}>{step.title}</Text>
+                    <Text style={[L.type.body, styles.stepBody, { color: theme.inkMuted }]}>{step.body}</Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         </View>
       </Animated.ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: theme.ground, paddingBottom: insets.bottom + ref.space.ctaBottom }]}>
+      <View style={[styles.footer, { backgroundColor: theme.ground, paddingBottom: ctaBottomPad(insets.bottom) }]}>
         <FootShade theme={theme} />
         <ModePill
           variant="ghost"
@@ -132,6 +146,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
   content: { flexGrow: 1, paddingBottom: L.foot.pad },
+  // The words, centred in whatever room the banner leaves above the button.
+  middle: { flexGrow: 1, justifyContent: "center" },
   column: { paddingHorizontal: L.inset, paddingTop: I.introTop },
   kicker: { marginBottom: L.taglineGap },
   tagline: { marginTop: L.taglineGap },

@@ -38,7 +38,7 @@ import { XIcon } from "@/components/icons";
 import { FocusRing, TreatedImage, useFocusRing, SquashPressable } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
-import { COPY, fillLabel, plateLabelSpoken, plateName, removeLabel, retakeLabel } from "./copy";
+import { COPY, fillLabel, removeLabel, retakeLabel } from "./copy";
 import { CameraGlyph } from "./Glyphs";
 
 const L = ref.layout.review;
@@ -149,7 +149,6 @@ function PlateCell({ index, prompt, plate, size, reason, onRetake, onRemove }: P
               maxEdge={T.bake}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
-              accessible={false}
               testID={`plate-${index}-photo`}
             />
           </View>

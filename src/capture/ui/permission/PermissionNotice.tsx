@@ -1,7 +1,7 @@
 // 03 · Camera permission: the inline notice under the body (docs/DESIGN.md 03,
 // Layout: Inline notice; States: Library partial, Library error, Request
-// error), on the white sheet. ref.type.meta in ref.color.inkMuted, lowercase
-// like the rest of the screen. Progress: the text alone. Error: a Phosphor
+// error), on the dark sheet. ref.type.meta in the sheet's muted ink, in
+// sentence case. Progress: the text alone. Error: a Phosphor
 // Warning (ref.layout.permission.noticeIcon, the raised ink glyphs take on
 // paper) centred on the first line, ref.space.sm before the same grey text.
 // The reference has no colour accent, so neither does the notice. Inside a
@@ -14,10 +14,11 @@
 // hidden, and a new message is spoken through the polite live region
 // (Android) or an announcement (iOS).
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { ICON_WEIGHT, WarningIcon } from "@/components/icons";
 import { ref } from "@/theme/tokens";
 import { useCapturePalette } from "../palette";
+import { announce } from "@/lib/a11y";
 
 export interface PermissionNoticeProps {
   /** "error": the Warning icon, then the text. "progress": the text alone. */
@@ -32,7 +33,7 @@ export function PermissionNotice({ kind, text, testID }: PermissionNoticeProps) 
 
   useEffect(() => {
     // Android speaks the new text through the polite live region below.
-    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(text);
+    if (Platform.OS === "ios") announce(text);
   }, [text]);
 
   const error = kind === "error";
@@ -61,5 +62,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
   iconBox: { justifyContent: "center" },
   // The message wraps in the column beside the icon; nothing shrinks.
-  text: { ...ref.type.meta, textTransform: "lowercase", flexShrink: 1 },
+  text: { ...ref.type.meta, flexShrink: 1 },
 });

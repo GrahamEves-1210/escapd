@@ -96,21 +96,21 @@ describe("/capture", () => {
     expect(jest.mocked(Stack.Screen).mock.calls.at(-1)?.[0]).toMatchObject({ options: { gestureEnabled: true } });
   });
 
-  it("sets dark status-bar glyphs on 03's white, and light ones once the camera has faded in or /capture is left", async () => {
+  it("keeps light status-bar glyphs on 03's dark sheet, through the camera fading in, and when /capture is left", async () => {
     jest.useFakeTimers();
     try {
       sessionSeen.mockReturnValue(true);
       withPermission(response(false));
       await render(<CaptureScreen />);
-      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
       withPermission(response(true));
       await screen.rerender(<CaptureScreen />);
-      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
       await act(() => jest.advanceTimersByTime(motion.sceneCrossfade));
       expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
       withPermission(response(false));
       await screen.rerender(<CaptureScreen />);
-      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("dark");
+      expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
       await screen.unmount();
       expect(jest.mocked(setStatusBarStyle).mock.calls.at(-1)?.[0]).toBe("light");
     } finally {

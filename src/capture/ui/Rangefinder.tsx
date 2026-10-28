@@ -32,7 +32,6 @@
 // square buttons and the thumbnail (inside those components).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   BackHandler,
   Platform,
   StyleSheet,
@@ -62,6 +61,7 @@ import { TurnDial } from "./rangefinder/TurnDial";
 import { useLenses } from "./rangefinder/useLenses";
 import { Viewfinder, viewfinderLayout } from "./rangefinder/Viewfinder";
 import type { RangefinderProps } from "./types";
+import { announce, focusForAccessibility } from "@/lib/a11y";
 
 const L = ref.layout.camera;
 
@@ -180,7 +180,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   // Screen readers start on the prompt once the rangefinder has faded in.
   useEffect(() => {
     const id = setTimeout(() => {
-      if (promptRef.current) AccessibilityInfo.sendAccessibilityEvent(promptRef.current, "focus");
+      focusForAccessibility(promptRef.current);
     }, motion.sceneCrossfade);
     return () => clearTimeout(id);
   }, []);
@@ -194,8 +194,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     const before = spoken.current;
     spoken.current = { promptKey, status };
     if (Platform.OS !== "ios") return;
-    if (promptKey !== before.promptKey) AccessibilityInfo.announceForAccessibility(promptLabel);
-    else if (status !== null && status !== before.status) AccessibilityInfo.announceForAccessibility(status);
+    if (promptKey !== before.promptKey) announce(promptLabel);
+    else if (status !== null && status !== before.status) announce(status);
   }, [promptKey, status, promptLabel]);
 
   // Back, Android back and the retake thumbnail close the camera. While a

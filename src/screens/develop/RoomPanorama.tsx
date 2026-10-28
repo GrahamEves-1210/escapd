@@ -222,7 +222,6 @@ export function RoomPanorama({ photos, ready, style }: {
                     genre={palette.genre}
                     maxEdge={BAKE}
                     contentFit="cover"
-                    accessible={false}
                     style={[styles.tile, { left: i * pitch, width: tile, height }]}
                     testID={`build-photo-${i}`}
                   />
@@ -284,7 +283,7 @@ function StillRoom({ photos, ready }: { photos: readonly PanoramaPhoto[]; ready:
   const at = index % count;
   return (
     <Animated.View key={at} entering={index === 0 ? undefined : STILL_IN} exiting={STILL_OUT} style={StyleSheet.absoluteFill} testID={`build-still-${at}`}>
-      <TreatedImage source={photos[at].uri} genre={palette.genre} maxEdge={BAKE} contentFit="cover" accessible={false} style={StyleSheet.absoluteFill} />
+      <TreatedImage source={photos[at].uri} genre={palette.genre} maxEdge={BAKE} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Animated.View>
   );
 }

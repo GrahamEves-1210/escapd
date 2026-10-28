@@ -5,7 +5,7 @@ import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
+import { ref, shellTheme } from "@/theme/tokens";
 import { CAP_BELOW_SAFE_TOP, PermissionSheet } from "../PermissionSheet";
 
 const hidden = { includeHiddenElements: true } as const;
@@ -32,11 +32,11 @@ async function layout(testID: string, height: number) {
 }
 
 describe("PermissionSheet", () => {
-  it("is pushr's sheet: white, 40 pt continuous top corners (the camera's), no edge, rule or shadow", async () => {
+  it("is the app's dark sheet: 40 pt continuous top corners (the camera's), no edge, rule or shadow", async () => {
     await renderSheet();
     const sheet = styleOf(screen.getByTestId("permission-sheet", hidden));
     expect(sheet).toMatchObject({
-      backgroundColor: ref.color.paper,
+      backgroundColor: ref.color.ground,
       borderTopLeftRadius: ref.radius.bottomSheet,
       borderTopRightRadius: ref.radius.bottomSheet,
       borderCurve: "continuous",
@@ -49,12 +49,14 @@ describe("PermissionSheet", () => {
     // The panel first, full-bleed; the text in the 24 gutter, 24 below it.
     expect(styleOf(screen.getByTestId("permission-illustration", hidden))).toMatchObject({ height: ref.layout.permission.panel });
     expect(styleOf(screen.getByTestId("permission-text", hidden))).toMatchObject({ paddingHorizontal: ref.space.xl, paddingTop: ref.space.xl });
-    // Title in Archivo Black, lowercase; body in the system font, grey, lowercase, titleToBody 14 below.
+    // Title in the theme's display face, sentence case; body in the system font, grey, titleToBody 14 below.
     expect(styleOf(screen.getByRole("header", { name: "Let ESCAPD use the camera" }))).toMatchObject({
-      ...ref.type.display,
-      color: ref.color.inkDisplay,
+      ...shellTheme.display,
+      textTransform: "none",
+      color: ref.color.textPrimary,
     });
-    expect(styleOf(screen.getByText("Body"))).toMatchObject({ ...ref.type.body, color: ref.color.inkMuted, textTransform: "lowercase" });
+    expect(styleOf(screen.getByText("Body"))).toMatchObject({ ...ref.type.body, color: ref.color.textSecondary });
+    expect(styleOf(screen.getByText("Body")).textTransform).toBeUndefined();
     expect(styleOf(screen.getByText("Body").parent as never).marginTop).toBe(ref.layout.permission.titleToBody);
     // The controls: 28 below the body, 8 apart, in the gutter.
     expect(styleOf(screen.getByTestId("permission-controls", hidden))).toMatchObject({
@@ -64,17 +66,17 @@ describe("PermissionSheet", () => {
     });
   });
 
-  it("caps the sheet ref.space.lg below the safe top", async () => {
+  it("caps the sheet just under the screen's close square", async () => {
     await renderSheet();
-    expect(CAP_BELOW_SAFE_TOP).toBe(ref.space.lg);
-    expect(styleOf(screen.getByTestId("permission-sheet-host", hidden)).paddingTop).toBe(BASE.insets.top + ref.space.lg);
+    expect(CAP_BELOW_SAFE_TOP).toBe(ref.layout.camera.top + ref.button.square.size + ref.space.sm);
+    expect(styleOf(screen.getByTestId("permission-sheet-host", hidden)).paddingTop).toBe(BASE.insets.top + CAP_BELOW_SAFE_TOP);
   });
 
-  it("ends the last button ref.space.ctaBottom above the home indicator, or ref.space.lg above a 0 inset", async () => {
+  it("ends the last button ref.space.ctaBottom above the home indicator, or ctaFloor + ctaBottom above a 0 inset", async () => {
     await renderSheet();
     expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(BASE.insets.bottom + ref.space.ctaBottom);
     await renderSheet(SHORT);
-    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(ref.space.lg);
+    expect(styleOf(screen.getByTestId("permission-controls", hidden)).paddingBottom).toBe(ref.space.ctaFloor + ref.space.ctaBottom);
   });
 
   it("keeps the panel while the sheet fits under the cap", async () => {

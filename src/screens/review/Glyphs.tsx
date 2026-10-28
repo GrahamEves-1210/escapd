@@ -31,7 +31,7 @@ export function CameraGlyph({ color }: { color: string }) {
     "Z",
   ].join(" ");
   return (
-    <Svg width={C.width} height={C.height} accessible={false} testID="camera-glyph">
+    <Svg width={C.width} height={C.height} testID="camera-glyph">
       <Path d={outline} stroke={color} strokeWidth={C.line} strokeLinejoin="miter" fill="none" />
       <Circle cx={C.width / 2} cy={C.lensY} r={(C.lens - C.line) / 2} stroke={color} strokeWidth={C.line} fill="none" />
     </Svg>
@@ -40,7 +40,7 @@ export function CameraGlyph({ color }: { color: string }) {
 
 export function TapGlyph({ color }: { color: string }) {
   return (
-    <Svg width={T.box} height={T.box} accessible={false} testID="tap-glyph">
+    <Svg width={T.box} height={T.box} testID="tap-glyph">
       <G transform={`translate(${T.x} ${T.y})`}>
         {T.paths.map((d) => (
           <Path key={d} d={d} stroke={color} strokeWidth={T.line} strokeLinecap="round" strokeLinejoin="round" fill="none" />

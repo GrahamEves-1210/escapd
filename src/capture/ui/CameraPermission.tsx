@@ -1,10 +1,10 @@
 // 03 · Camera permission (docs/DESIGN.md 03): every state of /capture before
-// camera access is granted, in pushr's look. A single decision, bright and
-// quiet: white paper with a soft grey haze behind the status bar, then, once
-// Checking is over, a white sheet rising from below with a light grey panel
-// holding a heavy black phone outline, a wide black lowercase title, a grey
-// paragraph, one black pill and a quiet grey way out. No back control, as in
-// the reference: leaving is the system's back (the iOS edge swipe, Android's
+// camera access is granted. A single decision on the app's dark look: the
+// flat ground, then, once Checking is over, a dark sheet rising from below
+// with a raised panel holding the phone outline, a sentence-case title, a
+// grey paragraph, one pill and a quiet way out. The capture flow's square
+// close button sits at the top left (as on the guide, the review and the
+// build wait), alongside the system's back (the iOS edge swipe, Android's
 // back, VoiceOver's escape gesture).
 //
 // States: Checking (the ground alone; a thinking line only past ~1 s),
@@ -15,18 +15,20 @@
 // rangefinder: the sheet slides out and the ground fades out over it (exiting
 // animations in PermissionSheet and PermissionGround).
 //
-// Inside a mode (src/capture/ui/palette.ts) the same screen is the mode's
-// dark sheet: the mode's ground, a `surface` sheet with a `raised` panel, the
-// title in its ink and the body in its muted ink, the pill the mode's primary
-// button and the quiet ways out in its muted ink (ModePill), no haze.
+// Inside a mode (src/capture/ui/palette.ts) the sheet takes the mode's
+// colours: its ground, a `surface` sheet with a `raised` panel, the title in
+// its display face and ink and the body in its muted ink, the pill the mode's
+// primary button and the quiet ways out in its muted ink (ModePill).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, Linking, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { getPlates, useRollPlan } from "@/capture/roll";
 import { MIN_PLATES } from "@/capture/slots";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { ThinkingStates, useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
+import { XIcon } from "@/components/icons";
 import { ref } from "@/theme/tokens";
 import { ModePill } from "./ModePill";
 import { useCapturePalette } from "./palette";
@@ -34,14 +36,12 @@ import { COPY, PERMISSION_COPY } from "./permission/copy";
 import { PermissionGround } from "./permission/PermissionGround";
 import { PermissionNotice } from "./permission/PermissionNotice";
 import { PermissionSheet, type SheetNotice } from "./permission/PermissionSheet";
+import { SquareButton } from "./rangefinder/SquareButton";
 import type { CameraPermissionProps } from "./types";
 
 const P = ref.layout.permission;
-// The kit's pill labels and the drawn thinking lines take the screen's
-// lowercase as lowercased strings (neither takes a textTransform); screen
-// readers hear the sentence-case copy as their accessibility labels.
-const lower = (text: string) => text.toLowerCase();
-const CHECKING_LINES = [lower(COPY.checking)] as const;
+const CAM = ref.layout.camera;
+const CHECKING_LINES = [COPY.checking] as const;
 
 interface Notice {
   /** "error": the Warning icon, then the text. "progress": the text alone. Both in ref.color.inkMuted. */
@@ -53,8 +53,11 @@ export function CameraPermission({ permission, checking, requestPermission, reta
   const library = useLibraryImport({ retakeIndex });
   const rollPlan = useRollPlan();
   const feedback = useFeedback();
-  const { paper } = useCapturePalette();
+  const insets = useSafeAreaInsets();
+  const { paper, genre } = useCapturePalette();
   const thinkingGround = paper ? "paper" : "dark";
+  // The shell's kit pill: white on the dark sheet. A mode's quiet pill: its muted ink.
+  const quietGround = genre === null ? "dark" : "paper";
   const [requesting, setRequesting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   // The roll count the quiet buttons are drawn from while a library import
@@ -176,8 +179,8 @@ export function CameraPermission({ permission, checking, requestPermission, reta
       node: (
         <ThinkingStates
           ground={thinkingGround}
-          lines={[lower(COPY.busyLine(current, thinking.total))]}
-          sizeTo={[lower(COPY.busyLine(thinking.total, thinking.total))]}
+          lines={[COPY.busyLine(current, thinking.total)]}
+          sizeTo={[COPY.busyLine(thinking.total, thinking.total)]}
           accessibilityLabel={COPY.busyLabel}
           announceOnMount
           style={styles.startAligned}
@@ -198,6 +201,10 @@ export function CameraPermission({ permission, checking, requestPermission, reta
     // anywhere on it, as the system back does.
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onAccessibilityEscape={onClose} testID="camera-permission">
       <PermissionGround />
+      {/* The way out, first in reading order, over the ground (the sheet never rises past it). */}
+      <View style={[styles.close, { top: insets.top + CAM.top }]} pointerEvents="box-none">
+        <SquareButton icon={XIcon} accessibilityLabel={COPY.close} onPress={onClose} testID="permission-close" />
+      </View>
 
       {checking ? (
         // Checking past ~1 s: one line at the screen's centre. Neither it nor
@@ -215,8 +222,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
       ) : (
         <PermissionSheet copyKey={copyKey} title={copy.title} body={copy.body} notice={slot} testID="permission-sheet">
           <ModePill
-            label={lower(copy.action)}
-            accessibilityLabel={copy.action}
+            label={copy.action}
             onPress={denied ? openSettings : request}
             busy={requesting}
             spinner
@@ -224,10 +230,11 @@ export function CameraPermission({ permission, checking, requestPermission, reta
             testID="permission-primary"
           />
           {full ? (
-            <QuietPill label={COPY.lightTable} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
+            <QuietPill label={COPY.lightTable} ground={quietGround} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
           ) : (
             <QuietPill
               label={retake ? COPY.choosePhoto : COPY.choosePhotos}
+              ground={quietGround}
               onPress={choose}
               requesting={requesting}
               busy={busy}
@@ -235,16 +242,18 @@ export function CameraPermission({ permission, checking, requestPermission, reta
             />
           )}
           {rollReady ? (
-            <QuietPill label={COPY.lightTable} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
+            <QuietPill label={COPY.lightTable} ground={quietGround} onPress={toLightTable} requesting={requesting} busy={busy} testID="permission-light-table" />
           ) : null}
         </PermissionSheet>
       )}
+
     </View>
   );
 }
 
 interface QuietPillProps {
   label: string;
+  ground: "paper" | "dark";
   onPress: () => void;
   requesting: boolean;
   busy: boolean;
@@ -252,20 +261,18 @@ interface QuietPillProps {
 }
 
 /**
- * The kit's quiet pill on paper (ref.button.quiet.paper: the reference's grey,
- * darkening when pressed; in a mode, the mode's muted ink), lowercase like
- * the rest of the screen. Requesting:
+ * The quiet pill: in the shell the kit's on dark (white, greying when
+ * pressed); in a mode, the mode's muted ink. Requesting:
  * disabled. Library busy: disabled and busy, so dimmed, inert and
  * { disabled, busy }, its label kept and still focusable (the button that
  * started an import keeps focus; the thinking line carries the progress).
  */
-function QuietPill({ label, onPress, requesting, busy, testID }: QuietPillProps) {
+function QuietPill({ label, ground, onPress, requesting, busy, testID }: QuietPillProps) {
   return (
     <ModePill
       variant="quiet"
-      ground="paper"
-      label={lower(label)}
-      accessibilityLabel={label}
+      ground={ground}
+      label={label}
       onPress={onPress}
       disabled={requesting || busy}
       busy={busy}
@@ -276,6 +283,7 @@ function QuietPill({ label, onPress, requesting, busy, testID }: QuietPillProps)
 
 const styles = StyleSheet.create({
   centre: { justifyContent: "center" },
+  close: { position: "absolute", left: CAM.edge },
   // The thinking line starts at the column's left edge, under the body.
   startAligned: { alignItems: "flex-start" },
 });

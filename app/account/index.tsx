@@ -1,6 +1,9 @@
 // Turn a guest into a full account by confirming an email. Same user id, so
 // tutorial progress and settings carry over. ?next=back returns to the screen
 // that asked; any other value is a route to replace this one with.
+// ?from=settings is Settings' Add your email; anything else came from
+// starting or building a case (openCapture, the build step, /pro), so the
+// screen says why it asks.
 import { useCallback, useEffect, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from "react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -31,7 +34,8 @@ function devDetail(error: unknown) {
 }
 
 export default function AccountScreen() {
-  const { next } = useLocalSearchParams<{ next?: string }>();
+  const { next, from } = useLocalSearchParams<{ next?: string; from?: string }>();
+  const forCase = from !== "settings";
   const [email, setEmail] = useState("");
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -138,7 +142,9 @@ export default function AccountScreen() {
               <>
                 <Text variant="narrativeTitle" align="center" accessibilityRole="header">Add your email</Text>
                 <Text tone="secondary" align="center">
-                  {"Your cases and progress stay with this account. We'll send one link to confirm the address."}
+                  {forCase
+                    ? "Building a case from your own room needs an email on your account, so your photos and cases stay safe with it. We'll send one link to confirm the address."
+                    : "Your cases and progress stay with this account. We'll send one link to confirm the address."}
                 </Text>
                 <TextInput
                   value={email}

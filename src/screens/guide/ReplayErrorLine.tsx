@@ -12,11 +12,12 @@
 // announcement on iOS). Inside a mode the text is the mode's muted ink
 // (src/capture/ui/palette.ts); the glyph stays the warning amber.
 import { useEffect } from "react";
-import { AccessibilityInfo, Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useCapturePalette } from "@/capture/ui/palette";
 import { ICON_WEIGHT, WarningIcon } from "@/components/icons";
 import { color, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
+import { announce } from "@/lib/a11y";
 
 export function ReplayErrorLine({ testID }: { testID?: string }) {
   const { fontScale } = useWindowDimensions();
@@ -24,7 +25,7 @@ export function ReplayErrorLine({ testID }: { testID?: string }) {
 
   useEffect(() => {
     // Android announces through the polite live region below.
-    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(COPY.checkError);
+    if (Platform.OS === "ios") announce(COPY.checkError);
   }, []);
 
   return (

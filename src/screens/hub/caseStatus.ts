@@ -10,7 +10,7 @@ import type { Genre } from "@/lib/puzzle-types";
  *   run abandoned by "Restart this case"): /play/<id>;
  * - build: a room still building (queued or generating): the build wait.
  */
-export type CaseToContinue = { kind: "play"; roomId: string } | { kind: "build"; roomId: string };
+export type CaseToContinue = { kind: "play" | "build"; roomId: string; /** The room's title ("The Study"), when it has one. */ title?: string };
 
 /** Each mode's case to go back to; null for none. */
 export type ModeCases = Record<Genre, CaseToContinue | null>;
@@ -34,14 +34,20 @@ export function newestByGenre<R extends Pick<Room, "genre">>(rooms: readonly R[]
  * still open: the newest room is the one the player last started.
  */
 export function caseToContinue(
-  room: Pick<Room, "id" | "status"> | undefined,
+  room: (Pick<Room, "id" | "status"> & { title?: string | null }) | undefined,
   session: Pick<GameSession, "status"> | null | undefined,
 ): CaseToContinue | null {
   if (!room) return null;
-  if (room.status === "queued" || room.status === "generating") return { kind: "build", roomId: room.id };
-  if (room.status === "ready" && session?.status !== "completed") return { kind: "play", roomId: room.id };
+  // A room is "Untitled room" until its build names it.
+  const named = room.title?.trim();
+  const title = named && named !== UNTITLED_ROOM ? { title: named } : {};
+  if (room.status === "queued" || room.status === "generating") return { kind: "build", roomId: room.id, ...title };
+  if (room.status === "ready" && session?.status !== "completed") return { kind: "play", roomId: room.id, ...title };
   return null;
 }
+
+/** The server's title for a room its build hasn't named yet (supabase/migrations: create_room). */
+export const UNTITLED_ROOM = "Untitled room";
 
 /** Where Continue goes: the player, or the build wait (as the old case files did). */
 export function continueHref(target: CaseToContinue): Href {

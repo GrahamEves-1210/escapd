@@ -5,7 +5,7 @@
 // now). Every late result is dropped once the player has left: each async
 // step checks the AbortSignal of the focus it started in.
 import { useCallback, useRef, useState } from "react";
-import { AccessibilityInfo, AppState, BackHandler } from "react-native";
+import { AppState, BackHandler } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { openCapture } from "@/capture/openCapture";
 import { grantTestEntitlement, TestPurchaseError, TestPurchaseUnavailableError } from "@/capture/testPurchase";
@@ -13,6 +13,7 @@ import { useFeedback } from "@/game/feedback";
 import { currentSession, ensureSession, getMyAccess, isNetworkError } from "@/lib/escapd-api";
 import type { MyAccess } from "@/lib/puzzle-types";
 import * as copy from "./copy";
+import { announce } from "@/lib/a11y";
 
 /**
  * - loading: opened without ?cap, so /pro runs its own access check first.
@@ -173,7 +174,7 @@ export function useProFlow(initialCap: number | null) {
       // Loop guard: a 200 without the entitlement is the generic error, never openCapture.
       if (!access.has_custom_rooms_entitlement) throw new Error("custom_rooms entitlement still missing after the grant");
       feedback.success();
-      AccessibilityInfo.announceForAccessibility(copy.SAY_UNLOCKED);
+      announce(copy.SAY_UNLOCKED);
       await toCapture(signal);
     } catch (error) {
       if (signal.aborted) return;
@@ -197,7 +198,7 @@ export function useProFlow(initialCap: number | null) {
       if (access.is_anonymous) return toAccount();
       if (access.has_custom_rooms_entitlement) return await toCapture(signal);
       refreshCap(access);
-      AccessibilityInfo.announceForAccessibility(copy.SAY_NO_ACCESS);
+      announce(copy.SAY_NO_ACCESS);
     } catch (error) {
       if (signal.aborted) return;
       setNotice(noticeFor(error));

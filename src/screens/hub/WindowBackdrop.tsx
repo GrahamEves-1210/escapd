@@ -14,7 +14,32 @@ import { useTheme } from "@/theme/ThemeProvider";
 const WINDOW = require("../../../assets/backdrop/window.jpg") as number;
 /** The art's geometry as fractions (scripts/brand/window.py): frame, sill, mullion, the cross's height. */
 export const ART = { frameX: 0.0496, frameY: 0.0229, sill: 0.0536, mullion: 0.0357, cross: 0.5 } as const;
+/** The art's size in pixels. */
+const ART_SIZE = { width: 1290, height: 2796 } as const;
 const DROPS = 46;
+
+/** Where the window art lies on a screen, and its sill. Points. */
+export interface WindowGeometry {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** The sill's height at the screen's foot: its top is this far above the bottom edge. */
+  sill: number;
+}
+
+/**
+ * The art covers the screen, keeping its aspect. Where the screen is wider
+ * than the art (a 375 x 667 phone) the overflow is cut from the top only, so
+ * the sill always stays on the screen's foot (the header covers the top of
+ * the frame); where it is narrower the sides are cut evenly.
+ */
+export function windowGeometry(screenWidth: number, screenHeight: number): WindowGeometry {
+  const scale = Math.max(screenWidth / ART_SIZE.width, screenHeight / ART_SIZE.height);
+  const width = ART_SIZE.width * scale;
+  const height = ART_SIZE.height * scale;
+  return { left: (screenWidth - width) / 2, top: screenHeight - height, width, height, sill: height * ART.sill };
+}
 
 interface DropSpec {
   x: number;       // 0..1 across the glass
@@ -38,21 +63,28 @@ const SHOWER: DropSpec[] = Array.from({ length: DROPS }, (_, i) => {
 export function WindowBackdrop() {
   const { width, height } = useWindowDimensions();
   const { reducedMotion } = useTheme();
+  const art = windowGeometry(width, height);
   // The glass: inside the frame, above the sill (the mullions are painted; drops may cross them under the art's own).
-  const left = width * ART.frameX;
-  const top = height * ART.frameY;
-  const w = width - 2 * left;
-  const h = height - top - height * ART.sill;
+  const left = art.left + art.width * ART.frameX;
+  const top = art.top + art.height * ART.frameY;
+  const w = art.width * (1 - 2 * ART.frameX);
+  const h = art.height * (1 - ART.frameY - ART.sill);
+  const mullion = art.width * ART.mullion;
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" testID="hub-window">
-      <Image source={WINDOW} style={[StyleSheet.absoluteFill, { width, height }]} resizeMode="cover" accessibilityIgnoresInvertColors />
+    <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window">
+      <Image
+        source={WINDOW}
+        style={{ position: "absolute", left: art.left, top: art.top, width: art.width, height: art.height }}
+        resizeMode="stretch"
+        accessibilityIgnoresInvertColors
+      />
       <View style={{ position: "absolute", left, top, width: w, height: h, overflow: "hidden" }}>
         <Lightning still={reducedMotion} />
         {reducedMotion ? null : <Rain width={w} height={h} />}
       </View>
       {/* The mullions over the rain, so drops stay on the glass. */}
-      <View style={[styles.mullion, { left: width / 2 - (width * ART.mullion) / 2, width: width * ART.mullion, top, height: h }]} />
-      <View style={[styles.mullion, { top: height * ART.cross - (width * ART.mullion) / 2, height: width * ART.mullion, left, width: w }]} />
+      <View style={[styles.mullion, { left: art.left + art.width / 2 - mullion / 2, width: mullion, top, height: h }]} />
+      <View style={[styles.mullion, { top: art.top + art.height * ART.cross - mullion / 2, height: mullion, left, width: w }]} />
     </View>
   );
 }
@@ -133,6 +165,7 @@ function Lightning({ still }: { still: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  clip: { overflow: "hidden" },
   flash: { backgroundColor: "rgb(196, 212, 255)" },
   // Matches the art's mullion wood, lit on its top/left edge.
   mullion: { position: "absolute", backgroundColor: "rgb(40, 32, 29)", borderLeftWidth: 1, borderTopWidth: 1, borderColor: "rgb(78, 64, 56)" },

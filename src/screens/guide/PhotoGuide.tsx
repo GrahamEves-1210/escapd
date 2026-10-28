@@ -1,6 +1,7 @@
 // 04 · Photo guide (docs/DESIGN.md), in Apple Health's look
-// (docs/refs/04-photo-tutorial.png). Four steps on pure black: the light grey
-// glass close disc at the top right, one line drawing floating in the middle,
+// (docs/refs/04-photo-tutorial.png). Four steps on pure black: the
+// capture flow's square close button at the top left (as the review, the
+// build wait and the mode intro), one line drawing floating in the middle,
 // then a bold white title over a regular grey instruction and one dark
 // hairline pill. No step label on screen (the reference has none): screen
 // readers hear "Step n of 4" when a step opens and in the button's hint.
@@ -9,28 +10,29 @@
 // (/capture/guide?replay=1, with no access check behind it), that continue
 // runs the access check first (useReplayCheck).
 //
-// Layout on 393 x 852 (safe 59 / 34), top to bottom: the close disc at
-// x 311-361, y 69-119; the drawing at y 266-532; the title (613-641) and body
+// Layout on 393 x 852 (safe 59 / 34), top to bottom: the close square at
+// x 21-65, y 67-111; the drawing at y 266-532; the title (613-641) and body
 // (644-700), bottom-anchored; a 62 gap that holds the check's status line
 // (723-739); the pill at 762-814; then safe bottom + ref.space.ctaBottom.
 // Large text grows the block upward from 814.
 // Inside a mode (openCapture({ genre }) sets it) the guide takes the mode's
 // colours (src/capture/ui/palette.ts): its ground, ink and muted ink, the
-// close disc in its muted ink, and the step button as the mode's primary
+// close square in its raised fill, and the step button as the mode's primary
 // button. The line drawings keep their greys.
 import { useCallback, useEffect, useRef } from "react";
-import { AccessibilityInfo, BackHandler, StyleSheet, View } from "react-native";
+import { BackHandler, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 import { router, useFocusEffect, useNavigation, type NativeStackNavigationProp } from "expo-router";
 import { markCaptureGuideSeen } from "@/capture/guideSeen";
 import { useCapturePalette } from "@/capture/ui/palette";
+import { SquareButton } from "@/capture/ui/rangefinder/SquareButton";
+import { XIcon } from "@/components/icons";
 import { useFeedback } from "@/game/feedback";
 import { ThinkingStates } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
-import { CloseButton } from "./CloseButton";
+import { ctaBottomPad, motion, ref } from "@/theme/tokens";
 import { COPY, LAST_STEP, STEPS, stepAnnouncement } from "./copy";
 import { GuideArt } from "./GuideArt";
 import { GuideText, type TitleRef } from "./GuideText";
@@ -39,8 +41,10 @@ import { StepButton } from "./StepButton";
 import { layersOf, useStepper } from "./stepper";
 import { SWIPE_OFFSETS, swipeStep } from "./swipe";
 import { useReplayCheck } from "./useReplayCheck";
+import { announce, focusForAccessibility } from "@/lib/a11y";
 
 const G = ref.layout.guide;
+const CAM = ref.layout.camera;
 
 /** The route's search params, as expo-router hands them over. */
 export type GuideParams = Record<string, string | string[] | undefined>;
@@ -78,24 +82,24 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
 
   // Screen readers: focus the title and say where the player is, when the
   // screen opens and after every step change.
-  const announce = useCallback(() => {
+  const announceStep = useCallback(() => {
     const title = titleRef.current;
-    if (title) AccessibilityInfo.sendAccessibilityEvent(title, "focus");
-    AccessibilityInfo.announceForAccessibilityWithOptions(stepAnnouncement(currentStep()), { queue: true });
+    focusForAccessibility(title);
+    announce(stepAnnouncement(currentStep()), { queue: true });
   }, [currentStep]);
 
   useEffect(
     () =>
       navigation.addListener("transitionEnd", (e) => {
-        if (!e.data.closing) announce();
+        if (!e.data.closing) announceStep();
       }),
-    [navigation, announce],
+    [navigation, announceStep],
   );
 
   const settled = state.changes > 0 && state.leaving === null;
   useEffect(() => {
-    if (settled) announce();
-  }, [settled, state.changes, announce]);
+    if (settled) announceStep();
+  }, [settled, state.changes, announceStep]);
 
   // iOS swipe-back only on step 1: on steps 2-4 a right swipe means "previous".
   useEffect(() => {
@@ -190,9 +194,9 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
   });
 
   return (
-    <View style={[styles.root, { backgroundColor: palette.well, paddingBottom: insets.bottom + ref.space.ctaBottom }]} testID="guide-root">
-      <View style={[styles.header, { paddingTop: insets.top + G.close.top }]}>
-        <CloseButton accessibilityLabel={COPY.skip} onPress={onClose} />
+    <View style={[styles.root, { backgroundColor: palette.well, paddingBottom: ctaBottomPad(insets.bottom) }]} testID="guide-root">
+      <View style={[styles.header, { paddingTop: insets.top + CAM.top }]}>
+        <SquareButton icon={XIcon} accessibilityLabel={COPY.skip} onPress={onClose} testID="guide-close" />
       </View>
 
       <GestureDetector gesture={pan}>
@@ -224,8 +228,8 @@ export function PhotoGuide({ replay, carry }: PhotoGuideProps) {
 const styles = StyleSheet.create({
   // Pure black (the palette's well), as the reference: no still, grain or glow.
   root: { flex: 1 },
-  // The disc's outer edge 10 below the safe top and 32 from the right edge.
-  header: { flexDirection: "row", justifyContent: "flex-end", paddingRight: G.close.right },
+  // Close: the capture flow's square at the top left, where the review, the build wait and the mode intro keep their way out.
+  header: { flexDirection: "row", justifyContent: "flex-start", paddingHorizontal: CAM.edge },
   // y 119-762 on the base device: the swipe area, between the disc and the pill.
   swipeArea: { flex: 1 },
   // The 62 gap above the pill (y 700-762), holding the check's status line at y 723-739.
