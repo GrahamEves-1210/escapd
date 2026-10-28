@@ -161,6 +161,9 @@ export function DarkSheet({
     return () => clearTimeout(t);
   }, [reducedMotion]);
 
+  // Scrolled: the content passes under a hairline edge below the header, never straight into the meta line.
+  const [scrolled, setScrolled] = useState(false);
+
   const entering = sheetEntering(reducedMotion);
   // Once it has slid away itself there is nothing left to animate on unmount.
   const exiting = closing ? undefined : sheetExiting(reducedMotion);
@@ -196,9 +199,22 @@ export function DarkSheet({
           </View>
           <CloseChip onPress={close} testID={closeTestID} />
         </View>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} bounces={false} scrollEnabled={scrollEnabled}>
-          {children}
-        </ScrollView>
+        <View style={styles.scrollClip}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            bounces={false}
+            scrollEnabled={scrollEnabled}
+            scrollEventThrottle={32}
+            onScroll={(e) => {
+              const down = e.nativeEvent.contentOffset.y > 0.5;
+              if (down !== scrolled) setScrolled(down);
+            }}
+          >
+            {children}
+          </ScrollView>
+          <View pointerEvents="none" style={[styles.edge, { backgroundColor: theme.rim, opacity: scrolled ? 1 : 0 }]} testID={testID ? `${testID}-edge` : undefined} />
+        </View>
         {footer ? <View style={styles.footer}><SheetFooter footer={footer} /></View> : null}
       </Animated.View>
       </Animated.View>
@@ -274,7 +290,10 @@ const styles = StyleSheet.create({
   },
   titleColumn: { flex: 1, gap: ref.space.xs },
   meta: ref.type.meta,
-  scroll: { flexGrow: 0 },
+  // The scrolling area: clipped at its own top (a hairline shows there once scrolled), shrinking to fit the sheet's maxHeight.
+  scrollClip: { flexShrink: 1, overflow: "hidden", marginTop: ref.space.xs },
+  scroll: { flexGrow: 0, flexShrink: 1 },
+  edge: { position: "absolute", left: 0, right: 0, top: 0, height: H.hairline },
   content: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.sm, paddingBottom: ref.space.sm, gap: ref.space.xl },
   footer: { paddingHorizontal: ref.space.xl, paddingTop: ref.space.lg, gap: ref.space.sm },
   chipHit: { width: C.hit, height: C.hit, alignItems: "center", justifyContent: "center" },

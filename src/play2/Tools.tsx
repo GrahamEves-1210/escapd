@@ -17,8 +17,10 @@ const FLASHLIGHT = require("../../assets/brand/flashlight.png") as number;
 /** How far the flashlight may turn either way from straight up (degrees): it stays a held light, never upside down. */
 const AIM = 70;
 
-export function Magnifier({ at, drag, onDragStart, onDrop }: {
+export function Magnifier({ at, lifted = false, drag, onDragStart, onDrop }: {
   at: { left: number; top: number };
+  /** In hand (being dragged): drawn above everything on the way; at rest it sits with the HUD, under any sheet. */
+  lifted?: boolean;
   drag: DragState;
   onDragStart: () => void;
   /** Where it was let go (window points); every pickup ends with one call, released or cancelled. */
@@ -69,7 +71,7 @@ export function Magnifier({ at, drag, onDragStart, onDrop }: {
   }));
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.tool, styles.lens, at, style]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
+      <Animated.View style={[styles.tool, lifted && styles.lifted, at, style]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
         <Image source={MAGNIFIER} style={styles.art} resizeMode="contain" />
       </Animated.View>
     </GestureDetector>
@@ -107,7 +109,7 @@ export function Flashlight({ at, beamX, beamY, frame, uv }: {
 
 const styles = StyleSheet.create({
   tool: { position: "absolute", width: TOOL, height: TOOL, zIndex: 8 },
-  lens: { zIndex: 60 },
+  lifted: { zIndex: 60 },
   pivot: { width: TOOL, height: TOOL, transformOrigin: "50% 85%" },
   art: { width: TOOL, height: TOOL },
   uvGlow: { position: "absolute", left: TOOL * 0.2, top: 0, width: TOOL * 0.6, height: TOOL * 0.35, borderRadius: TOOL, backgroundColor: "rgba(160,110,255,0.75)" },

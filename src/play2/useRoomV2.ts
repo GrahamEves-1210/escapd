@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  COOLDOWN_MS, play, storedState,
+  COOLDOWN_MS, nextStep, play, storedState,
   type Action, type ActionResult, type FoundCardV2, type PlayRequest, type PlayResponse, type PlayState,
   type RoomDefinitionV2, type RoomSecretV2, type StoredStateV2,
 } from "@/engine/v2";
@@ -21,12 +21,66 @@ import type { ScenePhoto } from "@/game/useSceneSources";
 import { planFromV1 } from "./adapter";
 
 const KEY = (roomId: string) => `escapd.v2.play.${roomId}`;
+/** The player's side of a room (either mode): what lies where it was found, how many clues were read. */
+const UI_KEY = (roomId: string) => `escapd.v2.ui.${roomId}`;
+
+/**
+ * What the player screen keeps beside the engine's state, per room: what each
+ * object turned out to hold (notes, items not picked up yet; items by id) and
+ * how many casebook clues have been read. Restored once per load.
+ */
+export interface UiSave {
+  contents: Record<string, ({ kind: "card"; card: FoundCardV2 } | { kind: "item"; id: string })[]>;
+  cluesRead: number;
+}
+
+const forget = (keys: string[]) => {
+  for (const k of keys) AsyncStorage.removeItem(k).catch(() => {});
+};
+
+function readUi(raw: string | null): UiSave | null {
+  try {
+    const s = raw ? JSON.parse(raw) : null;
+    if (!s || typeof s !== "object" || !s.contents || typeof s.contents !== "object") return null;
+    return { contents: s.contents, cluesRead: typeof s.cluesRead === "number" ? s.cluesRead : 0 };
+  } catch {
+    return null;
+  }
+}
 
 /** What a local room keeps on the device between visits. */
 interface LocalSave {
   v: 2;
   state: StoredStateV2;
   lockedUntil: number | null;
+  /** The plan it was played on (planPrint): a re-planned room may keep its object ids and still be another room. */
+  plan?: string;
+  /** Read from the first save shape (before plans were fingerprinted). */
+  legacy?: boolean;
+}
+
+/**
+ * A fingerprint of a planned room: its objects, items, cards, steps and finale.
+ * The planner is seeded by the room's id, so the same planner gives the same
+ * print; a changed planner (other cards, other steps behind the same objects)
+ * gives another, and the old save is dropped instead of resumed into a room it
+ * doesn't fit.
+ */
+export function planPrint(def: RoomDefinitionV2, secret: RoomSecretV2): string {
+  const shape = JSON.stringify([
+    def.objects.map((o) => [o.id, o.archetype, o.variant ?? "", o.controls.map((c) => c.id)]),
+    def.items.map((i) => [i.id, i.kind, i.archetype ?? "", i.card ?? ""]),
+    def.cards.map((c) => [c.id, c.text]),
+    secret.steps.map((st) => [st.id, st.motif, st.object ?? "", st.requires]),
+    def.finale,
+  ]);
+  // FNV-1a, 32 bits.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < shape.length; i++) {
+    h ^= shape.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
 }
 
 export type RoomPhase =
@@ -45,7 +99,7 @@ export interface RequestError {
 }
 
 type Engine =
-  | { mode: "local"; def: RoomDefinitionV2; secret: RoomSecretV2; stored: StoredStateV2; lockedUntil: number | null }
+  | { mode: "local"; def: RoomDefinitionV2; secret: RoomSecretV2; stored: StoredStateV2; lockedUntil: number | null; print: string }
   | { mode: "server"; def: RoomDefinitionV2; sessionId: string };
 
 interface View {
@@ -71,7 +125,7 @@ const viewOf = (r: PlayResponse): View => ({
   ending: r.ending ?? null,
 });
 
-/** A saved local game, from this shape or the first one ({ state, hints, completedAt }); null when there is none to resume. */
+/** A saved local game (a finished one too: it opens on its ending), from this shape or the first one ({ state, hints, completedAt }); null when there is none to resume. */
 function readSave(raw: string | null): LocalSave | null {
   try {
     const s = raw ? JSON.parse(raw) : null;
@@ -79,7 +133,7 @@ function readSave(raw: string | null): LocalSave | null {
     if (s.v === 2 && s.state && typeof s.state === "object") return s as LocalSave;
     // The first save shape: the engine's state with the hint rungs beside it. A finished one starts over.
     if (s.state && typeof s.state === "object" && !s.completedAt) {
-      return { v: 2, state: { ...s.state, hints: s.hints ?? {}, revealed_hotspots: [] }, lockedUntil: null };
+      return { v: 2, state: { ...s.state, hints: s.hints ?? {}, revealed_hotspots: [] }, lockedUntil: null, legacy: true };
     }
   } catch {
     // Unreadable: start over.
@@ -102,17 +156,39 @@ export function useRoomV2(roomId: string) {
   const [loadKey, setLoadKey] = useState(0);
   const engine = useRef<Engine | null>(null);
   const inFlight = useRef(false);
+  // The player's side of the room as saved, read once per load.
+  const [ui, setUi] = useState<UiSave | null>(null);
+  // Server rooms: the solved steps when the current step's hint ladder ran out (no more rungs until a step is solved).
+  const spentAt = useRef<string | null>(null);
 
   const show = useCallback((response: PlayResponse) => {
-    setView(viewOf(response));
+    const v = viewOf(response);
+    // Nothing left to hint for the step the player is on: every rung of its ladder taken.
+    const e = engine.current;
+    if (v.canHint && e?.mode === "local") {
+      const step = nextStep(e.secret, e.stored.solved);
+      v.canHint = !!step && (e.stored.hints[step.id] ?? 0) < Math.min(3, step.hints.length);
+    } else if (v.canHint && e?.mode === "server") {
+      if (response.hint && response.hint.rung >= 3) spentAt.current = response.state.solved.join(",");
+      if (spentAt.current === response.state.solved.join(",")) v.canHint = false;
+    }
+    setView(v);
     setNow(Date.now());
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     engine.current = null;
+    spentAt.current = null;
     (async () => {
       try {
+        let savedUi: UiSave | null = null;
+        try {
+          savedUi = readUi(await AsyncStorage.getItem(UI_KEY(roomId)));
+        } catch {
+          savedUi = null;
+        }
+        if (!cancelled) setUi(savedUi);
         await ensureSession();
         const session = await startOrResume(roomId);
         const loadedDef = await getPlayableDefinition(session.puzzle_version_id);
@@ -141,13 +217,22 @@ export function useRoomV2(roomId: string) {
         } catch {
           saved = null;
         }
-        // A save from another plan (the planner changed) doesn't fit this room, and a finished one is done: start over.
-        const fits = !!saved && !saved.state.completed && Object.keys(saved.state.objects ?? {}).every((id) => plan.definition.objects.some((o) => o.id === id));
+        // A save from another plan (the planner changed) doesn't fit this room: start over. A finished one opens on its ending.
+        // A save carries its plan's print; one in the first shape (no print) is checked by its objects' ids.
+        const print = planPrint(plan.definition, plan.secret);
+        const fits = !!saved && (saved.legacy
+          ? Object.keys(saved.state.objects ?? {}).every((id) => plan.definition.objects.some((o) => o.id === id))
+          : saved.plan === print);
+        if (saved && !fits) {
+          // What lay where in the old room means nothing in this one.
+          forget([UI_KEY(roomId)]);
+          if (!cancelled) setUi(null);
+        }
         const stored = storedState(plan.definition, fits ? saved!.state : null);
         const lockedUntil = fits ? saved!.lockedUntil : null;
         const { response } = play(plan.definition, plan.secret, stored, {}, Date.now(), lockedUntil);
         if (cancelled) return;
-        engine.current = { mode: "local", def: plan.definition, secret: plan.secret, stored, lockedUntil };
+        engine.current = { mode: "local", def: plan.definition, secret: plan.secret, stored, lockedUntil, print };
         setDef(plan.definition);
         setMode("local");
         setScene(loadedDef);
@@ -179,7 +264,7 @@ export function useRoomV2(roomId: string) {
       if (save) {
         e.stored = save.state;
         e.lockedUntil = save.lockedUntil;
-        const out: LocalSave = { v: 2, state: save.state, lockedUntil: save.lockedUntil };
+        const out: LocalSave = { v: 2, state: save.state, lockedUntil: save.lockedUntil, plan: e.print };
         AsyncStorage.setItem(KEY(roomId), JSON.stringify(out)).catch(() => {});
       }
       show(response);
@@ -234,7 +319,8 @@ export function useRoomV2(roomId: string) {
       const stored = storedState(e.def, null);
       e.stored = stored;
       e.lockedUntil = null;
-      AsyncStorage.removeItem(KEY(roomId)).catch(() => {});
+      forget([KEY(roomId), UI_KEY(roomId)]);
+      setUi(null);
       show(play(e.def, e.secret, stored, {}, Date.now(), null).response);
       return true;
     }
@@ -248,6 +334,7 @@ export function useRoomV2(roomId: string) {
         // Already ended elsewhere: nothing to abandon, a fresh load is enough.
         if ((err as { code?: string } | null)?.code !== "P0002") throw err;
       }
+      forget([UI_KEY(roomId)]);
       setPhase({ kind: "loading" });
       setLoadKey((k) => k + 1);
       return true;
@@ -259,6 +346,17 @@ export function useRoomV2(roomId: string) {
       setBusy(false);
     }
   }, [roomId, show]);
+
+  /** Keep the player's side of the room (what lies where, clues read) for the next visit. */
+  const keepUi = useCallback((save: UiSave) => {
+    AsyncStorage.setItem(UI_KEY(roomId), JSON.stringify(save)).catch(() => {});
+  }, [roomId]);
+
+  /** The case is closed and the player has moved on: let its saves go, so the next visit starts a fresh case. */
+  const finish = useCallback(() => {
+    const e = engine.current;
+    forget(e?.mode === "local" ? [KEY(roomId), UI_KEY(roomId)] : [UI_KEY(roomId)]);
+  }, [roomId]);
 
   const cooldown = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
   return {
@@ -280,6 +378,9 @@ export function useRoomV2(roomId: string) {
     act,
     hint,
     restart,
+    ui,
+    keepUi,
+    finish,
   };
 }
 

@@ -23,19 +23,30 @@
 //    (haptic and sound) fires on impact and the case card is nudged.
 // 2. The stats land one by one, a `tick` each: time, tips taken, wrong codes
 //    (crime scene "Wrong calls", as its count includes accusations;
-//    paranormal "Missteps"; victory.ts, statLines). Only
-//    what the completed session holds; nothing is shown that it doesn't.
-// 3. The rating's magnifiers fill one by one, a `tick` each, then `solved`.
+//    paranormal "Missteps"; victory.ts, statLines). Only what the game holds
+//    (a v2 game's own count, or the completed session's); nothing is shown
+//    that it doesn't. Their numbers are lining figures in the system face, a
+//    size up from the label (the modes' display faces have old-style
+//    figures: 0 reads as o).
+// 3. The rating's magnifiers fill one by one, a `tick` each, then `solved`
+//    ("Observation"; paranormal's "Second sight": victory.ts, RATING_LABEL).
 // 4. The actions come in: the mode's next case first.
 // Reduced motion: no fall, nudge or stagger; it all fades in within about
 // 600 ms, the haptics kept.
+//
+// Said once: where CASE CLOSED is stamped, a case line that only says "Case
+// closed." again is left out (the planner's endings end on it). Crime scene's
+// accused card is followed by why and how, when the accusation named them.
+// The column grows the case (folder, card, room) into a phone's spare height,
+// up to a size of its own, so nothing is left as one big gap over the
+// actions; the actions sit at least ref.space.lg off the bottom edge.
 //
 // Sharing (not built): the stamp, title, stats and rating are one View, the
 // case card (`testID="case-card"`, held in `card`), so a share button can
 // capture it later (e.g. react-native-view-shot on that ref) and hand it to
 // `onShare`, which nothing calls yet.
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef, type ReactNode, type RefObject } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Genre } from "@/lib/puzzle-types";
@@ -52,13 +63,39 @@ import { useSlam } from "./slam";
 import { Stamp } from "./Stamp";
 import { SuspectFile, type SuspectFace } from "./SuspectFile";
 import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
-import { magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
+import { RATING_LABEL, magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
 
 export type { CaseSummary } from "./victory";
 
 const P = ref.layout.play;
 const C = P.complete;
 const GONE_LINE = /the presence is gone/i;
+
+/**
+ * This screen's own sizes (over ref.layout.play.complete's compact ones): how
+ * far the case grows on a tall phone, the stats' figures, the folder's form.
+ */
+export const CLOSED_LAYOUT = {
+  /** The case's largest size: noir's folder (the accused's card keeps its token's); the room's aspect (width / height). */
+  folderMax: 300,
+  accusedMax: C.accused.max,
+  photoAspect: 4 / 3,
+  /** A stat's figures: lining, tabular, in the system face; units a step down. */
+  figure: { fontSize: 28, lineHeight: 34, fontWeight: "700", fontVariant: ["lining-nums", "tabular-nums"] } as const satisfies TextStyle,
+  unit: { fontSize: 15, lineHeight: 34, fontWeight: "600" } as const satisfies TextStyle,
+  statPadY: 14,
+  /** The folder: its back (with the tab) shows `lip` over the front; a paper sheet peeks between. */
+  folder: { tabHeight: 16, lip: 12, tabLine: 44, paperInset: 18, paperHeight: 26, frontEdge: ref.color.specularDark },
+  /** The actions never sit closer than this to the bottom edge. */
+  bottomMin: ref.space.lg,
+} as const;
+const L = CLOSED_LAYOUT;
+
+/** A line without the sentences that only say "Case closed." (the stamp says it). Empty when nothing else is left. */
+export function withoutCaseClosed(line: string): string {
+  const sentences = line.match(/[^.!?]+[.!?]*\s*/g) ?? [line];
+  return sentences.filter((s) => !/^\s*case closed[.!]*\s*$/i.test(s)).join("").trim();
+}
 
 /** The case card's host view, for a capture. */
 export type CaseCard = ComponentRef<typeof View>;
@@ -72,6 +109,8 @@ export interface CaseClosedProps {
   summary?: CaseSummary | null;
   /** Crime scene: the suspect the player accused. */
   accused?: SuspectFace | null;
+  /** Crime scene: why and how, as the accusation named them (shown under the accused). */
+  recap?: { why?: string; how?: string } | null;
   /** Paranormal: the room, snapping back to full colour. */
   photo?: SceneSource | null;
   /** A closing line over the actions. */
@@ -93,16 +132,14 @@ interface Plan {
   summary: CaseSummary | null;
 }
 
-export function CaseClosed({ genre, title, message, exit, summary, accused, photo, next, actions }: CaseClosedProps) {
+export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, summary, accused, recap, photo, next, actions }: CaseClosedProps) {
   const theme = themeFor(genre);
-  // The stats' numbers in the mode's display face.
-  const { fontFamily } = theme.display;
   const { reducedMotion: reduced } = useTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
   // The room grows no taller than the column's width at its aspect.
   const { width } = useWindowDimensions();
-  const roomMax = Math.max(C.photo.min, (width - C.inset * 2) / C.photo.aspect);
+  const roomMax = Math.max(C.photo.min, (width - C.inset * 2) / L.photoAspect);
   // Case closed is the mode's last screen: its parts take the mode's look.
   useLayoutEffect(() => setMode(genre), [genre]);
 
@@ -114,6 +151,10 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
   const [head] = useState(() => victoryTimeline({ genre, reduced, stats: 0, rating: null }));
 
   const guilty = genre === "crime_scene" && accused;
+  // Where CASE CLOSED is stamped, the case's lines don't say it again.
+  const stamped = !guilty;
+  const message = (rawMessage && stamped ? withoutCaseClosed(rawMessage) : rawMessage) || undefined;
+  const exit = (rawExit && stamped ? withoutCaseClosed(rawExit) : rawExit) || undefined;
   // Paranormal says it once: not again when the case's own lines already do.
   const gone = genre === "paranormal" && ![message, exit].some((line) => line && GONE_LINE.test(line));
 
@@ -136,7 +177,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
   const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
   // Over noir's folder it sits on the folder's top edge, below the tab.
   const peek = (onTab = false) => (
-    <View style={[styles.catPeek, onTab && { transform: [{ translateY: C.folder.tabHeight }] }]} pointerEvents="box-none">
+    <View style={[styles.catPeek, onTab && { transform: [{ translateY: L.folder.tabHeight }] }]} pointerEvents="box-none">
       <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} />
     </View>
   );
@@ -251,6 +292,23 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
                 {peek()}
               </Beat>
             ) : null}
+            {guilty && recap && (recap.why || recap.how) ? (
+              <Beat delay={head.impact} reduced={reduced} style={styles.recap}>
+                <View
+                  style={styles.recapRow}
+                  accessible
+                  accessibilityLabel={[recap.why && `Why: ${recap.why}`, recap.how && `How: ${recap.how}`].filter(Boolean).join(". ")}
+                  testID="closed-recap"
+                >
+                  {([["Why", recap.why], ["How", recap.how]] as const).map(([label, value]) => (value ? (
+                    <View key={label} style={styles.recapItem}>
+                      <Text style={[ref.type.meta, styles.centre, styles.recapLabel, { color: theme.inkMuted }]}>{label}</Text>
+                      <Text style={[ref.type.headline, styles.centre, { color: theme.ink }]} numberOfLines={2}>{value}</Text>
+                    </View>
+                  ) : null))}
+                </View>
+              </Beat>
+            ) : null}
 
             {room ? (
               // The room, with "The presence is gone." dropped onto it.
@@ -292,7 +350,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
                   <Beat key={line.key} delay={statDelay(i)} reduced={reduced || !!late} rise style={styles.stat}>
                     <Card style={styles.statCard}>
                       <View accessible accessibilityLabel={`${line.label}: ${line.value}`} style={styles.statInner} testID={`closed-stat-${line.key}`}>
-                        <Text style={[C.statValue, styles.centre, { fontFamily, color: theme.ink }]}>{line.value}</Text>
+                        <Figure value={line.value} color={theme.ink} />
                         <Text style={[ref.type.meta, styles.centre, { color: theme.inkMuted }]}>{line.label}</Text>
                       </View>
                     </Card>
@@ -305,6 +363,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
               <Beat delay={since(plan.timeline.rating)} reduced={reduced || !!late} style={styles.after}>
                 <MagnifierRating
                   rating={rating}
+                  label={RATING_LABEL[genre]}
                   theme={theme}
                   reduced={reduced || !!late}
                   delays={plan.timeline.magnifiers.map(since)}
@@ -315,7 +374,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
           </View>
         </Animated.View>
       </ScrollView>
-      <Animated.View style={[styles.actions, { paddingBottom: insets.bottom + ref.space.ctaBottom }, ctaStyle]} testID="closed-actions">
+      <Animated.View style={[styles.actions, { paddingBottom: Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin) }, ctaStyle]} testID="closed-actions">
         {next ? <Text style={[P.type.hint, styles.centre, { color: theme.inkMuted }]}>{next}</Text> : null}
         {actions}
       </Animated.View>
@@ -344,19 +403,40 @@ function Beat({ delay, reduced, rise = false, style, children }: {
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 
-/** Noir's case file: a raised folder with a tab, the case's name typed on its paper label, the stamp coming down on it. */
+/** A stat's value: its figures large and lining, its units (min, h) a step down. */
+function Figure({ value, color }: { value: string; color: string }) {
+  const parts = value.split(/(\d+)/).filter(Boolean);
+  return (
+    <Text style={[L.figure, styles.centre, { color }]} numberOfLines={1} adjustsFontSizeToFit>
+      {parts.map((part, i) => (/\d/.test(part) ? part : <Text key={i} style={[L.unit, { color }]}>{part}</Text>))}
+    </Text>
+  );
+}
+
+/**
+ * Noir's case file: a folder in two leaves, its depth in steps of lightness
+ * (no shadows): the back, with its tab, shows a lip over the front; a sheet
+ * of paper peeks out between them; the front leaf is a shade lighter, its
+ * top edge catching the light. The case's name is typed on its paper label,
+ * the stamp comes down on it.
+ */
 function CaseFolder({ theme, title, stamp }: { theme: ModeTheme; title: string; stamp: ReactNode }) {
   const F = C.folder;
-  const edge = { backgroundColor: theme.raised, borderColor: theme.rim };
+  const back = { backgroundColor: theme.surface, borderColor: theme.rim };
   return (
     <View style={styles.folderFill} testID="closed-folder">
-      <View style={[styles.tab, edge]} />
-      <View style={[styles.folderBody, edge]}>
-        <View style={[styles.label, { backgroundColor: theme.ink, transform: [{ rotate: `${F.label.tilt}deg` }] }]}>
-          <Text style={[C.title, styles.centre, { color: theme.ground }]} accessibilityRole="header" testID="closed-title">{title}</Text>
+      <View style={[styles.tab, back]}>
+        <View style={[styles.tabLine, { backgroundColor: theme.inkMuted }]} />
+      </View>
+      <View style={[styles.folderBack, back]}>
+        <View style={[styles.paper, { backgroundColor: theme.ink }]} />
+        <View style={[styles.folderBody, { backgroundColor: theme.raised, borderColor: theme.rim, borderTopColor: L.folder.frontEdge }]}>
+          <View style={[styles.label, { backgroundColor: theme.ink, transform: [{ rotate: `${F.label.tilt}deg` }] }]}>
+            <Text style={[C.title, styles.centre, { color: theme.ground }]} accessibilityRole="header" testID="closed-title">{title}</Text>
+          </View>
+          {/* The stamp may run over the folder's edges, as a real one would; its word never wraps. */}
+          <View style={styles.folderStamp}>{stamp}</View>
         </View>
-        {/* The stamp may run over the folder's edges, as a real one would; its word never wraps. */}
-        <View style={styles.folderStamp}>{stamp}</View>
       </View>
     </View>
   );
@@ -392,11 +472,13 @@ const styles = StyleSheet.create({
   card: { flexGrow: 1, justifyContent: "center", alignItems: "center", gap: C.gap.head },
   // Noir's folder grows from its compact size to folder.max.
   catPeek: { position: "absolute", right: ref.space.xl, bottom: "100%" },
-  folder: { alignSelf: "stretch", flexGrow: 1, maxHeight: C.folder.max },
+  folder: { alignSelf: "stretch", flexGrow: 1, maxHeight: L.folderMax },
   folderFill: { flexGrow: 1 },
   tab: {
     width: C.folder.tabWidth,
-    height: C.folder.tabHeight,
+    height: L.folder.tabHeight,
+    justifyContent: "center",
+    paddingHorizontal: 12,
     marginBottom: -P.hairline,
     borderWidth: P.hairline,
     borderBottomWidth: 0,
@@ -404,15 +486,36 @@ const styles = StyleSheet.create({
     borderTopRightRadius: C.folder.tabRadius,
     ...ref.curve,
   },
+  tabLine: { width: L.folder.tabLine, height: 3, borderRadius: 1.5, opacity: 0.35 },
+  folderBack: {
+    flexGrow: 1,
+    paddingTop: L.folder.lip,
+    borderWidth: P.hairline,
+    borderRadius: C.folder.radius,
+    borderTopLeftRadius: 0,
+    ...ref.curve,
+  },
+  // A sheet of paper between the leaves: only its top shows, over the front's edge.
+  paper: {
+    position: "absolute",
+    top: L.folder.lip / 2 - 2,
+    left: L.folder.paperInset,
+    right: L.folder.paperInset * 1.6,
+    height: L.folder.paperHeight,
+    borderRadius: 2,
+    opacity: 0.6,
+    transform: [{ rotate: "0.8deg" }],
+  },
   folderBody: {
     flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: C.folder.pad,
     gap: ref.space.sm,
+    marginHorizontal: -P.hairline,
+    marginBottom: -P.hairline,
     borderWidth: P.hairline,
     borderRadius: C.folder.radius,
-    borderTopLeftRadius: 0,
     ...ref.curve,
   },
   folderStamp: { alignSelf: "stretch", alignItems: "center", marginHorizontal: -C.folder.pad * 2 },
@@ -423,7 +526,11 @@ const styles = StyleSheet.create({
     borderRadius: C.folder.label.radius,
   },
   // The accused's card grows from its compact padding to accused.max, its words centred.
-  accused: { alignSelf: "stretch", flexGrow: 1, maxHeight: C.accused.max },
+  accused: { alignSelf: "stretch", flexGrow: 1, maxHeight: L.accusedMax },
+  recap: { alignSelf: "stretch" },
+  recapRow: { flexDirection: "row", justifyContent: "center", gap: ref.space.xl },
+  recapItem: { flexShrink: 1, alignItems: "center", gap: 2 },
+  recapLabel: { textTransform: "uppercase", letterSpacing: 1.2 },
   accusedCard: { flexGrow: 1, justifyContent: "center", paddingVertical: C.accused.padY },
   // The room grows from photo.min to the column's width at photo.aspect (set inline).
   room: { alignSelf: "stretch", flexGrow: 1, minHeight: C.photo.min },
@@ -438,7 +545,7 @@ const styles = StyleSheet.create({
   // A compact row: three of 07's cards, each its value over its label.
   stats: { alignSelf: "stretch", flexDirection: "row", gap: ref.space.sm, marginTop: C.gap.card - C.gap.head },
   stat: { flex: 1 },
-  statCard: { flex: 1, paddingHorizontal: C.stat.padX, paddingVertical: C.stat.padY, justifyContent: "center" },
+  statCard: { flex: 1, paddingHorizontal: C.stat.padX, paddingVertical: L.statPadY, justifyContent: "center" },
   statInner: { alignItems: "center", gap: C.stat.gap },
   after: { marginTop: C.gap.card - C.gap.head },
   // The photo guide's foot: its reading column, the pill to the quiet buttons ref.space.sm apart.

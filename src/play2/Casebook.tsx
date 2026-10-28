@@ -2,7 +2,7 @@
 // far (what the room has told the player, in the mode's voice), what they
 // hold, and the hint ladder for the step they're on. A dark sheet over the
 // room.
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { DarkSheet } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
@@ -14,7 +14,7 @@ export interface CasebookProps {
   cards: FoundCard[];
   items: { id: string; name: string; examinable: boolean }[];
   hints: string[];
-  /** False when every step is done (nothing left to hint). */
+  /** False when there is nothing more to hint: every step done, or the current step's ladder used up. */
   canHint: boolean;
   /** Crime scene: the accusation's lists, an evidence board the player crosses options off. */
   board?: { title: string; options: { id: string; name: string }[] }[];
@@ -33,6 +33,13 @@ export interface CasebookProps {
 
 export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat }: CasebookProps) {
   const theme = useModeTheme();
+  // Restarting wipes the case: the first tap asks, a second within a few seconds does it.
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), RESTART_CONFIRM_MS);
+    return () => clearTimeout(t);
+  }, [confirming]);
   const heading = [ref.type.meta, styles.heading, { color: theme.inkMuted }];
   const body = [ref.type.body, { color: theme.ink }];
   return (
@@ -47,7 +54,7 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
             </View>
           ))
         ) : (
-          <Text style={[ref.type.body, { color: theme.inkMuted }]}>Nothing yet. Sweep the light across the room.</Text>
+          <Text style={[ref.type.meta, { color: theme.inkMuted }]} testID="v2-casebook-empty">Nothing yet. Sweep the light across the room.</Text>
         )}
       </View>
 
@@ -104,9 +111,11 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
           <Text key={i} style={[ref.type.body, { color: theme.inkMuted }]}>{h}</Text>
         ))}
         {canHint ? (
-          <Pressable onPress={onHint} accessibilityRole="button" accessibilityLabel="Get a hint" testID="v2-hint" style={[styles.pill, { backgroundColor: theme.accent }]}>
+          <Pressable onPress={onHint} accessibilityRole="button" accessibilityLabel={hints.length ? "Another hint" : "Get a hint"} testID="v2-hint" style={[styles.pill, { backgroundColor: theme.accent }]}>
             <Text style={[ref.type.headline, { color: theme.accentInk }]}>{hints.length ? "Another hint" : "Get a hint"}</Text>
           </Pressable>
+        ) : hints.length ? (
+          <Text style={[ref.type.meta, { color: theme.inkMuted }]} testID="v2-hints-spent">{"That's every hint for this step."}</Text>
         ) : null}
       </View>
 
@@ -118,12 +127,28 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
         <Switch value={glints} onValueChange={onGlints} accessibilityLabel="Glints" testID="v2-glints" />
       </View>
 
-      <Pressable onPress={onRestart} accessibilityRole="button" accessibilityLabel="Restart this case" testID="v2-restart" style={styles.restart}>
-        <Text style={[ref.type.meta, { color: theme.inkMuted }]}>Restart this case</Text>
+      <Pressable
+        onPress={() => {
+          if (confirming) {
+            setConfirming(false);
+            onRestart();
+          } else setConfirming(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={confirming ? "Tap again to restart. Your progress in this case will be lost." : "Restart this case"}
+        testID="v2-restart"
+        style={styles.restart}
+      >
+        <Text style={[confirming ? ref.type.label : ref.type.meta, { color: confirming ? theme.stamp : theme.inkMuted }]}>
+          {confirming ? "Tap again to restart. Progress will be lost." : "Restart this case"}
+        </Text>
       </Pressable>
     </DarkSheet>
   );
 }
+
+/** How long "Tap again to restart" waits for the second tap (ms). */
+const RESTART_CONFIRM_MS = 4000;
 
 const styles = StyleSheet.create({
   section: { gap: ref.space.sm, marginBottom: ref.space.lg },

@@ -4,9 +4,10 @@
 // switch the light over; tap two others to fit them together; hold one to
 // examine it. The dragged icon is drawn by the player (DragGhost) above
 // everything, following the finger.
+import { useRef, type ComponentRef } from "react";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
 import {
-  CompassIcon, CubeIcon, EnvelopeIcon, FlashlightIcon, ImageIcon, KeyIcon, NoteIcon, PackageIcon, PuzzlePieceIcon,
+  CompassIcon, CubeIcon, EnvelopeIcon, FileTextIcon, FlashlightIcon, ImageIcon, KeyIcon, NoteIcon, PackageIcon, PuzzlePieceIcon,
   ScrollIcon, TicketIcon, type Icon,
 } from "phosphor-react-native";
 import { GestureDetector, useCompetingGestures, useLongPressGesture, usePanGesture, useTapGesture } from "react-native-gesture-handler";
@@ -14,6 +15,7 @@ import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from "re
 import { scheduleOnRN } from "react-native-worklets";
 import type { ItemDef } from "@/engine/v2";
 import { useModeTheme } from "@/game/mode";
+import { measureInWindow } from "@/render/PickupFlight";
 import { ref } from "@/theme/tokens";
 
 /** An icon for a held item, by what it is: a key, a note, the UV flashlight. Never specific, always recognisable. */
@@ -23,14 +25,19 @@ export function itemIcon(item: Pick<ItemDef, "name" | "kind" | "archetype">): Ic
   if (item.archetype === "Decoder" || /wheel|cipher|dial/.test(n)) return CompassIcon;
   if (item.kind === "key" || /\bkey\b/.test(n)) return KeyIcon;
   if (item.kind === "half") return PuzzlePieceIcon;
+  // Something pieced together: a whole page, never the note icon its halves' paper might share.
+  if (item.kind === "assembled") return FileTextIcon;
   if (/ticket|stub|pass/.test(n)) return TicketIcon;
   if (/letter|envelope/.test(n)) return EnvelopeIcon;
   if (/photo|picture|postcard/.test(n)) return ImageIcon;
   if (/map|scroll|page|ledger/.test(n)) return ScrollIcon;
   if (item.kind === "taken") return PackageIcon;
-  if (item.kind === "assembled" || item.kind === "prop" || /note|card|slip|paper/.test(n)) return NoteIcon;
+  if (item.kind === "prop" || /note|card|slip|paper/.test(n)) return NoteIcon;
   return CubeIcon;
 }
+
+/** A name as shown: its first letter capitalised ("torn half" → "Torn half"). */
+export const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export const isUvLight = (item: Pick<ItemDef, "archetype" | "variant">) => item.archetype === "Light" && item.variant === "torch";
 
@@ -53,12 +60,28 @@ export function ItemTray({ items, selected, equipped, drag, width, onTap, onExam
   onTap: (id: string) => void;
   onExamine: (id: string) => void;
   onDragStart: (id: string) => void;
-  /** Where it was let go, in window points. */
-  onDrop: (id: string, x: number, y: number) => void;
+  /** Where it was let go, in window points; `onto` is the held item it was let go on (fit them together), if any. */
+  onDrop: (id: string, x: number, y: number, onto?: string) => void;
   /** A game hotbar: this many slots, the empty ones shown recessed. */
   slots?: number;
 }) {
   const { width: windowWidth } = useWindowDimensions();
+  // Each icon's view, measured when something is let go (so a drop on another held item is seen as one).
+  const icons = useRef(new Map<string, ComponentRef<typeof View>>());
+  const dropHere = async (id: string, x: number, y: number) => {
+    if (x >= 0) {
+      for (const [other, node] of icons.current) {
+        if (other === id) continue;
+        const r = await measureInWindow(node);
+        // A little slack around the icon: a finger covers its target.
+        if (r && x >= r.x - GAP && x <= r.x + r.width + GAP && y >= r.y - GAP && y <= r.y + r.height + GAP) {
+          onDrop(id, x, y, other);
+          return;
+        }
+      }
+    }
+    onDrop(id, x, y);
+  };
   const room = (width ?? windowWidth - 2 * ref.space.lg);
   const count = Math.max(items.length, slots);
   const size = Math.max(28, Math.min(MAX, Math.floor((room - GAP * Math.max(0, count - 1)) / Math.max(1, count))));
@@ -75,7 +98,11 @@ export function ItemTray({ items, selected, equipped, drag, width, onTap, onExam
           onTap={onTap}
           onExamine={onExamine}
           onDragStart={onDragStart}
-          onDrop={onDrop}
+          onDrop={dropHere}
+          register={(node) => {
+            if (node) icons.current.set(item.id, node);
+            else icons.current.delete(item.id);
+          }}
         />
       ))}
       {Array.from({ length: Math.max(0, slots - items.length) }, (_, i) => (
@@ -85,9 +112,10 @@ export function ItemTray({ items, selected, equipped, drag, width, onTap, onExam
   );
 }
 
-function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onDrop }: {
+function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onDrop, register }: {
   item: ItemDef; size: number; on: boolean; uv: boolean; drag: DragState;
   onTap: (id: string) => void; onExamine: (id: string) => void; onDragStart: (id: string) => void; onDrop: (id: string, x: number, y: number) => void;
+  register: (node: ComponentRef<typeof View> | null) => void;
 }) {
   const theme = useModeTheme();
   const Glyph = itemIcon(item);
@@ -139,9 +167,11 @@ function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onD
   return (
     <GestureDetector gesture={gesture}>
       <View
+        ref={register}
+        collapsable={false}
         accessible
         accessibilityRole="button"
-        accessibilityLabel={item.name}
+        accessibilityLabel={capitalise(item.name)}
         accessibilityState={{ selected: on }}
         accessibilityHint={isUvLight(item) ? "Switches your light to UV." : "Drag onto something to use it. Hold to examine."}
         accessibilityActions={[{ name: "activate" }, { name: "longpress" }]}

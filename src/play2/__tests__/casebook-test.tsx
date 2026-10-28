@@ -22,6 +22,22 @@ describe("Casebook", () => {
     expect(screen.queryByTestId("v2-board")).toBeNull();
   });
 
+  it("asks before restarting: a second tap does it", async () => {
+    const onRestart = jest.fn();
+    await render(<Casebook {...base} onRestart={onRestart} />);
+    await fireEvent.press(screen.getByTestId("v2-restart"));
+    expect(onRestart).not.toHaveBeenCalled();
+    expect(screen.getByText("Tap again to restart. Progress will be lost.")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("v2-restart"));
+    expect(onRestart).toHaveBeenCalledTimes(1);
+  });
+
+  it("no more hints for this step: no button, a line saying so", async () => {
+    await render(<Casebook {...base} canHint={false} />);
+    expect(screen.queryByTestId("v2-hint")).toBeNull();
+    expect(screen.getByTestId("v2-hints-spent")).toBeTruthy();
+  });
+
   it("crime scene: the evidence board crosses options off and back", async () => {
     const onStrike = jest.fn();
     const board = [

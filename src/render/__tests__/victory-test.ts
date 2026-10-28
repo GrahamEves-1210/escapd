@@ -1,7 +1,7 @@
 // The victory moment's data (victory.ts): the session's stats as they are,
 // the magnifier rating's rule, and the moment's beats.
 import { motion } from "@/theme/tokens";
-import { caseSummary, magnifierRating, statLines, victoryTimeline } from "../victory";
+import { RATING_LABEL, caseSummary, caseSummaryFromStats, magnifierRating, statDuration, statLines, victoryTimeline } from "../victory";
 
 const done = { started_at: "2026-10-25T10:00:00.000Z", completed_at: "2026-10-25T10:08:00.000Z", hints_used: 1, wrong_answer_count: 3 };
 
@@ -14,6 +14,26 @@ describe("caseSummary", () => {
     expect(caseSummary(null)).toBeNull();
     expect(caseSummary({ started_at: "2026-10-25T10:00:00.000Z", completed_at: null, hints_used: 2 })).toEqual({ hints: 2 });
     expect(caseSummary({ completed_at: null })).toBeNull();
+  });
+});
+
+describe("caseSummaryFromStats: a v2 game's own count", () => {
+  it("shows the hints, wrong answers and time the game counted", () => {
+    expect(caseSummaryFromStats({ hints: 2, wrong: 3, ms: 400_000 })).toEqual({ time: "7 min", hints: 2, wrong: 3 });
+    expect(caseSummaryFromStats({ hints: 0, wrong: 0, ms: 0 })).toEqual({ time: "<1 min", hints: 0, wrong: 0 });
+    expect(caseSummaryFromStats(null)).toBeNull();
+  });
+
+  it("keeps a time short enough for a stat card", () => {
+    expect(statDuration(59_000)).toBe("<1 min");
+    expect(statDuration(8 * 60_000)).toBe("8 min");
+    expect(statDuration(65 * 60_000)).toBe("1 h 5 min");
+  });
+});
+
+describe("RATING_LABEL", () => {
+  it("is the detective's eye in noir and crime scene, second sight in paranormal", () => {
+    expect(RATING_LABEL).toEqual({ noir: "Observation", crime_scene: "Observation", paranormal: "Second sight" });
   });
 });
 

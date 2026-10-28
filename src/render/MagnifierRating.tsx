@@ -47,8 +47,10 @@ function Fill({ color, delay, reduced, testID }: { color: string; delay: number;
   );
 }
 
-export function MagnifierRating({ rating, theme, delays, reduced, testID }: {
+export function MagnifierRating({ rating, theme, delays, reduced, label = "Observation", testID }: {
   rating: Rating;
+  /** The word before the glasses, in the mode's voice. */
+  label?: string;
   theme: ModeTheme;
   /** When each earned glass fills, in ms from now (one per earned glass). */
   delays: number[];
@@ -63,7 +65,7 @@ export function MagnifierRating({ rating, theme, delays, reduced, testID }: {
       accessibilityLabel={`Rating: ${rating} of 3 magnifiers`}
       testID={testID}
     >
-      <Text style={[ref.type.meta, { color: theme.inkMuted }]}>Observation</Text>
+      <Text style={[ref.type.meta, { color: theme.inkMuted }]}>{label}</Text>
       <View style={styles.row}>
         {[0, 1, 2].map((i) => (
           <View key={i} style={styles.slot}>

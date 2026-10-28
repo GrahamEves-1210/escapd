@@ -5,7 +5,7 @@
 // either way each request is async and the casebook (cards, hint rungs) comes
 // back rendered. When the planner can't build a v2 room from a v1 one it hands
 // back to the v1 player (`onFallback`).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon } from "phosphor-react-native";
 import { useSharedValue } from "react-native-reanimated";
@@ -18,16 +18,17 @@ import { useSceneSources } from "@/game/useSceneSources";
 import { useBoxPatch } from "@/render/removalPatch";
 import { PresenceMeter } from "@/render/PresenceMeter";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { SceneSource } from "@/render/SceneView";
+import { measureInWindow } from "@/render/PickupFlight";
 import { Toast } from "@/render/Toast";
 import { ref } from "@/theme/tokens";
 import { Casebook } from "./Casebook";
+import { useCaseRecord, type V2Completion } from "./caseRecord";
 import { Ending } from "./Ending";
-import { InspectView, type Content } from "./InspectView";
+import { capitalise, InspectView, type Content } from "./InspectView";
 import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
-import { PeekingCat, type CatReaction } from "./PeekingCat";
+import { PeekingCat, type CatLine, type CatReaction } from "./PeekingCat";
 import { Flashlight, Magnifier, TOOL } from "./Tools";
 import { useCatCues } from "./useCatCues";
 import { itemIcon } from "./ItemTray";
@@ -37,7 +38,8 @@ import { useRoomV2, type RoomV2 } from "./useRoomV2";
 export interface PlayerV2Props {
   roomId: string;
   onExit: () => void;
-  onComplete: (summary: { title: string; ending: string; genre: Genre }) => void;
+  /** The case is closed: its title, ending, mode, how the game went, the accusation that held and its photo (caseRecord.ts). */
+  onComplete: (summary: V2Completion) => void;
   onFallback: (reason: string) => void;
 }
 
@@ -57,6 +59,12 @@ const CAT_W = 58;
 
 /** The magnifier's id while it is dragged (never an item id: those are minted "prop_…", "key_…"). */
 const LENS = "__lens__";
+
+/** The item card's label: what a held thing is, in the mode's voice (short). */
+const HELD_LABEL: Record<Genre, string> = { noir: "Evidence", crime_scene: "Evidence", paranormal: "Found" };
+
+/** A box in window points. */
+type Box = { x: number; y: number; width: number; height: number };
 
 const TOAST = {
   nothing: "Nothing happens.",
@@ -79,8 +87,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const theme = useModeTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
-  const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, act, hint, restart, cooldown } = v2;
+  const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, act, hint, restart, cooldown, ui, keepUi, finish } = v2;
   const sources = useSceneSources(roomId, scene);
+  const record = useCaseRecord(roomId, v2);
 
   const [view, setView] = useState(0);
   // Which way the player last turned (the next view slides in from that side).
@@ -88,10 +97,29 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [open, setOpen] = useState<Open | null>(null);
   // What each object turned out to hold (notes to read, items not yet picked up), shown in it when it's open.
   const [contents, setContents] = useState<Record<string, Content[]>>({});
-  // The UV flashlight switched on, the objects already checked under it, the photo's frame for drops, a drag.
+  // The UV flashlight switched on, the objects already checked under it, a drag.
   const [uvOn, setUvOn] = useState(false);
   const [uvChecked, setUvChecked] = useState<string[]>([]);
-  const [frame, setFrame] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  // Where the photo sits: its frame inside the game view (from the Stage's layout, never mid-slide or zoomed),
+  // plus the game view's own place on screen (measured; the view itself never moves). Together: the photo's
+  // frame in window points, for drops, the cat's eyes and the flashlight's aim.
+  const [localFrame, setLocalFrame] = useState<Box | null>(null);
+  const [viewBox, setViewBox] = useState<Box | null>(null);
+  const viewRef = useRef<ComponentRef<typeof View>>(null);
+  const measureView = useCallback(() => {
+    measureInWindow(viewRef.current).then((rect) => {
+      if (rect) setViewBox((b) => (b && b.x === rect.x && b.y === rect.y && b.width === rect.width && b.height === rect.height ? b : rect));
+    });
+  }, []);
+  // Measured again once the screen's own entrance has settled (a measure taken mid-transition is off).
+  useEffect(() => {
+    const timers = [400, 1200].map((ms) => setTimeout(measureView, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [measureView]);
+  const frame = useMemo<Box | null>(
+    () => (localFrame && viewBox ? { x: viewBox.x + localFrame.x, y: viewBox.y + localFrame.y, width: localFrame.width, height: localFrame.height } : null),
+    [localFrame, viewBox],
+  );
   const [dragging, setDragging] = useState<string | null>(null);
   const drag = { x: useSharedValue(0), y: useSharedValue(0) };
   // The beam (photo fractions), shared by the room and the cat watching it.
@@ -151,6 +179,56 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const toast = useCallback((text: string) => setToasts((t) => [...t.slice(-2), text]), []);
   // The cat's read of the game: it glances when the player is stuck, perks up, referees, yawns.
   const cues = useCatCues({ def, state, view, photos, frame, watching: !open && !casebook && !completed, cooldown, contents, react: setCatReaction });
+  // What the cat says belongs to where it was said: a new close-up (or none, or the casebook) starts it quiet,
+  // so a line from the last one ("Empty.") never comes up again over the next.
+  const place = open ? `${open.kind}:${open.id}` : casebook ? "casebook" : "room";
+  const [heard, setHeard] = useState<{ place: string; say: CatLine }>({ place, say: null });
+  if (heard.place !== place) setHeard({ place, say: cues.say });
+  const catSay = cues.say !== heard.say ? cues.say : null;
+
+  // The player's side of the room, as left last time: what lay where it was found, the clues already read
+  // (once, as the room comes up; only what still fits the room's state).
+  const [restored, setRestored] = useState(false);
+  if (!restored && phase.kind === "ready" && def && state) {
+    setRestored(true);
+    if (ui) {
+      const out: Record<string, Content[]> = {};
+      for (const [where, list] of Object.entries(ui.contents)) {
+        if (where.startsWith("item:")) continue;
+        const kept = list.flatMap((c): Content[] => {
+          if (c.kind === "card") {
+            // As the casebook has it now (never an old save's wording).
+            const card = casebookCards.find((k) => k.id === c.card.id);
+            return card ? [{ kind: "card", card }] : [];
+          }
+          const item = def.items.find((i) => i.id === c.id);
+          return item && state.inventory.includes(item.id) ? [{ kind: "item", item }] : [];
+        });
+        if (kept.length) out[where] = kept;
+      }
+      setContents(out);
+      setCluesRead(Math.min(ui.cluesRead, casebookCards.length));
+    }
+  }
+  // Kept as it changes (once restored, so a load never overwrites the save with nothing).
+  useEffect(() => {
+    if (!restored) return;
+    const kept: Record<string, ({ kind: "card"; card: { id: string; title: string; text: string } } | { kind: "item"; id: string })[]> = {};
+    for (const [where, list] of Object.entries(contents)) {
+      if (where.startsWith("item:") || !list.length) continue;
+      kept[where] = list.map((c) => (c.kind === "card" ? c : { kind: "item", id: c.item.id }));
+    }
+    keepUi({ contents: kept, cluesRead });
+  }, [restored, contents, cluesRead, keepUi]);
+  // A closed case: its save stays while the ending is up (closing the app there comes back to it), and goes
+  // once the player leaves it, so the next visit is a fresh case.
+  const completedNow = useRef(false);
+  useEffect(() => {
+    completedNow.current = completed;
+  }, [completed]);
+  useEffect(() => () => {
+    if (completedNow.current) finish();
+  }, [finish]);
 
   // A request that didn't go through (a room played on the server).
   useEffect(() => {
@@ -175,7 +253,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     });
   const pickUp = (objectId: string, itemId: string) => {
     setContents((all) => ({ ...all, [objectId]: (all[objectId] ?? []).filter((x) => !(x.kind === "item" && x.item.id === itemId)) }));
-    toast(`${itemById(itemId)?.name ?? "It"}: in your hands.`);
+    toast(`${capitalise(itemById(itemId)?.name ?? "it")}: in your hands.`);
   };
   const take = (result: ActionResult | null, where: "inspect" | "room", quiet = false): { title: string; text: string; id: string }[] => {
     const cards: { title: string; text: string; id: string }[] = [];
@@ -218,7 +296,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           if (where === "inspect" && openObject && item) addContent(openObject, { kind: "item", item });
           else {
             feedback.pickup();
-            lines.push(`Found: ${item?.name ?? "something"}.`);
+            lines.push(`Found: ${item ? capitalise(item.name) : "something"}.`);
           }
           break;
         }
@@ -308,16 +386,24 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   // The current view's objects, set each render (drops are hit-tested against them).
   let stageObjectsNow: StageObject[] = [];
-  /** Let go of a dragged item: on the close-up, use it there; on the room's photo, on what's under the finger. */
-  const drop = async (itemId: string, x: number, y: number) => {
+  /**
+   * Let go of a dragged item: onto another held item, fit them together; on the
+   * close-up, use it there; on the room's photo, on what's under the finger.
+   */
+  const drop = async (itemId: string, x: number, y: number, onto?: string) => {
     setDragging(null);
     // A cancelled drag (x < 0) uses nothing.
     if (busy || x < 0) return;
+    if (onto && itemId !== LENS) {
+      fitTogether(itemId, onto);
+      return;
+    }
     const trayTop = windowHeight - insets.bottom - V2.tray.height - ref.space.lg * 2;
     if (y > trayTop) return;
     let objectId: string | null = null;
     if (open?.kind === "object") objectId = open.id;
-    else if (frame && x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height) {
+    else if (frame && viewBox && x >= viewBox.x && x <= viewBox.x + viewBox.width && y >= viewBox.y && y <= viewBox.y + viewBox.height
+      && x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height) {
       objectId = hitTest(stageObjectsNow, (x - frame.x) / frame.width, (y - frame.y) / frame.height);
     }
     if (!objectId) return;
@@ -345,11 +431,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     }, 400);
   };
 
-  const combine = async () => {
-    if (selected.length !== 2) return;
-    const items: [string, string] = [selected[0], selected[1]];
+  /** Two held items, fitted together (tapped both and "Fit together", or one dragged onto the other). */
+  const fitTogether = async (a: string, b: string) => {
+    if (a === b) return;
+    feedback.press();
     setSelected([]);
-    take(await act({ type: "combine", items }), "room");
+    take(await act({ type: "combine", items: [a, b] }), "room");
+  };
+  const combine = () => {
+    if (selected.length === 2) fitTogether(selected[0], selected[1]);
   };
 
   const askHint = async () => {
@@ -421,8 +511,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
-  const cat = <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
-      say={cues.say} lookAt={cues.lookAt} waiting={cues.waiting} />;
+  // Keyed by where it is: a new close-up gets a cat with nothing left in its speech bubble.
+  const cat = <PeekingCat key={place} width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
+      say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} />;
   const tray = (
     <ItemTray
       items={heldItems}
@@ -444,14 +535,26 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // The top HUD band's height: under the status bar, one row of controls.
   // The top band: at least one row of controls, taller when the case's line runs on (it's always shown in full).
   const hudTop = Math.max(insets.top + 58, bandH ?? 0);
-  const middle = frame ? frame.y + frame.height / 2 : null;
-  const toolTop = frame ? Math.min(frame.y + frame.height, ledgeTop ?? windowHeight) - TOOL - ref.space.sm : 0;
+  // The game view (screen points): under the band, down to the ledge. The tools sit in its bottom corners,
+  // the turn arrows halfway down it, whatever the photo inside it is doing.
+  const viewBottom = ledgeTop ?? windowHeight - 112;
+  const middle = hudTop + (viewBottom - hudTop) / 2;
+  const toolTop = viewBottom - TOOL - ref.space.sm;
+  // The photo's frame in the same points as the tools (the flashlight aims at the beam on it).
+  const frameHere = localFrame ? { ...localFrame, y: hudTop + localFrame.y } : null;
+  // The tools are out only in the room itself: never over a close-up, the casebook or the ending.
+  const toolsOut = !open && !casebook && !completed && !!frameHere;
   const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
 
   return (
     <View style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player">
       {/* The game view: the room, between the HUD's top band and its hotbar. */}
-      <View style={[styles.view, { top: hudTop, bottom: ledgeTop !== null ? windowHeight - ledgeTop : 112 }]}>
+      <View
+        ref={viewRef}
+        collapsable={false}
+        style={[styles.view, { top: hudTop, bottom: windowHeight - viewBottom }]}
+        onLayout={measureView}
+      >
         {source ? (
           <Stage
             key={view}
@@ -468,7 +571,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             focus={targetObject && targetObject.photo_index === view ? targetObject.box : null}
             beam={beam}
             onHover={onHover}
-            onFrame={setFrame}
+            onFrame={setLocalFrame}
             onLook={look}
             onPage={(dir) => { setTurnDir(dir); setView((v) => (v + dir + photos) % photos); }}
             enter={turnDir}
@@ -519,7 +622,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-prev"
-            style={[styles.edge, styles.edgeLeft, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
+            style={[styles.edge, styles.edgeLeft, { top: middle - 26, marginTop: 0 }]}
           >
             <Chevron Icon={CaretLeftIcon} />
           </Pressable>
@@ -529,7 +632,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Next view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-next"
-            style={[styles.edge, styles.edgeRight, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
+            style={[styles.edge, styles.edgeRight, { top: middle - 26, marginTop: 0 }]}
           >
             <Chevron Icon={CaretRightIcon} />
           </Pressable>
@@ -540,42 +643,47 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       </View>
 
 
-      {/* The tools, on the photo's bottom corners (kept above the ledge). */}
-      {!open && frame ? (
+      {/* The tools, in the game view's bottom corners (above the ledge). */}
+      {toolsOut && frameHere ? (
         <>
           <Magnifier
-            at={{ left: Math.max(0, frame.x) + ref.space.sm, top: toolTop }}
+            at={{ left: ref.space.sm, top: toolTop }}
+            lifted={dragging === LENS}
             drag={drag}
             onDragStart={() => { feedback.tick(); setDragging(LENS); }}
             onDrop={(x, y) => drop(LENS, x, y)}
           />
-          <Flashlight at={{ left: Math.min(screenW, frame.x + frame.width) - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frame} uv={uvOn} />
+          <Flashlight at={{ left: screenW - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frameHere} uv={uvOn} />
         </>
       ) : null}
 
       {!open ? (
         <View style={styles.foot} pointerEvents="box-none">
-          {/* What the selected item is: a clean card over the tray. */}
-          {selectedItem && !dragging ? (
-            <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
-              {SelectedGlyph ? (
-                <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
-                  <SelectedGlyph size={24} weight="fill" color={theme.ink} />
+          {/* What the selected item is (a clean card), or "Fit together" for two: above the tools and the cat, clear of them. */}
+          {(selectedItem && !dragging) || selected.length === 2 ? (
+            <View style={styles.overTools} pointerEvents="box-none">
+              {selectedItem && !dragging ? (
+                <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
+                  {SelectedGlyph ? (
+                    <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
+                      <SelectedGlyph size={24} weight="fill" color={theme.ink} />
+                    </View>
+                  ) : null}
+                  <View style={styles.itemText}>
+                    <Text style={[styles.caseLabel, styles.itemLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>{HELD_LABEL[def.mode]}</Text>
+                    <Text style={[ref.type.headline, { color: theme.ink }]}>{capitalise(selectedItem.name)}</Text>
+                    <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
+                      {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
-              <View style={styles.itemText}>
-                <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>Evidence</Text>
-                <Text style={[ref.type.headline, { color: theme.ink }]}>{selectedItem.name}</Text>
-                <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
-                  {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
-                </Text>
-              </View>
+              {selected.length === 2 ? (
+                <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
+                  <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
+                </Pressable>
+              ) : null}
             </View>
-          ) : null}
-          {selected.length === 2 ? (
-            <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
-              <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
-            </Pressable>
           ) : null}
           <View
             style={[styles.footRow, styles.ledge, { backgroundColor: theme.ground, borderTopColor: tint(theme.ink, 0.12), paddingBottom: insets.bottom + ref.space.sm }]}
@@ -598,6 +706,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           onPickUp={(itemId) => pickUp(open.kind === "object" ? open.id : `item:${open.id}`, itemId)}
           tray={tray}
           cat={cat}
+          item={open.kind === "item" ? itemById(open.id) : undefined}
           busy={busy}
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
@@ -608,6 +717,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             takeAt(id, result);
             cues.nothing(id, result, { control, value });
           }}
+          onChange={() => setNote(null)}
           onSubmit={async (value) => takeAt(target!.id, await act({ type: "submit", object: target!.id, value }))}
           onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "room") : undefined}
           onClose={() => setOpen(null)}
@@ -629,7 +739,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           struck={struck}
           onStrike={strike}
           cards={casebookCards}
-          items={heldItems.map((i) => ({ id: i.id, name: i.name, examinable: !!(i.card || i.archetype === "Decoder") }))}
+          items={heldItems.map((i) => ({ id: i.id, name: capitalise(i.name), examinable: true }))}
           hints={hints}
           canHint={canHint}
           glints={glints}
@@ -640,6 +750,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             setSelected([]);
             setCasebook(false);
             setOpen(null);
+            // The player's side starts over with the room.
+            setContents({});
+            setCluesRead(0);
+            setUvChecked([]);
+            setUvOn(false);
             restart().then((ok) => {
               if (!ok) toast("Couldn't restart. Check your connection.");
             });
@@ -653,7 +768,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           text={ending ?? ""}
           door={exitObject && sources.kind === "ready" ? { source: sources.sources[exitObject.photo_index], cacheKey: photoKey(exitObject.photo_index), box: exitObject.box } : undefined}
           genre={def.mode}
-          onDone={() => onComplete({ title: def.title, ending: ending ?? "", genre: def.mode })}
+          onDone={() => onComplete(record.finish(sources))}
         />
       ) : null}
 
@@ -696,6 +811,9 @@ const styles = StyleSheet.create({
   },
   itemGlyph: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   itemText: { flexShrink: 1, gap: 1 },
+  itemLabel: { textAlign: "left" },
+  // The item card and "Fit together" stand on the tools' row (the magnifier, the cat, the flashlight), never over it.
+  overTools: { gap: ref.space.sm, paddingBottom: TOOL + ref.space.sm * 2 },
   combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center", marginHorizontal: ref.space.xl },
 });
 

@@ -139,6 +139,82 @@ describe("useRoomV2", () => {
     expect(again.result.current.hintsUsed).toBe(2);
   });
 
+  it("keeps a finished case (it reopens on its ending) until it is let go", async () => {
+    const plan = planFromV1("room-1", bedroom());
+    if (!plan.ok) throw new Error(plan.detail);
+    const { path } = simulate(plan.definition, plan.secret);
+    const { result, unmount } = await renderHook(() => useRoomV2("room-1"));
+    await loaded(result);
+    await act(async () => {
+      for (const a of path) await result.current.act(a);
+    });
+    expect(result.current.completed).toBe(true);
+    await unmount();
+
+    // Closed on the ending: it comes back to it, not to a fresh case.
+    const again = await renderHook(() => useRoomV2("room-1"));
+    await loaded(again.result);
+    expect(again.result.current.completed).toBe(true);
+    expect(again.result.current.ending).toBe(plan.secret.ending);
+    // Moved on from the ending: the next visit is a fresh case.
+    await act(async () => again.result.current.finish());
+    await again.unmount();
+    const fresh = await renderHook(() => useRoomV2("room-1"));
+    await loaded(fresh.result);
+    expect(fresh.result.current.completed).toBe(false);
+  });
+
+  it("starts over when the room was planned differently since (same objects, another plan)", async () => {
+    const plan = planFromV1("room-1", bedroom());
+    if (!plan.ok) throw new Error(plan.detail);
+    const { path } = simulate(plan.definition, plan.secret);
+    const { result, unmount } = await renderHook(() => useRoomV2("room-1"));
+    await loaded(result);
+    const fresh = result.current.state;
+    await act(async () => {
+      for (const a of path.slice(0, 3)) await result.current.act(a);
+      result.current.keepUi({ contents: {}, cluesRead: 1 });
+    });
+    await unmount();
+    // The same save under another plan's print (the planner changed; the object ids didn't).
+    const raw = JSON.parse((await AsyncStorage.getItem("escapd.v2.play.room-1"))!);
+    expect(typeof raw.plan).toBe("string");
+    await AsyncStorage.setItem("escapd.v2.play.room-1", JSON.stringify({ ...raw, plan: "another" }));
+    const again = await renderHook(() => useRoomV2("room-1"));
+    await loaded(again.result);
+    expect(again.result.current.state).toEqual(fresh);
+    expect(again.result.current.ui).toBeNull();
+  });
+
+  it("keeps the player's side of the room (what lies where, clues read) per room", async () => {
+    const { result, unmount } = await renderHook(() => useRoomV2("room-1"));
+    await loaded(result);
+    expect(result.current.ui).toBeNull();
+    const save = { contents: { obj_desk: [{ kind: "item" as const, id: "key_1" }, { kind: "card" as const, card: { id: "c1", title: "A", text: "B" } }] }, cluesRead: 2 };
+    await act(async () => result.current.keepUi(save));
+    await unmount();
+    const again = await renderHook(() => useRoomV2("room-1"));
+    await loaded(again.result);
+    expect(again.result.current.ui).toEqual(save);
+    // A restart lets it go with the rest.
+    await act(async () => void (await again.result.current.restart()));
+    expect(again.result.current.ui).toBeNull();
+    expect(await AsyncStorage.getItem("escapd.v2.ui.room-1")).toBeNull();
+  });
+
+  it("stops offering hints once the current step's ladder is used up", async () => {
+    const { result } = await renderHook(() => useRoomV2("room-1"));
+    await loaded(result);
+    expect(result.current.canHint).toBe(true);
+    await act(async () => {
+      for (let i = 0; i < 2; i++) await result.current.hint();
+    });
+    expect(result.current.canHint).toBe(true);
+    await act(async () => void (await result.current.hint()));
+    expect(result.current.hintsUsed).toBe(3);
+    expect(result.current.canHint).toBe(false);
+  });
+
   it("hands a room the planner can't build back to the v1 player", async () => {
     mocked.getPlayableDefinition.mockResolvedValue({ ...bedroom(), hotspots: bedroom().hotspots.slice(1, 3) });
     const { result } = await renderHook(() => useRoomV2("room-2"));

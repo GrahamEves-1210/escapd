@@ -4,7 +4,7 @@
 // what it holds lying in it once it's open: a note to tap and read, an item to
 // pick up, or "Nothing here." Held items are icons along the foot to drag up
 // onto it. Nothing scrolls. Tap above the sheet, Close or Android back to go.
-import { useEffect, useState, type ReactNode } from "react";
+import { createElement, useEffect, useState, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -14,10 +14,12 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { itemIcon } from "./ItemTray";
+import { capitalise, isUvLight, itemIcon } from "./ItemTray";
 import { V2 } from "./layout";
 import { Mechanism } from "./mechanisms";
 import type { MechanismTarget } from "./mechanisms/types";
+
+export { capitalise };
 
 export interface FoundCard {
   id: string;
@@ -41,6 +43,8 @@ export interface InspectViewProps {
   ritualChoices?: { id: string; label: string }[];
   onSet: (control: string, value: StateValue) => void;
   onSubmit: (value: string[]) => void;
+  /** The player moved something without committing it (a wheel, a pick): the last try's note is stale. */
+  onChange?: () => void;
   /** A small object the player can pocket: "Take it" (it leaves the photo). */
   onTake?: () => void;
   /** An item lying in the object was picked up (it's in the tray already). */
@@ -52,6 +56,8 @@ export interface InspectViewProps {
   tray: ReactNode;
   /** The cat, peering over the sheet's top edge while it's up. */
   cat?: ReactNode;
+  /** A held item being examined (target.kind "item"): drawn large, with its card or what it's for. */
+  item?: ItemDef;
 }
 
 export const CONTAINER_KEYS = ["open", "lifted", "tilted", "panel", "on"] as const;
@@ -63,7 +69,7 @@ function showsInside(state: Record<string, StateValue>): boolean {
 }
 
 export function InspectView(props: InspectViewProps) {
-  const { target, state, contents, note, busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray, cat } = props;
+  const { target, state, contents, note, busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray, cat, item, onChange } = props;
   const theme = useModeTheme();
   const feedback = useFeedback();
   const { reducedMotion } = useTheme();
@@ -87,13 +93,30 @@ export function InspectView(props: InspectViewProps) {
     return () => sub.remove();
   }, [onClose, reading]);
 
+  // Scenery (no archetype) and Assemble (worked in the tray) have no mechanism to draw; a held item has one
+  // only when it has something to turn (the decoder's ring), never the UV light's (worked from the tray).
+  const mechanism = target.kind === "item"
+    ? target.controls.length > 0
+    : target.archetype !== null && target.archetype !== "Assemble";
+  const take = onTake ? (
+    <Pressable
+      onPress={onTake}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel="Take it"
+      testID="v2-take"
+      style={[styles.take, mechanism ? styles.takeCorner : null, { backgroundColor: theme.accent }]}
+    >
+      <Text style={[ref.type.headline, { color: theme.accentInk }]}>Take it</Text>
+    </Pressable>
+  ) : null;
   const open = showsInside(state);
   const inside = open ? contents : [];
   // Opened (or there was nothing to open) and nothing in it: say so.
   const empty = open && contents.length === 0 && (target.archetype === null || CONTAINER_KEYS.some((k) => state[k] === true));
 
   // What it holds: tap a note to read it, an item to pick it up. A drawer or a
-  // cloth lays it in its own inside; anything else, along the bottom.
+  // cloth lays it in its own inside; any other mechanism, on a row above it.
   const lies = target.archetype === "Drawer" || target.archetype === "LiftUnder";
   const items = inside.length || empty ? (
     <>
@@ -112,7 +135,7 @@ export function InspectView(props: InspectViewProps) {
               }
             }}
             accessibilityRole="button"
-            accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${c.item.name}`}
+            accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${capitalise(c.item.name)}`}
             testID={c.kind === "card" ? `v2-note-${c.card.id}` : `v2-found-${c.item.id}`}
             style={[styles.found, c.kind === "card" ? styles.paperFound : { backgroundColor: theme.raised, borderColor: theme.ink }]}
           >
@@ -141,29 +164,41 @@ export function InspectView(props: InspectViewProps) {
           </Pressable>
         </View>
 
-        <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]}>
-          <Mechanism
-            key={revision}
-            target={target}
-            state={state}
-            onSet={onSet}
-            onSubmit={onSubmit}
-            busy={busy}
-            cooldown={cooldown}
-            finale={finale}
-            ritualChoices={ritualChoices}
-            width={width - 2 * ref.space.lg}
-            inside={lies && items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : undefined}
-          />
-          {!lies && items ? (
-            <View style={styles.contents} pointerEvents="box-none" testID="v2-contents">{items}</View>
-          ) : null}
-          {onTake ? (
-            <Pressable onPress={onTake} disabled={busy} accessibilityRole="button" accessibilityLabel="Take it" testID="v2-take" style={[styles.take, { backgroundColor: theme.accent }]}>
-              <Text style={[ref.type.headline, { color: theme.accentInk }]}>Take it</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        {target.kind === "item" && !mechanism ? (
+          // A held item, examined: the thing itself, large, and what it says or what it's for.
+          <ItemDetail name={target.label} item={item} contents={contents} />
+        ) : mechanism ? (
+          <>
+            {/* What a mechanism without an inside of its own (a lock, wheels, a frame) turned up: on its own
+                row above it, never over its parts or its status line. */}
+            {!lies && items ? (
+              <View style={styles.contentsRow} pointerEvents="box-none" testID="v2-contents">{items}</View>
+            ) : null}
+            <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]}>
+              <Mechanism
+                key={revision}
+                target={target}
+                state={state}
+                onSet={onSet}
+                onSubmit={onSubmit}
+                onChange={onChange}
+                busy={busy}
+                cooldown={cooldown}
+                finale={finale}
+                ritualChoices={ritualChoices}
+                width={width - 2 * ref.space.lg}
+                inside={lies && items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : undefined}
+              />
+              {take}
+            </View>
+          </>
+        ) : (
+          // Scenery: nothing to work, just what's there (or "Nothing here.").
+          <View style={styles.scenery}>
+            {items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : null}
+            {take}
+          </View>
+        )}
 
         {target.kind === "object" ? <View style={styles.tray}>{tray}</View> : null}
       </Animated.View>
@@ -181,7 +216,43 @@ export function InspectView(props: InspectViewProps) {
   );
 }
 
-const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** What a held item is for, when it has no card of its own to show: one short line. */
+function purpose(kind: ItemDef["kind"], item?: ItemDef): string {
+  if (item && isUvLight(item)) return "A UV light. Tap it in your hands to switch your light over.";
+  switch (kind) {
+    case "key": return "A key. Drag it onto what it opens.";
+    case "half": return "Half of something. Find what it fits, then fit them together.";
+    case "assembled": return "Pieced back together. Drag it onto where it's needed.";
+    case "taken": return "Taken from the room. Drag it onto where it belongs.";
+    case "decoder": return "Turn it to read what's hidden.";
+    default: return "Drag it onto something to use it.";
+  }
+}
+
+/** A held item, examined: its icon large, and its card (read in full) or what it's for. */
+function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; contents: Content[] }) {
+  const theme = useModeTheme();
+  const card = contents.find((c): c is Extract<Content, { kind: "card" }> => c.kind === "card")?.card;
+  const kind = item?.kind ?? "prop";
+
+  return (
+    <View style={styles.detail} testID="v2-item-detail">
+      <View style={[styles.detailGlyph, { backgroundColor: theme.raised, borderColor: theme.rim }]}>
+        {createElement(itemIcon(item ?? { name, kind }), { size: 56, weight: "fill", color: theme.ink })}
+      </View>
+      {card ? (
+        <View style={styles.detailPaper} testID={`v2-item-card-${card.id}`}>
+          <Text style={[ref.type.headline, styles.paperInk]}>{card.title}</Text>
+          <Text style={[ref.type.body, styles.paperInk]}>{card.text}</Text>
+        </View>
+      ) : (
+        // No card: its name is the sheet's title already; one line on what it's for, no empty paper.
+        <Text style={[ref.type.body, styles.detailText, { color: theme.inkMuted }]}>{purpose(kind, item)}</Text>
+      )}
+    </View>
+  );
+}
+
 const PAPER = "rgb(236,228,210)";
 const PAPER_INK = "rgb(52,44,34)";
 
@@ -196,12 +267,18 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, gap: 2 },
   close: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   mechanism: { alignItems: "center", justifyContent: "center" },
-  contents: { position: "absolute", left: 0, right: 0, bottom: ref.space.sm, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
+  contentsRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg, paddingTop: ref.space.sm, minHeight: 56 + ref.space.sm },
+  scenery: { minHeight: 140, alignItems: "center", justifyContent: "center", gap: ref.space.lg, paddingVertical: ref.space.lg },
+  detail: { alignItems: "center", gap: ref.space.lg, paddingHorizontal: ref.space.lg, paddingTop: ref.space.lg, paddingBottom: ref.space.xl },
+  detailGlyph: { width: 112, height: 112, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
+  detailPaper: { backgroundColor: "rgb(236,228,210)", borderRadius: 4, padding: ref.space.lg, gap: ref.space.xs, alignSelf: "stretch", transform: [{ rotate: "-0.8deg" }] },
+  detailText: { textAlign: "center", maxWidth: 320 },
   lying: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
   found: { width: 56, height: 56, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   paperFound: { backgroundColor: PAPER, borderColor: "rgba(0,0,0,0.25)", transform: [{ rotate: "-4deg" }] },
   empty: { fontStyle: "italic" },
-  take: { position: "absolute", top: ref.space.sm, right: ref.space.lg, minHeight: 40, paddingHorizontal: ref.space.lg, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  take: { minHeight: 40, paddingHorizontal: ref.space.lg, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  takeCorner: { position: "absolute", top: ref.space.sm, right: ref.space.lg },
   tray: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm },
   readingScrim: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: ref.space.xl, zIndex: 60 },
   paper: { backgroundColor: PAPER, borderRadius: 4, padding: ref.space.xl, gap: ref.space.sm, maxWidth: 360, width: "100%", transform: [{ rotate: "-1.5deg" }] },

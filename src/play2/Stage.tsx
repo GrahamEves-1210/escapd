@@ -8,7 +8,7 @@
 //
 // Touch is one pan (the beam) racing one tap (look); both are hit-tested here.
 // Screen readers get one button per visible object instead (accessibilityTap).
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
@@ -23,7 +23,6 @@ import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
-import { measureInWindow } from "@/render/PickupFlight";
 import { V2 } from "./layout";
 import { useOutlines } from "./useOutlines";
 
@@ -58,7 +57,12 @@ export interface StageProps {
   enter?: 1 | -1 | 0;
   /** An object being looked at closely: the light swings onto it. */
   focus?: Box | null;
-  /** The photo's frame in window points, once laid out (drops from the tray are hit-tested against it). */
+  /**
+   * The photo's frame once laid out, in points from the view's top-left corner
+   * (the view this Stage fills). Worked out from layout alone, so it never
+   * carries the slide-in or a close-up's zoom: the parent adds the view's own
+   * place on screen (drops from the tray are hit-tested against it).
+   */
   onFrame?: (frame: { x: number; y: number; width: number; height: number }) => void;
   /** Show interactives (accessibility): a faint outline on every object, always. */
   assist: boolean;
@@ -112,7 +116,13 @@ export function Stage({
   const ids = objects.map((o) => o.id);
   const hovered = useSharedValue(-1);
   const hover = (i: number) => onHover?.(i >= 0 ? ids[i] ?? null : null);
-  const frameRef = useRef<ComponentRef<typeof View>>(null);
+  // The frame, told to the parent whenever it changes (never measured on screen: the view may be mid-slide).
+  const fx = frame?.x, fy = frame?.y;
+  useEffect(() => {
+    if (fx === undefined || fy === undefined || W <= 0 || H <= 0) return;
+    onFrame?.({ x: fx, y: fy, width: W, height: H });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onFrame is a fresh closure each render; only the frame matters.
+  }, [fx, fy, W, H]);
   const pan = usePanGesture({
     maxPointers: 1,
     minDistance: 4,
@@ -216,12 +226,7 @@ export function Stage({
       {frame ? (
         <Animated.View style={[styles.frame, { left: frame.x, top: frame.y, width: W, height: H }, zoomStyle]}>
         <GestureDetector gesture={gesture}>
-          <View
-            ref={frameRef}
-            style={StyleSheet.absoluteFill}
-            collapsable={false}
-            onLayout={() => measureInWindow(frameRef.current).then((rect) => rect && onFrame?.(rect))}
-          >
+          <View style={StyleSheet.absoluteFill} collapsable={false}>
             <TreatedImage
               source={source}
               genre={null}

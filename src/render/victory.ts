@@ -1,5 +1,6 @@
 // Case closed's victory moment (GAME_FEEL_PROMPT.md, 5), as plain data: the
-// stats the completed session actually holds, the 1–3 magnifier rating
+// stats the game actually holds (the completed session's, or a v2 game's own
+// count on the device), the 1–3 magnifier rating
 // derived from them, and the moment's timeline in ms. Pure, so the rule and
 // the beats are tested on their own (src/render/__tests__/victory-test.ts);
 // CaseClosed.tsx plays them.
@@ -12,16 +13,44 @@ const C = ref.layout.play.complete;
 const S = ref.layout.play.stamp;
 
 /**
- * What case closed may show. Every field is the server's own number: a field
- * the session doesn't have is left out, never guessed. `wrong` is the
- * session's wrong_answer_count: every wrong code, and in crime scene every
- * wrong accusation (submit_action counts both on the same path).
+ * What case closed may show. Every field is a real count: the session's (a
+ * field it doesn't have is left out, never guessed), or a v2 game's own.
+ * `wrong` is the session's wrong_answer_count: every wrong code, and in crime
+ * scene every wrong accusation (submit_action counts both on the same path).
  */
 export interface CaseSummary {
   /** completed_at − started_at, as formatDuration has it. */
   time?: string;
   hints?: number;
   wrong?: number;
+}
+
+/** How a v2 game went, counted on the device as it was played (src/play2/caseRecord.ts). */
+export interface CaseStats {
+  /** Hint rungs taken. */
+  hints: number;
+  /** Wrong submits: codes, accusations, rituals. */
+  wrong: number;
+  /** Time spent playing (ms). */
+  ms: number;
+}
+
+/** A play time for a stat card: short enough for a third of the column. */
+export function statDuration(ms: number): string {
+  return ms < 60000 ? "<1 min" : formatDuration(ms);
+}
+
+/** A v2 game's own stats, as case closed shows them. */
+export function caseSummaryFromStats(stats: CaseStats | null | undefined): CaseSummary | null {
+  if (!stats) return null;
+  const summary: CaseSummary = {};
+  const ms = count(stats.ms);
+  if (ms !== undefined) summary.time = statDuration(ms);
+  const hints = count(stats.hints);
+  if (hints !== undefined) summary.hints = hints;
+  const wrong = count(stats.wrong);
+  if (wrong !== undefined) summary.wrong = wrong;
+  return Object.keys(summary).length ? summary : null;
 }
 
 type SessionStats = Pick<GameSession, "started_at" | "completed_at" | "hints_used" | "wrong_answer_count">;
@@ -34,7 +63,7 @@ export function caseSummary(session: Partial<SessionStats> | null | undefined): 
   const summary: CaseSummary = {};
   if (session.completed_at && session.started_at) {
     const ms = new Date(session.completed_at).getTime() - new Date(session.started_at).getTime();
-    if (Number.isFinite(ms) && ms >= 0) summary.time = formatDuration(ms);
+    if (Number.isFinite(ms) && ms >= 0) summary.time = statDuration(ms);
   }
   const hints = count(session.hints_used);
   if (hints !== undefined) summary.hints = hints;
@@ -70,6 +99,16 @@ const WRONG_LABEL: Record<Genre, string> = {
   noir: "Wrong codes",
   crime_scene: "Wrong calls",
   paranormal: "Missteps",
+};
+
+/**
+ * What the rating is called, in the mode's voice: the detective's eye in noir
+ * and crime scene; paranormal's case is felt as much as seen.
+ */
+export const RATING_LABEL: Record<Genre, string> = {
+  noir: "Observation",
+  crime_scene: "Observation",
+  paranormal: "Second sight",
 };
 
 /** The stats in the order they land, each with its label and the line a screen reader speaks. */
