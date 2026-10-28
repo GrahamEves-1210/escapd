@@ -6,9 +6,9 @@
 // turning on its handle to aim at its beam.
 import { Image, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import type { DragState } from "./ItemTray";
+import { CarryBody, type Carry } from "./Carry";
 
 export const TOOL = 64;
 
@@ -16,64 +16,71 @@ const MAGNIFIER = require("../../assets/brand/magnifier.png") as number;
 const FLASHLIGHT = require("../../assets/brand/flashlight.png") as number;
 /** How far the flashlight may turn either way from straight up (degrees): it stays a held light, never upside down. */
 const AIM = 70;
+/** The magnifier's lens centre, from the art's centre (fractions of its size): what it looks at. */
+const LENS = { x: -0.12, y: -0.14 };
+/** In hand it's a little bigger, and rides this far above where it was held. */
+const GROW = 0.2;
+const RAISE = 16;
 
-export function Magnifier({ at, lifted = false, drag, onDragStart, onDrop }: {
+/** Where the magnifier looks (window points) with its body centred at (x, y). */
+export function lensPoint(x: number, y: number): { x: number; y: number } {
+  "worklet";
+  return { x: x + LENS.x * TOOL * (1 + GROW), y: y + LENS.y * TOOL * (1 + GROW) };
+}
+
+export function Magnifier({ at, lifted = false, carry, onDragStart, onDrop }: {
   at: { left: number; top: number };
-  /** In hand (being dragged): drawn above everything on the way; at rest it sits with the HUD, under any sheet. */
+  /** In hand (or on its way home): drawn above everything; at rest it sits with the HUD, under any sheet. */
   lifted?: boolean;
-  drag: DragState;
+  /** Its physics (PlayerV2 owns it, to snap it into what it was dropped on or send it home). */
+  carry: Carry;
   onDragStart: () => void;
-  /** Where it was let go (window points); every pickup ends with one call, released or cancelled. */
+  /** Where its lens was when let go (window points); every pickup ends with one call, released or cancelled (-1, -1). */
   onDrop: (x: number, y: number) => void;
 }) {
-  // Carried with the finger, a little bigger in hand; back to its corner when let go.
-  const dx = useSharedValue(0);
-  const dy = useSharedValue(0);
-  const lift = useSharedValue(0);
+  const { grab, move, release, tx, ty, phase } = carry;
   const dropped = useSharedValue(false);
   const pan = usePanGesture({
     minDistance: 4,
     maxPointers: 1,
+    testID: "v2-lens-pan",
     onActivate: (e) => {
       "worklet";
       dropped.set(false);
-      lift.set(withTiming(1, { duration: 120 }));
-      drag.x.set(e.absoluteX);
-      drag.y.set(e.absoluteY);
+      // Held where it was gripped, a little above the finger (mid-flight home: by its middle).
+      const resting = phase.get() === 0;
+      const offX = resting ? TOOL / 2 - e.x : 0;
+      const offY = (resting ? TOOL / 2 - e.y : -TOOL * 0.3) - RAISE;
+      grab("lens", e.absoluteX - e.x + TOOL / 2, e.absoluteY - e.y + TOOL / 2, e.absoluteX, e.absoluteY, offX, offY);
       scheduleOnRN(onDragStart);
     },
     onUpdate: (e) => {
       "worklet";
-      dx.set(e.translationX);
-      dy.set(e.translationY);
-      drag.x.set(e.absoluteX);
-      drag.y.set(e.absoluteY);
+      move(e.absoluteX, e.absoluteY);
     },
-    onDeactivate: (e) => {
+    onDeactivate: () => {
       "worklet";
       dropped.set(true);
-      scheduleOnRN(onDrop, e.absoluteX, e.absoluteY);
+      release();
+      const lens = lensPoint(tx.get(), ty.get());
+      scheduleOnRN(onDrop, lens.x, lens.y);
     },
     onFinalize: () => {
       "worklet";
-      // Released or cancelled, it always goes home.
-      dx.set(withSpring(0, { damping: 16, stiffness: 180 }));
-      dy.set(withSpring(0, { damping: 16, stiffness: 180 }));
-      lift.set(withTiming(0, { duration: 160 }));
       if (!dropped.get()) {
         dropped.set(true);
+        release();
         scheduleOnRN(onDrop, -1, -1);
       }
     },
   });
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: dx.get() }, { translateY: dy.get() - lift.get() * 18 }, { scale: 1 + lift.get() * 0.25 }],
-  }));
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.tool, lifted && styles.lifted, at, style]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
-        <Image source={MAGNIFIER} style={styles.art} resizeMode="contain" />
-      </Animated.View>
+      <View style={[styles.tool, lifted && styles.lifted, at]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
+        <CarryBody carry={carry} size={TOOL} origin={null} grow={GROW}>
+          <Image source={MAGNIFIER} style={styles.art} resizeMode="contain" />
+        </CarryBody>
+      </View>
     </GestureDetector>
   );
 }

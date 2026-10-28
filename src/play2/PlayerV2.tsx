@@ -25,7 +25,8 @@ import { Casebook } from "./Casebook";
 import { useCaseRecord, type V2Completion } from "./caseRecord";
 import { Ending } from "./Ending";
 import { capitalise, InspectView, type Content } from "./InspectView";
-import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
+import { CarriedItem, ItemTray, isUvLight, type SlotNode } from "./ItemTray";
+import { CARRY, dropOutcome, Sparkle, useCarry } from "./Carry";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatLine, type CatReaction } from "./PeekingCat";
@@ -56,9 +57,6 @@ const HOTBAR_SLOTS = 6;
 
 /** The cat's width on the ledge (points). */
 const CAT_W = 58;
-
-/** The magnifier's id while it is dragged (never an item id: those are minted "prop_…", "key_…"). */
-const LENS = "__lens__";
 
 /** The item card's label: what a held thing is, in the mode's voice (short). */
 const HELD_LABEL: Record<Genre, string> = { noir: "Evidence", crime_scene: "Evidence", paranormal: "Found" };
@@ -120,14 +118,26 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     () => (localFrame && viewBox ? { x: viewBox.x + localFrame.x, y: viewBox.y + localFrame.y, width: localFrame.width, height: localFrame.height } : null),
     [localFrame, viewBox],
   );
-  const [dragging, setDragging] = useState<string | null>(null);
-  const drag = { x: useSharedValue(0), y: useSharedValue(0) };
+  // What's in hand: an item lifted out of its slot (drawn over everything), or the magnifier off its corner.
+  const [carrying, setCarrying] = useState<{ id: string; size: number } | null>(null);
+  const [lensUp, setLensUp] = useState(false);
+  const carry = useCarry(useCallback(() => setCarrying(null), []));
+  const lens = useCarry(useCallback(() => setLensUp(false), []));
+  // The held items' slots, measured in window points when something is let go (drops on them, the way home).
+  const slotNodes = useRef(new Map<string, SlotNode>());
+  const registerSlot = useCallback((id: string, node: SlotNode | null) => {
+    if (node) slotNodes.current.set(id, node);
+    else slotNodes.current.delete(id);
+  }, []);
+  // Sparkles where something snapped into place (root points).
+  const [sparkle, setSparkle] = useState<{ x: number; y: number; at: number } | null>(null);
   // The beam (photo fractions), shared by the room and the cat watching it.
   const beam = { x: useSharedValue<number>(V2.torch.rest.x), y: useSharedValue<number>(V2.torch.rest.y) };
   const { height: windowHeight } = useWindowDimensions();
   const [note, setNote] = useState<string | null>(null);
   const [toasts, setToasts] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  // The held item whose card is up (tapped).
+  const [shown, setShown] = useState<string | null>(null);
   const [casebook, setCasebook] = useState(false);
   const [revision, setRevision] = useState(0);
   const [bandH, setBandH] = useState<number | null>(null);
@@ -332,14 +342,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (!objectId || !def || busy) {
       return;
     }
-    // Holding one item: use it on what was tapped.
-    if (selected.length === 1) {
-      const item = selected[0];
-      setSelected([]);
-      take(await act({ type: "use_item", item, object: objectId }), "room");
-      return;
-    }
     feedback.press();
+    setShown(null);
     setNote(null);
     setOpen({ kind: "object", id: objectId });
     // The look runs with the close-up open, so what it turns up lands in the object.
@@ -373,49 +377,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     setOpen({ kind: "item", id: itemId });
   };
 
-  const toggleItem = (id: string) => {
+  /** A tap on a held item says what it is (its card); a second tap puts the card away. */
+  const showItem = (id: string) => {
     feedback.tick();
-    const item = itemById(id);
-    // The UV flashlight: tap to switch the light over, tap again to switch back.
-    if (item && isUvLight(item)) {
-      setUvOn((on) => !on);
-      return;
-    }
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length >= 2 ? [s[1], id] : [...s, id]));
-  };
-
-  // The current view's objects, set each render (drops are hit-tested against them).
-  let stageObjectsNow: StageObject[] = [];
-  /**
-   * Let go of a dragged item: onto another held item, fit them together; on the
-   * close-up, use it there; on the room's photo, on what's under the finger.
-   */
-  const drop = async (itemId: string, x: number, y: number, onto?: string) => {
-    setDragging(null);
-    // A cancelled drag (x < 0) uses nothing.
-    if (busy || x < 0) return;
-    if (onto && itemId !== LENS) {
-      fitTogether(itemId, onto);
-      return;
-    }
-    const trayTop = windowHeight - insets.bottom - V2.tray.height - ref.space.lg * 2;
-    if (y > trayTop) return;
-    let objectId: string | null = null;
-    if (open?.kind === "object") objectId = open.id;
-    else if (frame && viewBox && x >= viewBox.x && x <= viewBox.x + viewBox.width && y >= viewBox.y && y <= viewBox.y + viewBox.height
-      && x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height) {
-      objectId = hitTest(stageObjectsNow, (x - frame.x) / frame.width, (y - frame.y) / frame.height);
-    }
-    if (!objectId) return;
-    // The magnifier: look closer at what it was dropped on.
-    if (itemId === LENS) {
-      look(objectId);
-      return;
-    }
-    feedback.press();
-    const result = await act({ type: "use_item", item: itemId, object: objectId });
-    if (open?.kind === "object") takeAt(objectId, result);
-    else take(result, "room");
+    setShown((s) => (s === id ? null : id));
   };
 
   // The UV flashlight held over something for a moment checks it: invisible ink shows if there's any.
@@ -429,17 +394,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       setUvChecked((list) => [...list, objectId]);
       take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true);
     }, 400);
-  };
-
-  /** Two held items, fitted together (tapped both and "Fit together", or one dragged onto the other). */
-  const fitTogether = async (a: string, b: string) => {
-    if (a === b) return;
-    feedback.press();
-    setSelected([]);
-    take(await act({ type: "combine", items: [a, b] }), "room");
-  };
-  const combine = () => {
-    if (selected.length === 2) fitTogether(selected[0], selected[1]);
   };
 
   const askHint = async () => {
@@ -470,7 +424,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const stageObjects: StageObject[] = def.objects
     .filter((o) => o.photo_index === view && visible(o))
     .map((o) => ({ id: o.id, label: o.label, box: o.box, outline: o.outline, seen: state.seen.includes(o.id) }));
-  stageObjectsNow = stageObjects;
   const marks = state.overlays
     .filter((ov) => ov.overlay === "glow_mark" && ov.mark)
     .map((ov) => ({ ov, o: objectById(ov.object) }))
@@ -514,22 +467,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // Keyed by where it is: a new close-up gets a cat with nothing left in its speech bubble.
   const cat = <PeekingCat key={place} width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
       say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} />;
-  const tray = (
-    <ItemTray
-      items={heldItems}
-      selected={selected}
-      equipped={uvOn}
-      drag={drag}
-      onTap={toggleItem}
-      onExamine={openItem}
-      onDragStart={(id) => { feedback.tick(); setDragging(id); }}
-      onDrop={drop}
-      slots={HOTBAR_SLOTS}
-    />
-  );
 
-  const selectedItem = selected.length === 1 ? itemById(selected[0]) : undefined;
-  const SelectedGlyph = selectedItem ? itemIcon(selectedItem) : null;
+  const shownItem = shown ? heldItems.find((i) => i.id === shown) : undefined;
+  const ShownGlyph = shownItem ? itemIcon(shownItem) : null;
   const unread = Math.max(0, casebookCards.length - cluesRead);
   const glass = { backgroundColor: theme.raised, borderColor: theme.rim };
   // The top HUD band's height: under the status bar, one row of controls.
@@ -544,7 +484,135 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const frameHere = localFrame ? { ...localFrame, y: hudTop + localFrame.y } : null;
   // The tools are out only in the room itself: never over a close-up, the casebook or the ending.
   const toolsOut = !open && !casebook && !completed && !!frameHere;
-  const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
+  const shownCard = shownItem?.card ? casebookCards.find((c) => c.id === shownItem.card) : undefined;
+
+  // Drops. The root's place in the window (the carried item and the sparkles are drawn in its points), and the
+  // flashlight's (the UV light is dropped on it).
+  const root = { x: viewBox?.x ?? 0, y: viewBox ? viewBox.y - hudTop : 0 };
+  const flashAt = { left: screenW - TOOL - ref.space.sm, top: toolTop };
+  const trayTop = windowHeight - insets.bottom - V2.tray.height - ref.space.lg * 2;
+  const sparkleAt = (x: number, y: number) => {
+    const at = Date.now();
+    setSparkle({ x: x - root.x, y: y - root.y, at });
+    // Gone once it has played.
+    setTimeout(() => setSparkle((s) => (s?.at === at ? null : s)), 900);
+  };
+  /** A held item's slot centre (window points), measured now: where it goes home to. */
+  const slotHome = (id: string) => async () => {
+    const r = await measureInWindow(slotNodes.current.get(id) ?? null);
+    return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+  };
+  const sendHome = (id: string) => slotHome(id)().then((r) => carry.home(r?.x, r?.y));
+  /** A box (window points) under the carried item or the finger `below` it, with a little slack: a finger covers its target. */
+  const over = (r: Box, x: number, y: number, below: number, slack = 10) =>
+    x >= r.x - slack && x <= r.x + r.width + slack && [y, y + below].some((py) => py >= r.y - slack && py <= r.y + r.height + slack);
+  /** Another held item under the carried one, and its centre. */
+  const slotUnder = async (x: number, y: number, below: number, except: string) => {
+    for (const [id, node] of slotNodes.current) {
+      if (id === except) continue;
+      const r = await measureInWindow(node);
+      if (r && over(r, x, y, below)) {
+        return { id, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }
+    }
+    return null;
+  };
+  /** The room object under a point (window points) on the photo as it's laid out, and its centre (kept in view). */
+  const objectUnder = (x: number, y: number) => {
+    if (!frame || !viewBox || y > trayTop) return null;
+    if (x < viewBox.x || x > viewBox.x + viewBox.width || y < viewBox.y || y > viewBox.y + viewBox.height) return null;
+    if (x < frame.x || x > frame.x + frame.width || y < frame.y || y > frame.y + frame.height) return null;
+    const id = hitTest(stageObjects, (x - frame.x) / frame.width, (y - frame.y) / frame.height);
+    const o = id ? objectById(id) : undefined;
+    if (!id || !o) return null;
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    return {
+      id,
+      x: clamp(frame.x + (o.box.x + o.box.w / 2) * frame.width, viewBox.x + 24, viewBox.x + viewBox.width - 24),
+      y: clamp(frame.y + (o.box.y + o.box.h / 2) * frame.height, viewBox.y + 24, viewBox.y + viewBox.height - 24),
+    };
+  };
+  /** After a drop's result: snapped in (and home, or used up), or back home when nothing came of it. */
+  const settle = (itemId: string, result: ActionResult | null, at: { x: number; y: number }) => {
+    const how = dropOutcome(result, itemId);
+    if (how === "home") {
+      sendHome(itemId);
+      return;
+    }
+    sparkleAt(at.x, at.y);
+    carry.snap(at.x, at.y, how === "vanish" ? "vanish" : "home", slotHome(itemId));
+  };
+  /**
+   * A held item let go, at its centre (window points): onto another held item, fit them together; the UV
+   * light onto the flashlight, switch the light over; on the close-up, use it there; on the room's photo, on
+   * what's under it. Anywhere else (or cancelled, x < 0) it goes back to its slot.
+   */
+  const dropItem = async (itemId: string, x: number, y: number, below: number) => {
+    if (busy || x < 0) {
+      sendHome(itemId);
+      return;
+    }
+    const onto = await slotUnder(x, y, below, itemId);
+    if (onto) {
+      feedback.press();
+      const result = await act({ type: "combine", items: [itemId, onto.id] });
+      take(result, "room");
+      // Into what they made, once the tray has laid it out (else where the other one was).
+      const made = result?.effects.find((e) => e.do === "grant");
+      const at = made && made.do === "grant" ? await new Promise<{ x: number; y: number } | null>((done) => setTimeout(() => slotHome(made.item)().then(done), 32)) : null;
+      settle(itemId, result, at ?? onto);
+      return;
+    }
+    const item = itemById(itemId);
+    const fx = flashAt.left + root.x, fy = flashAt.top + root.y;
+    if (toolsOut && item && isUvLight(item) && over({ x: fx, y: fy, width: TOOL, height: TOOL }, x, y, below, 14)) {
+      feedback.tick();
+      setUvOn((on) => !on);
+      const at = { x: fx + TOOL / 2, y: fy + TOOL * 0.3 };
+      sparkleAt(at.x, at.y);
+      carry.snap(at.x, at.y, "home", slotHome(itemId));
+      return;
+    }
+    const target = open?.kind === "object" ? (y <= trayTop ? { id: open.id, x, y } : null) : open ? null : objectUnder(x, y);
+    if (!target) {
+      sendHome(itemId);
+      return;
+    }
+    feedback.press();
+    const result = await act({ type: "use_item", item: itemId, object: target.id });
+    settle(itemId, result, target);
+    if (open?.kind === "object") takeAt(target.id, result);
+    else take(result, "room");
+  };
+  /** The magnifier let go, at its lens: on something in the room, it snaps in and that opens; else back to its corner. */
+  const dropLens = (x: number, y: number) => {
+    const target = busy || x < 0 ? null : objectUnder(x, y);
+    if (!target) {
+      lens.home();
+      return;
+    }
+    feedback.press();
+    sparkleAt(target.x, target.y);
+    lens.snap(target.x, target.y, "home");
+    setTimeout(() => {
+      lens.reset();
+      look(target.id);
+    }, CARRY.snapMs);
+  };
+  const tray = (
+    <ItemTray
+      items={heldItems}
+      shown={shown}
+      equipped={uvOn}
+      carry={carry}
+      onTap={showItem}
+      onExamine={openItem}
+      onDragStart={(id, size) => { feedback.tick(); setShown(null); setCarrying({ id, size }); }}
+      onDrop={dropItem}
+      register={registerSlot}
+      slots={HOTBAR_SLOTS}
+    />
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player">
@@ -648,10 +716,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         <>
           <Magnifier
             at={{ left: ref.space.sm, top: toolTop }}
-            lifted={dragging === LENS}
-            drag={drag}
-            onDragStart={() => { feedback.tick(); setDragging(LENS); }}
-            onDrop={(x, y) => drop(LENS, x, y)}
+            lifted={lensUp}
+            carry={lens}
+            onDragStart={() => { feedback.tick(); setShown(null); setLensUp(true); }}
+            onDrop={dropLens}
           />
           <Flashlight at={{ left: screenW - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frameHere} uv={uvOn} />
         </>
@@ -659,29 +727,26 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
       {!open ? (
         <View style={styles.foot} pointerEvents="box-none">
-          {/* What the selected item is (a clean card), or "Fit together" for two: above the tools and the cat, clear of them. */}
-          {(selectedItem && !dragging) || selected.length === 2 ? (
+          {/* What the tapped item is (a clean card): above the tools and the cat, clear of them. */}
+          {shownItem && !carrying ? (
             <View style={styles.overTools} pointerEvents="box-none">
-              {selectedItem && !dragging ? (
+              {shownItem ? (
                 <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
-                  {SelectedGlyph ? (
+                  {ShownGlyph ? (
                     <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
-                      <SelectedGlyph size={24} weight="fill" color={theme.ink} />
+                      <ShownGlyph size={24} weight="fill" color={theme.ink} />
                     </View>
                   ) : null}
                   <View style={styles.itemText}>
                     <Text style={[styles.caseLabel, styles.itemLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>{HELD_LABEL[def.mode]}</Text>
-                    <Text style={[ref.type.headline, { color: theme.ink }]}>{capitalise(selectedItem.name)}</Text>
+                    <Text style={[ref.type.headline, { color: theme.ink }]}>{capitalise(shownItem.name)}</Text>
                     <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
-                      {selectedCard?.text || (isUvLight(selectedItem) ? "Tap to switch your light to UV." : "Drag it onto something to use it. Hold to look closer.")}
+                      {shownCard?.text || (isUvLight(shownItem)
+                        ? "Drag it onto your flashlight to switch to UV."
+                        : shownItem.kind === "half" ? "Drag it onto its other half to fit them together." : "Drag it onto something to use it. Hold to look closer.")}
                     </Text>
                   </View>
                 </View>
-              ) : null}
-              {selected.length === 2 ? (
-                <Pressable onPress={combine} accessibilityRole="button" accessibilityLabel="Fit together" testID="v2-combine" style={[styles.combine, { backgroundColor: theme.accent }]}>
-                  <Text style={[ref.type.headline, { color: theme.accentInk }]}>Fit together</Text>
-                </Pressable>
               ) : null}
             </View>
           ) : null}
@@ -747,7 +812,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           onHint={askHint}
           onExamine={openItem}
           onRestart={() => {
-            setSelected([]);
+            setShown(null);
             setCasebook(false);
             setOpen(null);
             // The player's side starts over with the room.
@@ -772,7 +837,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
-      {dragging && dragging !== LENS && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
+      {/* The item in hand, over everything; sparkles where something went in. */}
+      {carrying && itemById(carrying.id) ? (
+        <CarriedItem item={itemById(carrying.id)!} size={carrying.size} carry={carry} origin={root} uv={uvOn && isUvLight(itemById(carrying.id)!)} />
+      ) : null}
+      {sparkle ? <Sparkle key={sparkle.at} x={sparkle.x} y={sparkle.y} /> : null}
 
     </View>
   );
@@ -812,9 +881,8 @@ const styles = StyleSheet.create({
   itemGlyph: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   itemText: { flexShrink: 1, gap: 1 },
   itemLabel: { textAlign: "left" },
-  // The item card and "Fit together" stand on the tools' row (the magnifier, the cat, the flashlight), never over it.
+  // The item card stands on the tools' row (the magnifier, the cat, the flashlight), never over it.
   overTools: { gap: ref.space.sm, paddingBottom: TOOL + ref.space.sm * 2 },
-  combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center", marginHorizontal: ref.space.xl },
 });
 
 /** A turn arrow: a clear, thick chevron, white over a soft dark copy so it reads on any photo. */
