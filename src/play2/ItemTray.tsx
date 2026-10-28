@@ -10,7 +10,7 @@ import {
   ScrollIcon, TicketIcon, type Icon,
 } from "phosphor-react-native";
 import { GestureDetector, useCompetingGestures, useLongPressGesture, usePanGesture, useTapGesture } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { ItemDef } from "@/engine/v2";
 import { useModeTheme } from "@/game/mode";
@@ -92,11 +92,15 @@ function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onD
   const theme = useModeTheme();
   const Glyph = itemIcon(item);
   const id = item.id;
+  const dragging = useSharedValue(false);
+  const dropped = useSharedValue(false);
   const pan = usePanGesture({
     minDistance: 8,
     maxPointers: 1,
     onActivate: (e) => {
       "worklet";
+      dragging.set(true);
+      dropped.set(false);
       drag.x.set(e.absoluteX);
       drag.y.set(e.absoluteY);
       scheduleOnRN(onDragStart, id);
@@ -108,7 +112,14 @@ function TrayIcon({ item, size, on, uv, drag, onTap, onExamine, onDragStart, onD
     },
     onDeactivate: (e) => {
       "worklet";
+      dropped.set(true);
       scheduleOnRN(onDrop, id, e.absoluteX, e.absoluteY);
+    },
+    onFinalize: () => {
+      "worklet";
+      // Cancelled mid-drag: still end it, so the dragged icon never sticks.
+      if (dragging.get() && !dropped.get()) scheduleOnRN(onDrop, id, -1, -1);
+      dragging.set(false);
     },
   });
   const tap = useTapGesture({

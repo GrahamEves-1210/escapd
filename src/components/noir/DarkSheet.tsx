@@ -179,7 +179,7 @@ export function DarkSheet({
       </Animated.View>
       <Animated.View style={[styles.slot, slide]} pointerEvents="box-none">
       {/* Above the sheet (which clips its own content), sliding with it. */}
-      {peek ? <View style={styles.peek} pointerEvents="none">{peek}</View> : null}
+      {peek ? <View style={styles.peek} pointerEvents="box-none">{peek}</View> : null}
       <Animated.View
         entering={entering}
         exiting={exiting}

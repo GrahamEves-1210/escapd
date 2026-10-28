@@ -38,12 +38,13 @@ import { motion, ref } from "@/theme/tokens";
 import { continueHref, type CaseToContinue } from "./caseStatus";
 import { Chip, GearGlyph } from "./Chip";
 import { deckLayout, deckTilt } from "./deck";
+import { SittingCat } from "@/play2/SittingCat";
 import { HubNotice } from "./HubNotice";
 import { ModeCard } from "./ModeCard";
 import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
-import { WindowBackdrop } from "./WindowBackdrop";
+import { ART as WINDOW_ART, WindowBackdrop } from "./WindowBackdrop";
 
 const H = ref.layout.hub;
 const M = H.modes;
@@ -94,7 +95,8 @@ export function HubScreen() {
   const [viewport, setViewport] = useState<number | null>(null);
   const [words, setWords] = useState<Partial<Record<Genre, number>>>({});
   const column = viewport ?? windowHeight - insets.top - HEADER;
-  const deck = deckLayout(column - M.top - insets.bottom - M.foot, Math.max(0, ...Object.values(words)), GENRES.length);
+  // The deck takes most of the column, leaving the window's sill clear for the cat.
+  const deck = deckLayout((column - M.top - insets.bottom - M.foot) * DECK_SHARE, Math.max(0, ...Object.values(words)), GENRES.length);
 
   // Home is the shell: no mode while it is in front.
   useModeOnFocus(null);
@@ -367,6 +369,11 @@ export function HubScreen() {
           ))}
         </ScrollView>
 
+        {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
+        <View style={[styles.sillCat, { bottom: windowHeight * WINDOW_ART.sill - 6 }]} pointerEvents="box-none">
+          <SittingCat width={64} delay={FALL.delay + 4 * FALL.stagger} label="The black cat, on the window sill" />
+        </View>
+
         {/* Always mounted: Android speaks a polite live region when its content changes, never one that has just mounted. Over the last card's foot. */}
         <View
           accessibilityLiveRegion="polite"
@@ -396,6 +403,9 @@ export function HubScreen() {
   );
 }
 
+/** How much of the column the deck fills: smaller cards, the sill and the cat in view below them. */
+const DECK_SHARE = 0.8;
+
 /** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
 const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620 } as const;
 
@@ -419,6 +429,7 @@ function FallIn({ index, style, children }: { index: number; style: ViewStyle; c
 const styles = StyleSheet.create({
   // The shell's black. No glow, no grain.
   root: { flex: 1, backgroundColor: ref.color.void },
+  sillCat: { position: "absolute", right: ref.space.xl + 8 },
   // Every element on the window casts a shadow, so it reads on the night and the rain.
   lift: { shadowColor: "#000000", shadowOpacity: 0.7, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
   card: { shadowColor: "#000000", shadowOpacity: 0.65, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 14 },

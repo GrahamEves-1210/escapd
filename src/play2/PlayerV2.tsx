@@ -28,7 +28,7 @@ import { DragGhost, ItemTray, isUvLight, type DragState } from "./ItemTray";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatReaction } from "./PeekingCat";
-import { Flashlight, LensGhost, Magnifier, TOOL } from "./Tools";
+import { Flashlight, Magnifier, TOOL } from "./Tools";
 import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
@@ -101,7 +101,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [selected, setSelected] = useState<string[]>([]);
   const [casebook, setCasebook] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [objectiveOpen, setObjectiveOpen] = useState(false);
+  const [bandH, setBandH] = useState<number | null>(null);
   // What the cat last reacted to (a find, a wrong answer).
   const [catReaction, setCatReaction] = useState<CatReaction>(null);
   // Clues read in the casebook (the badge counts the ones since), and where the ledge starts (the hand sits above it).
@@ -306,7 +306,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   /** Let go of a dragged item: on the close-up, use it there; on the room's photo, on what's under the finger. */
   const drop = async (itemId: string, x: number, y: number) => {
     setDragging(null);
-    if (busy) return;
+    // A cancelled drag (x < 0) uses nothing.
+    if (busy || x < 0) return;
     const trayTop = windowHeight - insets.bottom - V2.tray.height - ref.space.lg * 2;
     if (y > trayTop) return;
     let objectId: string | null = null;
@@ -434,7 +435,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const unread = Math.max(0, casebookCards.length - cluesRead);
   const glass = { backgroundColor: theme.raised, borderColor: theme.rim };
   // The top HUD band's height: under the status bar, one row of controls.
-  const hudTop = insets.top + 58;
+  // The top band: at least one row of controls, taller when the case's line runs on (it's always shown in full).
+  const hudTop = Math.max(insets.top + 58, bandH ?? 0);
   const middle = frame ? frame.y + frame.height / 2 : null;
   const toolTop = frame ? Math.min(frame.y + frame.height, ledgeTop ?? windowHeight) - TOOL - ref.space.sm : 0;
   const selectedCard = selectedItem?.card ? casebookCards.find((c) => c.id === selectedItem.card) : undefined;
@@ -468,19 +470,23 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         ) : null}
       </View>
 
-      <View style={[styles.top, styles.band, { height: hudTop, paddingTop: insets.top + ref.space.xs, backgroundColor: theme.ground, borderBottomColor: tint(theme.ink, 0.12) }]} pointerEvents="box-none">
+      <View
+        style={[styles.top, styles.band, { minHeight: insets.top + 58, paddingTop: insets.top + ref.space.xs, paddingBottom: ref.space.xs, backgroundColor: theme.ground, borderBottomColor: tint(theme.ink, 0.12) }]}
+        pointerEvents="box-none"
+        onLayout={(e) => setBandH(e.nativeEvent.layout.height)}
+      >
         <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.glass, glass]} testID="v2-back">
           <ArrowLeftIcon size={20} weight="bold" color={theme.ink} />
         </Pressable>
-        {/* The case: a label in the mode's display face over one quiet line; tap for all of it. */}
-        <Pressable onPress={() => setObjectiveOpen((o) => !o)} accessibilityRole="button" accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
+        {/* The case: a label in the mode's display face over the whole objective. */}
+        <View accessible accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
           <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>The case</Text>
-          <Text style={[styles.objectiveText, { color: theme.ink }]} numberOfLines={objectiveOpen ? undefined : 1}>{def.objective}</Text>
+          <Text style={[styles.objectiveText, { color: theme.ink }]}>{def.objective}</Text>
           {def.mode === "paranormal" && progress.total > 0 ? (
             // The presence answers each step the player takes toward the ritual; at the end it is gone.
             <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
           ) : null}
-        </Pressable>
+        </View>
         <Pressable
           onPress={() => { setCasebook(true); setCluesRead(casebookCards.length); }}
           accessibilityRole="button"
@@ -506,9 +512,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-prev"
-            style={[styles.edge, glass, styles.edgeLeft, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
+            style={[styles.edge, styles.edgeLeft, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
           >
-            <CaretLeftIcon size={28} weight="bold" color={theme.ink} />
+            <Chevron Icon={CaretLeftIcon} />
           </Pressable>
           <Pressable
             onPress={() => { feedback.tick(); setTurnDir(1); setView((v) => (v + 1) % photos); }}
@@ -516,9 +522,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             accessibilityLabel={`Next view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-next"
-            style={[styles.edge, glass, styles.edgeRight, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
+            style={[styles.edge, styles.edgeRight, middle !== null ? { top: middle - 26, marginTop: 0 } : null]}
           >
-            <CaretRightIcon size={28} weight="bold" color={theme.ink} />
+            <Chevron Icon={CaretRightIcon} />
           </Pressable>
         </>
       ) : null}
@@ -531,12 +537,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       {!open && frame ? (
         <>
           <Magnifier
-            at={{ left: frame.x + ref.space.sm, top: toolTop }}
+            at={{ left: Math.max(0, frame.x) + ref.space.sm, top: toolTop }}
             drag={drag}
             onDragStart={() => { feedback.tick(); setDragging(LENS); }}
             onDrop={(x, y) => drop(LENS, x, y)}
           />
-          <Flashlight at={{ left: frame.x + frame.width - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frame} uv={uvOn} />
+          <Flashlight at={{ left: Math.min(screenW, frame.x + frame.width) - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frame} uv={uvOn} />
         </>
       ) : null}
 
@@ -570,7 +576,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
           >
             {/* The cat, peering over the ledge, eyes on your light (over the close-up's sheet while that's up). */}
-            {open || casebook ? null : <View style={styles.cat} pointerEvents="none">{cat}</View>}
+            {open || casebook ? null : <View style={styles.cat} pointerEvents="box-none">{cat}</View>}
             <View style={styles.trayWrap}>{tray}</View>
           </View>
         </View>
@@ -639,7 +645,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
-      {dragging === LENS ? <LensGhost drag={drag} /> : dragging && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
+      {dragging && dragging !== LENS && itemById(dragging) ? <DragGhost item={itemById(dragging)!} drag={drag} /> : null}
 
     </View>
   );
@@ -661,8 +667,9 @@ const styles = StyleSheet.create({
   toasts: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   edge: {
     position: "absolute", top: "50%", marginTop: -26, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth, zIndex: 10,
+    zIndex: 10,
   },
+  chevronShade: { position: "absolute", transform: [{ translateX: 1 }, { translateY: 2 }] },
   edgeLeft: { left: ref.space.sm },
   edgeRight: { right: ref.space.sm },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, gap: ref.space.sm },
@@ -679,3 +686,13 @@ const styles = StyleSheet.create({
   itemText: { flexShrink: 1, gap: 1 },
   combine: { minHeight: ref.hit.min, borderRadius: ref.hit.min / 2, alignItems: "center", justifyContent: "center", marginHorizontal: ref.space.xl },
 });
+
+/** A turn arrow: a clear, thick chevron, white over a soft dark copy so it reads on any photo. */
+function Chevron({ Icon }: { Icon: typeof CaretLeftIcon }) {
+  return (
+    <>
+      <Icon size={42} weight="bold" color="rgba(0,0,0,0.55)" style={styles.chevronShade} />
+      <Icon size={42} weight="bold" color="#FFFFFF" />
+    </>
+  );
+}

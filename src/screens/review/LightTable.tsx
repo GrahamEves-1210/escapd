@@ -89,6 +89,8 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
           <Text style={[styles.lead, { color: palette.inkMuted }]} testID="review-lead">
             {COPY.lead}
           </Text>
+          {/* The retake hint right under the lead, by the photos it's about. */}
+          {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
           {hasPlates ? (
             <View style={styles.grid} onLayout={(e) => setGridH(e.nativeEvent.layout.height)}>
               {gridH > 0 ? (
@@ -103,7 +105,6 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
               ) : null}
             </View>
           ) : null}
-          {hasPlates ? <NoteRow glyph={<TapGlyph color={palette.inkMuted} />} text={COPY.hint} style={styles.hint} testID="retake-hint" /> : null}
           {plates.length < plan.shots ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
         </View>
         <PageFade color={palette.page} height={GAP.top} solidAt="top" style={styles.topFade} />
@@ -130,7 +131,7 @@ const styles = StyleSheet.create({
   issueText: { ...ref.type.subtitle },
   lead: { ...ref.type.subtitle, marginHorizontal: ref.space.edge },
   grid: { flex: 1, marginTop: GAP.lead },
-  hint: { marginTop: GAP.hint },
+  hint: { marginTop: GAP.hint, marginBottom: -GAP.hint },
   add: { marginTop: GAP.add },
   addFirst: { marginTop: GAP.lead },
 });

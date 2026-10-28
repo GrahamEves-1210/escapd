@@ -4,8 +4,8 @@
 // another), breathes, and now and then gives a little happy hop. Its art never
 // changes. Under reduced motion it simply sits.
 import { useEffect, useState } from "react";
-import { Image, StyleSheet, View } from "react-native";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Burst, useStopMotion } from "./PeekingCat";
@@ -29,20 +29,21 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
   const sx = useSharedValue(1);
   const sy = useSharedValue(1);
   const breath = useSharedValue(0);
-  const [burst, setBurst] = useState<number | null>(null);
+  const [burst, setBurst] = useState<{ at: number; text: string } | null>(null);
 
   // A pop: crouch, stretch up, land squashed, settle.
   const bounce = (wait: number) => {
-    sy.set(withDelay(wait, withSequence(withTiming(0.86, { duration: 90 }), withTiming(1.16, { duration: 150 }), withTiming(0.92, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 }))));
-    sx.set(withDelay(wait, withSequence(withTiming(1.1, { duration: 90 }), withTiming(0.9, { duration: 150 }), withTiming(1.06, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 }))));
+    // Pose to pose, a few frames each (it's drawn at 12 fps).
+    sy.set(withDelay(wait, withSequence(withTiming(0.93, { duration: 80 }), withTiming(1.07, { duration: 90 }), withTiming(0.98, { duration: 90 }), withTiming(1, { duration: 90 }))));
+    sx.set(withDelay(wait, withSequence(withTiming(1.05, { duration: 80 }), withTiming(0.96, { duration: 90 }), withTiming(1.01, { duration: 90 }), withTiming(1, { duration: 90 }))));
   };
 
   useEffect(() => {
     if (reducedMotion) return;
-    pop.set(withDelay(delay, withSpring(1, { damping: 9, stiffness: 140 })));
+    pop.set(withDelay(delay, withTiming(1, { duration: 250, easing: Easing.out(Easing.quad) })));
     bounce(delay);
     breath.set(withDelay(delay, withRepeat(withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }), -1, true)));
-    const t = setTimeout(() => setBurst(Date.now()), delay + 150);
+    const t = setTimeout(() => setBurst({ at: Date.now(), text: "!" }), delay + 150);
     // A happy hop now and then.
     let hop: ReturnType<typeof setTimeout>;
     const again = () => {
@@ -61,7 +62,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
   useEffect(() => {
     if (!cheer || reducedMotion) return;
     bounce(0);
-    const t = setTimeout(() => setBurst(Date.now()), 150);
+    const t = setTimeout(() => setBurst({ at: Date.now(), text: "!" }), 150);
     return () => clearTimeout(t);
     // bounce reads shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,13 +82,25 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
   });
 
   return (
-    <View style={{ width, height }} pointerEvents="none">
-      <Animated.View style={[styles.cat, { width, height }, style]} accessible accessibilityLabel={label} testID="sitting-cat">
+    <View style={{ width, height }} pointerEvents="box-none">
+      <Animated.View style={[styles.cat, { width, height }, style]}>
         <Image source={ART} style={{ width, height }} resizeMode="contain" />
+        {/* Tap it: a happy hop and a heart. */}
+        <Pressable
+          onPress={() => {
+            if (reducedMotion) return;
+            bounce(0);
+            setBurst({ at: Date.now(), text: "♥" });
+          }}
+          style={StyleSheet.absoluteFill}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}. Pet the cat`}
+          testID="sitting-cat"
+        />
       </Animated.View>
       {burst !== null && !reducedMotion ? (
-        <View style={[styles.burst, { left: width * 0.5, top: height * 0.12 }]}>
-          <Burst key={burst} size={width * 0.7} color={theme.accent} glyph={{ color: theme.accent, fontFamily: theme.display.fontFamily }} />
+        <View style={[styles.burst, { left: width * 0.5, top: height * 0.12 }]} pointerEvents="none">
+          <Burst key={burst.at} text={burst.text} size={width * 0.7} color={theme.accent} glyph={{ color: theme.accent, fontFamily: theme.display.fontFamily }} />
         </View>
       ) : null}
     </View>

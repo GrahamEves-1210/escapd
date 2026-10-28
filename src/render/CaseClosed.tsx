@@ -136,7 +136,7 @@ export function CaseClosed({ genre, title, message, exit, summary, accused, phot
   const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
   // Over noir's folder it sits on the folder's top edge, below the tab.
   const peek = (onTab = false) => (
-    <View style={[styles.catPeek, onTab && { transform: [{ translateY: C.folder.tabHeight }] }]} pointerEvents="none">
+    <View style={[styles.catPeek, onTab && { transform: [{ translateY: C.folder.tabHeight }] }]} pointerEvents="box-none">
       <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} />
     </View>
   );

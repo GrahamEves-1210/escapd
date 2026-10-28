@@ -129,7 +129,7 @@ export function InspectView(props: InspectViewProps) {
       {/* The room stays in view above; a tap there puts the sheet away. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Back to the room" testID="v2-inspect-away" />
       <Animated.View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.rim, paddingBottom: insets.bottom + ref.space.sm }, sheetStyle]}>
-        {cat ? <View style={styles.cat} pointerEvents="none">{cat}</View> : null}
+        {cat ? <View style={styles.cat} pointerEvents="box-none">{cat}</View> : null}
         <View style={[styles.grabber, { backgroundColor: theme.rim }]} />
         <View style={styles.header}>
           <View style={styles.headerText}>

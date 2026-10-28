@@ -12,8 +12,7 @@
 // it, and only then does "Open the case" (the guide's pill, `thud`) fade in at
 // the foot, where its space was kept all along so nothing jumps.
 //
-// Sound: the mode's room tone, quietly, while this is on screen
-// (useRoomTone, as the play screen's); and `typewriter` when the status
+// Sound: `typewriter` when the status
 // changes meaning (queued, building, trying again), never on the rotating
 // lines or a photo count, and never twice within cue.typewriterGap.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,7 +27,6 @@ import { ThinkingStates } from "@/components/noir";
 import { StateActions, type StateAction } from "@/components/StateScreen";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
-import { useRoomTone } from "@/game/useRoomTone";
 import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
 import { Stamp } from "@/render/Stamp";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -64,7 +62,6 @@ export function BuildWait({ stage, photos, onLeave, open }: {
   const sending = stage.kind === "sending";
   const status = stage.kind === "ready" ? null : waitStatus(stage, palette.genre);
 
-  useRoomTone(true);
 
   // Android's back is the close square: home, the case still building. Not while photos send.
   useFocusEffect(
@@ -142,7 +139,7 @@ export function BuildWait({ stage, photos, onLeave, open }: {
       <View style={styles.column}>
         <Animated.View style={[styles.stage, nudgeStyle]}>
           <RoomPanorama photos={photos} ready={ready} style={styles.room} />
-          <View style={styles.cat} pointerEvents="none">
+          <View style={styles.cat} pointerEvents="box-none">
             <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} mood={ready ? "idle" : "thinking"} />
           </View>
           {ready ? (

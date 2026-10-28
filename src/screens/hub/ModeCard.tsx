@@ -158,8 +158,8 @@ function Glow({ theme }: { theme: ModeTheme }) {
 }
 
 const styles = StyleSheet.create({
-  // The shadow sits on the card (no clipping here), cast up onto the card it covers.
-  card: { flex: 1, borderRadius: M.radius, boxShadow: M.deck.shadow, ...ref.curve },
+  // No shadow cast up onto the card it covers (home's FallIn gives each card its drop shadow).
+  card: { flex: 1, borderRadius: M.radius, ...ref.curve },
   face: {
     flex: 1,
     overflow: "hidden",

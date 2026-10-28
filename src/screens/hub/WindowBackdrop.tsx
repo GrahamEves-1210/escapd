@@ -13,7 +13,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 
 const WINDOW = require("../../../assets/backdrop/window.jpg") as number;
 /** The art's geometry as fractions (scripts/brand/window.py): frame, sill, mullion, the cross's height. */
-const ART = { frameX: 0.0496, frameY: 0.0229, sill: 0.0536, mullion: 0.0357, cross: 0.5 } as const;
+export const ART = { frameX: 0.0496, frameY: 0.0229, sill: 0.0536, mullion: 0.0357, cross: 0.5 } as const;
 const DROPS = 46;
 
 interface DropSpec {
@@ -83,7 +83,7 @@ function Drop({ spec, clock, width, height }: { spec: DropSpec; clock: SharedVal
     const t = (p - 0.55) / 0.45;
     return spec.run * t * t;
   });
-  const cx = useDerivedValue(() => x0 + Math.sin(fall.value / 30) * 3);
+  const cx = useDerivedValue(() => x0);
   const cy = useDerivedValue(() => y0 + fall.value);
   const r = useDerivedValue(() => {
     const p = phase.value;
@@ -96,12 +96,13 @@ function Drop({ spec, clock, width, height }: { spec: DropSpec; clock: SharedVal
     const fadeOut = p > 0.9 ? (1 - p) / 0.1 : 1;
     return fadeIn * fadeOut;
   });
-  const trail = useDerivedValue(() => (fall.value > 2 ? `M ${x0} ${y0} Q ${x0 + 2} ${y0 + fall.value / 2} ${x0 + Math.sin(fall.value / 30) * 3} ${y0 + fall.value}` : ""));
+  // The wet streak a running drop leaves: as wide as the drop, faint, straight down.
+  const trail = useDerivedValue(() => (fall.value > 2 ? `M ${x0} ${y0} L ${x0} ${y0 + fall.value}` : ""));
   const highlightY = useDerivedValue(() => cy.value + r.value * 0.35);
   const highlightR = useDerivedValue(() => r.value * 0.45);
   return (
     <Group opacity={alpha}>
-      <Path path={trail} style="stroke" strokeWidth={Math.max(1, spec.r * 0.5)} color="rgba(205, 220, 255, 0.28)" strokeCap="round" />
+      <Path path={trail} style="stroke" strokeWidth={spec.r * 1.5} color="rgba(190, 210, 255, 0.10)" strokeCap="round" />
       <Circle cx={cx} cy={cy} r={r} color="rgba(170, 192, 245, 0.30)" />
       <Circle cx={cx} cy={cy} r={r} style="stroke" strokeWidth={1} color="rgba(10, 16, 40, 0.45)" />
       <Circle cx={cx} cy={highlightY} r={highlightR} color="rgba(240, 246, 255, 0.75)" />

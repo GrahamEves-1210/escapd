@@ -21,7 +21,7 @@ import type { Overlay, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
-import { aspectOf, containBox } from "@/render/geometry";
+import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
 import { measureInWindow } from "@/render/PickupFlight";
 import { V2 } from "./layout";
@@ -83,16 +83,14 @@ export function Stage({
   const theme = useModeTheme();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
-  // The room fills the view's width, edge to edge like a game's viewport, its
-  // top and bottom trimmed a little if it's taller than the view (at most
-  // FILL_CROP); a photo much taller or wider sits whole in the middle.
+  // The room fills the whole view, edge to edge like a game's viewport (no
+  // bars): scaled to cover it, centred, the overflow trimmed.
   const frame = useMemo(() => {
-    if (!aspect || viewport.width <= 0) return null;
-    const h = viewport.width / aspect;
-    if (h >= viewport.height && (h - viewport.height) / h <= FILL_CROP) {
-      return { x: 0, y: (viewport.height - h) / 2, width: viewport.width, height: h };
-    }
-    return containBox(viewport, aspect);
+    if (!aspect || viewport.width <= 0 || viewport.height <= 0) return null;
+    const scale = Math.max(viewport.width / aspect, viewport.height) / viewport.height;
+    const height = viewport.height * scale;
+    const width = height * aspect;
+    return { x: (viewport.width - width) / 2, y: (viewport.height - height) / 2, width, height };
   }, [viewport, aspect]);
   const W = frame?.width ?? 0;
   const H = frame?.height ?? 0;
@@ -409,7 +407,6 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
 }
 
 /** How much of a photo's height the view may trim to fill its width. */
-const FILL_CROP = 0.16;
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },

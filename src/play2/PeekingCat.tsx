@@ -19,7 +19,7 @@
 // pupils and eyelids are drawn over the eyes. Under reduced motion it sits
 // still apart from its eyes.
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SparkleIcon } from "phosphor-react-native";
 import Animated, {
   Easing, useAnimatedReaction, useAnimatedStyle, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
@@ -38,6 +38,8 @@ const EYE_R = { x: 0.0949, y: 0.0833 };
 /** Pupil width: a slit in the light, round in the dark (fractions of the art's width). */
 const PUPIL = { slit: 0.026, wide: 0.085, h: 0.15 };
 const FUR = "#0B0806";
+/** It sits this far (of its height) behind the ledge, so its bottom edge never shows when it turns. */
+const SINK = 0.05;
 /** Drawn at this many frames a second: stop motion. */
 const FPS = 12;
 /** It dozes off when the light has been still this long (ms). */
@@ -101,16 +103,22 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   // When the light last moved (ms), for dozing off.
   const lastMove = useSharedValue(0);
   const [asleep, setAsleep] = useState(false);
+  const [petAt, setPetAt] = useState<number | null>(null);
 
   /** A pop: crouch, stretch up, land with a squash, settle. */
   const pop = (up: number) => {
     "worklet";
-    hop.set(withSequence(
-      withTiming(height * 0.05, { duration: 90, easing: Easing.out(Easing.quad) }),
-      withSpring(0, { damping: 12, stiffness: 200 }),
-    ));
-    sy.set(withSequence(withTiming(0.84, { duration: 90 }), withTiming(1 + up, { duration: 150, easing: Easing.out(Easing.quad) }), withTiming(0.9, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
-    sx.set(withSequence(withTiming(1.12, { duration: 90 }), withTiming(0.9, { duration: 150 }), withTiming(1.08, { duration: 110 }), withSpring(1, { damping: 6, stiffness: 180 })));
+    // Pose to pose, a few frames each (it's drawn at 12 fps): crouch, up, settle.
+    hop.set(withSequence(withTiming(height * 0.03, { duration: 80 }), withTiming(0, { duration: 80 })));
+    sy.set(withSequence(withTiming(0.93, { duration: 80 }), withTiming(1 + up * 0.5, { duration: 90 }), withTiming(0.98, { duration: 90 }), withTiming(1, { duration: 90 })));
+    sx.set(withSequence(withTiming(1.05, { duration: 80 }), withTiming(0.96, { duration: 90 }), withTiming(1.01, { duration: 90 }), withTiming(1, { duration: 90 })));
+  };
+  // Petted: a happy pop and a heart; it wakes up.
+  const pet = () => {
+    lastMove.set(Date.now());
+    if (reducedMotion) return;
+    pop(0.16);
+    setPetAt(Date.now());
   };
 
   useEffect(() => {
@@ -143,7 +151,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           ));
           sy.set(withDelay(920, withSequence(withTiming(1.1, { duration: 160 }), withSpring(1, { damping: 6, stiffness: 160 }))));
         } else {
-          const to = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 5);
+          const to = (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 2);
           idleTilt.set(withSequence(withSpring(to, { damping: 7, stiffness: 90 }), withDelay(900, withSpring(0, { damping: 10, stiffness: 80 }))));
         }
       }
@@ -227,15 +235,16 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     let lean = 0;
     if (known) {
       const dx = fx + bx * fw - (ox + width / 2);
-      lean = Math.max(-7, Math.min(7, dx / 40));
+      lean = Math.max(-4, Math.min(4, dx / 60));
     }
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
     return {
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
-        { translateY: Math.max(0, r + h + (1 - b) * 1.5 + z * height * 0.14) },
-        { rotate: `${lean * (1 - z) + tilt + t * 8 - z * 5}deg` },
+        { translateY: Math.max(0, r + h + (1 - b) * 1.5 + z * height * 0.14) + height * SINK },
+        // Small turns only, so a tilt never lifts the art's cut-off bottom edge into view.
+        { rotate: `${lean * (1 - z) + tilt + t * 4 - z * 3}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
         { scaleY: squashY * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
         { scaleX: squashX * (1 - b * 0.012 * deep) },
@@ -243,13 +252,14 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     };
   });
 
-  // A find's sparkles play once per find (they end invisible).
+  // A find's sparkles play once per find (they end invisible); a pet's heart likewise.
   const burst = reaction?.kind === "found" ? reaction.at : null;
+  const shownBurst = petAt !== null && (burst === null || petAt > burst) ? { at: petAt, text: "♥" } : burst !== null ? { at: burst, text: "!" } : null;
   const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
   return (
-    <View pointerEvents="none" style={{ width: width * 1.3, height: height * 1.25 }}>
+    <View pointerEvents="box-none" style={{ width: width * 1.3, height: height * 1.25 }}>
     {/* Its marks float above its head, outside the ledge's clip. */}
-    <View style={[styles.marks, { left: width * 0.55, bottom: height * 0.8, width: width, height: height }]}>
+    <View pointerEvents="none" style={[styles.marks, { left: width * 0.55, bottom: height * 0.8, width: width, height: height }]}>
       {mood === "thinking" && !reducedMotion ? (
         <>
           <Mark glyph="?" size={width * 0.34} dx={0} delay={250} style={mark} still={false} />
@@ -263,19 +273,24 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Mark glyph="z" size={width * 0.3} dx={width * 0.1} delay={1100} style={mark} drift still={reducedMotion} />
         </>
       ) : null}
-      {burst !== null && !reducedMotion ? <View style={{ transform: [{ translateX: -width * 0.35 }] }}><Burst key={burst} size={width} color={theme.ink} glyph={mark} /></View> : null}
+      {shownBurst && !reducedMotion ? (
+        <View style={{ transform: [{ translateX: -width * 0.35 }] }}>
+          <Burst key={shownBurst.at} size={width} color={theme.ink} glyph={mark} text={shownBurst.text} />
+        </View>
+      ) : null}
     </View>
     {/* The ledge hides what's below it: the cat rises from behind it. */}
-    <View style={[styles.clip, StyleSheet.absoluteFill]}>
+    <View style={[styles.clip, StyleSheet.absoluteFill]} pointerEvents="box-none">
       <Animated.View
         ref={viewRef}
         onLayout={() => measureInWindow(viewRef.current).then((r) => r && setOrigin({ x: r.x, y: r.y }))}
         style={[styles.cat, { width, height, left: width * 0.15 }, body]}
-        accessible
         accessibilityLabel="A black cat watches your light"
         testID="v2-cat"
       >
         <Image source={ART} style={{ position: "absolute", left: 0, top: 0, width, height }} resizeMode="contain" />
+        {/* Tap it: a happy pop and a heart (and it wakes up). */}
+        <Pressable onPress={pet} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Pet the cat" testID="v2-cat-pet" />
         {EYES.map((eye, i) => (
           <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} f={f} />
         ))}
@@ -319,17 +334,17 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
 }
 
 /** A find: sparkles burst out around its head and an "!" pops up, once. */
-export function Burst({ size, color, glyph }: { size: number; color: string; glyph: { color: string; fontFamily?: string } }) {
+export function Burst({ size, color, glyph, text = "!" }: { size: number; color: string; glyph: { color: string; fontFamily?: string }; text?: string }) {
   const t = useSharedValue(0);
   useEffect(() => {
-    t.set(withTiming(1, { duration: 900, easing: Easing.out(Easing.cubic) }));
+    t.set(withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) }));
   }, [t]);
   const shown = useStopMotion([t], [0]);
   const bang = useAnimatedStyle(() => {
     const p = shown.get()[0];
     return {
       opacity: p > 0.75 ? (1 - p) / 0.25 : 1,
-      transform: [{ translateY: -p * size * 0.5 }, { scale: p < 0.2 ? (p / 0.2) * 1.3 : 1.3 - Math.min(1, (p - 0.2) / 0.2) * 0.3 }],
+      transform: [{ translateY: -p * size * 0.35 }, { scale: p < 0.2 ? (p / 0.2) * 1.1 : 1.1 - Math.min(1, (p - 0.2) / 0.2) * 0.1 }],
     };
   });
   return (
@@ -338,7 +353,7 @@ export function Burst({ size, color, glyph }: { size: number; color: string; gly
         <Spark key={i} t={shown} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.24 : 0.32)} color={color} />
       ))}
       <Animated.View style={[styles.mark, bang]}>
-        <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.6, lineHeight: size * 0.7 }]}>!</Text>
+        <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.6, lineHeight: size * 0.7 }]}>{text}</Text>
       </Animated.View>
     </>
   );
