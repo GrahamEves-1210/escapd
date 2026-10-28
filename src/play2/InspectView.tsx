@@ -8,13 +8,16 @@ import { createElement, useEffect, useState, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { NoteIcon, XIcon } from "phosphor-react-native";
+import { XIcon } from "phosphor-react-native";
 import type { FinaleDef, ItemDef, StateValue } from "@/engine/v2";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { capitalise, isUvLight, itemIcon } from "./ItemTray";
+import { JournalCard, lookOf } from "./journal/JournalCard";
+import { handType, journalPalette, UV } from "./journal/palette";
+import { softShadow, Tape } from "./journal/Paper";
 import { V2 } from "./layout";
 import { Mechanism } from "./mechanisms";
 import type { MechanismTarget } from "./mechanisms/types";
@@ -120,8 +123,7 @@ export function InspectView(props: InspectViewProps) {
   const lies = target.archetype === "Drawer" || target.archetype === "LiftUnder";
   const items = inside.length || empty ? (
     <>
-      {inside.map((c) => {
-        const Glyph = c.kind === "card" ? NoteIcon : itemIcon(c.item);
+      {inside.map((c, i) => {
         return (
           <Pressable
             key={c.kind === "card" ? c.card.id : c.item.id}
@@ -137,9 +139,9 @@ export function InspectView(props: InspectViewProps) {
             accessibilityRole="button"
             accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${capitalise(c.item.name)}`}
             testID={c.kind === "card" ? `v2-note-${c.card.id}` : `v2-found-${c.item.id}`}
-            style={[styles.found, c.kind === "card" ? styles.paperFound : { backgroundColor: theme.raised, borderColor: theme.ink }]}
+            style={({ pressed }) => [styles.found, pressed && styles.foundPressed]}
           >
-            <Glyph size={30} weight="fill" color={c.kind === "card" ? PAPER_INK : theme.ink} />
+            {c.kind === "card" ? <FoundNote card={c.card} index={i} /> : <FoundSticker item={c.item} index={i} />}
           </Pressable>
         );
       })}
@@ -203,15 +205,8 @@ export function InspectView(props: InspectViewProps) {
         {target.kind === "object" ? <View style={styles.tray}>{tray}</View> : null}
       </Animated.View>
 
-      {/* A note, read: paper over everything. Tap anywhere to put it down. */}
-      {reading ? (
-        <Pressable style={styles.readingScrim} onPress={() => setReading(null)} accessibilityRole="button" accessibilityLabel="Put the note down" testID="v2-reading">
-          <View style={styles.paper}>
-            <Text style={[ref.type.headline, styles.paperInk]}>{reading.title}</Text>
-            <Text style={[ref.type.body, styles.paperInk]}>{reading.text}</Text>
-          </View>
-        </Pressable>
-      ) : null}
+      {/* A note, read: the torn paper taped up over everything, in the hand it was written in. Tap anywhere to put it down. */}
+      {reading ? <ReadingNote card={reading} onDone={() => setReading(null)} /> : null}
     </View>
   );
 }
@@ -242,8 +237,7 @@ function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; co
       </View>
       {card ? (
         <View style={styles.detailPaper} testID={`v2-item-card-${card.id}`}>
-          <Text style={[ref.type.headline, styles.paperInk]}>{card.title}</Text>
-          <Text style={[ref.type.body, styles.paperInk]}>{card.text}</Text>
+          <JournalCard card={card} palette={journalPalette(theme)} hand={handType(theme)} index={0} />
         </View>
       ) : (
         // No card: its name is the sheet's title already; one line on what it's for, no empty paper.
@@ -253,8 +247,49 @@ function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; co
   );
 }
 
-const PAPER = "rgb(236,228,210)";
-const PAPER_INK = "rgb(52,44,34)";
+/** A note, read up close: the room dims (in the mode's ground), the note is taped up, tilted, at reading size. */
+function ReadingNote({ card, onDone }: { card: FoundCard; onDone: () => void }) {
+  const theme = useModeTheme();
+  const p = journalPalette(theme);
+  const hand = handType(theme);
+  return (
+    <View style={styles.reading} testID="v2-reading-layer">
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }, styles.readingScrim]} onPress={onDone} accessibilityRole="button" accessibilityLabel="Put the note down" testID="v2-reading" />
+      <View style={styles.readingPaper} pointerEvents="none">
+        <JournalCard card={card} palette={p} hand={hand} index={0} large />
+      </View>
+      <Text style={[hand.small, styles.readingHint, { color: theme.inkMuted }]} pointerEvents="none">tap anywhere to put it down</Text>
+    </View>
+  );
+}
+
+/** A note lying in an object: a little folded scrap with a scribble and a strip of tape (a UV finding, violet). */
+function FoundNote({ card, index }: { card: FoundCard; index: number }) {
+  const theme = useModeTheme();
+  const p = journalPalette(theme);
+  const uv = lookOf(card).look === "uv";
+  const ink = uv ? UV.ink : p.inkSoft;
+  return (
+    <View style={[styles.mini, { backgroundColor: uv ? UV.paper : p.note, transform: [{ rotate: `${index % 2 ? 5 : -6}deg` }] }, softShadow(theme.ground)]}>
+      <View style={[styles.miniLine, { backgroundColor: ink, width: 30 }]} />
+      <View style={[styles.miniLine, { backgroundColor: ink, width: 24 }]} />
+      <View style={[styles.miniLine, { backgroundColor: ink, width: 28 }]} />
+      <View style={[styles.miniFold, { borderTopColor: theme.surface, borderRightColor: uv ? UV.edge : p.rule }]} />
+      <Tape color={p.tape[index % 3]} width={26} height={10} rotate={-8} pattern="plain" style={styles.miniTape} />
+    </View>
+  );
+}
+
+/** An item lying in an object: a die-cut sticker of it, to pick up. */
+function FoundSticker({ item, index }: { item: ItemDef; index: number }) {
+  const theme = useModeTheme();
+  const p = journalPalette(theme);
+  return (
+    <View style={[styles.sticker, { backgroundColor: p.photo, borderColor: p.polaroid, transform: [{ rotate: `${index % 2 ? 4 : -4}deg` }] }, softShadow(theme.ground)]}>
+      {createElement(itemIcon(item), { size: 28, weight: "duotone", color: p.chalk })}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   sheet: {
@@ -271,16 +306,22 @@ const styles = StyleSheet.create({
   scenery: { minHeight: 140, alignItems: "center", justifyContent: "center", gap: ref.space.lg, paddingVertical: ref.space.lg },
   detail: { alignItems: "center", gap: ref.space.lg, paddingHorizontal: ref.space.lg, paddingTop: ref.space.lg, paddingBottom: ref.space.xl },
   detailGlyph: { width: 112, height: 112, borderRadius: 28, borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
-  detailPaper: { backgroundColor: "rgb(236,228,210)", borderRadius: 4, padding: ref.space.lg, gap: ref.space.xs, alignSelf: "stretch", transform: [{ rotate: "-0.8deg" }] },
+  detailPaper: { alignSelf: "stretch" },
   detailText: { textAlign: "center", maxWidth: 320 },
   lying: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
-  found: { width: 56, height: 56, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1 },
-  paperFound: { backgroundColor: PAPER, borderColor: "rgba(0,0,0,0.25)", transform: [{ rotate: "-4deg" }] },
+  found: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
+  foundPressed: { transform: [{ scale: 0.94 }] },
+  mini: { width: 44, height: 52, borderRadius: 2, paddingTop: 14, paddingLeft: 7, gap: 6 },
+  miniLine: { height: 2, borderRadius: 1, opacity: 0.7 },
+  miniFold: { position: "absolute", top: 0, right: 0, width: 0, height: 0, borderTopWidth: 11, borderRightWidth: 11, borderLeftColor: "transparent", borderBottomColor: "transparent" },
+  miniTape: { position: "absolute", top: -5, left: 9 },
+  sticker: { width: 54, height: 54, borderRadius: 16, borderWidth: 3, alignItems: "center", justifyContent: "center" },
   empty: { fontStyle: "italic" },
   take: { minHeight: 40, paddingHorizontal: ref.space.lg, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   takeCorner: { position: "absolute", top: ref.space.sm, right: ref.space.lg },
   tray: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm },
-  readingScrim: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: ref.space.xl, zIndex: 60 },
-  paper: { backgroundColor: PAPER, borderRadius: 4, padding: ref.space.xl, gap: ref.space.sm, maxWidth: 360, width: "100%", transform: [{ rotate: "-1.5deg" }] },
-  paperInk: { color: PAPER_INK },
+  reading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", padding: ref.space.xl, zIndex: 60 },
+  readingScrim: { opacity: 0.86 },
+  readingPaper: { maxWidth: 360, width: "100%", transform: [{ rotate: "-1.5deg" }] },
+  readingHint: { position: "absolute", bottom: 56, alignSelf: "center" },
 });

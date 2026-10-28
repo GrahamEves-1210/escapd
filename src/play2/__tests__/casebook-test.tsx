@@ -22,6 +22,36 @@ describe("Casebook", () => {
     expect(screen.queryByTestId("v2-board")).toBeNull();
   });
 
+  it("is her journal: the objective in her hand, each card taped in as what it is", async () => {
+    const cards = [
+      { id: "c_uv", title: "Under UV", text: "Glowing violet: p. 94." },
+      { id: "c_m", title: "Matchbook", text: "From a bar called the Blue Lantern." },
+      { id: "c_t", title: "Taped note", text: "Edge to edge: 5." },
+    ];
+    await render(<Casebook {...base} cards={cards} />);
+    expect(screen.getByTestId("v2-casebook-objective").props.children).toBe(base.objective);
+    for (const c of cards) {
+      expect(screen.getByTestId(`v2-casebook-card-${c.id}`)).toBeTruthy();
+      expect(screen.getByText(c.text)).toBeTruthy();
+    }
+    // A polaroid of what it was found on, captioned with its title.
+    expect(screen.getByText("Matchbook")).toBeTruthy();
+    // Hints are the cat's margin notes.
+    expect(screen.getByText(/^psst/)).toBeTruthy();
+  });
+
+  it("nothing found yet: says so", async () => {
+    await render(<Casebook {...base} cards={[]} />);
+    expect(screen.getByTestId("v2-casebook-empty")).toBeTruthy();
+  });
+
+  it("held items are stickers to examine", async () => {
+    const onExamine = jest.fn();
+    await render(<Casebook {...base} items={[{ id: "item_1", name: "Brass key", examinable: true }]} onExamine={onExamine} />);
+    await fireEvent.press(screen.getByTestId("v2-examine-item_1"));
+    expect(onExamine).toHaveBeenCalledWith("item_1");
+  });
+
   it("asks before restarting: a second tap does it", async () => {
     const onRestart = jest.fn();
     await render(<Casebook {...base} onRestart={onRestart} />);
@@ -48,6 +78,9 @@ describe("Casebook", () => {
     expect(screen.getByTestId("v2-board")).toBeTruthy();
     expect(screen.getByTestId("v2-board-s_b").props.accessibilityState).toMatchObject({ checked: true });
     expect(screen.getByTestId("v2-board-s_a").props.accessibilityState).toMatchObject({ checked: false });
+    // Struck off with a "ruled out" stamp; the one left on a card is circled.
+    expect(screen.getAllByText("RULED OUT")).toHaveLength(1);
+    expect(screen.getByText("this one?")).toBeTruthy();
     await fireEvent.press(screen.getByTestId("v2-board-s_a"));
     expect(onStrike).toHaveBeenCalledWith("s_a");
   });
