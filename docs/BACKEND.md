@@ -212,6 +212,7 @@ Templates own causality; the model never invents edges. Each of the seven templa
 |---|---|---|---|
 | Perception + verification | `gemini-2.5-flash` (fallback `gemini-3-flash-preview`) | `AI_PERCEPTION_MODEL`, `AI_PERCEPTION_FALLBACK_MODEL` | 2,000 output tokens per photo (3,000 for verification), thinking off |
 | Prose + repair | `gemini-3.1-pro-preview` (no fallback) | `AI_PROSE_MODEL`, `AI_PROSE_FALLBACK_MODEL` | 6,000 output tokens + 1,024 thinking |
+| Object outlines (schema 2: segmentation masks, alongside the author call; never fatal) | `gemini-2.5-flash` (no fallback: Gemini 3 returns no masks) | `AI_SEGMENTATION_MODEL` | one call per 8 objects of a photo, 2,000 output tokens per object, thinking off, JSON mode without a schema |
 
 A fallback model is tried once on a retryable error or a 404 (not after a timeout). Cost uses the list prices in `cost.ts` (thinking tokens bill as output); `usage.model` lists every model used, `image_count` counts images sent. Logs are one `generation_stage` JSON line per stage with timings, counts and cost only: never URLs, image bytes, labels, generated text, or answers.
 
@@ -233,7 +234,7 @@ See `.env.example`.
 | `REVENUECAT_WEBHOOK_AUTH` | function secret | **yes** |
 | `REVENUECAT_WEBHOOK_SIGNING_SECRET` | function secret (optional) | **yes** |
 | `AI_PROVIDER_API_KEY` | function secret (Gemini API key, used by generation-worker) | **yes** |
-| `AI_PERCEPTION_MODEL`, `AI_PERCEPTION_FALLBACK_MODEL`, `AI_PROSE_MODEL`, `AI_PROSE_FALLBACK_MODEL` | function secrets, optional model overrides (see [AI room generation](#ai-room-generation)) | no |
+| `AI_PERCEPTION_MODEL`, `AI_PERCEPTION_FALLBACK_MODEL`, `AI_PROSE_MODEL`, `AI_PROSE_FALLBACK_MODEL`, `AI_SEGMENTATION_MODEL` | function secrets, optional model overrides (see [AI room generation](#ai-room-generation)) | no |
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEYS` / `SUPABASE_SERVICE_ROLE_KEY` | injected automatically into hosted functions | **yes**, never in the app |
 
 ## Setup checklist (hosted project)

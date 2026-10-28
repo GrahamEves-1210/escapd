@@ -2,7 +2,7 @@
 // call's per-field fallback, and play(): load, act, hint, cooldown.
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { generatePuzzle, type GenerationInput, GenerationError, type PipelineConfig } from "../ai.ts";
-import { FakeProvider, photoBytes, seededRandomInt, textOf, verificationHandler } from "../test_fixtures.ts";
+import { FakeProvider, photoBytes, seededRandomInt, segmentationHandler, textOf, verificationHandler } from "../test_fixtures.ts";
 import type { JsonCall } from "../provider.ts";
 import { applyAuthor, type AuthorText, authorBrief, cleanText } from "./author.ts";
 import { initialState } from "./engine.ts";
@@ -94,7 +94,8 @@ function author(call: JsonCall<unknown>) {
   };
 }
 
-const provider = (scene = SCENE) => new FakeProvider({ perception: perception(scene), verification: verificationHandler(), prose: author });
+const provider = (scene = SCENE) =>
+  new FakeProvider({ perception: perception(scene), verification: verificationHandler(), prose: author, segmentation: segmentationHandler() });
 const deps = (p: FakeProvider) => ({
   config: CONFIG, provider: p, fetchPhoto: (ph: { position: number }) => Promise.resolve(photoBytes(ph.position)),
   preview: () => Promise.resolve([]), random: () => 0.37, randomInt: seededRandomInt(11), log: () => {},
@@ -112,8 +113,16 @@ for (const mode of ["noir", "crime_scene", "paranormal"] as const) {
     assertEquals(def.title, "The Second Ledger");
     assertEquals(def.objects.filter((o) => o.exit).map((o) => o.type), ["door"]);
     assert(simulate(def, secret).ok, simulate(def, secret).errors.join("; "));
-    // Three perception calls, one verification, one author call.
-    assertEquals(p.stages().sort(), ["perception", "perception", "perception", "prose", "verification"]);
+    // Three perception calls, one verification, one author call; one segmentation call per photo with objects.
+    const photosWithObjects = new Set(def.objects.map((o) => o.photo_index)).size;
+    assertEquals(p.stages().filter((s) => s !== "segmentation").sort(), ["perception", "perception", "perception", "prose", "verification"]);
+    assertEquals(p.stages().filter((s) => s === "segmentation").length, photosWithObjects);
+    // Every object has its outline (the fake's masks are ellipses filling each box), inside its box.
+    for (const o of def.objects) {
+      assert(o.outline && o.outline.length >= 8 && o.outline.length <= 64, `${o.id} has an outline`);
+      const b = o.box, slack = 0.002;
+      assert(o.outline.every((q) => q.x >= b.x - slack && q.x <= b.x + b.w + slack && q.y >= b.y - slack && q.y <= b.y + b.h + slack), `${o.id}'s outline is in its box`);
+    }
     // No answer is written into the public room.
     const json = JSON.stringify(def).toLowerCase();
     for (const s of Object.values(secret.slots)) {
@@ -140,6 +149,17 @@ Deno.test("generation v2: a visible face stops it before anything is planned", a
   const err = await assertRejects(() => generatePuzzle(input("noir"), deps(faces)), GenerationError);
   assertEquals(err.code, "person_or_sensitive");
   assert(!faces.stages().includes("prose"));
+});
+
+Deno.test("generation v2: failed segmentation costs only the outlines", async () => {
+  const p = new FakeProvider({
+    perception: perception(), verification: verificationHandler(), prose: author,
+    segmentation: () => { throw new Error("HTTP 500"); },
+  });
+  const out = await generatePuzzle(input("noir"), deps(p));
+  const def = out.publicDefinition as unknown as RoomDefinitionV2;
+  assert(def.objects.length > 0 && def.objects.every((o) => o.outline === undefined));
+  assert(simulate(def, out.solution as unknown as RoomSecretV2).ok);
 });
 
 // ---------------------------------------------------------------------------

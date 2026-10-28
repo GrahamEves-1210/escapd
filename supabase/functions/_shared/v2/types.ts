@@ -36,6 +36,9 @@ export interface ObjectDef {
   hidden?: boolean;                    // not tappable until a reveal effect
   removable?: boolean;                 // at most one per room: taking it removes it from the photo
   exit?: boolean;                      // exactly one: the door the finale opens
+  /** The object's real outline in photo fractions (0..1), closed, at most 64 points: the glint
+   *  hugs it. From Gemini's segmentation (segment.ts); absent on older rooms or when it failed. */
+  outline?: { x: number; y: number }[];
 }
 
 export interface ItemDef {

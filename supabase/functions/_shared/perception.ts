@@ -26,7 +26,8 @@ export interface PhotoPayload {
 export interface StageContext {
   provider: ModelProvider;
   ledger: CostLedger;
-  models: { perception: string[]; prose: string[] };
+  /** segmentation: the outline call's models (v2/segment.ts; Gemini 3 returns no masks), its default when absent. */
+  models: { perception: string[]; prose: string[]; segmentation?: string[] };
   /** Per-call timeout, bounded by the overall deadline; throws generation_timeout when too little time is left. */
   timeout(stageMs: number): number;
   /** Whether there is still time for a fallback attempt. */

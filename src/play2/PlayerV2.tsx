@@ -379,7 +379,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const visible = (o: ObjectDef) => !objectState(o.id).hidden && !objectState(o.id).removed;
   const stageObjects: StageObject[] = def.objects
     .filter((o) => o.photo_index === view && visible(o))
-    .map((o) => ({ id: o.id, label: o.label, box: o.box, seen: state.seen.includes(o.id) }));
+    .map((o) => ({ id: o.id, label: o.label, box: o.box, outline: o.outline, seen: state.seen.includes(o.id) }));
   stageObjectsNow = stageObjects;
   const marks = state.overlays
     .filter((ov) => ov.overlay === "glow_mark" && ov.mark)

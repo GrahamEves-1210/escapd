@@ -8,13 +8,16 @@
 //      seeded by the room id) -> the author call (words only)
 //   -> applyAuthor (per-field fallback) -> validateDefinition + simulate
 //      again (any failure keeps the planner's words) -> the stored room.
+//   Alongside the author call: segmentation (segment.ts), each object's
+//   outline for the glint; never fatal.
 //
-// Same model calls and cost as v1: one Flash call per photo, one Flash
-// verification call, one Pro call for the words.
+// v1's model calls (one Flash call per photo, one Flash verification call,
+// one Pro call for the words), plus one Flash segmentation call per photo.
 import { ErrorCode, GenerationError, type Genre } from "../contract.ts";
 import { type PhotoPayload, reconcile, type StageContext, verifyCandidates } from "../perception.ts";
 import { applyAuthor, writeAuthor } from "./author.ts";
 import { collectCandidatesV2, perceivePhotosV2, toInventory } from "./perceive.ts";
+import { segmentObjects } from "./segment.ts";
 import type { RandomInt } from "../mint.ts";
 import { planRoom } from "./planner.ts";
 import { simulate } from "./simulate.ts";
@@ -82,6 +85,9 @@ export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
   }
   stage("plan", { ...plan.summary, motifs: plan.summary.motifs.join(","), steps: plan.report.metrics.requiredSteps });
 
+  // Outlines, while the words are written: the objects and their boxes are fixed now.
+  const outlines = segmentObjects(ctx, photos, plan.definition.objects);
+
   // Words. The planner's room already passed the simulator; the words must not break it.
   const text = await writeAuthor(ctx, plan.definition, plan.secret, photos);
   let room = applyAuthor(plan.definition, plan.secret, text);
@@ -93,8 +99,14 @@ export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
     if (problems.length) throw fail(`planned room failed its own checks: ${problems.slice(0, 6).join("; ")}`, ErrorCode.invalidAfterRepair, false);
   }
   stage("prose", { kept: room.kept });
+  const outlined = await outlines;
+  stage("segmentation", { objects: room.definition.objects.length, outlines: outlined.size });
 
-  const definition: RoomDefinitionV2 = { ...room.definition, photos: photoIds.map((photo_id) => ({ photo_id })) };
+  const definition: RoomDefinitionV2 = {
+    ...room.definition,
+    objects: room.definition.objects.map((o) => (outlined.has(o.id) ? { ...o, outline: outlined.get(o.id) } : o)),
+    photos: photoIds.map((photo_id) => ({ photo_id })),
+  };
   return {
     publicDefinition: definition as unknown as Record<string, unknown>,
     solution: room.secret as unknown as Record<string, unknown>,

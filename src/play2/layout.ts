@@ -14,10 +14,13 @@ export const V2 = {
     rest: { x: 0.5, y: 0.45 },
   },
   glint: {
-    /** A faint soft ring hugging the object (an ellipse inside its box), not a box. */
-    stroke: 1.5,
-    blur: 9,
+    /** A fine line along the object's outline, in a soft halo; never a box. */
+    stroke: 1.2,
+    halo: 6,
+    blur: 6,
+    /** No outline (yet): a faint oval this far inside the box, at this share of the glint. */
     inset: 0.12,
+    oval: 0.45,
     peak: 0.45,
     /** An object already looked at glints this much as the beam passes. */
     seen: 0.35,

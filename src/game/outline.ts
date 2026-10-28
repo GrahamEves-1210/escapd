@@ -1,18 +1,27 @@
 // An object's real outline, traced on the device from the photo and its
-// detection box (gameplay v2's glint hugs the object, not a box or an oval).
-// Pure: pixels in, a polygon out.
+// detection box, for rooms whose definition carries none (rooms generated
+// since carry Gemini's, supabase/functions/_shared/v2/segment.ts). The glint
+// hugs the object, not a box or an oval. Pure: pixels in, a polygon out.
 //
-//   1. The background's colours: k-means over the pixels around the box
-//      (the region is the box with a margin, src/game/removal.ts).
-//   2. Each pixel in the box scores by how unlike the background it is,
-//      smoothed; Otsu's threshold splits object from background.
-//   3. The mask is closed and opened, kept to its largest piece, its holes
-//      filled.
-//   4. Its edge is traced (Moore neighbour), simplified (Douglas-Peucker) and
-//      rounded (Chaikin).
+// A small GrabCut (Rother et al. 2004), without the graph cut:
+//   1. Colour models: a mixture for the background, from the pixels around the
+//      box (the region is the box with a margin, src/game/removal.ts), and one
+//      for the object, from the box's middle.
+//   2. Each pixel in the box scores by how much likelier it is under the
+//      object's model than the background's. A few rounds of mean-field
+//      smoothing let neighbours agree, except across a colour edge, so the
+//      split follows the object's real edge.
+//   3. The models are refitted to that split and it is made again: background
+//      caught in the box teaches the background model.
+//   4. One-pixel gaps closed and whiskers dropped, the largest piece, its holes
+//      filled, is traced and simplified (supabase/functions/_shared/v2/
+//      outline.ts, shared with the server).
 //
-// A shape too small or filling nearly the whole box isn't trusted: null, and
-// the glint falls back to its soft oval.
+// An object filling its whole box keeps the box's edge, which is its own; a
+// shape too small, or no clearer than the background's own noise, is null.
+import { outlineOfMask, type Point } from "../../supabase/functions/_shared/v2/outline.ts";
+
+export type { Point };
 
 export interface OutlineRegion {
   /** RGBA, unpremultiplied, row-major. */
@@ -23,304 +32,261 @@ export interface OutlineRegion {
   box: { x: number; y: number; w: number; h: number };
 }
 
-export interface Point {
-  x: number;
-  y: number;
-}
+const K = 5;
+const ROUNDS = 5;
+const SMOOTHING = { passes: 4, strength: 1.4 };
+/** Pixels each colour model is fitted to, at most (evenly spaced). */
+const FIT_SAMPLES = 1500;
+/** A pixel's score is clamped to this (log-odds): one wild pixel can't outvote its neighbours. */
+const CLAMP = 6;
+/** A colour both models explain equally goes to the background. */
+const BIAS = 0.5;
+/** The object must score this much (mean log-odds) over the background to be trusted. */
+const MIN_SEPARATION = 1.5;
+/** A floor on a cluster's spread (per channel, squared): a flat colour isn't infinitely sure of itself. */
+const MIN_VARIANCE = 36;
 
-const K = 4;
+interface Mixture {
+  k: number;
+  /** Per cluster: log weight minus half the log of its variances' product. */
+  bias: Float64Array;
+  mean: Float64Array;   // k x 3
+  /** Per cluster and channel: 1 / variance. */
+  inv: Float64Array;    // k x 3
+}
 
 /** Outline points in the region's pixels, or null when no clear shape stands out. */
 export function traceOutline(region: OutlineRegion): Point[] | null {
   const { data, width: W, height: H } = region;
-  const bx0 = Math.max(0, Math.floor(region.box.x));
-  const by0 = Math.max(0, Math.floor(region.box.y));
-  const bx1 = Math.min(W, Math.ceil(region.box.x + region.box.w));
-  const by1 = Math.min(H, Math.ceil(region.box.y + region.box.h));
+  const bx0 = Math.max(0, Math.round(region.box.x));
+  const by0 = Math.max(0, Math.round(region.box.y));
+  const bx1 = Math.min(W, Math.round(region.box.x + region.box.w));
+  const by1 = Math.min(H, Math.round(region.box.y + region.box.h));
   const bw = bx1 - bx0;
   const bh = by1 - by0;
   if (bw < 8 || bh < 8) return null;
-  const inBox = (x: number, y: number) => x >= bx0 && x < bx1 && y >= by0 && y < by1;
-
-  // 1. Background samples: outside the box; if the box touches the region's
-  // edges there may be few, so add the box's own outermost ring.
-  const samples: number[][] = [];
-  const step = Math.max(1, Math.floor(Math.sqrt((W * H) / 1500)));
-  for (let y = 0; y < H; y += step) {
-    for (let x = 0; x < W; x += step) {
-      const ring = x - bx0 < 2 || bx1 - 1 - x < 2 || y - by0 < 2 || by1 - 1 - y < 2;
-      if (!inBox(x, y) || ring) {
-        const i = (y * W + x) * 4;
-        samples.push([data[i], data[i + 1], data[i + 2]]);
-      }
-    }
-  }
-  if (samples.length < 12) return null;
-  const centres = kmeans(samples, K);
-
-  // 2. Scores: distance to the nearest background colour, box-blurred.
-  const score = new Float32Array(bw * bh);
+  const n = bw * bh;
+  // The box's pixels, RGB, row by row.
+  const pix = new Float32Array(n * 3);
   for (let y = 0; y < bh; y++) {
     for (let x = 0; x < bw; x++) {
-      const i = ((y + by0) * W + (x + bx0)) * 4;
-      let best = Infinity;
-      for (const c of centres) {
-        const dr = data[i] - c[0], dg = data[i + 1] - c[1], db = data[i + 2] - c[2];
-        const d = dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11;
-        if (d < best) best = d;
-      }
-      score[y * bw + x] = Math.sqrt(best);
+      const s = ((y + by0) * W + x + bx0) * 4, d = (y * bw + x) * 3;
+      pix[d] = data[s]; pix[d + 1] = data[s + 1]; pix[d + 2] = data[s + 2];
     }
   }
-  const smooth = blur(score, bw, bh, 2);
-  const t = otsu(smooth);
-  let mask: Uint8Array = new Uint8Array(bw * bh);
-  for (let i = 0; i < mask.length; i++) mask[i] = smooth[i] > t ? 1 : 0;
 
-  // 3. Clean it up.
-  mask = erode(dilate(mask, bw, bh, 2), bw, bh, 2);   // close small gaps
-  mask = dilate(erode(mask, bw, bh, 1), bw, bh, 1);   // drop specks
-  mask = largestComponent(mask, bw, bh);
-  mask = fillHoles(mask, bw, bh);
-  let area = 0, objScore = 0, restScore = 0;
-  for (let i = 0; i < mask.length; i++) {
-    area += mask[i];
-    if (mask[i]) objScore += score[i];
-    else restScore += score[i];
+  // 1. Background: everything outside the box but its first pixel (a box
+  // drawn tight may catch the object's blurred edge). A box that fills the
+  // region has little outside it: then its own outermost ring as well.
+  const outside: number[] = [];
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (x < bx0 - 1 || x > bx1 || y < by0 - 1 || y > by1) {
+        const s = (y * W + x) * 4;
+        outside.push(data[s], data[s + 1], data[s + 2]);
+      }
+    }
   }
-  const share = area / (bw * bh);
-  if (share < 0.12 || share > 0.94) return null;
-  // It must stand out: well above the background's own texture, not just its noise split in two.
-  const objMean = objScore / area;
-  const restMean = restScore / Math.max(1, mask.length - area);
-  if (objMean < 22 || objMean < 2.2 * restMean) return null;
+  if (outside.length < 60 * 3) {
+    for (let y = 0; y < bh; y++) {
+      for (let x = 0; x < bw; x++) {
+        if (x < 2 || bw - 1 - x < 2 || y < 2 || bh - 1 - y < 2) {
+          const d = (y * bw + x) * 3;
+          outside.push(pix[d], pix[d + 1], pix[d + 2]);
+        }
+      }
+    }
+  }
+  if (outside.length < 30 * 3) return null;
+  const around = Float32Array.from(outside);
+  // The object: the box's middle at first (a loose box's corners are background).
+  const inner: number[] = [];
+  const mx = Math.floor(bw * 0.15), my = Math.floor(bh * 0.15);
+  for (let y = my; y < bh - my; y++) for (let x = mx; x < bw - mx; x++) inner.push(y * bw + x);
+  let bg = fitMixture([{ px: around, idx: null }]);
+  let fg = fitMixture([{ px: pix, idx: inner }]);
 
-  // 4. Trace, simplify, round; back into the region's pixels.
-  const edge = traceEdge(mask, bw, bh);
-  if (edge.length < 8) return null;
-  const simple = simplify(edge, Math.max(1, Math.min(bw, bh) / 60));
-  if (simple.length < 4) return null;
-  return chaikin(chaikin(simple)).map((p) => ({ x: p.x + bx0, y: p.y + by0 }));
+  // How alike each pixel is to its right and lower neighbours (the smoothing follows colour edges).
+  const d2 = (i: number, j: number) => {
+    const dr = pix[i * 3] - pix[j * 3], dg = pix[i * 3 + 1] - pix[j * 3 + 1], db = pix[i * 3 + 2] - pix[j * 3 + 2];
+    return dr * dr + dg * dg + db * db;
+  };
+  let meanD = 0, pairs = 0;
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const i = y * bw + x;
+      if (x < bw - 1) { meanD += d2(i, i + 1); pairs++; }
+      if (y < bh - 1) { meanD += d2(i, i + bw); pairs++; }
+    }
+  }
+  const beta = 1 / (2 * Math.max(1, meanD / Math.max(1, pairs)));
+  const right = new Float32Array(n), down = new Float32Array(n);
+  for (let y = 0; y < bh; y++) {
+    for (let x = 0; x < bw; x++) {
+      const i = y * bw + x;
+      if (x < bw - 1) right[i] = Math.exp(-beta * d2(i, i + 1));
+      if (y < bh - 1) down[i] = Math.exp(-beta * d2(i, i + bw));
+    }
+  }
+
+  // 2-3. Score, smooth, split; refit and again.
+  const score = new Float32Array(n);
+  let mask: Uint8Array = new Uint8Array(n);
+  for (let round = 0; round < ROUNDS; round++) {
+    for (let i = 0; i < n; i++) {
+      const s = logLikelihood(fg, pix, i) - logLikelihood(bg, pix, i) - BIAS;
+      score[i] = s > CLAMP ? CLAMP : s < -CLAMP ? -CLAMP : s;
+    }
+    const q = smooth(score, right, down, bw, bh);
+    for (let i = 0; i < n; i++) mask[i] = q[i] > 0.5 ? 1 : 0;
+    if (round === ROUNDS - 1) break;
+    const fgIdx: number[] = [], bgIdx: number[] = [];
+    for (let i = 0; i < n; i++) (mask[i] ? fgIdx : bgIdx).push(i);
+    if (fgIdx.length < 20) return null;
+    fg = fitMixture([{ px: pix, idx: fgIdx }]);
+    bg = fitMixture([{ px: around, idx: null }, { px: pix, idx: bgIdx }]);
+  }
+
+  // 4. Trust it only if it stands out; then trace it.
+  let area = 0, objScore = 0;
+  for (let i = 0; i < n; i++) if (mask[i]) { area++; objScore += score[i]; }
+  if (area / n < 0.08 || objScore / Math.max(1, area) < MIN_SEPARATION) return null;
+  mask = erode(dilate(mask, bw, bh), bw, bh);   // close one-pixel gaps (a lamp's stem under its shade)
+  mask = dilate(erode(mask, bw, bh), bw, bh);   // drop one-pixel whiskers (a neighbour's edge along the box)
+  const pts = outlineOfMask(mask, bw, bh);
+  if (!pts) return null;
+  return pts.map((p) => ({ x: p.x + bx0, y: p.y + by0 }));
 }
 
-function kmeans(points: number[][], k: number): number[][] {
-  const centres = Array.from({ length: k }, (_, i) => [...points[Math.floor((i + 0.5) * points.length / k)]]);
-  for (let iter = 0; iter < 8; iter++) {
-    const sums = centres.map(() => [0, 0, 0, 0]);
-    for (const p of points) {
+/** Mean-field smoothing (a contrast-sensitive Ising prior): each pixel's chance of being the object. */
+function smooth(score: Float32Array, right: Float32Array, down: Float32Array, w: number, h: number): Float32Array {
+  let q = new Float32Array(score.length);
+  let next = new Float32Array(score.length);
+  for (let i = 0; i < q.length; i++) q[i] = 1 / (1 + Math.exp(-score[i]));
+  for (let pass = 0; pass < SMOOTHING.passes; pass++) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        let field = 0;
+        if (x < w - 1) field += right[i] * (2 * q[i + 1] - 1);
+        if (x > 0) field += right[i - 1] * (2 * q[i - 1] - 1);
+        if (y < h - 1) field += down[i] * (2 * q[i + w] - 1);
+        if (y > 0) field += down[i - w] * (2 * q[i - w] - 1);
+        next[i] = 1 / (1 + Math.exp(-(score[i] + SMOOTHING.strength * field)));
+      }
+    }
+    [q, next] = [next, q];
+  }
+  return q;
+}
+
+/** RGB triplets, all of them (idx null) or those at the listed indices. */
+type Source = { px: Float32Array; idx: number[] | null };
+
+/**
+ * A mixture of K colour clusters over the sources' pixels (k-means over at
+ * most FIT_SAMPLES of them, evenly spaced, so the same photo always gives the
+ * same outline; then each cluster's weight and spread).
+ */
+function fitMixture(sources: Source[]): Mixture {
+  const total = sources.reduce((s, src) => s + (src.idx ? src.idx.length : src.px.length / 3), 0);
+  const m = Math.min(total, FIT_SAMPLES);
+  const pts = new Float32Array(m * 3);
+  const step = total / m;
+  for (let j = 0, src = 0, offset = 0; j < m; j++) {
+    let at = Math.floor(j * step) - offset;
+    let size = sources[src].idx ? sources[src].idx!.length : sources[src].px.length / 3;
+    while (at >= size) { offset += size; at -= size; src++; size = sources[src].idx ? sources[src].idx!.length : sources[src].px.length / 3; }
+    const { px, idx } = sources[src];
+    const p = (idx ? idx[at] : at) * 3;
+    pts[j * 3] = px[p]; pts[j * 3 + 1] = px[p + 1]; pts[j * 3 + 2] = px[p + 2];
+  }
+  const k = Math.max(1, Math.min(K, m));
+  // Seeds spread by brightness, so a dark frame and a light face start apart.
+  const order = Array.from({ length: m }, (_, j) => j).sort((a, b) =>
+    pts[a * 3] + pts[a * 3 + 1] + pts[a * 3 + 2] - (pts[b * 3] + pts[b * 3 + 1] + pts[b * 3 + 2]));
+  const mean = new Float64Array(k * 3);
+  for (let c = 0; c < k; c++) {
+    const j = order[Math.floor(((c + 0.5) * m) / k)] * 3;
+    mean[c * 3] = pts[j]; mean[c * 3 + 1] = pts[j + 1]; mean[c * 3 + 2] = pts[j + 2];
+  }
+  const assign = new Int32Array(m);
+  const sums = new Float64Array(k * 4);
+  for (let iter = 0; iter < 6; iter++) {
+    sums.fill(0);
+    for (let j = 0; j < m; j++) {
       let bi = 0, bd = Infinity;
       for (let c = 0; c < k; c++) {
-        const d = (p[0] - centres[c][0]) ** 2 + (p[1] - centres[c][1]) ** 2 + (p[2] - centres[c][2]) ** 2;
+        const dr = pts[j * 3] - mean[c * 3], dg = pts[j * 3 + 1] - mean[c * 3 + 1], db = pts[j * 3 + 2] - mean[c * 3 + 2];
+        const d = dr * dr + dg * dg + db * db;
         if (d < bd) { bd = d; bi = c; }
       }
-      const s = sums[bi];
-      s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; s[3]++;
+      assign[j] = bi;
+      sums[bi * 4] += pts[j * 3]; sums[bi * 4 + 1] += pts[j * 3 + 1]; sums[bi * 4 + 2] += pts[j * 3 + 2]; sums[bi * 4 + 3]++;
     }
-    sums.forEach((s, c) => {
-      if (s[3]) centres[c] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]];
-    });
-  }
-  return centres;
-}
-
-function blur(src: Float32Array, w: number, h: number, r: number): Float32Array {
-  const tmp = new Float32Array(src.length);
-  const out = new Float32Array(src.length);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let s = 0, n = 0;
-      for (let d = -r; d <= r; d++) {
-        const xx = x + d;
-        if (xx >= 0 && xx < w) { s += src[y * w + xx]; n++; }
-      }
-      tmp[y * w + x] = s / n;
+    for (let c = 0; c < k; c++) {
+      const cnt = sums[c * 4 + 3];
+      if (cnt) for (let ch = 0; ch < 3; ch++) mean[c * 3 + ch] = sums[c * 4 + ch] / cnt;
     }
   }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let s = 0, n = 0;
-      for (let d = -r; d <= r; d++) {
-        const yy = y + d;
-        if (yy >= 0 && yy < h) { s += tmp[yy * w + x]; n++; }
-      }
-      out[y * w + x] = s / n;
+  const count = new Float64Array(k);
+  const vars = new Float64Array(k * 3);
+  for (let j = 0; j < m; j++) {
+    const c = assign[j];
+    count[c]++;
+    for (let ch = 0; ch < 3; ch++) {
+      const dv = pts[j * 3 + ch] - mean[c * 3 + ch];
+      vars[c * 3 + ch] += dv * dv;
     }
   }
-  return out;
-}
-
-/** Otsu's threshold over a score map (64 bins). */
-function otsu(values: Float32Array): number {
-  let lo = Infinity, hi = -Infinity;
-  for (const v of values) { if (v < lo) lo = v; if (v > hi) hi = v; }
-  if (hi - lo < 1e-6) return hi;
-  const bins = 64;
-  const hist = new Array(bins).fill(0);
-  for (const v of values) hist[Math.min(bins - 1, Math.floor(((v - lo) / (hi - lo)) * bins))]++;
-  const total = values.length;
-  let sum = 0;
-  for (let i = 0; i < bins; i++) sum += i * hist[i];
-  let sumB = 0, wB = 0, best = 0, at = 0;
-  for (let i = 0; i < bins; i++) {
-    wB += hist[i];
-    if (!wB) continue;
-    const wF = total - wB;
-    if (!wF) break;
-    sumB += i * hist[i];
-    const mB = sumB / wB, mF = (sum - sumB) / wF;
-    const between = wB * wF * (mB - mF) ** 2;
-    if (between > best) { best = between; at = i; }
+  const bias = new Float64Array(k).fill(-Infinity);
+  const inv = new Float64Array(k * 3);
+  for (let c = 0; c < k; c++) {
+    let logDet = 0;
+    for (let ch = 0; ch < 3; ch++) {
+      const v = Math.max(MIN_VARIANCE, count[c] ? vars[c * 3 + ch] / count[c] : MIN_VARIANCE);
+      inv[c * 3 + ch] = 1 / v;
+      logDet += Math.log(v);
+    }
+    if (count[c]) bias[c] = Math.log(count[c] / m) - 0.5 * logDet;
   }
-  return lo + ((at + 0.5) / bins) * (hi - lo);
+  return { k, bias, mean, inv };
 }
 
-function dilate(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+/** The log-likelihood of pixel i of `px` under a mixture (up to a constant shared by every mixture). */
+function logLikelihood(mix: Mixture, px: Float32Array, i: number): number {
+  const r = px[i * 3], g = px[i * 3 + 1], b = px[i * 3 + 2];
+  const { k, bias, mean, inv } = mix;
+  let best = -Infinity, sum = 0;
+  for (let c = 0; c < k; c++) {
+    if (bias[c] === -Infinity) continue;   // an empty cluster
+    const dr = r - mean[c * 3], dg = g - mean[c * 3 + 1], db = b - mean[c * 3 + 2];
+    const t = bias[c] - 0.5 * (dr * dr * inv[c * 3] + dg * dg * inv[c * 3 + 1] + db * db * inv[c * 3 + 2]);
+    if (t > best) { sum = sum * Math.exp(best - t) + 1; best = t; }
+    else sum += Math.exp(t - best);
+  }
+  return best + Math.log(sum);
+}
+
+function dilate(m: Uint8Array, w: number, h: number): Uint8Array {
   const out = new Uint8Array(m.length);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      let on = 0;
-      for (let dy = -r; dy <= r && !on; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          const xx = x + dx, yy = y + dy;
-          if (xx >= 0 && xx < w && yy >= 0 && yy < h && m[yy * w + xx]) { on = 1; break; }
-        }
-      }
-      out[y * w + x] = on;
+      const i = y * w + x;
+      out[i] = m[i] || (x > 0 && m[i - 1]) || (x < w - 1 && m[i + 1]) || (y > 0 && m[i - w]) || (y < h - 1 && m[i + w]) ? 1 : 0;
     }
   }
   return out;
 }
 
-function erode(m: Uint8Array, w: number, h: number, r: number): Uint8Array {
+function erode(m: Uint8Array, w: number, h: number): Uint8Array {
   const out = new Uint8Array(m.length);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      let on = 1;
-      for (let dy = -r; dy <= r && on; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          const xx = x + dx, yy = y + dy;
-          if (xx < 0 || xx >= w || yy < 0 || yy >= h || !m[yy * w + xx]) { on = 0; break; }
-        }
-      }
-      out[y * w + x] = on;
+      const i = y * w + x;
+      // The box's own edge doesn't erode: an object filling its box keeps its sides.
+      out[i] = m[i] && (x === 0 || m[i - 1]) && (x === w - 1 || m[i + 1]) && (y === 0 || m[i - w]) && (y === h - 1 || m[i + w]) ? 1 : 0;
     }
-  }
-  return out;
-}
-
-function largestComponent(m: Uint8Array, w: number, h: number): Uint8Array {
-  const label = new Int32Array(m.length).fill(-1);
-  let best = -1, bestSize = 0, next = 0;
-  const stack: number[] = [];
-  for (let start = 0; start < m.length; start++) {
-    if (!m[start] || label[start] >= 0) continue;
-    let size = 0;
-    stack.push(start);
-    label[start] = next;
-    while (stack.length) {
-      const i = stack.pop()!;
-      size++;
-      const x = i % w, y = (i - x) / w;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || xx >= w || yy < 0 || yy >= h) continue;
-        const j = yy * w + xx;
-        if (m[j] && label[j] < 0) { label[j] = next; stack.push(j); }
-      }
-    }
-    if (size > bestSize) { bestSize = size; best = next; }
-    next++;
-  }
-  const out = new Uint8Array(m.length);
-  for (let i = 0; i < m.length; i++) out[i] = label[i] === best ? 1 : 0;
-  return out;
-}
-
-/** Everything not reachable from the border through background is inside. */
-function fillHoles(m: Uint8Array, w: number, h: number): Uint8Array {
-  const outside = new Uint8Array(m.length);
-  const stack: number[] = [];
-  const seed = (x: number, y: number) => {
-    const i = y * w + x;
-    if (!m[i] && !outside[i]) { outside[i] = 1; stack.push(i); }
-  };
-  for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
-  for (let y = 0; y < h; y++) { seed(0, y); seed(w - 1, y); }
-  while (stack.length) {
-    const i = stack.pop()!;
-    const x = i % w, y = (i - x) / w;
-    if (x > 0) seed(x - 1, y);
-    if (x < w - 1) seed(x + 1, y);
-    if (y > 0) seed(x, y - 1);
-    if (y < h - 1) seed(x, y + 1);
-  }
-  const out = new Uint8Array(m.length);
-  for (let i = 0; i < m.length; i++) out[i] = outside[i] ? 0 : 1;
-  return out;
-}
-
-/** The mask's outer edge as an ordered loop (Moore neighbour tracing). */
-function traceEdge(m: Uint8Array, w: number, h: number): Point[] {
-  const at = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h && m[y * w + x] === 1;
-  let sx = -1, sy = -1;
-  for (let y = 0; y < h && sx < 0; y++) for (let x = 0; x < w; x++) if (at(x, y)) { sx = x; sy = y; break; }
-  if (sx < 0) return [];
-  const dirs = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]];
-  const out: Point[] = [{ x: sx, y: sy }];
-  let cx = sx, cy = sy, back = 0;   // came from the west
-  for (let guard = 0; guard < w * h * 4; guard++) {
-    let found = false;
-    for (let k = 1; k <= 8; k++) {
-      const d = (back + k) % 8;
-      const nx = cx + dirs[d][0], ny = cy + dirs[d][1];
-      if (at(nx, ny)) {
-        back = (d + 4) % 8;
-        cx = nx; cy = ny;
-        found = true;
-        break;
-      }
-    }
-    if (!found) break;
-    if (cx === sx && cy === sy) break;
-    out.push({ x: cx, y: cy });
-  }
-  return out;
-}
-
-function simplify(points: Point[], eps: number): Point[] {
-  if (points.length < 3) return points;
-  const dist = (p: Point, a: Point, b: Point) => {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    return Math.abs(dy * p.x - dx * p.y + b.x * a.y - b.y * a.x) / len;
-  };
-  const rec = (pts: Point[]): Point[] => {
-    let max = 0, at = 0;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const d = dist(pts[i], pts[0], pts[pts.length - 1]);
-      if (d > max) { max = d; at = i; }
-    }
-    if (max <= eps) return [pts[0], pts[pts.length - 1]];
-    const left = rec(pts.slice(0, at + 1));
-    return [...left.slice(0, -1), ...rec(pts.slice(at))];
-  };
-  // A closed loop: split at its far point so both halves keep their shape.
-  let far = 0, fd = 0;
-  for (let i = 1; i < points.length; i++) {
-    const d = Math.hypot(points[i].x - points[0].x, points[i].y - points[0].y);
-    if (d > fd) { fd = d; far = i; }
-  }
-  const a = rec(points.slice(0, far + 1));
-  const b = rec([...points.slice(far), points[0]]);
-  return [...a.slice(0, -1), ...b.slice(0, -1)];
-}
-
-/** One round of corner cutting: a closed polygon, softened. */
-function chaikin(points: Point[]): Point[] {
-  const out: Point[] = [];
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i], q = points[(i + 1) % points.length];
-    out.push({ x: 0.75 * p.x + 0.25 * q.x, y: 0.75 * p.y + 0.25 * q.y }, { x: 0.25 * p.x + 0.75 * q.x, y: 0.25 * p.y + 0.75 * q.y });
   }
   return out;
 }

@@ -55,6 +55,8 @@ export const DEFAULT_MODELS = {
   perceptionFallback: "gemini-3-flash-preview",
   prose: "gemini-3.1-pro-preview",
   proseFallback: "",
+  /** Object outlines (v2/segment.ts): 2.5 Flash returns segmentation masks; Gemini 3 models don't. */
+  segmentation: "gemini-2.5-flash",
 } as const;
 
 /** Hard stop for one call; leaves the worker's 110 s loop and the 300 s lease comfortable margin. */
@@ -74,6 +76,8 @@ export interface PipelineConfig {
   perceptionFallbackModel: string;
   proseModel: string;
   proseFallbackModel: string;
+  /** Optional: DEFAULT_MODELS.segmentation when absent. */
+  segmentationModel?: string;
   spendCapUsd: number;
   deadlineMs: number;
 }
@@ -89,6 +93,7 @@ export function configFromEnv(): PipelineConfig {
       : DEFAULT_MODELS.perceptionFallback,
     proseModel: get("AI_PROSE_MODEL") || DEFAULT_MODELS.prose,
     proseFallbackModel: get("AI_PROSE_FALLBACK_MODEL") || DEFAULT_MODELS.proseFallback,
+    segmentationModel: get("AI_SEGMENTATION_MODEL") || DEFAULT_MODELS.segmentation,
     spendCapUsd: SPEND_CAP_USD,
     deadlineMs: DEADLINE_MS,
   };
@@ -141,6 +146,7 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
     models: {
       perception: [config.perceptionModel, config.perceptionFallbackModel],
       prose: [config.proseModel, config.proseFallbackModel],
+      segmentation: [config.segmentationModel || DEFAULT_MODELS.segmentation],
     },
     timeout(stageMs: number) {
       const left = remaining() - SAFETY_MARGIN_MS;

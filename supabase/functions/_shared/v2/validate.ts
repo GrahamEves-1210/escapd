@@ -35,6 +35,8 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
     const b = o.box;
     if (!b || !(b.x >= 0 && b.y >= 0 && b.w > 0 && b.h > 0 && b.x + b.w <= 1 + 1e-9 && b.y + b.h <= 1 + 1e-9)) err(`${o.id}: box outside 0..1`);
     if (!o.label?.trim()) err(`${o.id}: label is required`);
+    if (o.outline !== undefined && !(Array.isArray(o.outline) && o.outline.length >= 3 && o.outline.length <= 64
+      && o.outline.every((p) => p && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1))) err(`${o.id}: outline must be 3-64 points inside the photo`);
     if (!isObjectType(o.type)) { err(`${o.id}: unknown type ${o.type}`); continue; }
     const expected = new Map<string, string>();
     if (o.archetype !== null) {

@@ -1,7 +1,10 @@
-// The objects' real outlines on a photo, traced on the device (src/game/
-// outline.ts) in idle moments once the photo is up: the glint hugs each
-// object's shape. Kept for the launch, keyed by the photo and the box. An
-// object whose shape can't be found (or any failure) keeps the soft oval.
+// The objects' real outlines on a photo: the glint hugs each object's shape.
+// A room generated with segmentation carries each object's outline (Gemini's
+// mask, traced on the server: supabase/functions/_shared/v2/segment.ts); for
+// an object without one (older rooms, or a mask that failed), it is traced on
+// the device (src/game/outline.ts) in idle moments once the photo is up. Kept
+// for the launch, keyed by the photo and the box. An object whose shape can't
+// be found (or any failure) keeps the faint oval.
 import { useEffect, useState } from "react";
 import type { Rect as Box } from "@/engine/v2";
 import { traceOutline, type Point } from "@/game/outline";
@@ -17,9 +20,15 @@ const traced = new Map<string, Point[] | null>();
 const keyOf = (photo: string, id: string, b: Box) => `${photo}|${id}|${b.x.toFixed(4)},${b.y.toFixed(4)},${b.w.toFixed(4)},${b.h.toFixed(4)}`;
 
 /** Outlines in photo fractions, by object id; an object missing from it has none (yet). */
-export function useOutlines(source: SceneSource | null, cacheKey: string | undefined, objects: { id: string; box: Box }[]): Record<string, Point[]> {
+export function useOutlines(
+  source: SceneSource | null,
+  cacheKey: string | undefined,
+  objects: { id: string; box: Box; outline?: Point[] }[],
+): Record<string, Point[]> {
   const photo = cacheKey ?? (source == null ? "" : typeof source === "number" ? `asset:${source}` : source.uri);
-  const wanted = objects.map((o) => ({ ...o, key: keyOf(photo, o.id, o.box) }));
+  // Only objects without a stored outline are traced.
+  const given = objects.filter((o) => o.outline && o.outline.length >= 3);
+  const wanted = objects.filter((o) => !given.includes(o)).map((o) => ({ ...o, key: keyOf(photo, o.id, o.box) }));
   const signature = wanted.map((w) => w.key).join(";");
   const [, setVersion] = useState(0);
 
@@ -61,6 +70,7 @@ export function useOutlines(source: SceneSource | null, cacheKey: string | undef
   }, [signature, source]);
 
   const out: Record<string, Point[]> = {};
+  for (const o of given) out[o.id] = o.outline!;
   for (const w of wanted) {
     const pts = traced.get(w.key);
     if (pts) out[w.id] = pts;

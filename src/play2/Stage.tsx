@@ -1,7 +1,7 @@
 // One photo of the room, in the dark (gameplay v2 §2 "Discover"). The room
 // sits in shadow; the player's finger sweeps a torch beam, and objects worth a
-// look catch the light: a soft outline glints as the beam passes (or never, in
-// the hard "no glints" setting). A tap looks at what is under the finger. A
+// look catch the light: a faint line along each one's real outline glints as
+// the beam passes (or never, in the hard "no glints" setting). A tap looks at what is under the finger. A
 // lit lamp throws its own pool of light; a UV mark glows; an opened panel and a
 // pinned card show where the room changed. A fast horizontal fling turns to the
 // next view.
@@ -31,6 +31,8 @@ export interface StageObject {
   id: string;
   label: string;
   box: Box;
+  /** The object's outline from its definition (photo fractions), when the room has one; else traced here. */
+  outline?: { x: number; y: number }[];
   seen: boolean;
 }
 
@@ -99,7 +101,7 @@ export function Stage({
   const ownX = useSharedValue<number>(V2.torch.rest.x);
   const ownY = useSharedValue<number>(V2.torch.rest.y);
   const tx = beam?.x ?? ownX;
-  // Each object's real outline, traced from the photo on the device.
+  // Each object's real outline: the room's own, or traced from the photo on the device.
   const outlines = useOutlines(source, cacheKey, objects);
   const ty = beam?.y ?? ownY;
   const size = useSharedValue({ w: 0, h: 0 });
@@ -266,7 +268,7 @@ export function Stage({
               {/* Glints: an outline that catches the beam. */}
               {glints
                 ? objects.map((o) => (
-                    <Glint key={o.id} box={o.box} seen={o.seen} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} outline={outlines[o.id]} />
+                    <Glint key={o.id} box={o.box} seen={o.seen} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} outline={outlines[o.id]} />
                   ))
                 : null}
             </Canvas>
@@ -351,37 +353,49 @@ function InkMark({ mark, w, h, tx, ty, r, always, uv }: {
   );
 }
 
-function Glint({ box, seen, tx, ty, w, h, r, color, outline }: {
-  box: Box; seen: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
-  /** The object's traced outline (photo fractions): the glow runs along its real edge. */
+function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline }: {
+  box: Box; seen: boolean; assist: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
+  /** The object's outline (photo fractions): the glint runs along its real edge. */
   outline?: { x: number; y: number }[];
 }) {
-  const inset = V2.glint.inset;
-  const x = (box.x + box.w * inset) * w, y = (box.y + box.h * inset) * h;
-  const bw = box.w * (1 - 2 * inset) * w, bh = box.h * (1 - 2 * inset) * h;
-  const cx = x + bw / 2, cy = y + bh / 2;
-  // Only where the beam is: nothing glints in the dark.
+  const bx = box.x * w, by = box.y * h, bw = box.w * w, bh = box.h * h;
+  // Only where the beam is: nothing glints in the dark. Lit by how near the
+  // beam is to the object (anywhere on it, so a tall door glints all along).
   const opacity = useDerivedValue(() => {
-    const d = Math.hypot(tx.get() * w - cx, ty.get() * h - cy);
+    const px = tx.get() * w, py = ty.get() * h;
+    const d = Math.hypot(Math.max(bx - px, 0, px - bx - bw), Math.max(by - py, 0, py - by - bh));
     const lit = Math.max(0, 1 - d / (r * 0.9));
-    return (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
+    const glint = (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
+    return assist ? Math.max(glint, V2.glint.assist) : glint;
   });
-  if (outline && outline.length > 3) {
-    const d = outline.map((p, i) => `${i ? "L" : "M"} ${(p.x * w).toFixed(1)} ${(p.y * h).toFixed(1)}`).join(" ") + " Z";
+  const path = useMemo(
+    () => (outline && outline.length >= 3
+      ? outline.map((p, i) => `${i ? "L" : "M"} ${(p.x * w).toFixed(1)} ${(p.y * h).toFixed(1)}`).join(" ") + " Z"
+      : null),
+    [outline, w, h],
+  );
+  if (path) {
     return (
       <Group opacity={opacity}>
-        {/* A wide soft halo, then a fine bright line on the edge itself. */}
-        <Path path={d} color={color} style="stroke" strokeWidth={5} strokeJoin="round" opacity={0.5}>
-          <BlurMask blur={8} style="normal" />
+        {/* A soft halo hugging the edge, then a fine line on the edge itself. */}
+        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.halo} strokeJoin="round" opacity={0.4}>
+          <BlurMask blur={V2.glint.blur} style="normal" />
         </Path>
-        <Path path={d} color={color} style="stroke" strokeWidth={1.4} strokeJoin="round" />
+        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.stroke} strokeJoin="round" />
       </Group>
     );
   }
+  // No outline (yet): a faint thin oval inside the box, never a lit box.
+  const inset = V2.glint.inset;
   return (
-    <Oval x={x} y={y} width={bw} height={bh} color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={opacity}>
-      <BlurMask blur={V2.glint.blur} style="solid" />
-    </Oval>
+    <Group opacity={opacity}>
+      <Oval
+        x={bx + bw * inset} y={by + bh * inset} width={bw * (1 - 2 * inset)} height={bh * (1 - 2 * inset)}
+        color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={V2.glint.oval}
+      >
+        <BlurMask blur={2} style="normal" />
+      </Oval>
+    </Group>
   );
 }
 

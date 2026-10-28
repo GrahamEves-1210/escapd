@@ -235,3 +235,79 @@ export function photoBytes(seed: number, length = 2048): Uint8Array {
   for (let i = 0; i < length; i++) bytes[i] = (seed * 31 + i * 7) & 0xff;
   return bytes;
 }
+
+// ---------------------------------------------------------------------------
+// Segmentation masks (v2/segment.ts)
+// ---------------------------------------------------------------------------
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+const crc32 = (bytes: Uint8Array) => {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+
+/**
+ * An 8-bit greyscale PNG of `value(x, y)`. Rows cycle through the five
+ * filters (none, sub, up, average, Paeth), so a decoder meets every one.
+ */
+export async function encodePng(width: number, height: number, value: (x: number, y: number) => number): Promise<Uint8Array> {
+  const px = (x: number, y: number) => (x < 0 || y < 0 ? 0 : Math.max(0, Math.min(255, Math.round(value(x, y)))));
+  const raw = new Uint8Array(height * (width + 1));
+  for (let y = 0; y < height; y++) {
+    const filter = y % 5;
+    raw[y * (width + 1)] = filter;
+    for (let x = 0; x < width; x++) {
+      const v = px(x, y), a = px(x - 1, y), b = px(x, y - 1), c = px(x - 1, y - 1);
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      const pred = [0, a, b, (a + b) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? b : c][filter];
+      raw[y * (width + 1) + 1 + x] = (v - pred) & 255;
+    }
+  }
+  const stream = new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"));
+  const idat = new Uint8Array(await new Response(stream).arrayBuffer());
+  const chunk = (type: string, body: Uint8Array) => {
+    const out = new Uint8Array(12 + body.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, body.length);
+    out.set([...type].map((ch) => ch.charCodeAt(0)), 4);
+    out.set(body, 8);
+    view.setUint32(8 + body.length, crc32(out.subarray(4, 8 + body.length)));
+    return out;
+  };
+  const header = new Uint8Array(13);
+  new DataView(header.buffer).setUint32(0, width);
+  new DataView(header.buffer).setUint32(4, height);
+  header.set([8, 0, 0, 0, 0], 8);   // 8-bit greyscale, not interlaced
+  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", idat), chunk("IEND", new Uint8Array())];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
+}
+
+/** An elliptical probability map filling a w x h mask (soft at its rim, as Gemini's are). */
+export const ellipseMask = (w: number, h: number) => (x: number, y: number) => {
+  const d = Math.hypot((x + 0.5 - w / 2) / (w / 2), (y + 0.5 - h / 2) / (h / 2));
+  return 255 * Math.max(0, Math.min(1, (1.05 - d) * 10));
+};
+
+const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+
+/**
+ * The segmentation call: an elliptical mask over each listed object's box,
+ * labelled with its id, read back from the prompt's listing.
+ */
+export function segmentationHandler() {
+  return async (call: JsonCall<unknown>) => {
+    const listed = [...textOf(call).matchAll(/^([a-z0-9_-]+): .* box_2d (\[[\d, ]+\])$/gm)];
+    return await Promise.all(listed.map(async ([, id, box]) => ({
+      label: id,
+      box_2d: JSON.parse(box),
+      mask: `data:image/png;base64,${toBase64(await encodePng(48, 40, ellipseMask(48, 40)))}`,
+    })));
+  };
+}

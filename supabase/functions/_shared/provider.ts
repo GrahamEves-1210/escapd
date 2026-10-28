@@ -18,7 +18,7 @@ import { type JsonSchema, SchemaViolation } from "./schemas.ts";
 
 export type PromptPart = { text: string } | { image: { mimeType: string; base64: string } };
 
-export type Stage = "perception" | "verification" | "prose" | "repair";
+export type Stage = "perception" | "verification" | "prose" | "repair" | "segmentation";
 
 export interface JsonCall<T> {
   stage: Stage;
@@ -34,6 +34,9 @@ export interface JsonCall<T> {
   thinkingBudget: number;
   timeoutMs: number;
   temperature?: number;
+  /** True: JSON mode without responseJsonSchema, for output whose shape the model was trained on
+   *  (segmentation masks); `parse` still checks it. */
+  unconstrained?: boolean;
 }
 
 export interface ModelProvider {
@@ -114,7 +117,7 @@ export class GeminiProvider implements ModelProvider {
     );
     const generationConfig: Record<string, unknown> = {
       responseMimeType: "application/json",
-      responseJsonSchema: call.schema,
+      ...(call.unconstrained ? {} : { responseJsonSchema: call.schema }),
       maxOutputTokens: call.maxOutputTokens + Math.max(0, call.thinkingBudget),
       thinkingConfig: GeminiProvider.thinkingConfig(call.model, call.thinkingBudget),
     };
