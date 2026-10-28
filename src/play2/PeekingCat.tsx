@@ -10,12 +10,13 @@
 //     they get something wrong (`reaction` changes),
 //   - it has moods, shown with floating marks like a mascot's: "?"s drift up
 //     while the case is thinking (`mood`), and when the light hasn't moved for
-//     a while it dozes off on the ledge, eyes shut, "z"s rising, until the
-//     light moves again and it pops back up,
+//     a long while it dozes off on the ledge, eyes shut, "z"s rising, until the
+//     light moves again (or it has something to show) and it pops back up,
 //   - now and then it ducks behind the ledge and peeks back up,
 //   - it keeps an eye on the game: it perks up when the light passes over
 //     something worth a look and yawns at an empty drawer (`reaction`), glances
-//     at what the player hasn't looked at yet when they're stuck (`lookAt`),
+//     at what the player hasn't looked at yet when they're stuck (`lookAt`:
+//     it leans that way, a "!" or "?" bobbing on that side, now and then a word),
 //     sits with its lids half shut while a wrong answer's cooldown runs
 //     (`waiting`), and has had enough after too much petting,
 //   - and it says a short line now and then in a speech bubble (`say`).
@@ -23,7 +24,8 @@
 // smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
 // pupils and eyelids are drawn over the eyes. Under reduced motion it sits
-// still apart from its eyes.
+// still apart from its eyes; its marks (a pet's heart, a glance's "!") show
+// without moving.
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SparkleIcon } from "phosphor-react-native";
@@ -49,8 +51,8 @@ const FUR = "#0B0806";
 const SINK = 0.05;
 /** Drawn at this many frames a second: stop motion. */
 const FPS = 12;
-/** It dozes off when the light has been still this long (ms). */
-const DOZE_AFTER = 22000;
+/** It dozes off when the light has been still this long (ms): well after a stuck player's first glance (useCatCues). */
+const DOZE_AFTER = 70000;
 /** A line is up this long (ms): it pops in, stays about 2.2 s, and fades. */
 const SPEECH_MS = 2650;
 /** At most one line this often (ms); a rule line may cut in on a flavour one. */
@@ -59,6 +61,10 @@ const SPEECH_GAP = 6000;
 const PET_LIMIT = 4;
 const PET_WINDOW = 3000;
 const ENOUGH_MS = 3000;
+/** Under reduced motion a pet's heart shows, still, this long (ms). */
+const HEART_MS = 1200;
+/** Glancing, it leans this far (degrees, and of its width) toward the place: more than toward the light. */
+const GLANCE_LEAN = { deg: 6, shift: 0.1 };
 
 /**
  * Stop motion: the sources' values, snapshotted FPS times a second. Styles read
@@ -84,8 +90,8 @@ export type CatReaction = { kind: "found" | "wrong" | "warm" | "empty"; at: numb
 export type CatMood = "idle" | "thinking";
 /** A line for it to say (a new `at` each time). `rule` lines (the game's rules) win over flavour ones. */
 export type CatLine = { text: string; at: number; rule?: boolean } | null;
-/** Somewhere to look instead of the light (window points); `wonder` adds a small "?". */
-export type CatLook = { x: number; y: number; wonder?: boolean } | null;
+/** Somewhere to look instead of the light (window points), with a "!" toward it (`wonder`: a "?"), and maybe a word (`line`). */
+export type CatLook = { x: number; y: number; wonder?: boolean; line?: string } | null;
 
 export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle", say = null, lookAt = null, waiting = false }: {
   /** On-screen width (points). */
@@ -185,10 +191,15 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       if (!reducedMotion) flinch(0.12);
       return;
     }
-    if (reducedMotion) return;
-    pop(0.16);
     setPetAt(now);
+    if (!reducedMotion) pop(0.16);
   };
+  // Under reduced motion the heart has no animation to end it: it's taken down.
+  useEffect(() => {
+    if (!reducedMotion || petAt === null) return;
+    const timer = setTimeout(() => setPetAt(null), HEART_MS);
+    return () => clearTimeout(timer);
+  }, [reducedMotion, petAt]);
 
   // Had enough: lids half shut for a while, then it lets you pet it again.
   useEffect(() => {
@@ -211,8 +222,9 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     return () => clearTimeout(timer);
   }, [line]);
 
-  // A glance somewhere: the eyes go there (a glance wakes it), then back to the light.
-  const lookX = lookAt?.x, lookY = lookAt?.y;
+  // A glance somewhere: the eyes go there and it leans that way (a glance
+  // wakes it: it comes before dozing), maybe with a word, then back to the light.
+  const lookX = lookAt?.x, lookY = lookAt?.y, lookLine = lookAt?.line;
   useEffect(() => {
     if (lookX === undefined || lookY === undefined) {
       gaze.set(withTiming(0, { duration: 260 }));
@@ -222,7 +234,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     gy.set(lookY);
     gaze.set(withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }));
     lastMove.set(Date.now());
-  }, [lookX, lookY, gaze, gx, gy, lastMove]);
+    if (lookLine) speak(lookLine, false);
+  }, [lookX, lookY, lookLine, gaze, gx, gy, lastMove]);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -338,12 +351,14 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   );
   const body = useAnimatedStyle(() => {
     const [r, h, b, tilt, , squashX, squashY, z, t, bx, , , g, lx] = f.get();
-    let lean = 0;
+    let lean = 0, shift = 0;
     if (seated && (known || g > 0)) {
-      // Toward the light, or toward where it's glancing.
+      // Toward the light, or (further, so it reads) toward where it's glancing.
       const at = known ? fx + bx * fw : lx;
       const dx = at * (1 - g) + lx * g - (ox + width / 2);
-      lean = Math.max(-4, Math.min(4, dx / 60));
+      const most = 4 + (GLANCE_LEAN.deg - 4) * g;
+      lean = Math.max(-most, Math.min(most, dx / (60 - 40 * g)));
+      shift = Math.max(-1, Math.min(1, dx / 60)) * GLANCE_LEAN.shift * width * g;
     }
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
@@ -351,6 +366,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
         { translateY: Math.max(0, r + h + (1 - b) * 1.5 + z * height * 0.14) + height * SINK },
+        { translateX: shift * (1 - z) },
         // Small turns only, so a tilt never lifts the art's cut-off bottom edge into view.
         { rotate: `${lean * (1 - z) + tilt + t * 4 - z * 3}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
@@ -366,6 +382,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   // The light over something worth a look: a small "!".
   const perk = reaction?.kind === "warm" ? reaction.at : null;
   const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
+  // Which side a glance is toward (-1 left, 1 right), for its mark.
+  const side = lookAt && origin ? (lookAt.x < origin.x + width / 2 ? -1 : 1) : 1;
   return (
     <View pointerEvents="box-none" style={{ width: width * 1.3, height: height * 1.25 }}>
     {/* Its marks float above its head, outside the ledge's clip. */}
@@ -388,14 +406,20 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Burst key={shownBurst.at} size={width} color={theme.ink} glyph={mark} text={shownBurst.text} />
         </View>
       ) : null}
+      {petAt !== null && reducedMotion ? (
+        <View style={[styles.mark, { transform: [{ translateX: -width * 0.35 }, { translateY: -width * 0.2 }] }]} testID="v2-cat-heart">
+          <Text allowFontScaling={false} style={[styles.markText, mark, { fontSize: width * 0.6, lineHeight: width * 0.7 }]}>♥</Text>
+        </View>
+      ) : null}
       {perk !== null && !reducedMotion ? (
         <View style={{ transform: [{ translateX: -width * 0.3 }] }}>
           <Burst key={perk} size={width * 0.6} color={theme.ink} glyph={mark} text="!" sparkles={false} />
         </View>
       ) : null}
-      {lookAt?.wonder && !reducedMotion ? (
-        <View style={{ transform: [{ translateX: width * 0.1 }] }}>
-          <Burst size={width * 0.55} color={theme.ink} glyph={mark} text="?" sparkles={false} />
+      {lookAt ? (
+        // Beside its head on the side it's looking (the marks' row is centred 0.4 of its width right of it).
+        <View style={{ transform: [{ translateX: -width * 0.4 + side * width * 0.55 }] }}>
+          <Pointer key={`${lookAt.x},${lookAt.y}`} size={width * 0.7} side={side} glyph={mark} text={lookAt.wonder ? "?" : "!"} still={reducedMotion} />
         </View>
       ) : null}
     </View>
@@ -455,6 +479,36 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
   return (
     <Animated.View style={[styles.mark, anim]}>
       <Text allowFontScaling={false} style={[styles.markText, style, { fontSize: size, lineHeight: size * 1.15 }]}>{glyph}</Text>
+    </Animated.View>
+  );
+}
+
+/**
+ * A glance's mark: a "!" (or "?") that pops in beside its head on the side it's
+ * looking and nods that way while the glance holds. Still under reduced motion.
+ */
+function Pointer({ size, side, glyph, text, still }: {
+  size: number; side: number; glyph: { color: string; fontFamily?: string }; text: string; still: boolean;
+}) {
+  const t = useSharedValue(still ? 1 : 0);
+  useEffect(() => {
+    if (still) return;
+    // In over a few frames, then a nod toward the place, over and over.
+    t.set(withSequence(withTiming(1, { duration: 250 }), withRepeat(withSequence(withTiming(2, { duration: 450 }), withTiming(1, { duration: 450 })), -1, false)));
+  }, [t, still]);
+  const shown = useStopMotion([t], [still ? 1 : 0]);
+  const anim = useAnimatedStyle(() => {
+    const p = shown.get()[0];
+    const grow = p < 1 ? (p < 0.6 ? (p / 0.6) * 1.2 : 1.2 - ((p - 0.6) / 0.4) * 0.2) : 1;
+    const nod = p > 1 ? p - 1 : 0;
+    return {
+      opacity: Math.min(1, p * 3),
+      transform: [{ translateX: side * nod * size * 0.18 }, { translateY: -size * 0.2 }, { rotate: `${side * (12 + nod * 8)}deg` }, { scale: grow }],
+    };
+  });
+  return (
+    <Animated.View style={[styles.mark, anim]} testID="v2-cat-point">
+      <Text allowFontScaling={false} style={[styles.markText, glyph, { fontSize: size * 0.9, lineHeight: size }]}>{text}</Text>
     </Animated.View>
   );
 }

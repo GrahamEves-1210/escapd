@@ -2,7 +2,9 @@
 // happened). It keeps to the game's rules and nudges without telling:
 //   - stuck (nothing new looked at, no step solved, for a while), it glances
 //     now and then at something the player hasn't looked at yet, or toward the
-//     turn arrow on the side where one is,
+//     turn arrow on the side where one is; everything looked at and the case
+//     still open, at the way out (the door, the accusation), or its arrow.
+//     Now and then a glance comes with a word ("Over there.", "That way."),
 //   - the light passing over something not looked at yet, it perks up (once per
 //     thing, not too often),
 //   - guessing (three wrong answers in a row), it says so; waiting out a wrong
@@ -28,6 +30,8 @@ const BORED_ODDS = 3;
 const BORED_GAP = 10000;
 /** Wrong answers in a row before it says something. */
 const GUESSES = 3;
+/** Every this many glances (the first among them), it says where as well. */
+const GLANCE_TALK = 3;
 /** The turn arrows' centres in from the screen's edges (PlayerV2's edge buttons: 52 wide, ref.space.sm in). */
 const ARROW_X = ref.space.sm + 26;
 
@@ -35,6 +39,8 @@ const LINES = {
   guess: "Think. Don't guess.",
   wait: "Easy. Give it a second.",
   empty: "Empty.",
+  here: "Over there.",
+  turn: "That way.",
 } as const;
 
 export function useCatCues({ def, state, view, photos, frame, watching, cooldown, contents, react }: {
@@ -68,7 +74,7 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
   const since = useRef(0);
   const nextGlance = useRef(0);
   const glances = useRef(0);
-  const [glance, setGlance] = useState<{ progress: string; wonder: boolean } | null>(null);
+  const [glance, setGlance] = useState<{ progress: string; wonder: boolean; talk: boolean } | null>(null);
   useEffect(() => {
     since.current = Date.now();
     nextGlance.current = 0;
@@ -81,8 +87,8 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
       if (now - since.current < STUCK_MS || now < nextGlance.current) return;
       glances.current += 1;
       nextGlance.current = now + GLANCE_HOLD + GLANCE_EVERY + Math.random() * GLANCE_JITTER;
-      // Every other glance, a small "?".
-      setGlance({ progress, wonder: glances.current % 2 === 1 });
+      // Every other glance a "?" (the rest an "!"); now and then a word too.
+      setGlance({ progress, wonder: glances.current % 2 === 0, talk: glances.current % GLANCE_TALK === 1 });
       hold = setTimeout(() => setGlance(null), GLANCE_HOLD);
     }, 1000);
     return () => {
@@ -92,21 +98,28 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
     };
   }, [watching, progress]);
 
-  // Where it glances: something interactive here not looked at yet; or, when there's none here, the arrow toward one.
+  // Where it glances: something interactive here not looked at yet; or, when
+  // there's none here, the arrow toward one. Everything looked at and the case
+  // still open: the way out, or the arrow toward it.
   let lookAt: CatLook = null;
-  if (glance && glance.progress === progress && watching && def && state && frame) {
+  if (glance && glance.progress === progress && watching && def && state && frame && !state.completed) {
     const shown = (id: string) => !state.objects[id]?.hidden && !state.objects[id]?.removed;
     const unseen = def.objects.filter((o) => o.archetype && !state.seen.includes(o.id) && shown(o.id));
-    const here = unseen.filter((o) => o.photo_index === view);
+    const ways = unseen.length ? unseen : def.objects.filter((o) => o.exit && shown(o.id) && state.objects[o.id]?.open !== true);
+    const here = ways.filter((o) => o.photo_index === view);
     // The way out last: something to find first.
     const pick = here.find((o) => !o.exit) ?? here[0];
+    const line = (text: string) => (glance.talk ? text : undefined);
     if (pick) {
-      lookAt = { x: frame.x + (pick.box.x + pick.box.w / 2) * frame.width, y: frame.y + (pick.box.y + pick.box.h / 2) * frame.height, wonder: glance.wonder };
-    } else if (unseen.length && photos > 1) {
+      lookAt = {
+        x: frame.x + (pick.box.x + pick.box.w / 2) * frame.width, y: frame.y + (pick.box.y + pick.box.h / 2) * frame.height,
+        wonder: glance.wonder, line: line(LINES.here),
+      };
+    } else if (ways.length && photos > 1) {
       // The nearer way round.
-      const ahead = Math.min(...unseen.map((o) => (o.photo_index - view + photos) % photos));
-      const behind = Math.min(...unseen.map((o) => (view - o.photo_index + photos) % photos));
-      lookAt = { x: ahead <= behind ? screenW - ARROW_X : ARROW_X, y: frame.y + frame.height / 2, wonder: glance.wonder };
+      const ahead = Math.min(...ways.map((o) => (o.photo_index - view + photos) % photos));
+      const behind = Math.min(...ways.map((o) => (view - o.photo_index + photos) % photos));
+      lookAt = { x: ahead <= behind ? screenW - ARROW_X : ARROW_X, y: frame.y + frame.height / 2, wonder: glance.wonder, line: line(LINES.turn) };
     }
   }
 

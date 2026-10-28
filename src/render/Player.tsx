@@ -810,7 +810,7 @@ function PlayerStage({ roomId, player, sources, ui, onExit, onComplete }: {
           <View style={styles.metaRow}>
             {genre === "paranormal" && presence.total > 0 ? (
               // The presence takes the view line's place: the thumbnail wheel already says which view this is.
-              <PresenceMeter presence={presence} gone={cleared} />
+              <PresenceMeter presence={presence} gone={cleared} wanes={false} />
             ) : (
               // The photo's own label and the thumbnail wheel say which view this is.
               <Text numberOfLines={1} style={[styles.meta, { color: theme.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">

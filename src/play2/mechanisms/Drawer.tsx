@@ -12,6 +12,8 @@ import { Line, STAGE, Stage, activatable, useLockedLine, usePull, useRattle } fr
 import type { MechanismProps } from "./types";
 
 const TRAVEL = 72;
+/** How far a compartment's door swings open (degrees). */
+const SWING = 78;
 
 export function Drawer({ target, state, onSet, busy, width, inside }: MechanismProps) {
   const theme = useModeTheme();
@@ -43,6 +45,11 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
 
   const w = Math.min(width - 2 * ref.space.lg, 280);
   const h = swing ? STAGE - ref.space.lg : 96;
+  // A compartment's door fills the carcass inside its lip and swings on its left edge.
+  const door = { w: w - 2 * ref.space.sm, h: h - 2 * ref.space.sm };
+  // Swung toward you its free edge comes nearer and draws taller; the
+  // perspective is far enough that, fully open, it stays inside the carcass.
+  const depth = door.w * Math.sin((SWING * Math.PI) / 180) * (h / (h - door.h));
 
   // The drawer: slides down and grows a little as it comes toward you.
   const frontStyle = useAnimatedStyle(() => {
@@ -50,10 +57,10 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
     if (swing) {
       return {
         transform: [
-          { perspective: 700 },
-          { translateX: -w / 2 },
-          { rotateY: `${-p * 78}deg` },
-          { translateX: w / 2 },
+          { perspective: depth },
+          { translateX: -door.w / 2 },
+          { rotateY: `${-p * SWING}deg` },
+          { translateX: door.w / 2 },
         ],
       };
     }
@@ -62,7 +69,10 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
   // The inside's shadow lifts as it opens.
   const insideStyle = useAnimatedStyle(() => ({ opacity: interpolate(Math.abs(progress.get()), [0, 1], [0.2, 1]) }));
 
-  const noun = swing ? "compartment" : "drawer";
+  // What the front is called, and the verbs, the same for the screen reader as on the line under it.
+  const say = swing
+    ? { open: "Swing the door open", shut: "Swing the door shut", opens: "Opens the compartment", closes: "Closes the compartment" }
+    : { open: "Pull the drawer open", shut: "Push the drawer shut", opens: "Opens the drawer", closes: "Closes the drawer" };
   return (
     <Stage width={width}>
       <View style={[styles.room, { height: STAGE }]}>
@@ -76,20 +86,20 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
             ]}
           >
             {/* The dark inside the front leaves behind. */}
-            <Animated.View style={[styles.inside, { height: h, backgroundColor: theme.ground, borderColor: theme.rim }, insideStyle]}>
+            <Animated.View style={[styles.inside, { height: swing ? door.h : h, backgroundColor: theme.ground, borderColor: theme.rim }, insideStyle]}>
               <View style={[styles.insideEdge, { borderColor: theme.rim }]} />
               {/* What's in it, lying in the part the front slid off (pushed shut, the front covers it again). */}
-              {inside ? <View style={[styles.lying, { height: swing ? h : TRAVEL - ref.space.sm }]} pointerEvents="box-none">{inside}</View> : null}
+              {inside ? <View style={[styles.lying, { height: swing ? door.h : TRAVEL - ref.space.sm }]} pointerEvents="box-none">{inside}</View> : null}
             </Animated.View>
             {/* The front is the control for assistive tech (what's inside stays reachable on its own). */}
             <Animated.View
               {...activatable(
-                open ? `Push the ${noun} shut` : `Pull the ${noun} open`,
-                locked ? "It is locked" : open ? `Closes the ${noun}` : `Opens the ${noun}`,
+                open ? say.shut : say.open,
+                locked ? "It is locked" : open ? say.closes : say.opens,
                 open ? onUncommit : commitNow,
                 busy,
               )}
-              style={[styles.front, { height: h, backgroundColor: theme.raised, borderColor: theme.rim }, frontStyle]}
+              style={[styles.front, swing ? { width: door.w, height: door.h } : { height: h }, { backgroundColor: theme.raised, borderColor: theme.rim }, frontStyle]}
             >
               <View style={[styles.bevel, { borderColor: theme.rim }]} />
               {swing ? (
@@ -103,7 +113,7 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
         </GestureDetector>
       </View>
       {showLocked ? <Line text="Locked" tone="stamp" testID="mech-locked" /> : (
-        <Line text={open ? "Open" : swing ? "Swing the door open" : "Pull it toward you"} />
+        <Line text={open ? "Open" : swing ? say.open : "Pull it toward you"} />
       )}
     </Stage>
   );

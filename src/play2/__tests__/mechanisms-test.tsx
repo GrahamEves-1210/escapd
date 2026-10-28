@@ -6,20 +6,25 @@ import type { MechanismProps, MechanismTarget } from "../mechanisms/types";
 
 const target = (archetype: ArchetypeId | null, variant?: string, label = "Thing"): MechanismTarget => {
   const spec = archetype ? variantSpec(archetype, variant) : null;
-  return { kind: "object", id: "obj", label, archetype, variant, controls: spec?.controls ?? [], submit: spec?.submit };
+  // Its own controls list, as a room's definition has: what's dialled is kept per definition.
+  return { kind: "object", id: "obj", label, archetype, variant, controls: [...(spec?.controls ?? [])], submit: spec?.submit };
 };
 
 async function mount(t: MechanismTarget, over: Partial<MechanismProps> = {}) {
   const onSet = jest.fn();
   const onSubmit = jest.fn();
+  const onChange = jest.fn();
   const state = over.state ?? (t.archetype ? { ...variantSpec(t.archetype, t.variant).initial } : {});
   const view = await render(
     <GestureHandlerRootView>
-      <Mechanism target={t} state={state} onSet={onSet} onSubmit={onSubmit} busy={false} cooldown={0} width={360} {...over} />
+      <Mechanism target={t} state={state} onSet={onSet} onSubmit={onSubmit} onChange={onChange} busy={false} cooldown={0} width={360} {...over} />
     </GestureHandlerRootView>,
   );
-  return { onSet, onSubmit, view };
+  return { onSet, onSubmit, onChange, view };
 }
+
+/** The symbols the wheels stand at, read from their accessibility values. */
+const wheels = (n: number) => Array.from({ length: n }, (_, i) => screen.getByLabelText(`Wheel ${i + 1}`).props.accessibilityValue.text);
 
 const act = (label: string, actionName: "activate" | "increment" | "decrement") =>
   fireEvent(screen.getByLabelText(label), "accessibilityAction", { nativeEvent: { actionName } });
@@ -40,10 +45,12 @@ describe("mechanisms", () => {
   });
 
   it("opens a drawer and a compartment; a locked one rattles and says so", async () => {
-    for (const variant of ["drawer", "compartment"]) {
+    for (const [variant, verb] of [["drawer", "Pull the drawer open"], ["compartment", "Swing the door open"]]) {
       const t = target("Drawer", variant);
       const { onSet, view } = await mount(t);
-      await act(`Pull the ${variant} open`, "activate");
+      // What a screen reader hears is what the line says.
+      if (variant === "compartment") expect(screen.getByText(verb)).toBeTruthy();
+      await act(verb, "activate");
       expect(onSet).toHaveBeenCalledWith("open", true);
       expectValid(t, "open", true);
       await view.unmount();
@@ -64,14 +71,27 @@ describe("mechanisms", () => {
     expect(frame.onSet).toHaveBeenCalledWith("tilted", true);
   });
 
-  it("turns straight to a page with the number wheels", async () => {
+  it("turns straight to a page with the number wheels, which stand at the page it's open at", async () => {
     const t = target("Readable", "pages");
-    const { onSet } = await mount(t, { state: { page: "46" } });
-    for (let i = 0; i < 4; i++) await act("Wheel 2", "increment");
-    for (let i = 0; i < 7; i++) await act("Wheel 3", "increment");
+    const { onSet, view } = await mount(t, { state: { page: "46" } });
+    expect(screen.getByText("Open at page 46")).toBeTruthy();
+    expect(wheels(3)).toEqual(["0", "4", "6"]);
+    await act("Wheel 3", "increment");
     await fireEvent.press(screen.getByLabelText("Turn to page"));
     expect(onSet).toHaveBeenLastCalledWith("page", "47");
     for (const [, v] of onSet.mock.calls) expectValid(t, "page", v);
+    // Turned (the close-up mounts afresh): the wheels at the new page.
+    await view.rerender(
+      <GestureHandlerRootView>
+        <Mechanism key="again" target={t} state={{ page: "267" }} onSet={onSet} onSubmit={jest.fn()} busy={false} cooldown={0} width={360} />
+      </GestureHandlerRootView>,
+    );
+    expect(screen.getByText("Open at page 267")).toBeTruthy();
+    expect(wheels(3)).toEqual(["2", "6", "7"]);
+    await view.unmount();
+    // A fresh book opens at page 1: 001.
+    await mount(target("Readable", "pages"));
+    expect(wheels(3)).toEqual(["0", "0", "1"]);
   });
 
   it("sets the clock by hour and minute", async () => {
@@ -113,6 +133,32 @@ describe("mechanisms", () => {
     expect(screen.getByText("Try again in 5s")).toBeTruthy();
     await fireEvent.press(screen.getByText("Try it"));
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps the wheels after a try: wrong, to adjust; right, on the answer and stamped open", async () => {
+    const t = target("CombinationLock", "digits");
+    const first = await mount(t);
+    await act("Wheel 1", "increment");
+    await act("Wheel 2", "decrement");
+    // Turning a wheel says the last try's note is stale.
+    expect(first.onChange).toHaveBeenCalledTimes(2);
+    await fireEvent.press(screen.getByText("Try it"));
+    expect(first.onSubmit).toHaveBeenCalledWith(["1", "9", "0"]);
+    await first.view.unmount();
+    // Wrong: the close-up mounts afresh, the wheels where they were.
+    await mount(t);
+    expect(wheels(3)).toEqual(["1", "9", "0"]);
+    await act("Wheel 3", "increment");
+    await screen.unmount();
+    // Right: open, on the answer, the submit swapped for the stamp.
+    await mount(t, { state: { open: true, locked: false } });
+    expect(wheels(3)).toEqual(["1", "9", "1"]);
+    expect(screen.queryByText("Try it")).toBeNull();
+    expect(screen.getByTestId("mech-solved")).toBeTruthy();
+    expect(screen.getByLabelText("Open")).toBeTruthy();
+    // Held: a wheel no longer turns.
+    await act("Wheel 1", "increment");
+    expect(wheels(3)).toEqual(["1", "9", "1"]);
   });
 
   it("switches a lamp and a UV lamp", async () => {
@@ -164,6 +210,22 @@ describe("mechanisms", () => {
       expect(normalize(submitDomain("accusation"), onSubmit.mock.calls[0][0])).toBe("s2|m1|x3");
     });
 
+    it("accusation: a wrong one keeps the picks, to change one", async () => {
+      const opts = (p: string) => [1, 2].map((n) => ({ id: `${p}${n}`, name: `${p.toUpperCase()} ${n}` }));
+      const finale: FinaleDef = { kind: "accusation", object: "door", suspects: opts("s"), motives: opts("m"), methods: opts("x") };
+      const t = door("accusation");
+      const first = await mount(t, { finale });
+      for (const l of ["S 2", "M 1", "X 2"]) await fireEvent.press(screen.getByText(l));
+      expect(first.onChange).toHaveBeenCalledTimes(3);
+      await fireEvent.press(screen.getByText("Accuse"));
+      await first.view.unmount();
+      const again = await mount(t, { finale });
+      expect(screen.getByLabelText("S 2").props.accessibilityState).toMatchObject({ selected: true });
+      await fireEvent.press(screen.getByText("M 2"));
+      await fireEvent.press(screen.getByText("Accuse"));
+      expect(again.onSubmit).toHaveBeenCalledWith(["s2", "m2", "x2"]);
+    });
+
     it("ritual: objects in order, a tap takes one back, then Begin", async () => {
       const finale: FinaleDef = { kind: "ritual", object: "door", length: 3 };
       const ritualChoices = ["clock", "lamp", "mirror", "book"].map((id) => ({ id, label: id.toUpperCase() }));
@@ -172,6 +234,17 @@ describe("mechanisms", () => {
       await fireEvent.press(screen.getByText("Begin"));
       expect(onSubmit).toHaveBeenCalledWith(["clock", "book", "mirror"]);
       expect(normalize(submitDomain("ritual"), onSubmit.mock.calls[0][0])).toBe("clock|book|mirror");
+    });
+
+    it("ritual: every chip keeps a place for its number, so choosing one moves nothing", async () => {
+      const finale: FinaleDef = { kind: "ritual", object: "door", length: 3 };
+      const ritualChoices = ["clock", "lamp"].map((id) => ({ id, label: id.toUpperCase() }));
+      await mount(door("ritual"), { finale, ritualChoices });
+      const chip = () => screen.getByLabelText(/^LAMP/);
+      const before = chip().children.length;
+      await fireEvent.press(screen.getAllByText("LAMP").at(-1)!);
+      expect(chip().props.accessibilityLabel).toBe("LAMP, first");
+      expect(chip().children.length).toBe(before);
     });
 
     it("shows open once it is", async () => {

@@ -27,6 +27,11 @@ export interface MechanismProps {
   onSet: (control: string, value: StateValue) => void;
   /** Locks and the door: one submit (wheels' symbols, [suspect, motive, method], or ritual object ids in order). */
   onSubmit: (value: string[]) => void;
+  /**
+   * The player moved something without committing it (a wheel, a pick, a
+   * chosen object): a note about the last try ("Not that.") is stale now.
+   */
+  onChange?: () => void;
   /** An action is in flight: hold still. */
   busy: boolean;
   /** A wrong-answer cooldown is running: submits are disabled, with its seconds left. */

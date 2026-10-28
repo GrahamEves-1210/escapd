@@ -3,17 +3,19 @@
 // seats on a symbol with a tick per symbol passed; tapping above or below
 // steps one. CodeWheel (src/render) is digits-only and sized for the v1 pad,
 // so this is its general sibling.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { CheckIcon } from "@/components/icons";
 import { SYMBOLS, type WheelAlphabet } from "@/engine/v2";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { Line, MechButton, adjustable, cooldownText, mod, settle } from "./kit";
+import { Line, MechButton, adjustable, cooldownText, mod, settle, useKept } from "./kit";
+import type { MechanismTarget } from "./types";
 
 export const ALPHABET: Record<WheelAlphabet, readonly string[]> = {
   digits: "0123456789".split(""),
@@ -25,8 +27,10 @@ const ROW = 44;
 const LEAD = 2;
 const GAP = ref.space.sm;
 
-function SymbolWheel({ index, symbols, value, onChange, width, disabled }: {
+function SymbolWheel({ index, symbols, value, onChange, width, disabled, done }: {
   index: number; symbols: readonly string[]; value: number; onChange: (i: number) => void; width: number; disabled: boolean;
+  /** Solved: held on its symbol, its window in the stamp's colour. */
+  done: boolean;
 }) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
@@ -107,6 +111,7 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled }: {
     <GestureDetector gesture={pan}>
       <View
         {...adjustable(`Wheel ${index + 1}`, symbols[value], step)}
+        accessibilityState={{ disabled }}
         testID={`mech-wheel-${index}`}
         style={[styles.wheel, { width, backgroundColor: theme.ground, borderColor: theme.rim }]}
       >
@@ -120,7 +125,7 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled }: {
         {/* The window: the middle row lit, its neighbours under a shade. */}
         <View pointerEvents="none" style={[styles.shade, styles.top, { backgroundColor: theme.ground }]} />
         <View pointerEvents="none" style={[styles.shade, styles.bottom, { backgroundColor: theme.ground }]} />
-        <View pointerEvents="none" style={[styles.window, { borderColor: theme.accent }]} />
+        <View pointerEvents="none" style={[styles.window, done && styles.windowDone, { borderColor: done ? theme.stamp : theme.accent }]} />
         <Pressable accessible={false} style={[styles.tap, styles.top]} onPress={() => step(-1)} testID={`mech-wheel-${index}-prev`} />
         <Pressable accessible={false} style={[styles.tap, styles.bottom]} onPress={() => step(1)} testID={`mech-wheel-${index}-next`} />
       </View>
@@ -128,34 +133,73 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled }: {
   );
 }
 
-/** N wheels and a submit. Submit sends one symbol per wheel. */
-export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, onSubmit, marks }: {
+/**
+ * N wheels and a submit. Submit sends one symbol per wheel. The wheels stay
+ * where the player left them after a try: a wrong one keeps them to adjust, a
+ * right one (`done`) leaves them on the answer, held, with the submit swapped
+ * for a solved stamp.
+ */
+export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, doneLabel = "Open", onSubmit, onChange, marks, keep, start }: {
   alphabet: WheelAlphabet; count: number; width: number; busy: boolean; cooldown: number; done: boolean;
   submitLabel: string; onSubmit: (symbols: string[]) => void;
+  /** What the solved stamp says. */
+  doneLabel?: string;
+  /** A wheel was turned: the last try's note is stale. */
+  onChange?: () => void;
   /** A symbol engraved above each wheel (the door's: its clues carry the same symbols). */
   marks?: readonly string[];
+  /** Whose wheels these are: what's dialled is kept for it while the room is open. */
+  keep?: MechanismTarget;
+  /** Where the wheels stand to begin with, and go when it changes (a book's page): over what was kept. */
+  start?: readonly string[];
 }) {
   const symbols = ALPHABET[alphabet];
-  const [values, setValues] = useState<number[]>(() => Array.from({ length: count }, () => 0));
+  const indexOf = (s: string | undefined) => Math.max(0, s === undefined ? 0 : symbols.indexOf(s));
+  const fromStart = () => Array.from({ length: count }, (_, i) => indexOf(start?.[i]));
+  const [values, setValues] = useKept<number[]>(keep, `wheels:${alphabet}`, fromStart);
+  const startKey = start?.join("|");
+  useEffect(() => {
+    if (startKey !== undefined) setValues(fromStart());
+    // A new start (the page turned): only that moves the wheels.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startKey]);
   useEffect(() => {
     setValues((v) => (v.length === count ? v : Array.from({ length: count }, (_, i) => v[i] ?? 0)));
-  }, [count]);
-  const setAt = useCallback((i: number, s: number) => setValues((v) => v.map((x, k) => (k === i ? s : x))), []);
+  }, [count, setValues]);
+  const setAt = useCallback((i: number, s: number) => {
+    setValues((v) => v.map((x, k) => (k === i ? s : x)));
+    onChange?.();
+  }, [setValues, onChange]);
   const wheelW = Math.min(60, Math.floor((width - (count - 1) * GAP - 2 * ref.space.lg) / count));
   const waiting = cooldownText(cooldown);
-  const blocked = busy || cooldown > 0 || done;
+  const blocked = busy || cooldown > 0;
   return (
     <View style={styles.bank}>
       <View style={styles.row}>
         {values.map((v, i) => (
           <View key={i} style={styles.marked}>
             {marks ? <Text style={styles.mark} accessibilityLabel={`Wheel marked ${marks[i]}`}>{marks[i]}</Text> : null}
-            <SymbolWheel index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} />
+            <SymbolWheel index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} done={done} />
           </View>
         ))}
       </View>
-      <MechButton label={submitLabel} disabled={blocked} onPress={() => onSubmit(values.map((v) => symbols[v]))} testID="mech-submit" />
-      <Line text={done ? "Open" : waiting ?? " "} tone={done || waiting ? "stamp" : "muted"} testID="mech-status" />
+      {done ? (
+        <Solved label={doneLabel} />
+      ) : (
+        <MechButton label={submitLabel} disabled={blocked} onPress={() => onSubmit(values.map((v) => symbols[v]))} testID="mech-submit" />
+      )}
+      <Line text={waiting && !done ? waiting : " "} tone={waiting ? "stamp" : "muted"} testID="mech-status" />
+    </View>
+  );
+}
+
+/** In the submit's place once it's done: a stamp with a tick, the same size, so nothing below moves. */
+function Solved({ label }: { label: string }) {
+  const theme = useModeTheme();
+  return (
+    <View style={[styles.solved, { borderColor: theme.stamp }]} accessible accessibilityRole="text" accessibilityLabel={label} testID="mech-solved">
+      <CheckIcon size={18} weight="bold" color={theme.stamp} />
+      <Text style={[styles.solvedLabel, { color: theme.stamp }]}>{label}</Text>
     </View>
   );
 }
@@ -173,5 +217,19 @@ const styles = StyleSheet.create({
   top: { top: 0 },
   bottom: { bottom: 0 },
   window: { position: "absolute", left: 2, right: 2, top: ROW, height: ROW, borderTopWidth: 1, borderBottomWidth: 1 },
+  windowDone: { borderTopWidth: 2, borderBottomWidth: 2 },
   tap: { position: "absolute", left: 0, right: 0, height: ROW },
+  solved: {
+    minHeight: ref.hit.min,
+    minWidth: 160,
+    paddingHorizontal: ref.space.xl,
+    borderRadius: ref.radius.round,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: ref.space.sm,
+    ...ref.curve,
+  },
+  solvedLabel: { ...ref.type.headline, textAlign: "center" },
 });

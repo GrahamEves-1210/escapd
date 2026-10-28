@@ -281,6 +281,31 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
   return { progress, gesture, commitNow };
 }
 
+// What the player has dialled or picked, kept across the close-up's remounts
+// (it mounts its mechanism afresh after every action): per object, under the
+// room's own definition (the target's controls list is the definition's, so
+// another room, or the same one loaded again, starts clean).
+const kept = new WeakMap<object, Map<string, unknown>>();
+function shelfFor(definition: object) {
+  let shelf = kept.get(definition);
+  if (!shelf) kept.set(definition, (shelf = new Map()));
+  return shelf;
+}
+
+/**
+ * useState that outlives a remount: a wrong try keeps what was entered, a
+ * right one shows it. Keyed by the target and `slot` ("wheels", "pick").
+ */
+export function useKept<T>(target: MechanismTarget | undefined, slot: string, initial: () => T) {
+  const shelf = target ? shelfFor(target.controls) : null;
+  const key = target ? `${target.kind}:${target.id}:${slot}` : "";
+  const [value, setValue] = useState<T>(() => (shelf?.has(key) ? (shelf.get(key) as T) : initial()));
+  useEffect(() => {
+    shelf?.set(key, value);
+  }, [shelf, key, value]);
+  return [value, setValue] as const;
+}
+
 /** "Locked" after a try on a locked thing; cleared when it unlocks. */
 export function useLockedLine(locked: boolean) {
   const [tried, setTried] = useState(false);

@@ -1,7 +1,8 @@
 // Readable. "card": nothing to work (what it says shows as a note in it).
 // "pages": dial the page number on three digit wheels and turn straight to
-// it (no thumbing page by page); onSet("page", "47").
-import { useCallback } from "react";
+// it (no thumbing page by page); onSet("page", "47"). The wheels stand at the
+// page it's open at.
+import { useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { Line, Stage, domainOf } from "./kit";
 import { WheelBank } from "./Wheels";
@@ -12,7 +13,7 @@ export function Readable(props: MechanismProps) {
   return <Pages {...props} />;
 }
 
-function Pages({ target, state, onSet, busy, width }: MechanismProps) {
+function Pages({ target, state, onSet, onChange, busy, width }: MechanismProps) {
   const domain = domainOf(target, "page");
   const max = domain?.kind === "page" ? domain.max : 300;
   const turn = useCallback((digits: string[]) => {
@@ -20,11 +21,13 @@ function Pages({ target, state, onSet, busy, width }: MechanismProps) {
     onSet("page", String(Math.min(max, Math.max(1, n || 1))));
   }, [max, onSet]);
   const at = typeof state.page === "string" ? state.page : "1";
+  // The page on the wheels, three digits ("1" is 001).
+  const start = useMemo(() => at.padStart(3, "0").slice(-3).split(""), [at]);
   return (
     <Stage width={width}>
       <View style={styles.col}>
         <Line text={`Open at page ${at}`} tone="muted" testID="mech-page-at" />
-        <WheelBank alphabet="digits" count={3} width={width} busy={busy} cooldown={0} done={false} submitLabel="Turn to page" onSubmit={turn} />
+        <WheelBank alphabet="digits" count={3} width={width} busy={busy} cooldown={0} done={false} submitLabel="Turn to page" onSubmit={turn} onChange={onChange} start={start} />
       </View>
     </Stage>
   );

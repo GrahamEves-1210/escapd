@@ -2,14 +2,14 @@
 // submit. "accusation": a suspect, a motive and a method, then Accuse.
 // "ritual": choose the objects in order (tap to add, tap a chosen one to take
 // it back), then Begin. Held while busy or cooling down. Open once it is.
-import { useState } from "react";
+// What was picked or dialled stays after a wrong try, to change one thing.
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { AccuseOption } from "@/engine/v2";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { RingPressable } from "@/render/parts";
 import { ref } from "@/theme/tokens";
-import { Line, MechButton, Stage, cooldownText } from "./kit";
+import { Line, MechButton, Stage, cooldownText, useKept } from "./kit";
 import { WheelBank } from "./Wheels";
 import { SYMBOLS } from "@/engine/v2";
 import type { MechanismProps } from "./types";
@@ -33,6 +33,8 @@ export function Door(props: MechanismProps) {
         submitLabel="Try the door"
         marks={SYMBOLS.slice(0, count)}
         onSubmit={props.onSubmit}
+        onChange={props.onChange}
+        keep={target}
       />
     </Stage>
   );
@@ -50,8 +52,13 @@ function DoorOpen({ width }: { width: number }) {
   );
 }
 
-function Chip({ label, selected, badge, onPress, disabled }: {
-  label: string; selected: boolean; badge?: number; onPress: () => void; disabled: boolean;
+/**
+ * A choice. `numbered` (the ritual's) keeps a place for its order at the
+ * front, an empty ring until it's chosen, so a chip never changes size (and
+ * the ones after it never move under the finger).
+ */
+function Chip({ label, selected, badge, numbered = false, onPress, disabled }: {
+  label: string; selected: boolean; badge?: number; numbered?: boolean; onPress: () => void; disabled: boolean;
 }) {
   const theme = useModeTheme();
   const feedback = useFeedback();
@@ -75,7 +82,11 @@ function Chip({ label, selected, badge, onPress, disabled }: {
         },
       ]}
     >
-      {badge ? <Text style={[styles.badge, { color: selected ? theme.accentInk : theme.inkMuted }]}>{badge}</Text> : null}
+      {numbered ? (
+        <View style={[styles.badge, { borderColor: selected ? theme.accentInk : theme.rim }]}>
+          <Text style={[styles.badgeText, { color: selected ? theme.accentInk : theme.inkMuted }]}>{badge ?? ""}</Text>
+        </View>
+      ) : null}
       <Text style={[styles.chipLabel, { color: selected ? theme.accentInk : theme.ink }]} numberOfLines={1}>{label}</Text>
     </RingPressable>
   );
@@ -83,9 +94,9 @@ function Chip({ label, selected, badge, onPress, disabled }: {
 
 const ordinal = (n: number) => ["first", "second", "third", "fourth", "fifth", "sixth"][n - 1] ?? `number ${n}`;
 
-function Accusation({ finale, onSubmit, busy, cooldown, width }: MechanismProps & { finale: Extract<NonNullable<MechanismProps["finale"]>, { kind: "accusation" }> }) {
+function Accusation({ target, finale, onSubmit, onChange, busy, cooldown, width }: MechanismProps & { finale: Extract<NonNullable<MechanismProps["finale"]>, { kind: "accusation" }> }) {
   const theme = useModeTheme();
-  const [pick, setPick] = useState<[string | null, string | null, string | null]>([null, null, null]);
+  const [pick, setPick] = useKept<[string | null, string | null, string | null]>(target, "accusation", () => [null, null, null]);
   const rows: [string, AccuseOption[]][] = [["Who", finale.suspects], ["Why", finale.motives], ["How", finale.methods]];
   const waiting = cooldownText(cooldown);
   const ready = pick.every((p) => p !== null);
@@ -101,7 +112,10 @@ function Accusation({ finale, onSubmit, busy, cooldown, width }: MechanismProps 
                 label={o.name}
                 selected={pick[r] === o.id}
                 disabled={busy}
-                onPress={() => setPick((p) => p.map((x, k) => (k === r ? (x === o.id ? null : o.id) : x)) as typeof p)}
+                onPress={() => {
+                  setPick((p) => p.map((x, k) => (k === r ? (x === o.id ? null : o.id) : x)) as typeof p);
+                  onChange?.();
+                }}
               />
             ))}
           </ScrollView>
@@ -118,13 +132,17 @@ function Accusation({ finale, onSubmit, busy, cooldown, width }: MechanismProps 
   );
 }
 
-function Ritual({ length, ritualChoices = [], onSubmit, busy, cooldown, width }: MechanismProps & { length: number }) {
+function Ritual({ target, length, ritualChoices = [], onSubmit, onChange, busy, cooldown, width }: MechanismProps & { length: number }) {
   const theme = useModeTheme();
-  const [order, setOrder] = useState<string[]>([]);
+  const [kept, setOrder] = useKept<string[]>(target, "ritual", () => []);
+  // Only what can still be chosen.
+  const order = kept.filter((id) => ritualChoices.some((c) => c.id === id)).slice(0, length);
   const waiting = cooldownText(cooldown);
   const labelOf = (id: string) => ritualChoices.find((c) => c.id === id)?.label ?? id;
-  const toggle = (id: string) =>
-    setOrder((o) => (o.includes(id) ? o.filter((x) => x !== id) : o.length < length ? [...o, id] : o));
+  const toggle = (id: string) => {
+    setOrder(order.includes(id) ? order.filter((x) => x !== id) : order.length < length ? [...order, id] : order);
+    onChange?.();
+  };
   return (
     <Stage width={width}>
       <View style={styles.slots} accessibilityLabel={`Order: ${order.map(labelOf).join(", ") || "nothing chosen"}`} accessible>
@@ -144,6 +162,7 @@ function Ritual({ length, ritualChoices = [], onSubmit, busy, cooldown, width }:
               label={c.label}
               selected={at >= 0}
               badge={at >= 0 ? at + 1 : undefined}
+              numbered
               disabled={busy || (at < 0 && order.length >= length)}
               onPress={() => toggle(c.id)}
             />
@@ -180,7 +199,8 @@ const styles = StyleSheet.create({
     ...ref.curve,
   },
   chipLabel: { ...ref.type.label, maxWidth: 180 },
-  badge: { ...ref.type.label, fontVariant: ["tabular-nums"] },
+  badge: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  badgeText: { ...ref.type.tag, fontVariant: ["tabular-nums"], textAlign: "center" },
   slots: { flexDirection: "row", gap: ref.space.sm, alignSelf: "stretch", justifyContent: "center" },
   slot: { flex: 1, maxWidth: 110, minHeight: 64, borderWidth: 1, borderRadius: ref.radius.tag, padding: ref.space.sm, gap: ref.space.xs, ...ref.curve },
   slotNum: { ...ref.type.tag },
