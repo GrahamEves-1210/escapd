@@ -189,6 +189,17 @@ Deno.test("author: the brief names placeholders by kind, never their values", as
   assert(brief.includes("{{"));
 });
 
+Deno.test("author: the crime-scene brief names each option's question and current name, and the ruled-out ones by kind", async () => {
+  const { definition, secret } = await planned("crime_scene");
+  assert(definition.finale.kind === "accusation");
+  const brief = authorBrief(definition, secret);
+  for (const o of definition.finale.suspects) assert(brief.includes(`${o.id} (suspect, now ${JSON.stringify(o.name)})`), brief);
+  for (const o of definition.finale.methods) assert(brief.includes(`${o.id} (method, now ${JSON.stringify(o.name)})`), brief);
+  assert(brief.includes("this card's evidence rules out"));
+  // The true answers are derived: the brief never lists them as placeholders.
+  for (const [name, s] of Object.entries(secret.slots)) if (s.kind === "option" && s.from) assert(!brief.includes(`{{${name}}}:`), name);
+});
+
 Deno.test("author: a card or hint that drops, adds or repeats a placeholder, or writes a digit, keeps the planner's words", async () => {
   const { definition, secret } = await planned();
   const card = definition.cards.find((c) => c.text.includes("{{"))!;

@@ -12,9 +12,13 @@ import type { PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 
 export { typeForLabel };
 
-/** v1 hotspots as a perception v2 inventory: one object per hotspot, hidden ones included (they are real objects). */
+/**
+ * v1 hotspots as a perception v2 inventory: one object per visible hotspot. Hidden ones are left out:
+ * v1 revealed them (a safe behind the cabinet's door) and the v2 plan has nothing to reveal them with,
+ * so as objects they would sit on top of their parent, always empty, stealing its taps.
+ */
 export function inventoryFromV1(def: PuzzleDefinitionV1): InventoryObject[] {
-  return def.hotspots.map((h) => {
+  return def.hotspots.filter((h) => !h.hidden).map((h) => {
     const type = typeForLabel(`${h.object_label} ${h.name ?? ""}`);
     const { x, y, w, h: hh } = h.shape;
     const area = w * hh;

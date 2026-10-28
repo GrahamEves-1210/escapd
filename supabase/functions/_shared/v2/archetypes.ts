@@ -113,7 +113,8 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeSpec> = {
     id: "Drawer",
     variants: {
       drawer: { hosts: { types: FURNITURE_OPENABLE, anyFeature: ["has_drawers"] }, controls: [bool("open")], initial: { open: false, locked: false } },
-      compartment: { hosts: { types: FURNITURE_OPENABLE, anyFeature: ["has_doors", "can_open", "holds_items"] }, controls: [bool("open")], initial: { open: false, locked: false } },
+      // A door that swings open: only on things with doors or lids (open shelves and plain drawers don't have one).
+      compartment: { hosts: { types: FURNITURE_OPENABLE, anyFeature: ["has_doors", "can_open"] }, controls: [bool("open")], initial: { open: false, locked: false } },
     },
     emits: ["item", "card"], accepts: ["bool", "item"], overlays: [], holdsItems: true, lockable: true,
   },
@@ -125,7 +126,8 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeSpec> = {
   Readable: {
     id: "Readable",
     variants: {
-      card: { hosts: { types: ["book", "book_stack", "notebook", "magazine", "noticeboard", "calendar", "map", "poster"] }, controls: [], initial: {} },
+      // Something to read on it, or tucked in among it (a letter between the books on a shelf).
+      card: { hosts: { types: ["book", "book_stack", "notebook", "magazine", "noticeboard", "calendar", "map", "poster", "bookshelf", "shelf"] }, controls: [], initial: {} },
       pages: { hosts: { types: ["book", "book_stack", "bookshelf", "notebook", "magazine"], allFeatures: ["has_pages"] }, controls: [{ id: "page", domain: { kind: "page", max: 300 } }], initial: { page: "1" } },
     },
     emits: ["card", "item"], accepts: ["page"], overlays: ["pinned_card"], holdsItems: true,

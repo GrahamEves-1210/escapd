@@ -11,9 +11,13 @@
 //   5. Validate, simulate, check the constraints, score; keep the best candidate.
 // Structure is deterministic from `seed`; values and ids are minted with crypto
 // randomness (`randomInt`, injectable for tests).
-import { boxArea, boxToRect, isValidBox } from "../geometry.ts";
+import { type Box1000, boxArea, boxToRect, isValidBox } from "../geometry.ts";
 import { cryptoInt, isWeakCode, mintSuffix, type RandomInt, slugId } from "../mint.ts";
 import { type ArchetypeId, type ControlDomain, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, SYMBOLS, variantSpec } from "./archetypes.ts";
+import {
+  ALIBIS, capitalise, describeObject, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES, ordinalLine, type Pick, romanMark,
+  SUSPECTS, writeCard,
+} from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
 import { simulate, type SimReport } from "./simulate.ts";
 import { categoryOf, type InventoryObject, isPortableType } from "./taxonomy.ts";
@@ -53,7 +57,12 @@ export const MIN_POOL = 4;       // interactive objects besides the exit
 const DEMANDING: ArchetypeId[] = ["ClockHands", "TuningDial", "CombinationLock"];
 const CONTAINERS: ArchetypeId[] = ["Drawer", "LiftUnder", "FrameTilt"];
 const CONTAINER_CONTROL: Partial<Record<ArchetypeId, string>> = { Drawer: "open", LiftUnder: "lifted", FrameTilt: "tilted" };
-const VERB: Partial<Record<ArchetypeId, string>> = { Drawer: "Open", LiftUnder: "Lift", FrameTilt: "Tilt" };
+/** The last hint rung's verb for finding something in a container. */
+const verb = (b: Bound) => (b.archetype === "Drawer" ? (b.variant === "drawer" ? "Pull out" : "Open") : b.archetype === "LiftUnder" ? "Lift" : "Tilt");
+/** "the drawer", or "a drawer of the desk" when the object is the furniture around it. */
+const target = (b: Bound) => (b.archetype === "Drawer" && b.variant === "drawer" && !/\bdrawers?\b/i.test(b.inv.label) ? `a drawer of the ${b.inv.label}` : `the ${b.inv.label}`);
+/** Kinds whose card lines are whole sentences (crime-scene evidence, ritual fragments). */
+const LIST_KINDS: SlotKind[] = ["option", "object"];
 const WORDS = ["OAK", "ELM", "ASH", "INK", "OWL", "FOX", "JAM", "ICE", "RYE", "GIN", "VOW", "HEX", "ORE", "SKY", "WAX", "YEW"];
 
 /** Deterministic [0, 1) stream from a string seed (FNV-1a + mulberry32). */
@@ -94,9 +103,19 @@ interface Want {
 
 interface Option { motif: MotifId; min: number; fixed: boolean; run: () => string | null }
 
+interface SlotMeta {
+  tag?: string;          // digits: the door wheels' symbols they belong on
+  ordinal?: number;      // object: the ritual position (0-based)
+  ruleOut?: string;      // option: the finding that rules it out, with {{s}} for its name
+}
+
+/** What a step hands over: an item into the hand, or a card to read where it was found. */
+type Payload = { item: string } | { card: string };
+
 class Builder {
   slots: Record<string, SlotValue> = {};
-  labels = new Map<string, string>();
+  /** How each slot is written on a card: its door wheels' symbols, its lock's alphabet, its ritual position, what rules it out. */
+  meta = new Map<string, SlotMeta>();
   items: ItemDef[] = [];
   cards: CardDef[] = [];
   rules: Rule[] = [];
@@ -107,7 +126,20 @@ class Builder {
   removable: Bound | null = null;
   ids = new Set<string>();
 
-  constructor(public mode: Mode, public pool: Bound[], public exit: Bound, public rng: () => number, public rint: RandomInt) {}
+  /** Text choices draw from their own stream, so wording never changes a room's structure. */
+  pick: Pick;
+  names: (typeof ITEM_NAMES)[Mode];
+
+  constructor(public mode: Mode, public pool: Bound[], public exit: Bound, public rng: () => number, public rint: RandomInt, public trng: () => number) {
+    this.pick = <T>(xs: readonly T[]): T => xs[Math.floor(this.trng() * xs.length)];
+    this.names = ITEM_NAMES[mode];
+  }
+
+  /** `n` distinct entries of `xs`, in a seeded order. */
+  sample<T>(xs: readonly T[], n: number): T[] {
+    const pool = [...xs];
+    return Array.from({ length: Math.min(n, pool.length) }, () => pool.splice(Math.floor(this.trng() * pool.length), 1)[0]);
+  }
 
   snap(): () => void {
     const pool = this.pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
@@ -121,7 +153,7 @@ class Builder {
   }
 
   // ---- objects -----------------------------------------------------------
-  pick(w: Want): { b: Bound; archetype?: ArchetypeId; variant?: string } | null {
+  pickObject(w: Want): { b: Bound; archetype?: ArchetypeId; variant?: string } | null {
     const threadPhotos = new Set(this.pool.filter((b) => b.threads.includes(w.thread)).map((b) => b.inv.photo_index));
     const usedPhotos = new Set(this.pool.filter((b) => b.roles > 0).map((b) => b.inv.photo_index));
     let best: { b: Bound; archetype?: ArchetypeId; variant?: string } | null = null;
@@ -159,10 +191,11 @@ class Builder {
   }
 
   // ---- data --------------------------------------------------------------
-  slot(kind: SlotKind, value: string, text?: string, label?: string, from?: string[]): string {
+  slot(kind: SlotKind, value: string, text?: string, meta?: SlotMeta, from?: string[]): string {
     const name = `${kind}_${Object.keys(this.slots).length + 1}`;
     this.slots[name] = { kind, value, ...(text !== undefined && text !== value ? { text } : {}), ...(from ? { from } : {}) };
-    if (label) this.labels.set(name, label);
+    if (meta) this.meta.set(name, meta);
+    else this.meta.delete(name);   // a name reused after a rollback
     return name;
   }
 
@@ -186,14 +219,35 @@ class Builder {
     }
   }
 
-  /** What a glow mark says: each slot as written on the object (its door symbol first, if any), nothing more. */
-  mark(slots: string[]): string {
-    return slots.map((s) => `${this.labels.has(s) && /^[^A-Za-z]+$/.test(this.labels.get(s)!) ? `${this.labels.get(s)} ` : ""}{{${s}}}`).join("  ");
+  /** One slot as written in the room: "▲● {{d}}", "p. {{page}}", an alibi, "Second, {{object}}." (`mark`: drawn on an object). */
+  phrase(s: string, mark = false, spoken = false): string {
+    const m = this.meta.get(s) ?? {};
+    const ref = `{{${s}}}`;
+    switch (this.slots[s].kind) {
+      case "digits": return m.tag ? `${m.tag} ${ref}` : ref;
+      case "page": return spoken ? `page ${ref}` : `p. ${ref}`;
+      case "offset": return spoken ? `plus ${ref}` : `+${ref}`;
+      case "cipher": return mark ? ref : `${ref}, letters that spell nothing`;
+      case "option": return mark ? `✗ ${ref}` : (m.ruleOut ?? "{{s}}: ruled out.").replace("{{s}}", ref);
+      case "object": return mark ? romanMark(m.ordinal ?? 0, ref) : ordinalLine(m.ordinal ?? 0, ref);
+      default: return ref;
+    }
   }
 
-  card(title: string, slots: string[], flavour?: string): string {
+  /** What a glow mark says: each slot as written on the object, nothing more. */
+  mark(slots: string[]): string {
+    return slots.map((s) => this.phrase(s, true)).join("  ");
+  }
+
+  /** A card with `slots`, written as a finding in the mode's voice; it never names what a value is for. */
+  clue(medium: Medium, slots: string[]): string {
+    const list = slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
+    const { title, text } = writeCard(this.mode, medium, slots.map((s) => this.phrase(s, false, medium === "radio")), list, this.pick);
+    return this.plainCard(title, text);
+  }
+
+  plainCard(title: string, text: string): string {
     const id = `card_${this.cards.length + 1}`;
-    const text = slots.length ? slots.map((s) => `${this.labels.get(s) ?? LABEL[this.slots[s].kind]}: {{${s}}}`).join("\n") : flavour ?? "";
     this.cards.push({ id, title, text });
     return id;
   }
@@ -216,8 +270,16 @@ class Builder {
     this.rules.push({ id: `rule_${this.rules.length + 1}`, ...(step ? { step } : {}), trigger, when, effects });
   }
 
-  note(slots: string[]): string {
-    return this.item("prop", "note", { card: this.card("Note", slots) });
+  /** Writing found in a container: a card to read where it lies, not an item (an item would only repeat it). */
+  note(slots: string[]): Payload {
+    return { card: this.clue("found", slots) };
+  }
+
+  /** What finding a payload does: an item into the hand (its card, if it has one, shown), or a card to read. */
+  give(p: Payload): Effect[] {
+    if ("card" in p) return [{ do: "show_card", card: p.card }];
+    const card = this.items.find((i) => i.id === p.item)?.card;
+    return [{ do: "grant", item: p.item }, ...(card ? [{ do: "show_card", card } as Effect] : [])];
   }
 
   // ---- motif builders -------------------------------------------------------
@@ -240,9 +302,10 @@ class Builder {
 
   /** A step whose firing shows a card with `slots`. */
   info(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const title = depth === 0 ? "A lead" : "A clue";
+    // Sentences (evidence, ritual lines) don't encipher into a readable coded line.
+    const codable = !slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
     return this.choose([
-      { motif: "read", min: 1, fixed: true, run: () => this.read(slots, thread, title) },
+      { motif: "read", min: 1, fixed: true, run: () => this.read(slots, thread) },
       { motif: "contain", min: 1, fixed: true, run: () => this.contain(this.note(slots), thread) },
       { motif: "contain_lock", min: 2, fixed: false, run: () => this.lockedContain(this.note(slots), budget, thread, depth) },
       { motif: "set_state", min: 2, fixed: false, run: () => this.setState(slots, null, budget, thread, depth) },
@@ -250,61 +313,58 @@ class Builder {
       { motif: "room_change", min: 2, fixed: true, run: () => this.roomChange(slots, thread) },
       { motif: "tool_reveal", min: 2, fixed: false, run: () => this.toolReveal(slots, budget, thread, depth) },
       { motif: "split", min: 3, fixed: true, run: () => this.split(slots, thread) },
-      { motif: "decode", min: 4, fixed: false, run: () => this.decode(slots, budget, thread, depth) },
+      ...(codable ? [{ motif: "decode" as const, min: 4, fixed: false, run: () => this.decode(slots, budget, thread, depth) }] : []),
     ], budget, depth);
   }
 
   /** A step whose firing grants `item`. */
   deliver(item: string, budget: number, thread: number, depth: number): string | null {
     return this.choose([
-      { motif: "contain", min: 1, fixed: true, run: () => this.contain(item, thread) },
-      { motif: "contain_lock", min: 2, fixed: false, run: () => this.lockedContain(item, budget, thread, depth) },
-      { motif: "set_state", min: 2, fixed: false, run: () => this.setState([], item, budget, thread, depth) },
+      { motif: "contain", min: 1, fixed: true, run: () => this.contain({ item }, thread) },
+      { motif: "contain_lock", min: 2, fixed: false, run: () => this.lockedContain({ item }, budget, thread, depth) },
+      { motif: "set_state", min: 2, fixed: false, run: () => this.setState([], { item }, budget, thread, depth) },
     ], budget, depth + 1);
   }
 
-  read(slots: string[], thread: number, title: string): string | null {
-    const p = this.pick({ trigger: "inspect", thread, accept: (a, v) => a === "Readable" && v === "card" });
+  read(slots: string[], thread: number): string | null {
+    const p = this.pickObject({ trigger: "inspect", thread, accept: (a, v) => a === "Readable" && v === "card" });
     if (!p) return null;
     const b = this.bind(p, thread, "inspect");
-    const card = this.card(title, slots);
-    const s = this.step("read", thread, b.id, [], ["Some things here are meant to be read.", `Take a closer look at the ${b.inv.label}.`, `Read the ${b.inv.label}.`]);
+    const card = this.clue("read", slots);
+    const shelf = b.inv.type === "bookshelf" || b.inv.type === "shelf";
+    const s = this.step("read", thread, b.id, [], ["Some things here are meant to be read.", `Take a closer look at the ${b.inv.label}.`,
+      shelf ? `Search the ${b.inv.label} and read what's tucked in among the books.` : `Read the ${b.inv.label}.`]);
     this.rule({ on: "inspect", object: b.id }, [], [{ do: "show_card", card }], s);
     return s;
   }
 
-  contain(item: string, thread: number, optional = false): string | null {
-    const p = this.pick({ trigger: "contain", thread, accept: (a) => CONTAINERS.includes(a) });
+  contain(payload: Payload, thread: number, optional = false): string | null {
+    const p = this.pickObject({ trigger: "contain", thread, accept: (a) => CONTAINERS.includes(a) });
     if (!p) return null;
     const b = this.bind(p, thread, "contain");
     const control = CONTAINER_CONTROL[b.archetype!]!;
     const label = b.inv.label;
     const s = this.step(optional ? "story_fragment" : "contain", optional ? null : thread, b.id, [],
-      ["Not everything is on the surface.", `The ${label} could hide something.`, `${VERB[b.archetype!]} the ${label}.`], optional);
-    this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { lit: true } }], this.grant(item), s);
+      ["Not everything is on the surface.", `The ${label} could hide something.`, `${verb(b)} ${target(b)}.`], optional);
+    this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { lit: true } }], this.give(payload), s);
     return s;
   }
 
-  grant(item: string): Effect[] {
-    const card = this.items.find((i) => i.id === item)?.card;
-    return [{ do: "grant", item }, ...(card ? [{ do: "show_card", card } as Effect] : [])];
-  }
-
-  lockedContain(item: string, budget: number, thread: number, depth: number): string | null {
+  lockedContain(payload: Payload, budget: number, thread: number, depth: number): string | null {
     const byKey = () => {
-      const p = this.pick({ trigger: "contain", thread, accept: (a) => a === "Drawer" });
+      const p = this.pickObject({ trigger: "contain", thread, accept: (a) => a === "Drawer" });
       if (!p) return null;
       const b = this.bind(p, thread, "contain", "use");
       b.initial.locked = true;
-      const key = this.item("key", "small key");
+      const key = this.item("key", this.names.key);
       const up = this.deliver(key, budget - 1, thread, depth);
       if (!up) return null;
-      const s = this.step("contain_lock", thread, b.id, [up], ["Something here is locked.", `The ${b.inv.label} is locked; a key must be somewhere.`, `Use the small key on the ${b.inv.label}.`]);
-      this.rule({ on: "use", item: key, object: b.id }, [], [{ do: "open", object: b.id }, { do: "consume", item: key }, ...this.grant(item)], s);
+      const s = this.step("contain_lock", thread, b.id, [up], ["Something here is locked.", `The ${b.inv.label} is locked; a key must be somewhere.`, `Use the ${this.names.key.toLowerCase()} on the ${b.inv.label}.`]);
+      this.rule({ on: "use", item: key, object: b.id }, [], [{ do: "open", object: b.id }, { do: "consume", item: key }, ...this.give(payload)], s);
       return s;
     };
     const byCode = () => {
-      const p = this.pick({ trigger: "contain", thread, accept: (a) => a === "CombinationLock" });
+      const p = this.pickObject({ trigger: "contain", thread, accept: (a) => a === "CombinationLock" });
       if (!p) return null;
       const b = this.bind(p, thread, "contain", "submit");
       const m = this.mint(b.variant as "digits" | "letters" | "symbols");
@@ -313,7 +373,7 @@ class Builder {
       if (!up) return null;
       const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.", `The ${b.inv.label} has a three-wheel lock; the code is written somewhere.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
       this.rule({ on: "submit", object: b.id }, [{ if: "submitted", eq: { slot: code } }],
-        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.grant(item)], s);
+        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload)], s);
       return s;
     };
     const order = this.rng() < 0.5 ? [byKey, byCode] : [byCode, byKey];
@@ -327,8 +387,8 @@ class Builder {
   }
 
   /** Clock hands or a tuning dial set to a value learned upstream. Shows `slots`, or grants `item` (clock only). */
-  setState(slots: string[], item: string | null, budget: number, thread: number, depth: number): string | null {
-    const p = this.pick({ trigger: "set", thread, accept: (a) => a === "ClockHands" || (!item && a === "TuningDial") });
+  setState(slots: string[], item: Payload | null, budget: number, thread: number, depth: number): string | null {
+    const p = this.pickObject({ trigger: "set", thread, accept: (a) => a === "ClockHands" || (!item && a === "TuningDial") });
     if (!p) return null;
     const b = this.bind(p, thread, "set");
     const clock = b.archetype === "ClockHands";
@@ -342,8 +402,8 @@ class Builder {
     const control = clock ? "time" : "freq";
     const payload = item ?? (clock ? this.note(slots) : null);
     const effects: Effect[] = clock
-      ? [{ do: "set_state", target: b.id, key: "panel", value: true }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.grant(payload!)]
-      : [{ do: "show_card", card: this.card("On the air", slots) }];
+      ? [{ do: "set_state", target: b.id, key: "panel", value: true }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload!)]
+      : [{ do: "show_card", card: this.clue("radio", slots) }];
     const s = this.step("set_state", thread, b.id, [up], [
       clock ? "A stopped clock is waiting for the right time." : "Something in the room can be tuned.",
       clock ? `The ${b.inv.label}'s hands can be moved.` : `The ${b.inv.label} has a dial; a frequency is written somewhere.`,
@@ -354,23 +414,24 @@ class Builder {
   }
 
   crossReference(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const p = this.pick({ trigger: "set", thread, accept: (a, v) => a === "Readable" && v === "pages" });
+    const p = this.pickObject({ trigger: "set", thread, accept: (a, v) => a === "Readable" && v === "pages" });
     if (!p) return null;
     const b = this.bind(p, thread, "set");
-    const page = this.slot("page", this.mint("page").value, undefined, `Page in the ${b.inv.label}`);
+    // No "in the bookshelf": which book a page number belongs to is the player's to work out.
+    const page = this.slot("page", this.mint("page").value);
     const up = this.info([page], budget - 1, thread, depth + 1);
     if (!up) return null;
-    const s = this.step("cross_reference", thread, b.id, [up], ["One clue points into a book.", `A page number matters in the ${b.inv.label}.`, `Turn the ${b.inv.label} to page {{${page}}}.`]);
+    const s = this.step("cross_reference", thread, b.id, [up], ["One clue points into a book.", `A page number you found belongs to the ${b.inv.label}.`, `Find page {{${page}}} in the ${b.inv.label}.`]);
     this.rule({ on: "control", target: b.id, control: "page" }, [{ if: "control", target: b.id, control: "page", eq: { slot: page } }],
-      [{ do: "show_card", card: this.card("Between the pages", slots) }, { do: "overlay", object: b.id, overlay: "pinned_card" }], s);
+      [{ do: "show_card", card: this.clue("pages", slots) }, { do: "overlay", object: b.id, overlay: "pinned_card" }], s);
     return s;
   }
 
   roomChange(slots: string[], thread: number): string | null {
-    const lp = this.pick({ trigger: "set", thread, accept: (a, v) => a === "Light" && v !== "torch" });
+    const lp = this.pickObject({ trigger: "set", thread, accept: (a, v) => a === "Light" && v !== "torch" });
     if (!lp) return null;
     const lamp = this.bind(lp, thread, "set");
-    const tp = this.pick({ trigger: "inspect", thread, markable: true, preferUsed: true, samePhotoAs: lamp, excludeIds: [lamp.id] });
+    const tp = this.pickObject({ trigger: "inspect", thread, markable: true, preferUsed: true, samePhotoAs: lamp, excludeIds: [lamp.id] });
     if (!tp) return null;
     const target = this.bind(tp, thread, "inspect");
     const s1 = this.step("room_change", thread, lamp.id, [], ["The room is darker than it should be.", `The ${lamp.inv.label} still works.`, `Switch on the ${lamp.inv.label}.`]);
@@ -378,38 +439,41 @@ class Builder {
       [{ do: "overlay", object: lamp.id, overlay: "light_on" }, { do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }], s1);
     const s2 = this.step("room_change", thread, target.id, [s1], ["The light changed something.", `Look at the ${target.inv.label} while the ${lamp.inv.label} is on.`, `With the ${lamp.inv.label} on, inspect the ${target.inv.label}.`]);
     this.rule({ on: "inspect", object: target.id }, [{ if: "state", target: lamp.id, key: "on", eq: { lit: true } }],
-      [{ do: "show_card", card: this.card("In the light", slots) }], s2);
+      [{ do: "show_card", card: this.clue(lamp.variant === "uv" ? "uv" : "lamp", slots) }], s2);
     return s2;
   }
 
   toolReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const torch = this.item("tool", "UV flashlight", { archetype: "Light", variant: "torch", card: this.card("UV flashlight", [], "A small flashlight with a violet bulb. Tap it to switch your light over, then sweep the room.") });
+    // No card: a description would only sit beside the torch, repeating it.
+    const torch = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
     const up = this.deliver(torch, budget - 1, thread, depth);
     if (!up) return null;
     const source = this.steps.find((s) => s.id === up)?.object;
-    const tp = this.pick({ trigger: "use", thread, markable: true, preferUsed: true, excludeIds: [source] });
+    const tp = this.pickObject({ trigger: "use", thread, markable: true, preferUsed: true, excludeIds: [source] });
     if (!tp) return null;
     const target = this.bind(tp, thread, "use");
     const s = this.step("tool_reveal", thread, target.id, [up], ["A tool you found shows what eyes can't.", `Something on the ${target.inv.label} only shows under UV.`, `Switch to the UV flashlight and hold it on the ${target.inv.label}.`]);
     this.rule({ on: "use", item: torch, object: target.id }, [],
-      [{ do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }, { do: "show_card", card: this.card("Under UV", slots) }], s);
+      [{ do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }, { do: "show_card", card: this.clue("uv", slots) }], s);
     return s;
   }
 
   split(slots: string[], thread: number): string | null {
-    const halves = [0, 1].map(() => this.item("half", "torn half", { card: this.card("Torn half", [], "Half of something. The other half can't be far.") }));
-    const found = halves.map((h) => this.contain(h, thread));
+    // Two halves, told apart by name; no card each (half a note says nothing worth a second card).
+    const halves = this.names.halves.map((name) => this.item("half", name));
+    const found = halves.map((h) => this.contain({ item: h }, thread));
     if (found.some((s) => !s)) return null;
-    const joined = this.item("assembled", "joined halves", { archetype: "Assemble", card: this.card("Pieced together", slots) });
-    const s = this.step("split", thread, undefined, found as string[], ["Two pieces belong together.", "You hold both halves of the same thing.", "Combine the two torn halves."]);
-    this.rule({ on: "combine", items: [halves[0], halves[1]] }, [], [{ do: "consume", item: halves[0] }, { do: "consume", item: halves[1] }, ...this.grant(joined)], s);
+    const joined = this.item("assembled", this.names.joined, { archetype: "Assemble", card: this.clue("assembled", slots) });
+    const s = this.step("split", thread, undefined, found as string[], ["Two pieces belong together.", "You hold both halves of the same thing.",
+      `Put the ${this.names.halves[0].replace(/ \(left\)$/, "").toLowerCase()} halves together.`]);
+    this.rule({ on: "combine", items: [halves[0], halves[1]] }, [], [{ do: "consume", item: halves[0] }, { do: "consume", item: halves[1] }, ...this.give({ item: joined })], s);
     return s;
   }
 
   decode(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const wheel = this.item("decoder", "cipher wheel", { archetype: "Decoder", controls: [{ id: "offset", domain: { kind: "offset", max: 25 } }] });
-    const offset = this.slot("offset", this.mint("offset").value, undefined, "Cipher ring");
-    const enc = this.slot("cipher", "?", undefined, "Coded line");
+    const wheel = this.item("decoder", this.names.wheel, { archetype: "Decoder", controls: [{ id: "offset", domain: { kind: "offset", max: 25 } }] });
+    const offset = this.slot("offset", this.mint("offset").value);
+    const enc = this.slot("cipher", "?");
     this.ciphers.push({ slot: enc, of: slots, offset: this.slots[offset].value });
     const encStep = this.info([enc], 1, thread, depth + 1);
     const itemStep = encStep && this.deliver(wheel, 1, thread, depth);
@@ -417,15 +481,10 @@ class Builder {
     if (!encStep || !itemStep || !offStep) return null;
     const s = this.step("decode", thread, undefined, [encStep, itemStep, offStep], ["A coded line and a wheel to read it.", "The cipher wheel's ring needs the right offset.", `Set the cipher wheel to {{${offset}}} and read the coded line.`]);
     this.rule({ on: "control", target: wheel, control: "offset" }, [{ if: "control", target: wheel, control: "offset", eq: { slot: offset } }, { if: "solved", step: encStep }],
-      [{ do: "show_card", card: this.card("Decoded", slots) }], s);
+      [{ do: "show_card", card: this.clue("decoded", slots) }], s);
     return s;
   }
 }
-
-const LABEL: Record<SlotKind, string> = {
-  time: "Time", freq: "Frequency", page: "Page", offset: "Offset", digits: "Digits", letters: "Word", symbols: "Symbols",
-  cipher: "Coded line", option: "Evidence", object: "Ritual", code: "Code",
-};
 
 const STEP_TITLE: Record<MotifId, string> = {
   read: "Read it", contain: "Look inside", split: "Piece it together", set_state: "Set the mechanism",
@@ -463,12 +522,29 @@ export function usableObjects(inventory: InventoryObject[]): InventoryObject[] {
 // ---------------------------------------------------------------------------
 interface Candidate { definition: RoomDefinitionV2; secret: RoomSecretV2; summary: PlanSummary }
 
-function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number): Candidate | string {
+function permutations<T>(xs: T[]): T[][] {
+  return xs.length <= 1 ? [xs] : xs.flatMap((x, i) => permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest]));
+}
+
+/** How much of `child`'s box lies inside `parent`'s (0..1). */
+function insideShare(child: Box1000, parent: Box1000): number {
+  const h = Math.max(0, Math.min(child[2], parent[2]) - Math.max(child[0], parent[0]));
+  const w = Math.max(0, Math.min(child[3], parent[3]) - Math.max(child[1], parent[1]));
+  const area = (child[2] - child[0]) * (child[3] - child[1]);
+  return area > 0 ? (h * w) / area : 0;
+}
+/** A box this much inside a bigger object's is part of it (a safe in a cabinet): as a herring it would only steal its taps. */
+const NESTED = 0.6;
+
+function buildCandidate(
+  inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number, trng: () => number,
+): Candidate | string {
   const taken = new Set<string>();
   const mk = (o: InventoryObject): Bound => ({ inv: o, id: slugId(o.label, taken), hostable: hostableArchetypes(o), archetype: null, roles: 0, triggers: [], threads: [], initial: {} });
   const exit = mk(exitObj);
   const pool = inv.filter((o) => o !== exitObj).sort((a, b) => b.salience - a.salience).map(mk);
-  const B = new Builder(mode, pool, exit, rng, rint);
+  const B = new Builder(mode, pool, exit, rng, rint, trng);
+  const voice = MODE_COPY[mode];
 
   // Mode skeleton: the finale's inputs become thread goals.
   const lo = 2 * nThreads + 1;
@@ -486,10 +562,12 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     return owner;
   };
 
+  const positionOwner: number[] = [];   // ritual: the thread whose card gives each position
   let finale: FinaleDef;
   let answer: string;
   let submit: ControlDomain;
   let finaleHint: string;
+  let finaleHow: string;
   if (mode === "noir") {
     const wheels = nThreads === 3 || rng() < 0.5 ? 4 : 3;
     let code: string;
@@ -502,9 +580,9 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     const parts = sizes.map((n, i) => {
       const digits = code.slice(at, at + n);
       // The door's wheels carry these symbols: the player matches each clue to its wheels (never "wheel 1").
-      const label = SYMBOLS.slice(at, at + n).join("");
+      const tag = SYMBOLS.slice(at, at + n).join("");
       at += n;
-      const s = B.slot("digits", digits, undefined, label);
+      const s = B.slot("digits", digits, undefined, { tag });
       outputs[order[i]].push(s);
       return s;
     });
@@ -512,30 +590,42 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     finale = { kind: "combination", object: exit.id, wheels, alphabet: "digits" };
     submit = { kind: "wheels", alphabet: "digits", count: wheels };
     finaleHint = `Enter {{${answer}}} on the ${exit.inv.label}.`;
+    finaleHow = `Each number you found has symbols beside it; they match the wheels on the ${exit.inv.label}.`;
   } else if (mode === "crime_scene") {
-    const dims = (["suspect", "motive", "method"] as const).map((d, i) => {
-      const options: AccuseOption[] = ["A", "B", "C"].map((x) => {
+    // A deduction: three named options per question; the evidence rules two out of each, so exactly
+    // one suspect, one motive and one method survive. Each true answer is derived from the two
+    // eliminations (never written anywhere), and the accusation from the three answers.
+    const alibis = B.sample(ALIBIS, 2);
+    const pools = [B.sample(SUSPECTS, 3).map((name) => ({ name, ruleOut: "" })), B.sample(MOTIVES, 3), B.sample(METHODS, 3)];
+    const dims = pools.map((pool, i) => {
+      const options: AccuseOption[] = pool.map(({ name }) => {
         let id: string;
         do id = `${"smx"[i]}_${mintSuffix(rint)}`; while (B.ids.has(id));
         B.ids.add(id);
-        return { id, name: `${d[0].toUpperCase()}${d.slice(1)} ${x}` };
+        return { id, name };
       });
-      const right = options[rint(3)];
-      return { options, slot: B.slot("option", right.id, right.name, d[0].toUpperCase() + d.slice(1)) };
+      const right = rint(3);
+      const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, { ruleOut: i === 0 ? alibis.shift()! : pool[j].ruleOut })]);
+      return { options, ruledOut, slot: B.slot("option", options[right].id, options[right].name, undefined, ruledOut) };
     });
-    dealt(3).forEach((t, k) => outputs[t].push(dims[k].slot));
+    const evidence = dims.flatMap((d) => d.ruledOut);
+    dealt(evidence.length).forEach((t, k) => outputs[t].push(evidence[k]));
     answer = B.slot("code", dims.map((d) => B.slots[d.slot].value).join("|"), undefined, undefined, dims.map((d) => d.slot));
     finale = { kind: "accusation", object: exit.id, suspects: dims[0].options, motives: dims[1].options, methods: dims[2].options };
     submit = { kind: "accusation" };
-    finaleHint = `Accuse {{${dims[0].slot}}}, for {{${dims[1].slot}}}, by {{${dims[2].slot}}}.`;
+    finaleHint = `At the ${exit.inv.label}, accuse {{${dims[0].slot}}}. Motive: {{${dims[1].slot}}}. Method: {{${dims[2].slot}}}.`;
+    finaleHow = "Cross off every suspect, motive and method the evidence rules out. One of each is left.";
   } else {
     const length = 3;
-    const positions = Array.from({ length }, (_, k) => B.slot("object", "?", undefined, `Ritual, step ${k + 1}`));
-    dealt(length).forEach((t, k) => outputs[t].push(positions[k]));
+    const positions = Array.from({ length }, (_, k) => B.slot("object", "?", undefined, { ordinal: k }));
+    const owner = dealt(length);
+    owner.forEach((t, k) => outputs[t].push(positions[k]));
+    positionOwner.push(...owner);
     answer = B.slot("code", "?", undefined, undefined, positions);
     finale = { kind: "ritual", object: exit.id, length };
     submit = { kind: "sequence", length };
-    finaleHint = `At the ${exit.inv.label}, perform the ritual in order: {{${positions[0]}}}, {{${positions[1]}}}, {{${positions[2]}}}.`;
+    finaleHint = "";   // named once the ritual's objects are chosen
+    finaleHow = "Each fragment you found names one offering and its place in the order. Match what they describe to things in this room.";
   }
 
   // Threads, grown backwards from their goals.
@@ -546,30 +636,66 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     ends.push(end);
   }
 
-  // Paranormal: the ritual's objects, preferring ones the threads already used.
+  // Paranormal: the ritual's objects, preferring ones the threads already used. Cards describe each
+  // by what it is ("the face that keeps the hours"), so the player works out which thing is meant: an
+  // object whose description would fit two things in the room is left out, and so, where possible, is
+  // the object the naming card is found at (a note in a drawer shouldn't point at the drawer).
   if (finale.kind === "ritual") {
-    const chosen: Bound[] = [];
-    for (const name of Object.keys(B.slots).filter((n) => B.slots[n].kind === "object")) {
-      const p = B.pick({ trigger: "ritual", thread: -1, preferUsed: true, excludeIds: chosen.map((c) => c.id) });
-      if (!p) return "not enough objects for the ritual";
-      const b = B.bind(p, -1, "ritual");
-      chosen.push(b);
-      B.slots[name] = { kind: "object", value: b.id, text: `the ${b.inv.label}` };
+    const counts = new Map<string, number>();
+    for (const o of inv) {
+      const d = describeObject(o.type, o.label);
+      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+    const unclear = B.pool.filter((b) => (counts.get(describeObject(b.inv.type, b.inv.label) ?? "") ?? 0) !== 1).map((b) => b.id);
+    const names = Object.keys(B.slots).filter((n) => B.slots[n].kind === "object");
+    const foundAt = (name: string): string[] => {
+      const at = B.steps.find((s) => s.id === ends[positionOwner[B.meta.get(name)?.ordinal ?? 0]])?.object;
+      return at ? [at] : [];
+    };
+    // Fill the positions strictly first (clear descriptions, none found at its own object), trying every
+    // order, since an early position can take the only object a later one could use; then relax.
+    const fill = (order: string[], level: number): Map<string, Bound> | null => {
+      const picked = new Map<string, Bound>();
+      for (const name of order) {
+        const taken = [...picked.values()].map((c) => c.id);
+        const excludeIds = level === 0 ? [...taken, ...unclear, ...foundAt(name)] : level === 1 ? [...taken, ...unclear] : taken;
+        const p = B.pickObject({ trigger: "ritual", thread: -1, preferUsed: true, excludeIds });
+        if (!p) return null;
+        picked.set(name, B.bind(p, -1, "ritual"));
+      }
+      return picked;
+    };
+    let picked: Map<string, Bound> | null = null;
+    for (let level = 0; level < 3 && !picked; level++) {
+      for (const order of permutations(names)) {
+        const restore = B.snap();
+        picked = fill(order, level);
+        if (picked) break;
+        restore();
+      }
+    }
+    if (!picked) return "not enough objects for the ritual";
+    const chosen = names.map((n) => picked!.get(n)!);
+    for (const [name, b] of picked) {
+      const described = unclear.includes(b.id) ? null : describeObject(b.inv.type, b.inv.label);
+      B.slots[name] = { kind: "object", value: b.id, text: described ?? `the ${b.inv.label}` };
     }
     B.slots[answer] = { ...B.slots[answer], value: chosen.map((c) => c.id).join("|") };
+    // The last rung may give the answer: plainly, by name.
+    finaleHint = `At the ${exit.inv.label}, perform the ritual in order: ${chosen.map((c) => `the ${c.inv.label}`).join(", ")}.`;
   }
   for (const c of B.ciphers) B.slots[c.slot].value = encipher(c.of.map((s) => B.slots[s].text ?? B.slots[s].value).join(" "), Number(c.offset));
 
   const fin = B.step(finale.kind === "ritual" ? "ordering" : "finale", null, exit.id, ends,
-    ["Everything you've learned ends at the way out.", `The ${exit.inv.label} needs one answer from every lead.`, finaleHint]);
+    ["Everything you've learned ends at the way out.", finaleHow, finaleHint]);
   B.rule({ on: "submit", object: exit.id }, [{ if: "submitted", eq: { slot: answer } }],
-    [{ do: "open", object: exit.id }, { do: "beat", text: "The way out gives." }, { do: "complete" }], fin);
+    [{ do: "open", object: exit.id }, { do: "beat", text: voice.beat }, { do: "complete" }], fin);
 
   // Optional extras: a story fragment, and at most one removable small object.
   if (rng() < 0.6) {
     const restore = B.snap();
-    const frag = B.item("prop", "keepsake", { card: B.card("Keepsake", [], "Something personal, kept out of sight.") });
-    if (!B.contain(frag, -2, true)) restore();
+    const keepsake = B.pick(KEEPSAKES[mode]);
+    if (!B.contain({ card: B.plainCard(keepsake.title, keepsake.lead) }, -2, true)) restore();
   }
   const portable = B.pool.filter((b) => b.roles === 0 && isPortableType(b.inv.type) && categoryOf(b.inv.type) !== "textile" &&
     b.inv.fully_visible && boxArea(b.inv.box) <= 0.08 && b.inv.salience >= 0.2);
@@ -577,15 +703,17 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     const b = portable[0];
     B.removable = b;
     b.roles = 1;
-    const taken = B.item("taken", b.inv.label, { card: B.card(b.inv.label, [], "You pocket it. It might mean something to someone.") });
+    const taken = B.item("taken", capitalise(b.inv.label));
     const s = B.step("story_fragment", null, b.id, [], ["Small things can be taken.", `The ${b.inv.label} looks portable.`, `Take the ${b.inv.label}.`], true);
     B.rule({ on: "control", target: b.id, control: "taken" }, [{ if: "control", target: b.id, control: "taken", eq: { lit: true } }],
-      [...B.grant(taken), { do: "overlay", object: b.id, overlay: "object_removed" }, { do: "set_state", target: b.id, key: "removed", value: true }], s);
+      [...B.give({ item: taken }), { do: "overlay", object: b.id, overlay: "object_removed" }, { do: "set_state", target: b.id, key: "removed", value: true }], s);
   }
 
   // Compile.
   const used = B.pool.filter((b) => b.roles > 0);
-  const herrings = B.pool.filter((b) => b.roles === 0).slice(0, Math.max(0, MAX_OBJECTS - 1 - used.length));
+  const nested = (b: Bound) => [exit, ...used].some((u) => u.inv.photo_index === b.inv.photo_index && boxArea(u.inv.box) > boxArea(b.inv.box) &&
+    insideShare(b.inv.box, u.inv.box) >= NESTED);
+  const herrings = B.pool.filter((b) => b.roles === 0 && !nested(b)).slice(0, Math.max(0, MAX_OBJECTS - 1 - used.length));
   for (const h of herrings) {
     const c = h.hostable.find((x) => CONTAINERS.includes(x.archetype));
     if (c) { h.archetype = c.archetype; h.variant = c.variant; }
@@ -608,11 +736,11 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
   const objects = [exit, ...used, ...herrings].map(toDef);
   const definition: RoomDefinitionV2 = {
     schema_version: 2, mode,
-    title: MODE_TEXT[mode].title,
-    objective: MODE_TEXT[mode].objective(exit.inv.label),
+    title: B.pick(voice.titles),
+    objective: voice.objective(exit.inv.label),
     objects, items: B.items, cards: B.cards, finale,
   };
-  const secret: RoomSecretV2 = { schema_version: 2, slots: B.slots, rules: B.rules, steps: B.steps, ending: MODE_TEXT[mode].ending };
+  const secret: RoomSecretV2 = { schema_version: 2, slots: B.slots, rules: B.rules, steps: B.steps, ending: B.pick(voice.endings) };
 
   const errors = validateDefinition(definition, secret);
   if (errors.length) return `invalid: ${errors[0]}`;
@@ -637,12 +765,6 @@ function buildCandidate(inv: InventoryObject[], exitObj: InventoryObject, mode: 
     0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7));
   return { definition, secret, summary: { threads: nThreads, motifs, objectsUsed: used.length + 1, photos, score, candidatesTried: 0 } };
 }
-
-const MODE_TEXT: Record<Mode, { title: string; objective: (exit: string) => string; ending: string }> = {
-  noir: { title: "The Locked Room", objective: (e) => `Find the combination and open the ${e}.`, ending: "The lock gives. Case closed." },
-  crime_scene: { title: "The Scene", objective: (e) => `Work out who did it, why and how, and name them at the ${e}.`, ending: "The accusation holds. Case closed." },
-  paranormal: { title: "The Presence", objective: (e) => `Learn the ritual's order and perform it at the ${e}.`, ending: "The room goes still. It's over." },
-};
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -670,7 +792,7 @@ export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanR
     for (let c = round * n; c < (round + 1) * n; c++) {
       const rng = seededRandom(`${opts.seed}:${opts.mode}:${c}`);
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
-      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads);
+      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`));
       if (typeof r === "string") fail(r); else built.push(r);
     }
     built.sort((a, b) => b.summary.score - a.summary.score);

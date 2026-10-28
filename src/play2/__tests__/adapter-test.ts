@@ -1,6 +1,6 @@
 // v1 rooms on the v2 engine: labels to taxonomy types, hotspots to an
 // inventory, and a plan that is the same every time for the same room.
-import { simulate } from "@/engine/v2";
+import { renderCard, simulate } from "@/engine/v2";
 import type { PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import { FIXTURE_ROOM_ID, studyPublic } from "@/test-utils/seed";
 import { inventoryFromV1, planFromV1, typeForLabel } from "../adapter";
@@ -53,5 +53,71 @@ describe("v1 rooms on the v2 engine", () => {
   it("says why when a room can't be planned (the seeded study has no way out)", () => {
     const study = planFromV1(FIXTURE_ROOM_ID, studyPublic());
     expect(study.ok ? "ok" : study.reason).toMatch(/ok|no_exit|too_few_objects|no_valid_plan/);
+  });
+
+  it("leaves hidden hotspots out: v2 has nothing to reveal them with, and they'd sit on their parent", () => {
+    const ids = inventoryFromV1(studyPublic()).map((o) => o.id);
+    expect(ids).not.toContain("safe");
+    expect(ids).toEqual(expect.arrayContaining(["desk_drawer", "bookshelf", "rug", "cabinet", "door"]));
+  });
+});
+
+// The rooms the web mock plays: The Study in each mode, seeded by these ids.
+const STUDY_ROOMS = [
+  ["noir", "11111111-1111-4111-8111-111111111111"],
+  ["crime_scene", "22222222-2222-4222-8222-222222222222"],
+  ["paranormal", "33333333-3333-4333-8333-333333333333"],
+] as const;
+
+describe.each(STUDY_ROOMS)("The Study played on the device (%s)", (mode, roomId) => {
+  const plan = () => {
+    const r = planFromV1(roomId, { ...studyPublic(), genre: mode });
+    if (!r.ok) throw new Error(`${r.reason}: ${r.detail}`);
+    return r;
+  };
+
+  it("plans a solvable room in the mode's voice", () => {
+    const { definition, secret } = plan();
+    expect(simulate(definition, secret).ok).toBe(true);
+    expect(definition.mode).toBe(mode);
+    expect(definition.objective).not.toMatch(/^Find the combination and open/);
+    expect(secret.ending).not.toMatch(/^The lock gives\. Case closed\.$/);
+  });
+
+  it("fits each mechanism to its object, and keeps the hidden safe out of the cabinet", () => {
+    const { definition } = plan();
+    const byId = new Map(definition.objects.map((o) => [o.id, o]));
+    expect(byId.has("safe")).toBe(false);
+    const drawer = definition.objects.find((o) => o.label === "drawer");
+    if (drawer?.archetype === "Drawer") expect(drawer.variant).toBe("drawer");
+    expect(definition.objects.find((o) => o.type === "bookshelf")?.archetype).not.toBe("Drawer");
+  });
+
+  it("writes findings, not labels, and no card just repeats an item", () => {
+    const { definition, secret } = plan();
+    for (const c of definition.cards) {
+      const text = renderCard(c, secret);
+      expect(text).not.toMatch(/^(Code|Page|Ritual|Suspect|Motive|Method)\b[^:\n]*:/m);
+      expect(text).not.toMatch(/Page in the|Half of something/);
+    }
+    for (const i of definition.items) {
+      expect(i.name).toMatch(/^[A-Z]/);
+      if (i.card) expect(i.kind).toBe("assembled");
+    }
+    expect(new Set(definition.items.map((i) => i.name)).size).toBe(definition.items.length);
+    // A ritual line never points at the object its card was found at (a note in the drawer naming the drawer).
+    for (const [name, slot] of Object.entries(secret.slots)) {
+      if (slot.kind !== "object") continue;
+      const card = definition.cards.find((c) => c.text.includes(`{{${name}}}`))!;
+      const foundAt = secret.rules.filter((r) => r.effects.some((e) => e.do === "show_card" && e.card === card.id))
+        .map((r) => (r.trigger.on === "control" ? r.trigger.target : "object" in r.trigger ? r.trigger.object : null));
+      expect(foundAt).not.toContain(slot.value);
+      expect(slot.text).not.toMatch(new RegExp(`\\b${definition.objects.find((o) => o.id === slot.value)!.label}\\b`, "i"));
+    }
+    if (definition.finale.kind === "accusation") {
+      for (const o of [...definition.finale.suspects, ...definition.finale.motives, ...definition.finale.methods]) {
+        expect(o.name).not.toMatch(/^(Suspect|Motive|Method) [ABC]$/);
+      }
+    }
   });
 });
