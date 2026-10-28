@@ -116,9 +116,11 @@ describe("photo guide: after openCapture's check (every new room)", () => {
       marginTop: ref.layout.guide.titleGap,
     });
     expect(styleOf(title.parent as Node).paddingHorizontal).toBe(ref.space.reading);
-    // No silk, grain, glow or brass.
+    // No silk, grain or brass; one soft pool of lamplight behind the drawing (decorative, with the drawing), and a handwritten margin note.
     const tree = JSON.stringify(screen.toJSON());
-    expect(tree).not.toContain("RadialGradient");
+    expect(tree.match(/RNSVGRadialGradient/g)).toHaveLength(1);
+    expect(screen.getByTestId("guide-art-glow", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.getByText("any wall is fine!", { includeHiddenElements: true })).toBeTruthy();
     expect(tree).not.toContain(color.accent);
   });
 

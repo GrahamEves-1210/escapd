@@ -3,21 +3,25 @@
 // home, in the mode's colours (a ModeScope, so the sheet, its Close and its
 // pills read the mode while home stays the shell): the case's name ("The
 // Study"; a stand-in while it is still building) as the title in the mode's
-// display face, the mode's name as the grey meta line under it, one short
-// line in the mode's voice ("You've still got a case open."), what starting a
+// display face, the book's series line ("A Moonlit Mystery") as the meta line
+// under it, one short line in the mode's voice ("You've still got a case
+// open.") beside a bookmark ribbon in the mode's sweet colour (she left her
+// place in this book), what starting a
 // new case does to this one, and the photo guide's two pills: Continue, the
 // mode's primary (ModePill "ghost", its accent), and Start a new case, the
 // guide's ghost pill in the mode's ground and rim (OutlinePill). While Start a
 // new case checks access it shows the small spinner and Continue waits.
 import { StyleSheet, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { DarkSheet } from "@/components/noir";
 import { ModePill } from "@/capture/ui/ModePill";
 import { OutlinePill } from "@/capture/ui/OutlinePill";
 import { ModeScope } from "@/game/mode";
 import type { Genre } from "@/lib/puzzle-types";
-import { RESUME_ACTIONS, RESUME_COPY, RESUME_NEW_NOTE } from "@/screens/mode/copy";
+import { RESUME_ACTIONS, RESUME_COPY, RESUME_NEW_NOTE, SERIES } from "@/screens/mode/copy";
 import { modeThemes, ref } from "@/theme/tokens";
 import type { CaseToContinue } from "./caseStatus";
+import { RIBBON } from "./art/nook";
 
 export interface ResumeSheetProps {
   genre: Genre;
@@ -50,7 +54,7 @@ export function ResumeSheet({ genre, target, busy, onContinue, onStartNew, onClo
       <DarkSheet
         title={resumeTitle(genre, target)}
         titleStyle="display"
-        meta={theme.name}
+        meta={SERIES[genre]}
         onClose={onClose}
         testID="hub-resume"
         closeTestID="hub-resume-close"
@@ -80,9 +84,16 @@ export function ResumeSheet({ genre, target, busy, onContinue, onStartNew, onClo
         )}
       >
         <View style={styles.words}>
-          <Text style={[styles.line, { color: theme.inkMuted }]} testID="hub-resume-line">
-            {resumeLine(genre, target)}
-          </Text>
+          <View style={styles.marked}>
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="hub-resume-ribbon">
+              <Svg width={RIBBON.width} height={RIBBON.height} viewBox={RIBBON.viewBox}>
+                <Path d={RIBBON.path} fill={theme.sweet} />
+              </Svg>
+            </View>
+            <Text style={[styles.line, { color: theme.ink }]} testID="hub-resume-line">
+              {resumeLine(genre, target)}
+            </Text>
+          </View>
           <Text style={[styles.note, { color: theme.inkMuted }]} testID="hub-resume-note">
             {RESUME_NEW_NOTE}
           </Text>
@@ -94,6 +105,8 @@ export function ResumeSheet({ genre, target, busy, onContinue, onStartNew, onClo
 
 const styles = StyleSheet.create({
   words: { gap: ref.space.sm },
-  line: ref.type.subtitle,
+  // The ribbon hangs beside the line's first words; the line wraps at large text.
+  marked: { flexDirection: "row", alignItems: "flex-start", gap: ref.space.sm },
+  line: { ...ref.type.subtitle, flexShrink: 1 },
   note: ref.type.meta,
 });

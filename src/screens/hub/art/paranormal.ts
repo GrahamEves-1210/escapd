@@ -43,6 +43,14 @@ const CHAIR: readonly (readonly [string, number])[] = [
   ["M-21-38C-19.6-28-21-14-19.4 0M21-38C19.6-28 21-14 19.4 0", 3.2],
 ];
 
+// The black cat on the chair's seat, in the chair's units: her body sitting
+// upright, her head turned toward the glass (to the left), two ears, and her
+// tail hanging over the seat's front edge.
+const CAT =
+  "M-10-41C-12-48-11-56-7-60C-9-63-10-67-9.5-71L-11.5-77L-7-73.5C-5-75-2-75 0-73.5L3.5-77L2.5-70.5C3.5-66 2-62 0-60" +
+  "C4.5-57 7.5-50 7-41Z";
+const CAT_TAIL = "M5-42C9-38 10-31 7-25C5-21 6-17 9-16";
+
 /** The cover's design height: every size below is points at this height. */
 const DESIGN_H = 260;
 
@@ -310,6 +318,21 @@ export function drawParanormal(art: Art, theme: ModeTheme) {
   };
   drawChair(rgba(mix(accent, ink, 0.2), 0.45), -1.5 * s, -0.7 * s, 0.45 * s);
   drawChair(rgba(ground, 1), 0, 0, 0);
+  // The black cat, sitting on the chair's seat, watching the glass: a silhouette with the glass's light on
+  // its near edge, its eyes catching the mint glow.
+  const cat = [svgPath(art, CAT, w - 30 * s, h + 4 * s, s * 1.1), svgPath(art, CAT_TAIL, w - 30 * s, h + 4 * s, s * 1.1)] as const;
+  canvas.save();
+  canvas.translate(-1.2 * s, -0.6 * s);
+  canvas.drawPath(cat[0], paint(art, { color: rgba(mix(accent, ink, 0.2), 0.5), blur: 0.5 * s }));
+  canvas.restore();
+  canvas.drawPath(cat[0], paint(art, { color: rgba(ground) }));
+  canvas.drawPath(cat[1], paint(art, { color: rgba(ground), stroke: 2.6 * s, round: true }));
+  const glowTone = tone(theme.glow);
+  for (const ex of [-5.6, -1]) {
+    const [eyeX, eyeY] = [w - 30 * s + ex * s * 1.1, h + 4 * s - 66.5 * s * 1.1];
+    canvas.drawCircle(eyeX, eyeY, 2.4 * s, paint(art, { color: rgba(glowTone, 0.35), blur: 1.6 * s }));
+    canvas.drawCircle(eyeX, eyeY, 0.85 * s, paint(art, { color: rgba(glowTone) }));
+  }
 
   // 11. Mist lying low across the floor and round the legs.
   noise(art, {

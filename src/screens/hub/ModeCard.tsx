@@ -1,4 +1,11 @@
-// One of home's three mode cards (MODES_PROMPT.md Part 2, round 6): a solid,
+// One of home's three mode cards, each a book in the series (docs/ART_DIRECTION.md,
+// the mystery-book core): the cover of a cozy mystery in its mode's palette,
+// its drawn illustration full bleed, a hardback's darker spine down the left
+// with a foil rule, a double foil frame inside the edge with foil sparkles in
+// its corners, the series line ("A Moonlit Mystery") in the cover italic and
+// foil over the title in the mode's display face, the tagline under it, and a
+// soft light in the mode's glow on its face. Corners COVER.radius; the soft
+// shadow under it is the ground's colour (HubScreen). Before the series, a solid,
 // physical card in its mode's palette, not glass, dealt into home's deck
 // (HubScreen, deck.ts) so the next card lies over its foot. The mode's drawn
 // cover fills it (ModeCover), always: never a room photo. At its top, the part
@@ -18,12 +25,14 @@
 // never see-through, so the card beneath stays hidden.
 import { useId, type Ref } from "react";
 import { ActivityIndicator, StyleSheet, Text, View, type HostInstance, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
-import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { FocusRing, SquashPressable, gradientLine, gradientStops, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
+import { SERIES } from "@/screens/mode/copy";
 import { modeThemes, ref, type ModeTheme } from "@/theme/tokens";
 import { ModeCover } from "./art/ModeCover";
+import { COVER, SPARK_PATH } from "./art/nook";
 import { modeCardLabel } from "./caseStatus";
 
 const M = ref.layout.hub.modes;
@@ -67,13 +76,16 @@ export function ModeCard({ genre, busy = false, disabled = false, onPress, onWor
       >
         <View style={[styles.face, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID={`${testID}-face`}>
           <ModeCover genre={genre} style={StyleSheet.absoluteFill} testID={`${testID}-art`} />
-          {genre === "paranormal" ? <Glow theme={theme} /> : null}
+          <Glow theme={theme} genre={genre} />
           <View
             style={styles.words}
             onLayout={onWordsLayout ? (e: LayoutChangeEvent) => onWordsLayout(e.nativeEvent.layout.height) : undefined}
             testID={`${testID}-words`}
           >
             <Plate theme={theme} />
+            <Text style={[styles.series, { color: theme.foil }]} testID={`${testID}-series`}>
+              {SERIES[genre]}
+            </Text>
             <Text style={[theme.display, { color: theme.ink }]}>{theme.name}</Text>
             <View style={styles.line}>
               <Text style={[M.type.tagline, styles.tagline, { color: theme.ink }]}>{theme.tagline}</Text>
@@ -84,10 +96,11 @@ export function ModeCard({ genre, busy = false, disabled = false, onPress, onWor
               ) : null}
             </View>
           </View>
+          <Binding theme={theme} />
           <TopEdge />
           {disabled ? <View style={styles.shade} pointerEvents="none" testID={`${testID}-dim`} /> : null}
         </View>
-        <FocusRing visible={focus.focused} shape="panel" radius={M.radius} />
+        <FocusRing visible={focus.focused} shape="panel" radius={COVER.radius} />
       </SquashPressable>
     </View>
   );
@@ -137,17 +150,50 @@ function TopEdge() {
   );
 }
 
-/** Paranormal's soft glow: a radial light in the mode's glow colour, high on the right. */
-function Glow({ theme }: { theme: ModeTheme }) {
-  const id = `glow${useId().replace(/[^A-Za-z0-9]/g, "")}`;
-  const glow = theme.glow ?? theme.accent;
+/**
+ * The cover's binding and foil (decorative): the hardback's darker spine down
+ * the left with a foil rule along it, a double foil frame inside the edge, and
+ * a foil sparkle in each of the frame's corners.
+ */
+function Binding({ theme }: { theme: ModeTheme }) {
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="hub-card-paranormal-glow">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="hub-card-binding">
+      <View style={[styles.spine, { backgroundColor: theme.ground }]} />
+      <View style={[styles.spineRule, { backgroundColor: theme.foil }]} />
+      <View style={[styles.frame, { borderColor: theme.foil }]} />
+      <View style={[styles.frameInner, { borderColor: theme.foil }]} />
+      {CORNERS.map((corner) => (
+        <View key={corner.key} style={[styles.spark, corner.style]}>
+          <Svg width={COVER.fleuron * 2} height={COVER.fleuron * 2} viewBox="-1 -1 2 2">
+            <Path d={SPARK_PATH} fill={theme.foil} />
+          </Svg>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** The frame's corners, where its sparkles sit (centred on the corner of the frame's line). */
+const SPARK_AT = COVER.inset - COVER.fleuron;
+const CORNERS = [
+  { key: "tl", style: { top: SPARK_AT, left: SPARK_AT + COVER.spine } },
+  { key: "tr", style: { top: SPARK_AT, right: SPARK_AT } },
+  { key: "bl", style: { bottom: SPARK_AT, left: SPARK_AT + COVER.spine } },
+  { key: "br", style: { bottom: SPARK_AT, right: SPARK_AT } },
+] as const;
+
+/** The soft light on the cover: a radial light in the mode's glow colour, high on the right (strongest on Moonlit's). */
+function Glow({ theme, genre }: { theme: ModeTheme; genre: Genre }) {
+  const id = `glow${useId().replace(/[^A-Za-z0-9]/g, "")}`;
+  const glow = theme.glow;
+  const strength = genre === "paranormal" ? 1 : COVER.glow;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID={`hub-card-${genre}-glow`}>
       <Svg width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none">
         <Defs>
           <RadialGradient id={id} cx={M.glow.cx} cy={M.glow.cy} r={M.glow.r} fx={M.glow.cx} fy={M.glow.cy}>
             {M.glow.stops.map((s) => (
-              <Stop key={s.offset} offset={s.offset} stopColor={glow} stopOpacity={s.opacity} />
+              <Stop key={s.offset} offset={s.offset} stopColor={glow} stopOpacity={s.opacity * strength} />
             ))}
           </RadialGradient>
         </Defs>
@@ -159,15 +205,42 @@ function Glow({ theme }: { theme: ModeTheme }) {
 
 const styles = StyleSheet.create({
   // No shadow cast up onto the card it covers (home's FallIn gives each card its drop shadow).
-  card: { flex: 1, borderRadius: M.radius, ...ref.curve },
+  card: { flex: 1, borderRadius: COVER.radius, ...ref.curve },
   face: {
     flex: 1,
     overflow: "hidden",
-    borderRadius: M.radius,
+    borderRadius: COVER.radius,
     borderWidth: M.rim,
     ...ref.curve,
   },
-  words: { padding: M.pad },
+  // Inside the foil frame, clear of the spine.
+  words: { paddingTop: COVER.pad, paddingRight: COVER.pad, paddingBottom: M.pad, paddingLeft: COVER.spine + COVER.pad },
+  series: { fontFamily: ref.font.coverItalic, ...COVER.series, marginBottom: COVER.series.gap },
+  spine: { position: "absolute", left: 0, top: 0, bottom: 0, width: COVER.spine, opacity: COVER.spineShade },
+  spineRule: { position: "absolute", left: COVER.spine, top: 0, bottom: 0, width: M.rim, opacity: COVER.spineRule },
+  frame: {
+    position: "absolute",
+    top: COVER.inset,
+    right: COVER.inset,
+    bottom: COVER.inset,
+    left: COVER.inset + COVER.spine,
+    borderWidth: COVER.frameWidth,
+    borderRadius: COVER.frameRadius,
+    opacity: COVER.frameOpacity,
+    ...ref.curve,
+  },
+  frameInner: {
+    position: "absolute",
+    top: COVER.inset + COVER.double,
+    right: COVER.inset + COVER.double,
+    bottom: COVER.inset + COVER.double,
+    left: COVER.inset + COVER.double + COVER.spine,
+    borderWidth: M.rim,
+    borderRadius: COVER.frameRadius - COVER.double,
+    opacity: COVER.doubleOpacity,
+    ...ref.curve,
+  },
+  spark: { position: "absolute" },
   fade: { position: "absolute", left: 0, right: 0, bottom: -M.fade, height: M.fade },
   plate: { opacity: M.plate },
   // The tagline and the busy capsule share a line; at large text the capsule wraps under it.
@@ -181,6 +254,6 @@ const styles = StyleSheet.create({
     borderWidth: M.rim,
     borderRadius: ref.radius.round,
   },
-  edge: { position: "absolute", top: 0, left: M.radius, right: M.radius, height: M.rim },
+  edge: { position: "absolute", top: 0, left: COVER.radius, right: COVER.radius, height: M.rim },
   shade: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.void, opacity: 1 - ref.button.disabledOpacity.pill },
 });

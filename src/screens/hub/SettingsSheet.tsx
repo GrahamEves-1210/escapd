@@ -35,11 +35,13 @@ import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CaretRightIcon } from "phosphor-react-native/src/icons/CaretRight";
 import { DarkSheet, FocusRing, useFocusRing, useSheetClose } from "@/components/noir";
+import { useModeTheme } from "@/game/mode";
 import { useFeedback } from "@/game/feedback";
 import { usePreferences } from "@/game/preferences";
 import { currentSession, ensureSession, isNetworkError } from "@/lib/escapd-api";
 import { ref } from "@/theme/tokens";
 import { announce } from "@/lib/a11y";
+import { SETTINGS } from "./art/nook";
 
 const H = ref.layout.hub;
 const S = H.settings;
@@ -71,14 +73,13 @@ export const COPY = {
   offline: "Couldn't save that while offline. It's back as it was.",
   failed: "Couldn't save that just now. It's back as it was.",
 } as const;
-const SW = H.sheet.switch;
 const T = ref.type;
 /**
  * react-native-web draws an on switch's thumb in its own teal unless it is
  * given activeThumbColor (a web-only prop the native types don't know):
- * the black thumb on every platform.
+ * the same warm white thumb on every platform.
  */
-const WEB_THUMB: object = Platform.OS === "web" ? { activeThumbColor: SW.thumb } : {};
+const webThumb = (color: string): object => (Platform.OS === "web" ? { activeThumbColor: color } : {});
 
 /** The app's version, from the app config (expo-constants). */
 const VERSION = Constants.expoConfig?.version ?? null;
@@ -98,6 +99,7 @@ export interface SettingsSheetProps {
 export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
   const prefs = usePreferences();
   const feedback = useFeedback();
+  const theme = useModeTheme();
   // Haptics just switched on: tick once the setting has taken (feedback follows it).
   const hapticsTurnedOn = useRef(false);
   useEffect(() => {
@@ -158,6 +160,7 @@ export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
   return (
     <DarkSheet
       title={COPY.title}
+      titleStyle="display"
       meta={note ?? (VERSION ? `${COPY.version} ${VERSION}` : undefined)}
       onClose={onClose}
       maxHeight={maxHeight}
@@ -197,7 +200,7 @@ export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
               half
               testID="hub-sound"
             />
-            <View style={styles.pairDivider} />
+            <View style={[styles.pairDivider, { backgroundColor: theme.rim }]} />
             <SwitchRow
               label={COPY.music}
               hint={COPY.musicHint}
@@ -245,16 +248,17 @@ export function SettingsSheet({ onClose, onOpen }: SettingsSheetProps) {
 
 /** A Bold 14 heading over a raised panel; rim lines between the rows, inset from the left. */
 function Section({ title, children }: { title: string; children: ReactNode[] | ReactNode }) {
+  const theme = useModeTheme();
   const rows = (Array.isArray(children) ? children : [children]).filter(Boolean);
   return (
     <View>
-      <Text accessibilityRole="header" style={styles.heading}>
+      <Text accessibilityRole="header" style={[styles.heading, { color: theme.foil }]}>
         {title}
       </Text>
-      <View style={styles.group}>
+      <View style={[styles.group, { backgroundColor: theme.raised, borderColor: theme.rim }]}>
         {rows.map((row, i) => (
           <View key={i}>
-            {i > 0 ? <View style={styles.divider} /> : null}
+            {i > 0 ? <View style={[styles.divider, { backgroundColor: theme.rim }]} /> : null}
             {row}
           </View>
         ))}
@@ -264,10 +268,11 @@ function Section({ title, children }: { title: string; children: ReactNode[] | R
 }
 
 function RowText({ label, detail }: { label: string; detail?: string }) {
+  const theme = useModeTheme();
   return (
     <View style={styles.rowText}>
-      <Text style={styles.label}>{label}</Text>
-      {detail ? <Text style={styles.detail}>{detail}</Text> : null}
+      <Text style={[styles.label, { color: theme.ink }]}>{label}</Text>
+      {detail ? <Text style={[styles.detail, { color: theme.inkMuted }]}>{detail}</Text> : null}
     </View>
   );
 }
@@ -294,6 +299,7 @@ function SwitchRow({
   testID: string;
 }) {
   const focus = useFocusRing();
+  const theme = useModeTheme();
   return (
     <Pressable
       accessibilityRole="switch"
@@ -316,14 +322,14 @@ function SwitchRow({
         <Switch
           value={value}
           focusable={false}
-          trackColor={{ true: SW.on, false: SW.off }}
-          thumbColor={SW.thumb}
-          {...WEB_THUMB}
-          ios_backgroundColor={SW.off}
+          trackColor={{ true: theme.accent, false: theme.surface }}
+          thumbColor={theme.ink}
+          {...webThumb(theme.ink)}
+          ios_backgroundColor={theme.surface}
           testID={`${testID}-switch`}
         />
       </View>
-      <FocusRing visible={focus.focused} shape="panel" radius={S.radius} />
+      <FocusRing visible={focus.focused} shape="panel" radius={SETTINGS.radius} />
     </Pressable>
   );
 }
@@ -334,6 +340,7 @@ function LinkRow({ label, onPress, testID }: { label: string; onPress: () => voi
   const focus = useFocusRing();
   const feedback = useFeedback();
   const close = useSheetClose();
+  const theme = useModeTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -349,18 +356,19 @@ function LinkRow({ label, onPress, testID }: { label: string; onPress: () => voi
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <RowText label={label} />
-      <CaretRightIcon size={S.caret} weight="regular" color={ref.color.textSecondary} />
-      <FocusRing visible={focus.focused} shape="panel" radius={S.radius} />
+      <CaretRightIcon size={S.caret} weight="regular" color={theme.inkMuted} />
+      <FocusRing visible={focus.focused} shape="panel" radius={SETTINGS.radius} />
     </Pressable>
   );
 }
 
 /** A label and a plain value: one text element for screen readers, not a control. */
 function ValueRow({ label, value, testID }: { label: string; value: string; testID: string }) {
+  const theme = useModeTheme();
   return (
     <View accessible accessibilityLabel={`${label}, ${value}`} style={styles.row} testID={testID}>
       <RowText label={label} />
-      <Text numberOfLines={1} style={styles.value}>
+      <Text numberOfLines={1} style={[styles.value, { color: theme.inkMuted }]}>
         {value}
       </Text>
     </View>
@@ -370,9 +378,11 @@ function ValueRow({ label, value, testID }: { label: string; value: string; test
 const styles = StyleSheet.create({
   // The sheet's content spaces its children ref.space.xl apart; these sections sit closer.
   sections: { gap: S.section },
-  heading: { ...S.heading, color: ref.color.textPrimary, marginBottom: S.headingGap },
-  group: { backgroundColor: S.fill, borderRadius: S.radius, ...ref.curve },
-  divider: { height: H.hairline, marginLeft: S.pad, backgroundColor: S.divider },
+  // Section headings in the cover italic and foil, as a book's part titles.
+  heading: { fontFamily: ref.font.coverItalic, ...SETTINGS.heading, marginBottom: S.headingGap },
+  // Each group a soft, rounder panel with the theme's rim, never a grey hairline.
+  group: { borderRadius: SETTINGS.radius, borderWidth: H.hairline, overflow: "hidden", ...ref.curve },
+  divider: { height: H.hairline, marginLeft: S.pad },
   row: {
     minHeight: S.rowHeight,
     flexDirection: "row",
@@ -385,10 +395,10 @@ const styles = StyleSheet.create({
   // Sound and Music: two halves of one row, a rim line between them.
   pair: { flexDirection: "row", alignItems: "stretch" },
   half: { flex: 1 },
-  pairDivider: { width: H.hairline, marginVertical: S.padY, backgroundColor: S.divider },
+  pairDivider: { width: H.hairline, marginVertical: S.padY },
   // The label column wraps at large text; the switch, chevron and value keep their size.
   rowText: { flex: 1, gap: S.detailGap },
-  label: { ...T.body, color: ref.color.textPrimary },
-  detail: { ...T.meta, color: ref.color.textSecondary },
-  value: { ...T.body, color: ref.color.textSecondary, flexShrink: 1 },
+  label: T.body,
+  detail: T.meta,
+  value: { ...T.body, flexShrink: 1 },
 });

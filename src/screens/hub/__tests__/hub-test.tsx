@@ -12,8 +12,10 @@ import { getMode, setMode } from "@/game/mode";
 import * as api from "@/lib/escapd-api";
 import { introKey } from "@/screens/mode/introSeen";
 import { introHref } from "@/screens/mode/routes";
+import { RESUME_COPY, SERIES } from "@/screens/mode/copy";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { modeThemes, ref } from "@/theme/tokens";
+import { modeThemes, ref, shellTheme } from "@/theme/tokens";
+import { COVER, DECK_SHARE, SETTINGS } from "../art/nook";
 import { deckLayout, deckTilt } from "../deck";
 import { HubScreen } from "../HubScreen";
 
@@ -52,6 +54,8 @@ jest.mock("@/screens/hub/art/ModeCover", () => {
   const { View } = jest.requireActual("react-native");
   return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
 });
+// The window (its rain, candle and fairy lights on a Skia canvas) is drawn, not tested, here: only its geometry is used.
+jest.mock("../WindowBackdrop", () => ({ ...jest.requireActual("../WindowBackdrop"), WindowBackdrop: () => null }));
 jest.mock("expo-constants", () => ({ __esModule: true, default: { expoConfig: { version: "0.1.0" } } }));
 
 const mockPreferences = {
@@ -173,11 +177,11 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(screen.getByRole("header", { name: "ESCAPD" }).props.testID).toBe("hub-logo");
     expect(screen.queryByText("Choose a case")).toBeNull();
     expect(screen.queryByText(/THE STUDY|YOUR ROOM|YOUR CASE/, hidden)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
 
     // No stored session: no tags, never a guest just to label the cards, and no count anywhere.
     await act(async () => resolveSession(null));
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
     expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
     expect(screen.queryByText(/\d+ cases?|No cases yet/i, hidden)).toBeNull();
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
@@ -187,10 +191,12 @@ describe("01 · Home: the deck of mode cards", () => {
   it("deals the cards as a deck: equal cards, each lying over the one above by the deck's cover, alternately turned, later cards on top", async () => {
     await renderHub();
     await act(async () => layoutColumn(600));
-    const deck = deckLayout(600 - M.top - M.foot, 0, 3);
+    // The deck takes DECK_SHARE of the column, leaving the sill and the cat in view below it.
+    const deck = deckLayout((600 - M.top - M.foot) * DECK_SHARE, 0, 3);
     const slots = GENRE_LIST.map(slot);
-    for (const [i, style] of slots.entries()) {
-      expect(style.height).toBe(deck.card);
+    const deals = GENRE_LIST.map((genre) => styleOf(screen.getByTestId(`hub-card-${genre}-deal`)));
+    for (const [i, style] of deals.entries()) {
+      expect(slots[i].height).toBe(deck.card);
       expect(style.marginTop).toBe(i === 0 ? 0 : -deck.overlap);
       expect(style.transform).toEqual([{ rotate: `${deckTilt(i)}deg` }]);
       // No zIndex: the deck's order is the tree's, so reading order and stacking agree.
@@ -202,10 +208,10 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(tilts.map(Math.sign)).toEqual([1, -1, 1]);
     for (const tilt of tilts) expect(Math.abs(tilt)).toBeGreaterThanOrEqual(2);
     for (const tilt of tilts) expect(Math.abs(tilt)).toBeLessThanOrEqual(4);
-    // Later cards come later in the tree (on top), and each casts the soft shadow up onto the one it covers.
+    // Later cards come later in the tree (on top), each a book cover with COVER.radius corners.
     const order = screen.container.queryAll((node) => typeof node.props.testID === "string" && /^hub-card-[a-z_]+$/.test(node.props.testID) && node.props.accessibilityRole === "button");
     expect(order.map((node) => node.props.testID)).toEqual(GENRE_LIST.map((g) => `hub-card-${g}`));
-    for (const genre of GENRE_LIST) expect(styleOf(card([GHOST, CRIME, NOIR][GENRE_LIST.indexOf(genre)]))).toMatchObject({ boxShadow: M.deck.shadow, borderRadius: M.radius });
+    for (const genre of GENRE_LIST) expect(styleOf(card([GHOST, CRIME, NOIR][GENRE_LIST.indexOf(genre)]))).toMatchObject({ borderRadius: COVER.radius });
     // The slot passes touches through outside its card.
     expect(screen.getByTestId("hub-card-noir-slot").props.pointerEvents).toBe("box-none");
   });
@@ -215,8 +221,10 @@ describe("01 · Home: the deck of mode cards", () => {
     for (const genre of GENRE_LIST) {
       const theme = modeThemes[genre];
       const words = screen.getByTestId(`hub-card-${genre}-words`, hidden);
-      // The words come before the cover's lower part: at the card's top, padded in.
-      expect(styleOf(words)).toMatchObject({ padding: M.pad });
+      // The words come before the cover's lower part: at the card's top, inside the foil frame and clear of the spine.
+      expect(styleOf(words)).toMatchObject({ paddingTop: COVER.pad, paddingRight: COVER.pad, paddingLeft: COVER.spine + COVER.pad });
+      // Over the title, the book's series line in the cover italic and foil.
+      expect(styleOf(screen.getByText(SERIES[genre], hidden))).toMatchObject({ fontFamily: ref.font.coverItalic, color: theme.foil });
       const name = screen.getByText(theme.name, hidden);
       const tagline = screen.getByText(theme.tagline, hidden);
       expect(name.props.numberOfLines).toBeUndefined();
@@ -280,23 +288,25 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(mockFeedback.press).toHaveBeenCalledTimes(3);
   });
 
-  it("draws each card solid in its mode's palette: the mode's surface and rim, its name in its display face, its tagline, and one signature touch", async () => {
+  it("draws each card as a book cover in its mode's palette: the mode's surface and rim, a spine and a foil frame, its name in its display face, its tagline, and a soft glow", async () => {
     await renderHub();
     for (const genre of GENRE_LIST) {
       const theme = modeThemes[genre];
       const face = screen.getByTestId(`hub-card-${genre}-face`, hidden);
       // Solid and physical: an opaque fill, a 1 pt rim, continuous corners, no glass.
-      expect(styleOf(face)).toMatchObject({ backgroundColor: theme.surface, borderColor: theme.rim, borderWidth: M.rim, borderRadius: M.radius, overflow: "hidden" });
+      expect(styleOf(face)).toMatchObject({ backgroundColor: theme.surface, borderColor: theme.rim, borderWidth: M.rim, borderRadius: COVER.radius, overflow: "hidden" });
       expect(styleOf(screen.getByText(theme.name, hidden))).toMatchObject({ ...theme.display, color: theme.ink });
       expect(styleOf(screen.getByText(theme.tagline, hidden))).toMatchObject({ ...M.type.tagline, color: theme.ink });
     }
     // No gold rule over noir's name (the user removed it).
     expect(screen.queryByTestId("hub-card-noir-rule", hidden)).toBeNull();
-    expect(screen.getByTestId("hub-card-paranormal-glow", hidden)).toBeTruthy();
-    // Crime scene's drawn cover tapes off its own door: no strip over it.
+    // A soft light in the mode's glow on every cover, and the binding: a spine and a double foil frame.
+    for (const genre of GENRE_LIST) expect(screen.getByTestId(`hub-card-${genre}-glow`, hidden)).toBeTruthy();
+    expect(screen.getAllByTestId("hub-card-binding", hidden)).toHaveLength(3);
+    // No strip over any cover.
     expect(screen.queryByTestId("hub-card-crime_scene-tape", hidden)).toBeNull();
     expect(screen.queryByText(/crime scene · do not cross/i, hidden)).toBeNull();
-    expect(screen.queryAllByTestId(/-rule$|-tape$|-glow$/, hidden)).toHaveLength(1);
+    expect(screen.queryAllByTestId(/-rule$|-tape$/, hidden)).toHaveLength(0);
   });
 
   it("always shows each mode's drawn cover, never a room photo, even once the player has photographed rooms", async () => {
@@ -432,9 +442,11 @@ describe("01 · Home: entering a mode", () => {
     // The kit's dark sheet in the mode's surface and rim (home itself stays the shell).
     expect(styleOf(screen.getByTestId("hub-resume"))).toMatchObject({ backgroundColor: theme.surface, borderColor: theme.rim, borderTopLeftRadius: ref.radius.bottomSheet });
     expect(getMode()).toBeNull();
-    // The mode's name in its display face, and the mode's line.
-    expect(styleOf(screen.getByRole("header", { name: theme.name }))).toMatchObject({ ...theme.display, color: theme.ink });
+    // The case's name (a stand-in while it has none) in the mode's display face, the book's series line, and the mode's line by a bookmark ribbon.
+    expect(styleOf(screen.getByRole("header", { name: RESUME_COPY.crime_scene.untitled }))).toMatchObject({ ...theme.display, color: theme.ink });
+    expect(screen.getByText(SERIES.crime_scene)).toBeTruthy();
     expect(screen.getByText("You have an open case on file.")).toBeTruthy();
+    expect(screen.getByTestId("hub-resume-ribbon", hidden)).toBeTruthy();
     // Continue: the guide's pill in the mode's accent. Start a new case: the guide's ghost pill in the mode's ground and rim.
     const resume = screen.getByRole("button", { name: "Continue" });
     expect(styleOf(resume)).toMatchObject({ backgroundColor: theme.accent, borderRadius: ref.radius.round, minHeight: ref.button.ghost.height });
@@ -572,7 +584,7 @@ describe("01 · Home: entering a mode", () => {
 });
 
 describe("01 · Home: Settings", () => {
-  it("Settings: grouped rows that work, on the kit's dark sheet, with a white-track black-thumb switch (no aqua)", async () => {
+  it("Settings: grouped rows that work, on the kit's dark sheet, foil headings, with a blush-track switch (no aqua)", async () => {
     await renderHub();
     await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
     expect(screen.getByRole("header", { name: "Settings" })).toBeTruthy();
@@ -582,18 +594,17 @@ describe("01 · Home: Settings", () => {
       borderColor: ref.color.rim,
     });
     for (const name of ["Gameplay", "Accessibility", "Account"]) {
-      expect(styleOf(screen.getByRole("header", { name }))).toMatchObject({ ...H.settings.heading, color: ref.color.textPrimary });
+      expect(styleOf(screen.getByRole("header", { name }))).toMatchObject({ fontFamily: ref.font.coverItalic, ...SETTINGS.heading, color: shellTheme.foil });
     }
     const interactives = screen.getByRole("switch", { name: "Show interactives" });
     expect(interactives.props.accessibilityState).toMatchObject({ checked: false });
     expect(styleOf(interactives).minHeight).toBe(H.settings.rowHeight);
-    // The switch: a white track and a black thumb when on.
-    expect(H.sheet.switch).toEqual({ on: ref.color.textPrimary, off: ref.color.textTertiary, thumb: ref.color.void });
+    // The switch: the shell's blush track when on, its surface when off, a warm white thumb.
     expect(screen.getByTestId("hub-show-interactives-switch", hidden).props).toMatchObject({
       value: false,
-      onTintColor: H.sheet.switch.on,
-      tintColor: H.sheet.switch.off,
-      thumbTintColor: H.sheet.switch.thumb,
+      onTintColor: shellTheme.accent,
+      tintColor: shellTheme.surface,
+      thumbTintColor: shellTheme.ink,
     });
     expect(screen.getByRole("switch", { name: "Haptics" }).props.accessibilityState).toMatchObject({ checked: true });
     expect(screen.getByRole("switch", { name: "Reduce motion" }).props.accessibilityState).toMatchObject({ checked: false });
@@ -736,7 +747,7 @@ describe("01 · Home: Settings", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Settings" }));
     await userEvent.setup().press(screen.getByRole("button", { name: "Add your email" }));
     expect(mockFeedback.press).toHaveBeenCalled();
-    expect(push).toHaveBeenCalledWith({ pathname: "/account", params: { next: "back" } });
+    expect(push).toHaveBeenCalledWith({ pathname: "/account", params: { next: "back", from: "settings" } });
     // The route opens, then the sheet slides away on its own close.
     await waitFor(() => expect(screen.queryByTestId("hub-sheet")).toBeNull());
 
@@ -855,7 +866,7 @@ describe("01 · Home and the mode intros: tokens only", () => {
       expect({ file, font: source.match(/fontFamily\s*[:=]\s*["']/g) }).toEqual({ file, font: null });
       // ref, motion and the mode themes only: never the live theme's colours.
       const tokens = source.match(/import \{([^}]*)\} from "@\/theme\/tokens"/)?.[1].split(",").map((s) => s.trim()).filter(Boolean) ?? [];
-      expect({ file, live: tokens.filter((t) => !["motion", "ref", "modeThemes", "type ModeTheme"].includes(t)) }).toEqual({ file, live: [] });
+      expect({ file, live: tokens.filter((t) => !["motion", "ref", "modeThemes", "type ModeTheme", "ctaBottomPad"].includes(t)) }).toEqual({ file, live: [] });
       // No fan, glass, mint art, floor glow or grain; no live-look components.
       expect({
         file,

@@ -60,7 +60,8 @@ export function drawNoir(art: Art, theme: ModeTheme) {
   const raised = tone(theme.raised);
   const ink = tone(theme.ink);
   const muted = tone(theme.inkMuted);
-  const brass = tone(theme.accent);
+  // The magnifier's brass stays an heirloom in every palette (docs/ART_DIRECTION.md): the series' gold foil.
+  const brass = tone(theme.foil);
   // What things are made of, before the lamp lights them.
   const desk = mix(raised, muted, 0.16);
   const board = mix(raised, muted, 0.42);

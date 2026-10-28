@@ -5,9 +5,11 @@
 // they do. Photographing a room stays in plain words.
 import type { Genre } from "@/lib/puzzle-types";
 
-/** A mode's first-time intro: its kicker, three steps, and its button. */
+/** A mode's first-time intro, the book's first page: its chapter's title (the kicker), three steps, a handwritten p.s. and its button. */
 export interface ModeIntroCopy {
   kicker: string;
+  /** A short note in the margin, in her hand (the mode's sweet colour). */
+  note: string;
   start: string;
   steps: { title: string; body: string }[];
 }
@@ -15,6 +17,7 @@ export interface ModeIntroCopy {
 export const MODE_INTRO: Record<Genre, ModeIntroCopy> = {
   noir: {
     kicker: "The job",
+    note: "p.s. the cat knows more than she lets on",
     start: "Take the job",
     steps: [
       { title: "Work the room", body: "Search everything. Every room keeps something back." },
@@ -24,6 +27,7 @@ export const MODE_INTRO: Record<Genre, ModeIntroCopy> = {
   },
   crime_scene: {
     kicker: "Briefing",
+    note: "p.s. trust the evidence, not the alibis",
     start: "Take the case",
     steps: [
       { title: "Search the scene", body: "Every clue is evidence. Some break a suspect's alibi." },
@@ -33,6 +37,7 @@ export const MODE_INTRO: Record<Genre, ModeIntroCopy> = {
   },
   paranormal: {
     kicker: "Before you go in",
+    note: "p.s. be gentle. it's only lonely",
     start: "Step inside",
     steps: [
       { title: "Find the anomalies", body: "Look for what flickers, moves or turns cold." },
@@ -84,3 +89,17 @@ export const RESUME_ACTIONS = {
   resume: "Continue",
   fresh: "Start a new case",
 } as const;
+
+/**
+ * Each mode is a book in a series (docs/ART_DIRECTION.md, the mystery-book
+ * core): the series line on its cover (home's card) and over its first page
+ * (the intro).
+ */
+/** Over a mode's first page, before its chapter's title. */
+export const CHAPTER_ONE = "Chapter One";
+
+export const SERIES: Record<Genre, string> = {
+  noir: "A Detective Noir Mystery",
+  crime_scene: "A True Crime Club Mystery",
+  paranormal: "A Moonlit Mystery",
+};

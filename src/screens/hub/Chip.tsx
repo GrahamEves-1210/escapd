@@ -13,6 +13,7 @@ import { FocusRing, gradientStops, useFocusRing, SquashPressable } from "@/compo
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 import { GearSixIcon } from "phosphor-react-native";
+import { DIAGONAL, LENS } from "./art/nook";
 
 const C = ref.button.chip;
 const H = ref.layout.hub;
@@ -71,7 +72,7 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
           // The handle: from the rim at the bottom right, outward at 45 degrees (inside the 48 hit box).
           <Svg width={C.hit} height={C.hit} style={styles.handle} pointerEvents="none">
             <Path
-              d={`M ${C.hit / 2 + MID * 0.707} ${C.hit / 2 + MID * 0.707} L ${C.hit / 2 + MID * 0.707 + LENS.handle} ${C.hit / 2 + MID * 0.707 + LENS.handle}`}
+              d={`M ${C.hit / 2 + MID * DIAGONAL} ${C.hit / 2 + MID * DIAGONAL} L ${C.hit / 2 + MID * DIAGONAL + LENS.handle} ${C.hit / 2 + MID * DIAGONAL + LENS.handle}`}
               stroke={ref.color.textPrimary}
               strokeWidth={LENS.handleWidth}
               strokeLinecap="round"
@@ -86,7 +87,7 @@ export function Chip({ ref: pressableRef, accessibilityLabel, icon, onPress, dis
 }
 
 /** The Settings magnifier: a heavier rim than a chip's ring, and its handle. */
-const LENS = { rim: 2, handle: 7, handleWidth: 3.5 } as const;
+
 
 /** A gear, for the Settings magnifier's lens. */
 export function GearGlyph() {

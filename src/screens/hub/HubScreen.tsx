@@ -27,14 +27,14 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTimi
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { openCapture } from "@/capture/openCapture";
-import { GENRES, setMode } from "@/game/mode";
+import { GENRES, setMode, useModeTheme } from "@/game/mode";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
 import { isNetworkError } from "@/lib/escapd-api";
 import type { Genre } from "@/lib/puzzle-types";
 import { hasSeenIntro } from "@/screens/mode/introSeen";
 import { introHref } from "@/screens/mode/routes";
 import { useTheme } from "@/theme/ThemeProvider";
-import { motion, ref } from "@/theme/tokens";
+import { modeThemes, motion, ref } from "@/theme/tokens";
 import { continueHref, type CaseToContinue } from "./caseStatus";
 import { Chip, GearGlyph } from "./Chip";
 import { deckLayout, deckTilt } from "./deck";
@@ -45,6 +45,8 @@ import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
 import { WindowBackdrop, windowGeometry } from "./WindowBackdrop";
+import { CAT, COVER, DECK_SHARE, FALL, RADIANS } from "./art/nook";
+import { LogoSparkle } from "./LogoSparkle";
 import { focusForAccessibility } from "@/lib/a11y";
 
 const H = ref.layout.hub;
@@ -76,6 +78,8 @@ export function HubScreen() {
   const logoIn = useFallIn(0);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { reducedMotion } = useTheme();
+  // Home is the shell: its velvet plum, glow and foil (useModeOnFocus(null) below).
+  const shell = useModeTheme();
   const hub = useHubData();
   const [busy, setBusy] = useState<Genre | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -346,11 +350,12 @@ export function HubScreen() {
           <View style={styles.chipSlot} />
           {/* The ESCAPD logo, large and centred: the brand art's cream letters with the lit keyhole, keyed onto the black. */}
           <Animated.View style={[styles.titleGroup, logoIn]}>
-            <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={styles.lift}>
+            <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={[styles.lift, { shadowColor: shell.ground }]}>
               <Image source={WORDMARK} style={styles.logo} resizeMode="contain" accessibilityIgnoresInvertColors />
+              <LogoSparkle color={shell.glow} />
             </View>
           </Animated.View>
-          <View style={styles.lift}>
+          <View style={[styles.lift, { shadowColor: shell.ground }]}>
           <Chip
             ref={helpRef}
             accessibilityLabel="Settings"
@@ -377,6 +382,8 @@ export function HubScreen() {
               key={genre}
               index={i + 1}
               tilt={deckTilt(i)}
+              shadow={modeThemes[genre].ground}
+              testID={`hub-card-${genre}-deal`}
               style={{ marginTop: i === 0 ? 0 : -deck.overlap }}
             >
             <ModeCard
@@ -401,8 +408,8 @@ export function HubScreen() {
 
         {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
         {showCat ? (
-          <View style={[styles.sillCat, { bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
-            <SittingCat width={Math.floor(catWidth)} delay={FALL.delay + 4 * FALL.stagger} label="The black cat, on the window sill" />
+          <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
+            <SittingCat width={Math.floor(catWidth)} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill" />
           </View>
         ) : null}
 
@@ -435,33 +442,20 @@ export function HubScreen() {
   );
 }
 
-/** How much of the column the deck fills: smaller cards, the sill and the cat in view below them. */
-const DECK_SHARE = 0.8;
-
-/**
- * The sill cat: `width` at most, never under `minWidth` (else it's left
- * out); its art's height / width (assets/characters/cat_sit.png); its feet
- * `sink` below the sill's top edge; at least `gap` clear of the deck.
- */
-const CAT = { width: 64, minWidth: 34, aspect: 640 / 444, sink: 6, gap: 6 } as const;
-
 /** How far the turned cards reach below their unturned box: half the card's width times the steepest tilt's sine. */
 function tiltOverhang(cardWidth: number): number {
   const steepest = Math.max(...ref.layout.hub.modes.deck.tilt.map(Math.abs));
-  return Math.ceil((cardWidth / 2) * Math.sin((steepest * Math.PI) / 180));
+  return Math.ceil((cardWidth / 2) * Math.sin(steepest * RADIANS));
 }
-
-/** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
-const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620 } as const;
 
 function useFallIn(index: number) {
   const { reducedMotion } = useTheme();
   const p = useSharedValue(0);
   useEffect(() => {
-    p.set(withDelay(FALL.delay + index * FALL.stagger, withTiming(1, { duration: reducedMotion ? 200 : FALL.duration, easing: Easing.out(Easing.back(1.1)) })));
+    p.set(withDelay(FALL.delay + index * FALL.stagger, withTiming(1, { duration: reducedMotion ? FALL.reducedDuration : FALL.duration, easing: Easing.out(Easing.back(FALL.back)) })));
   }, [p, index, reducedMotion]);
   return useAnimatedStyle(() => ({
-    opacity: Math.min(1, p.get() * 1.6),
+    opacity: Math.min(1, p.get() * FALL.fade),
     transform: reducedMotion ? [] : [{ translateY: (1 - p.get()) * FALL.from }],
   }));
 }
@@ -470,22 +464,22 @@ function useFallIn(index: number) {
  * A card falling into the deck. The tilt is on a still wrapper: the fall's
  * animated transform (translateY) would replace a rotate in the same style.
  */
-function FallIn({ index, tilt, style, children }: { index: number; tilt: number; style: ViewStyle; children: ReactNode }) {
+function FallIn({ index, tilt, shadow, style, testID, children }: { index: number; tilt: number; shadow: string; style: ViewStyle; testID: string; children: ReactNode }) {
   const fall = useFallIn(index);
   return (
-    <View style={[style, { transform: [{ rotate: `${tilt}deg` }] }]}>
-      <Animated.View style={[styles.card, fall]}>{children}</Animated.View>
+    <View style={[style, { transform: [{ rotate: `${tilt}deg` }] }]} testID={testID}>
+      <Animated.View style={[styles.card, { shadowColor: shadow }, fall]}>{children}</Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // The shell's black. No glow, no grain.
+  // The shell's ground, under the window art.
   root: { flex: 1, backgroundColor: ref.color.void },
-  sillCat: { position: "absolute", right: ref.space.xl + 8 },
-  // Every element on the window casts a shadow, so it reads on the night and the rain.
-  lift: { shadowColor: "#000000", shadowOpacity: 0.7, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
-  card: { shadowColor: "#000000", shadowOpacity: 0.65, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 14 },
+  sillCat: { position: "absolute" },
+  // Every element on the window casts a soft shadow in the ground's colour (never black), so it reads on the night and the rain.
+  lift: { shadowOpacity: COVER.shadow.opacity, shadowRadius: COVER.shadow.radius / 2, shadowOffset: { width: 0, height: COVER.shadow.y / 2 } },
+  card: { shadowOpacity: COVER.shadow.opacity, shadowRadius: COVER.shadow.radius, shadowOffset: { width: 0, height: COVER.shadow.y }, elevation: COVER.shadow.elevation },
   screen: { ...StyleSheet.absoluteFill },
   header: {
     flexDirection: "row",

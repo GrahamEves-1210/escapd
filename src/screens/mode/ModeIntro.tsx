@@ -1,6 +1,10 @@
 // A mode's first-time "how this mode works" (MODES_PROMPT.md Part 2), for
-// every mode: one screen in the mode's palette, under the banner of its drawn
-// cover: a kicker, the mode's name and tagline, three short numbered steps,
+// every mode, read as the book's first page (docs/ART_DIRECTION.md, the
+// mystery-book core): one screen in the mode's palette, under the banner of
+// its drawn cover: the series line in foil ("A Moonlit Mystery"), the mode's
+// name and tagline, a foil fleuron, "Chapter One" over the chapter's title
+// (the kicker), three short numbered steps, a handwritten p.s. in the
+// mode's sweet colour,
 // and its start button ("Take the job", "Take the case", "Step inside";
 // copy.ts, MODE_INTRO) pinned to the foot as the photo guide's pill in the
 // mode's accent (ModePill). Start remembers it (introSeen.ts) and
@@ -19,14 +23,13 @@ import { ModePill } from "@/capture/ui/ModePill";
 import { useModeOnFocus } from "@/game/useModeOnFocus";
 import type { Genre } from "@/lib/puzzle-types";
 import { ctaBottomPad, modeThemes, ref } from "@/theme/tokens";
-import { MODE_INTRO } from "./copy";
+import { COVER_ASPECT, PAGE } from "@/screens/hub/art/nook";
+import { CHAPTER_ONE, MODE_INTRO, SERIES } from "./copy";
 import { markIntroSeen } from "./introSeen";
-import { FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
+import { Fleuron, FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
 
 const L = ref.layout.mode;
 const I = L.intro;
-/** The drawn cover's own proportions (home's cards): the banner never grows taller than the art at full width. */
-const COVER_ASPECT = 3 / 4;
 
 export function ModeIntro({ genre }: { genre: Genre }) {
   const theme = modeThemes[genre];
@@ -99,11 +102,16 @@ export function ModeIntro({ genre }: { genre: Genre }) {
         </View>
         <View style={styles.middle}>
           <View style={styles.column} onLayout={(e) => setColumnHeight(e.nativeEvent.layout.height)}>
-            <Text style={[L.type.kicker, styles.kicker, { color: theme.inkMuted }]}>{intro.kicker}</Text>
+            <Text style={[styles.series, { color: theme.foil }]} testID="mode-intro-series">
+              {SERIES[genre]}
+            </Text>
             <Text accessibilityRole="header" style={[theme.display, { color: theme.ink }]}>
               {theme.name}
             </Text>
             <Text style={[L.type.tagline, styles.tagline, { color: theme.inkMuted }]}>{theme.tagline}</Text>
+            <Fleuron theme={theme} />
+            <Text style={[L.type.kicker, PAGE.chapter, { color: theme.foil }]}>{CHAPTER_ONE}</Text>
+            <Text style={[styles.chapterTitle, { color: theme.ink }]}>{intro.kicker}</Text>
             <View style={styles.steps}>
               {steps.map((step, i) => (
                 <View
@@ -121,6 +129,9 @@ export function ModeIntro({ genre }: { genre: Genre }) {
                 </View>
               ))}
             </View>
+            <Text style={[theme.hand, PAGE.note, styles.note, { color: theme.sweet }]} testID="mode-intro-note">
+              {intro.note}
+            </Text>
           </View>
         </View>
       </Animated.ScrollView>
@@ -149,9 +160,11 @@ const styles = StyleSheet.create({
   // The words, centred in whatever room the banner leaves above the button.
   middle: { flexGrow: 1, justifyContent: "center" },
   column: { paddingHorizontal: L.inset, paddingTop: I.introTop },
-  kicker: { marginBottom: L.taglineGap },
+  series: { fontFamily: ref.font.coverItalic, ...PAGE.series, marginBottom: L.taglineGap },
   tagline: { marginTop: L.taglineGap },
+  chapterTitle: { fontFamily: ref.font.coverItalic, ...PAGE.chapterTitle, marginTop: L.taglineGap },
   steps: { marginTop: I.stepsTop, gap: I.stepGap },
+  note: { marginTop: PAGE.noteTop, transform: [{ rotate: PAGE.noteTurn }] },
   step: { flexDirection: "row", alignItems: "flex-start" },
   numeral: { width: I.numeralWidth, letterSpacing: 0 },
   // The step's words wrap at large text; the numeral keeps its column.

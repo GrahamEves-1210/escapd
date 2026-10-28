@@ -6,10 +6,13 @@
 // out of the void under the drawing first, down to `clear`; then out of the
 // void above it, down to `clear`; then the drawing shrinks evenly. Below
 // art.minHeight it hides. Only the drawing crossfades with the step.
-import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { useId, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
+import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
+import { GLOW, NOTE, NOTES } from "./art/look";
 import { StepArt } from "./art/StepArt";
 import { FadeLayer, type StepLayer } from "./stepper";
 
@@ -49,6 +52,8 @@ export function artBox(bandHeight: number | null): ArtBox {
 export function GuideArt({ layers, clock }: { layers: readonly StepLayer[]; clock: SharedValue<number> }) {
   const [band, setBand] = useState<number | null>(null);
   const box = artBox(band);
+  const theme = useModeTheme();
+  const id = `glow${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   return (
     <View
       style={styles.band}
@@ -64,9 +69,23 @@ export function GuideArt({ layers, clock }: { layers: readonly StepLayer[]; cloc
         <>
           <View style={{ height: box.above }} />
           <View style={[styles.box, { width: ART.width * box.scale, height: ART.height * box.scale }]} testID="guide-art-box">
+            {/* A soft pool of lamplight behind the drawing, in the theme's glow. */}
+            <Svg style={styles.glow} width="100%" height="100%" viewBox="0 0 1 1" preserveAspectRatio="none" testID="guide-art-glow">
+              <Defs>
+                <RadialGradient id={id} cx={0.5} cy={0.5} r={GLOW.r / 2} fx={0.5} fy={0.5}>
+                  {GLOW.stops.map((s) => (
+                    <Stop key={s.offset} offset={s.offset} stopColor={theme.glow} stopOpacity={s.opacity} />
+                  ))}
+                </RadialGradient>
+              </Defs>
+              <Rect x={0} y={0} width={1} height={1} fill={`url(#${id})`} />
+            </Svg>
             {layers.map((layer) => (
               <FadeLayer key={layer.step} clock={clock} layer={layer} style={StyleSheet.absoluteFill}>
                 <StepArt step={layer.step} width={ART.width * box.scale} height={ART.height * box.scale} />
+                <Text style={[theme.hand, styles.note, { color: theme.sweet }]} testID={`guide-note-${layer.step + 1}`}>
+                  {NOTES[layer.step]}
+                </Text>
               </FadeLayer>
             ))}
           </View>
@@ -84,4 +103,16 @@ const styles = StyleSheet.create({
   band: { flex: 1, minHeight: CLEAR, overflow: "hidden" },
   // Centred on the screen, as the reference's art box.
   box: { alignSelf: "center" },
+  // The glow spills past the drawing's box on every side.
+  glow: { position: "absolute", top: "-30%", left: "-60%", width: "220%", height: "160%" },
+  note: {
+    position: "absolute",
+    top: NOTE.top,
+    right: NOTE.right,
+    maxWidth: NOTE.maxWidth,
+    fontSize: NOTE.fontSize,
+    lineHeight: NOTE.lineHeight,
+    textAlign: "right",
+    transform: [{ rotate: NOTE.turn }],
+  },
 });

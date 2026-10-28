@@ -9,13 +9,14 @@ import { useId } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { Extrapolation, interpolate, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { ArrowLeftIcon } from "@/components/icons";
 import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { ref, type ModeTheme } from "@/theme/tokens";
 import { ModeCover } from "@/screens/hub/art/ModeCover";
+import { FLEURON, SPARK_PATH } from "@/screens/hub/art/nook";
 
 const L = ref.layout.mode;
 const SQ = ref.button.square;
@@ -146,6 +147,23 @@ export function ModeBanner({ genre, theme, height }: { genre: Genre; theme: Mode
   );
 }
 
+/**
+ * An ornamental rule, as between a book's title and its first chapter: two
+ * short foil lines with a sparkle between them, centred on the line's start
+ * column (left-aligned with the words). Decorative.
+ */
+export function Fleuron({ theme }: { theme: ModeTheme }) {
+  return (
+    <View style={styles.fleuron} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="mode-fleuron">
+      <View style={[styles.rule, { backgroundColor: theme.foil }]} />
+      <Svg width={FLEURON.spark} height={FLEURON.spark} viewBox="-1 -1 2 2">
+        <Path d={SPARK_PATH} fill={theme.foil} />
+      </Svg>
+      <View style={[styles.rule, { backgroundColor: theme.foil }]} />
+    </View>
+  );
+}
+
 /** The fade the content scrolls under, above the pinned foot: clear to the ground. Decorative. */
 export function FootShade({ theme }: { theme: ModeTheme }) {
   const id = `shade${useId().replace(/[^A-Za-z0-9]/g, "")}`;
@@ -181,4 +199,6 @@ const styles = StyleSheet.create({
   back: { position: "absolute", left: L.edge },
   banner: { position: "absolute", top: 0, left: 0, right: 0 },
   shade: { position: "absolute", left: 0, right: 0, top: -L.foot.shade, height: L.foot.shade },
+  fleuron: { flexDirection: "row", alignItems: "center", gap: FLEURON.gap, marginVertical: FLEURON.margin },
+  rule: { width: FLEURON.rule, height: FLEURON.weight, opacity: FLEURON.opacity },
 });
