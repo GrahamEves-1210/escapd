@@ -12,7 +12,13 @@
 //     while the case is thinking (`mood`), and when the light hasn't moved for
 //     a while it dozes off on the ledge, eyes shut, "z"s rising, until the
 //     light moves again and it pops back up,
-//   - now and then it ducks behind the ledge and peeks back up.
+//   - now and then it ducks behind the ledge and peeks back up,
+//   - it keeps an eye on the game: it perks up when the light passes over
+//     something worth a look and yawns at an empty drawer (`reaction`), glances
+//     at what the player hasn't looked at yet when they're stuck (`lookAt`),
+//     sits with its lids half shut while a wrong answer's cooldown runs
+//     (`waiting`), and has had enough after too much petting,
+//   - and it says a short line now and then in a speech bubble (`say`).
 // It all moves at 12 frames a second, like stop motion: the animations run
 // smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
@@ -28,6 +34,7 @@ import Animated, {
 import { useModeTheme } from "@/game/mode";
 import { measureInWindow } from "@/render/PickupFlight";
 import { useTheme } from "@/theme/ThemeProvider";
+import { ref } from "@/theme/tokens";
 
 const ART = require("../../assets/characters/cat_peek.png") as number;
 /** The art's size (px) and its eyes, as fractions of it. */
@@ -44,6 +51,14 @@ const SINK = 0.05;
 const FPS = 12;
 /** It dozes off when the light has been still this long (ms). */
 const DOZE_AFTER = 22000;
+/** A line is up this long (ms): it pops in, stays about 2.2 s, and fades. */
+const SPEECH_MS = 2650;
+/** At most one line this often (ms); a rule line may cut in on a flavour one. */
+const SPEECH_GAP = 6000;
+/** Petted more than this many times in PET_WINDOW ms, it's had enough for ENOUGH_MS. */
+const PET_LIMIT = 4;
+const PET_WINDOW = 3000;
+const ENOUGH_MS = 3000;
 
 /**
  * Stop motion: the sources' values, snapshotted FPS times a second. Styles read
@@ -63,11 +78,16 @@ export function useStopMotion(sources: SharedValue<number>[], initial: number[])
   return shown;
 }
 
-export type CatReaction = { kind: "found" | "wrong"; at: number } | null;
+/** A find, a wrong answer, the light over something worth a look ("warm"), or nothing there ("empty"). */
+export type CatReaction = { kind: "found" | "wrong" | "warm" | "empty"; at: number } | null;
 /** What the cat is doing between reactions: watching, or thinking along with the case. */
 export type CatMood = "idle" | "thinking";
+/** A line for it to say (a new `at` each time). `rule` lines (the game's rules) win over flavour ones. */
+export type CatLine = { text: string; at: number; rule?: boolean } | null;
+/** Somewhere to look instead of the light (window points); `wonder` adds a small "?". */
+export type CatLook = { x: number; y: number; wonder?: boolean } | null;
 
-export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle" }: {
+export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle", say = null, lookAt = null, waiting = false }: {
   /** On-screen width (points). */
   width: number;
   beamX: SharedValue<number>;
@@ -77,6 +97,12 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   /** The latest thing that happened, to react to (a new `at` each time). */
   reaction?: CatReaction;
   mood?: CatMood;
+  /** Something to say (a new `at` each time); shown if no other line was up too recently. */
+  say?: CatLine;
+  /** Where its eyes go while set, over the light. */
+  lookAt?: CatLook;
+  /** A wrong answer's cooldown is running: it sits with its lids half shut. */
+  waiting?: boolean;
 }) {
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
@@ -104,6 +130,27 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   const lastMove = useSharedValue(0);
   const [asleep, setAsleep] = useState(false);
   const [petAt, setPetAt] = useState<number | null>(null);
+  // Lids half shut (0..1): waiting out a cooldown, or had enough of petting.
+  const droop = useSharedValue(0);
+  // Looking somewhere other than the light (0..1), and where (window points).
+  const gaze = useSharedValue(0);
+  const gx = useSharedValue(0);
+  const gy = useSharedValue(0);
+  // Recent pets (ms), and whether it has had enough.
+  const pets = useRef<number[]>([]);
+  const [annoyed, setAnnoyed] = useState(false);
+  // The line it's saying, and when the last one went up (and whether it was a rule).
+  const [line, setLine] = useState<{ text: string; at: number } | null>(null);
+  const lastLine = useRef({ at: -Infinity, rule: false });
+
+  /** Say a line, unless one went up too recently (a rule line may cut in on a flavour one). */
+  const speak = (text: string, rule: boolean) => {
+    const now = Date.now();
+    const last = lastLine.current;
+    if (now - last.at < SPEECH_GAP && (last.rule || !rule)) return;
+    lastLine.current = { at: now, rule };
+    setLine({ text, at: now });
+  };
 
   /** A pop: crouch, stretch up, land with a squash, settle. */
   const pop = (up: number) => {
@@ -113,13 +160,69 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     sy.set(withSequence(withTiming(0.93, { duration: 80 }), withTiming(1 + up * 0.5, { duration: 90 }), withTiming(0.98, { duration: 90 }), withTiming(1, { duration: 90 })));
     sx.set(withSequence(withTiming(1.05, { duration: 80 }), withTiming(0.96, { duration: 90 }), withTiming(1.01, { duration: 90 }), withTiming(1, { duration: 90 })));
   };
-  // Petted: a happy pop and a heart; it wakes up.
+  /** A flinch: squashed down behind the ledge (`depth` of its height), a shiver, then back up. */
+  const flinch = (depth: number) => {
+    "worklet";
+    hop.set(withSequence(withTiming(height * depth, { duration: 90 }), withDelay(450, withSpring(0, { damping: 9, stiffness: 120 }))));
+    sy.set(withSequence(withTiming(0.88, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
+    sx.set(withSequence(withTiming(1.08, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
+    idleTilt.set(withSequence(
+      withTiming(-4, { duration: 50 }), withTiming(4, { duration: 50 }), withTiming(-3, { duration: 50 }), withTiming(3, { duration: 50 }),
+      withSpring(0, { damping: 10, stiffness: 120 }),
+    ));
+    lid.set(withSequence(withTiming(0.55, { duration: 80 }), withDelay(500, withTiming(0, { duration: 160 }))));
+  };
+  // Petted: a happy pop and a heart; it wakes up. Too much of it and it's had enough: it flinches and won't be petted for a while.
   const pet = () => {
-    lastMove.set(Date.now());
+    if (annoyed) return;
+    const now = Date.now();
+    lastMove.set(now);
+    pets.current = [...pets.current.filter((t) => now - t < PET_WINDOW), now];
+    if (pets.current.length > PET_LIMIT) {
+      pets.current = [];
+      setAnnoyed(true);
+      speak("Enough.", true);
+      if (!reducedMotion) flinch(0.12);
+      return;
+    }
     if (reducedMotion) return;
     pop(0.16);
-    setPetAt(Date.now());
+    setPetAt(now);
   };
+
+  // Had enough: lids half shut for a while, then it lets you pet it again.
+  useEffect(() => {
+    if (!annoyed) return;
+    const timer = setTimeout(() => setAnnoyed(false), ENOUGH_MS);
+    return () => clearTimeout(timer);
+  }, [annoyed]);
+  const sulk = waiting || annoyed;
+  useEffect(() => {
+    droop.set(withTiming(sulk ? 1 : 0, { duration: sulk ? 160 : 260 }));
+  }, [sulk, droop]);
+
+  // Lines: what it's told to say, each taken down after a moment.
+  useEffect(() => {
+    if (say) speak(say.text, !!say.rule);
+  }, [say]);
+  useEffect(() => {
+    if (!line) return;
+    const timer = setTimeout(() => setLine(null), SPEECH_MS);
+    return () => clearTimeout(timer);
+  }, [line]);
+
+  // A glance somewhere: the eyes go there (a glance wakes it), then back to the light.
+  const lookX = lookAt?.x, lookY = lookAt?.y;
+  useEffect(() => {
+    if (lookX === undefined || lookY === undefined) {
+      gaze.set(withTiming(0, { duration: 260 }));
+      return;
+    }
+    gx.set(lookX);
+    gy.set(lookY);
+    gaze.set(withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }));
+    lastMove.set(Date.now());
+  }, [lookX, lookY, gaze, gx, gy, lastMove]);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -173,18 +276,20 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     if (reducedMotion) return;
     if (reaction.kind === "found") {
       pop(0.2);
+    } else if (reaction.kind === "warm") {
+      // Perks up: eyes wide, a quick stretch up (ears up), a small "!".
+      lid.set(withTiming(0, { duration: 60 }));
+      pop(0.12);
+    } else if (reaction.kind === "empty") {
+      // A yawn: eyes squeezed shut, a slow stretch with the head tipped back, then it settles.
+      lid.set(withSequence(withTiming(0.9, { duration: 250 }), withDelay(600, withTiming(0, { duration: 200 }))));
+      sy.set(withSequence(withTiming(1.07, { duration: 500, easing: Easing.inOut(Easing.sin) }), withDelay(350, withTiming(1, { duration: 400, easing: Easing.inOut(Easing.sin) }))));
+      sx.set(withSequence(withTiming(0.97, { duration: 500 }), withDelay(350, withTiming(1, { duration: 400 }))));
+      idleTilt.set(withSequence(withTiming(-3, { duration: 500 }), withDelay(350, withSpring(0, { damping: 10, stiffness: 80 }))));
     } else {
-      // Flinch: squashed down behind the ledge, a shiver, then back up.
-      hop.set(withSequence(withTiming(height * 0.22, { duration: 90 }), withDelay(450, withSpring(0, { damping: 9, stiffness: 120 }))));
-      sy.set(withSequence(withTiming(0.88, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
-      sx.set(withSequence(withTiming(1.08, { duration: 90 }), withDelay(450, withSpring(1, { damping: 7, stiffness: 150 }))));
-      idleTilt.set(withSequence(
-        withTiming(-4, { duration: 50 }), withTiming(4, { duration: 50 }), withTiming(-3, { duration: 50 }), withTiming(3, { duration: 50 }),
-        withSpring(0, { damping: 10, stiffness: 120 }),
-      ));
-      lid.set(withSequence(withTiming(0.55, { duration: 80 }), withDelay(500, withTiming(0, { duration: 160 }))));
+      flinch(0.22);
     }
-    // pop reads shared values only.
+    // pop and flinch read shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reaction, reducedMotion, hop, lid, height]);
 
@@ -224,17 +329,20 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   const ox = origin?.x ?? 0, oy = origin?.y ?? 0;
   const fx = frame?.x ?? 0, fy = frame?.y ?? 0, fw = frame?.width ?? 0, fh = frame?.height ?? 0;
   const known = !!origin && !!frame;
+  const seated = !!origin;
 
   // Everything the cat's drawn from, at 12 frames a second (indices: see the reads below).
   const f = useStopMotion(
-    [rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY],
-    [reducedMotion ? 0 : height, 0, 0, 0, 0, 1, 1, 0, 0, 0.5, 0.5],
+    [rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY, droop, gaze, gx, gy],
+    [reducedMotion ? 0 : height, 0, 0, 0, 0, 1, 1, 0, 0, 0.5, 0.5, 0, 0, 0, 0],
   );
   const body = useAnimatedStyle(() => {
-    const [r, h, b, tilt, , squashX, squashY, z, t, bx] = f.get();
+    const [r, h, b, tilt, , squashX, squashY, z, t, bx, , , g, lx] = f.get();
     let lean = 0;
-    if (known) {
-      const dx = fx + bx * fw - (ox + width / 2);
+    if (seated && (known || g > 0)) {
+      // Toward the light, or toward where it's glancing.
+      const at = known ? fx + bx * fw : lx;
+      const dx = at * (1 - g) + lx * g - (ox + width / 2);
       lean = Math.max(-4, Math.min(4, dx / 60));
     }
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
@@ -255,6 +363,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   // A find's sparkles play once per find (they end invisible); a pet's heart likewise.
   const burst = reaction?.kind === "found" ? reaction.at : null;
   const shownBurst = petAt !== null && (burst === null || petAt > burst) ? { at: petAt, text: "♥" } : burst !== null ? { at: burst, text: "!" } : null;
+  // The light over something worth a look: a small "!".
+  const perk = reaction?.kind === "warm" ? reaction.at : null;
   const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
   return (
     <View pointerEvents="box-none" style={{ width: width * 1.3, height: height * 1.25 }}>
@@ -278,7 +388,23 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Burst key={shownBurst.at} size={width} color={theme.ink} glyph={mark} text={shownBurst.text} />
         </View>
       ) : null}
+      {perk !== null && !reducedMotion ? (
+        <View style={{ transform: [{ translateX: -width * 0.3 }] }}>
+          <Burst key={perk} size={width * 0.6} color={theme.ink} glyph={mark} text="!" sparkles={false} />
+        </View>
+      ) : null}
+      {lookAt?.wonder && !reducedMotion ? (
+        <View style={{ transform: [{ translateX: width * 0.1 }] }}>
+          <Burst size={width * 0.55} color={theme.ink} glyph={mark} text="?" sparkles={false} />
+        </View>
+      ) : null}
     </View>
+    {/* What it says, above-right of its head. */}
+    {line ? (
+      <View pointerEvents="none" style={[styles.speechAt, { left: width * 0.95, bottom: height * 0.92, width: width * 3.2 }]}>
+        <CatSpeech key={line.at} text={line.text} still={reducedMotion} />
+      </View>
+    ) : null}
     {/* The ledge hides what's below it: the cat rises from behind it. */}
     <View style={[styles.clip, StyleSheet.absoluteFill]} pointerEvents="box-none">
       <Animated.View
@@ -292,7 +418,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
         {/* Tap it: a happy pop and a heart (and it wakes up). */}
         <Pressable onPress={pet} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Pet the cat" testID="v2-cat-pet" />
         {EYES.map((eye, i) => (
-          <Eye key={i} eye={eye} width={width} height={height} known={known} at={{ ox, oy, fx, fy, fw, fh }} f={f} />
+          <Eye key={i} eye={eye} width={width} height={height} known={known} seated={seated} at={{ ox, oy, fx, fy, fw, fh }} f={f} />
         ))}
       </Animated.View>
     </View>
@@ -333,8 +459,39 @@ function Mark({ glyph, size, dx, delay, style, drift = false, still }: {
   );
 }
 
-/** A find: sparkles burst out around its head and an "!" pops up, once. */
-export function Burst({ size, color, glyph, text = "!" }: { size: number; color: string; glyph: { color: string; fontFamily?: string }; text?: string }) {
+/** A line in a speech bubble, its tail toward the cat: it pops in (pose to pose, at 12 fps), stays a moment, and fades. */
+export function CatSpeech({ text, still }: { text: string; still: boolean }) {
+  const theme = useModeTheme();
+  const t = useSharedValue(still ? 0.5 : 0);
+  useEffect(() => {
+    if (still) return;
+    t.set(withTiming(1, { duration: SPEECH_MS, easing: Easing.linear }));
+  }, [t, still]);
+  const shown = useStopMotion([t], [still ? 0.5 : 0]);
+  const anim = useAnimatedStyle(() => {
+    if (still) return { opacity: 1, transform: [{ scale: 1 }] };
+    const ms = shown.get()[0] * SPEECH_MS;
+    // Small, too big, settled; it holds, then fades.
+    const scale = ms < 170 ? 0.5 + (ms / 170) * 0.62 : ms < 300 ? 1.12 - ((ms - 170) / 130) * 0.12 : 1;
+    const opacity = ms < 80 ? ms / 80 : ms > SPEECH_MS - 350 ? Math.max(0, (SPEECH_MS - ms) / 350) : 1;
+    return { opacity, transform: [{ scale }] };
+  });
+  return (
+    <Animated.View
+      style={[styles.speech, { backgroundColor: theme.raised, borderColor: theme.rim }, anim]}
+      accessibilityLiveRegion="polite"
+      testID="v2-cat-speech"
+    >
+      <View style={[styles.tail, { backgroundColor: theme.raised, borderColor: theme.rim }]} />
+      <Text maxFontSizeMultiplier={1.4} style={[ref.type.label, { color: theme.ink }]}>{text}</Text>
+    </Animated.View>
+  );
+}
+
+/** A find: sparkles burst out around its head and an "!" pops up, once (or just the mark, without `sparkles`). */
+export function Burst({ size, color, glyph, text = "!", sparkles = true }: {
+  size: number; color: string; glyph: { color: string; fontFamily?: string }; text?: string; sparkles?: boolean;
+}) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.set(withTiming(1, { duration: 600, easing: Easing.out(Easing.quad) }));
@@ -349,7 +506,7 @@ export function Burst({ size, color, glyph, text = "!" }: { size: number; color:
   });
   return (
     <>
-      {[-0.9, -0.35, 0.35, 0.9].map((a, i) => (
+      {(sparkles ? [-0.9, -0.35, 0.35, 0.9] : []).map((a, i) => (
         <Spark key={i} t={shown} angle={a - Math.PI / 2} reach={size * (0.55 + (i % 2) * 0.2)} size={size * (i % 2 ? 0.24 : 0.32)} color={color} />
       ))}
       <Animated.View style={[styles.mark, bang]}>
@@ -379,8 +536,9 @@ function Spark({ t, angle, reach, size, color }: { t: SharedValue<number[]>; ang
   );
 }
 
-function Eye({ eye, width, height, known, at, f }: {
-  eye: { x: number; y: number }; width: number; height: number; known: boolean;
+function Eye({ eye, width, height, known, seated, at, f }: {
+  /** `known`: where it sits and the photo's frame are both measured; `seated`: where it sits is. */
+  eye: { x: number; y: number }; width: number; height: number; known: boolean; seated: boolean;
   at: { ox: number; oy: number; fx: number; fy: number; fw: number; fh: number };
   /** The cat's stop-motion frame (useStopMotion). */
   f: SharedValue<number[]>;
@@ -393,11 +551,14 @@ function Eye({ eye, width, height, known, at, f }: {
   const rangeX = width * EYE_R.x * 0.55;
   const rangeY = height * EYE_R.y * 0.35;
   const pupil = useAnimatedStyle(() => {
-    const [, , , , , , , , t, beamX, beamY] = f.get();
+    const [, , , , , , , , t, beamX, beamY, , g, lx, ly] = f.get();
     let dx = 0, dy = 0, open = 1;
-    if (known) {
-      const bx = at.fx + beamX * at.fw - (at.ox + cx);
-      const by = at.fy + beamY * at.fh - (at.oy + cy);
+    if (seated && (known || g > 0)) {
+      // The light, or where it's glancing instead.
+      const px = known ? at.fx + beamX * at.fw : lx;
+      const py = known ? at.fy + beamY * at.fh : ly;
+      const bx = px * (1 - g) + lx * g - (at.ox + cx);
+      const by = py * (1 - g) + ly * g - (at.oy + cy);
       const d = Math.hypot(bx, by) || 1;
       const pull = Math.min(1, d / 160);
       dx = (bx / d) * rangeX * pull;
@@ -412,8 +573,8 @@ function Eye({ eye, width, height, known, at, f }: {
     const pw = width * (PUPIL.slit + (PUPIL.wide - PUPIL.slit) * open);
     return { width: pw, borderRadius: pw, left: cx - pw / 2, transform: [{ translateX: dx }, { translateY: dy }] };
   });
-  // Dozing, the lids sit shut (a blink can't open them).
-  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(f.get()[4], f.get()[7]) }] }));
+  // Dozing, the lids sit shut (a blink can't open them); sulking, half shut.
+  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(f.get()[4], f.get()[7], f.get()[11] * 0.5) }] }));
   // Shut (asleep, or mid-blink), a curved lash line where the eye was.
   const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (Math.max(f.get()[4], f.get()[7]) - 0.7) / 0.3) }));
   return (
@@ -442,4 +603,14 @@ const styles = StyleSheet.create({
   pupil: { position: "absolute", backgroundColor: FUR },
   lid: { position: "absolute", backgroundColor: FUR, transformOrigin: "50% 0%" },
   lash: { position: "absolute", borderColor: "rgba(232, 170, 60, 0.75)" },
+  speechAt: { position: "absolute", alignItems: "flex-start" },
+  speech: {
+    maxWidth: "100%", borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 6,
+    transformOrigin: "0% 100%",
+  },
+  // A small diamond half under the bubble's bottom-left edge: its tail, pointing down to the cat.
+  tail: {
+    position: "absolute", left: 10, bottom: -5, width: 10, height: 10, transform: [{ rotate: "45deg" }],
+    borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
+  },
 });

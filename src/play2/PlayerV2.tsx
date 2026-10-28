@@ -29,6 +29,7 @@ import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatReaction } from "./PeekingCat";
 import { Flashlight, Magnifier, TOOL } from "./Tools";
+import { useCatCues } from "./useCatCues";
 import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
@@ -148,6 +149,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const photos = def ? Math.max(1, ...def.objects.map((o) => o.photo_index + 1)) : 1;
   const toast = useCallback((text: string) => setToasts((t) => [...t.slice(-2), text]), []);
+  // The cat's read of the game: it glances when the player is stuck, perks up, referees, yawns.
+  const cues = useCatCues({ def, state, view, photos, frame, watching: !open && !casebook && !completed, cooldown, contents, react: setCatReaction });
 
   // A request that didn't go through (a room played on the server).
   useEffect(() => {
@@ -187,6 +190,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         break;
       case "wrong":
         setCatReaction({ kind: "wrong", at: Date.now() });
+        cues.wrong();
         feedback.wrongCode();
         lines.push(TOAST.wrong);
         break;
@@ -263,6 +267,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     // The look runs with the close-up open, so what it turns up lands in the object.
     const result = await act({ type: "inspect", object: objectId });
     takeAt(objectId, result);
+    cues.nothing(objectId, result);
   };
 
   /** A result for an object's close-up, wherever the close-up is now (the request may land after it moved on). */
@@ -331,6 +336,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const uvItem = heldItems.find((i) => isUvLight(i));
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onHover = (objectId: string | null) => {
+    cues.hover(objectId);
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     if (!uvOn || !uvItem || !objectId || uvChecked.includes(objectId)) return;
     hoverTimer.current = setTimeout(async () => {
@@ -415,7 +421,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
-  const cat = <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"} />;
+  const cat = <PeekingCat width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
+      say={cues.say} lookAt={cues.lookAt} waiting={cues.waiting} />;
   const tray = (
     <ItemTray
       items={heldItems}
@@ -595,7 +602,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
           ritualChoices={ritualChoices}
-          onSet={async (control, value) => takeAt(target!.id, await act({ type: "set_control", target: target!.id, control, value }))}
+          onSet={async (control, value) => {
+            const id = target!.id;
+            const result = await act({ type: "set_control", target: id, control, value });
+            takeAt(id, result);
+            cues.nothing(id, result, { control, value });
+          }}
           onSubmit={async (value) => takeAt(target!.id, await act({ type: "submit", object: target!.id, value }))}
           onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "room") : undefined}
           onClose={() => setOpen(null)}

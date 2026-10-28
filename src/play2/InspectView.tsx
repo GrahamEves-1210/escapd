@@ -54,7 +54,7 @@ export interface InspectViewProps {
   cat?: ReactNode;
 }
 
-const CONTAINER_KEYS = ["open", "lifted", "tilted", "panel", "on"] as const;
+export const CONTAINER_KEYS = ["open", "lifted", "tilted", "panel", "on"] as const;
 
 /** Open, lifted, tilted or its panel open: what's inside can be seen. Things with none of these always show theirs. */
 function showsInside(state: Record<string, StateValue>): boolean {
