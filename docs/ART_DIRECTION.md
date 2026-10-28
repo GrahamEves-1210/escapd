@@ -6,6 +6,26 @@ and aesthetic Pinterest boards, and who share what they love. The game should
 feel like *their* thing: moody, pretty, a little spooky, never grim, never
 "gamer" or "admin dashboard".
 
+## The core: mystery-book core
+
+Lean all the way into the cozy-mystery bookshelf of a millennial woman who
+reads (BookTok / bookstagram): illustrated cozy-mystery covers with a cat on
+them, Agatha Christie reissues with gold-foil titles, Only Murders in the
+Building, Knives Out cable-knit, a reading nook with a candle, tea in a nice
+mug, a bookmark ribbon, a library card, pressed flowers, an annotated
+paperback with sticky tabs.
+- Each mode is a book in a series: its card is the cover (illustrated, a
+  framed title in a lovely display face, gold-foil touches, "A Detective Noir
+  Mystery" / "A True Crime Club Mystery" / "A Moonlit Mystery" as the series
+  line).
+- Screens borrow book furniture: chapter headings ("Chapter One"), drop caps,
+  ornamental rules and fleurons, bookmark ribbons, library-card stamps, page
+  numbers, foil-stamped seals, deckled paper edges.
+- The casebook is her annotated reading journal; case closed is the last page
+  (or the book on her shelf / a library card stamped "Solved").
+- Warm and cozy first, spooky second: candlelight, florals, tea, rain on the
+  window, the cat curled up.
+
 ## Four pillars
 
 1. **Moody, but warm.** Every room is dark, lit like candlelight. Grounds are
