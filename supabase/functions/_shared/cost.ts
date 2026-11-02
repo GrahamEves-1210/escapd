@@ -13,7 +13,7 @@ export interface ModelPrice {
 
 // Standard tier list prices, verified 22 Oct 2026 (plan section 8;
 // https://ai.google.dev/gemini-api/docs/pricing). Non-Gemini rows are kept
-// for a future provider; only Gemini is implemented.
+// for other providers (Claude: anthropic.ts, the writing stages).
 export const PRICES: Readonly<Record<string, ModelPrice>> = {
   "gemini-2.5-flash": { input: 0.30, output: 2.50 },
   "gemini-3-flash-preview": { input: 0.50, output: 3.00 },
@@ -22,7 +22,9 @@ export const PRICES: Readonly<Record<string, ModelPrice>> = {
     longContext: { threshold: 200_000, input: 4.00, output: 18.00 },
   },
   "gpt-5.4-mini": { input: 0.75, output: 4.50 },
+  "claude-opus-5-5": { input: 4.00, output: 20.00 },
   "claude-sonnet-5-5": { input: 2.00, output: 10.00 },
+  "claude-haiku-5-5": { input: 0.10, output: 0.50 },
 };
 
 // Unknown models are priced at the most expensive known rate so the cap still bites.

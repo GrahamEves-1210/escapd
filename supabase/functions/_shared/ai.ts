@@ -43,6 +43,7 @@ import {
   textPhotoCount,
   verifyCandidates,
 } from "./perception.ts";
+import { AnthropicProvider, DEFAULT_CLAUDE_MODEL, RoutedProvider } from "./anthropic.ts";
 import { GeminiProvider, type ModelProvider } from "./provider.ts";
 import { assembleDefinition, pickStoryFamily, repairProse, writeProse } from "./prose.ts";
 import { checkPuzzle } from "./puzzle-check.ts";
@@ -72,6 +73,8 @@ const SUPPORTED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/
 
 export interface PipelineConfig {
   apiKey: string;
+  /** Claude, for the writing stages; optional (Gemini writes when it's absent). */
+  anthropicApiKey?: string;
   perceptionModel: string;
   perceptionFallbackModel: string;
   proseModel: string;
@@ -82,17 +85,24 @@ export interface PipelineConfig {
   deadlineMs: number;
 }
 
-/** Reads AI_PROVIDER_API_KEY and the optional model overrides. */
+/**
+ * Reads AI_PROVIDER_API_KEY (Gemini), ANTHROPIC_API_KEY (Claude) and the
+ * optional model overrides. With a Claude key, the writing stages (prose,
+ * repair, v2's author) run on Claude and fall back to Gemini's prose model.
+ */
 export function configFromEnv(): PipelineConfig {
   const get = (name: string) => (Deno.env.get(name) ?? "").trim();
+  const anthropicApiKey = get("ANTHROPIC_API_KEY");
   return {
     apiKey: get("AI_PROVIDER_API_KEY"),
+    anthropicApiKey,
     perceptionModel: get("AI_PERCEPTION_MODEL") || DEFAULT_MODELS.perception,
     perceptionFallbackModel: Deno.env.has("AI_PERCEPTION_FALLBACK_MODEL")
       ? get("AI_PERCEPTION_FALLBACK_MODEL")
       : DEFAULT_MODELS.perceptionFallback,
-    proseModel: get("AI_PROSE_MODEL") || DEFAULT_MODELS.prose,
-    proseFallbackModel: get("AI_PROSE_FALLBACK_MODEL") || DEFAULT_MODELS.proseFallback,
+    proseModel: get("AI_PROSE_MODEL") || (anthropicApiKey ? DEFAULT_CLAUDE_MODEL : DEFAULT_MODELS.prose),
+    proseFallbackModel: get("AI_PROSE_FALLBACK_MODEL") ||
+      (anthropicApiKey ? DEFAULT_MODELS.prose : DEFAULT_MODELS.proseFallback),
     segmentationModel: get("AI_SEGMENTATION_MODEL") || DEFAULT_MODELS.segmentation,
     spendCapUsd: SPEND_CAP_USD,
     deadlineMs: DEADLINE_MS,
@@ -115,7 +125,10 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
   const config = overrides.config ?? configFromEnv();
   const deps: GenerationDeps = {
     config,
-    provider: overrides.provider ?? new GeminiProvider({ apiKey: config.apiKey }),
+    provider: overrides.provider ?? new RoutedProvider(
+      new GeminiProvider({ apiKey: config.apiKey }),
+      new AnthropicProvider({ apiKey: config.anthropicApiKey ?? "" }),
+    ),
     fetchPhoto: overrides.fetchPhoto ?? fetchPhotoBytes,
     preview: overrides.preview ?? previewWithDatabase,
     now: overrides.now ?? Date.now,
