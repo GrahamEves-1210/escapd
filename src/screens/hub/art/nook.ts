@@ -2,8 +2,9 @@
 // mystery-book core): the numbers and the few light colours the window, its
 // rain, the candle and the fairy lights are drawn with. Colours that belong
 // to the palette come from the shell's theme (useModeTheme() on home: glow,
-// sweet, foil); these are only the window's own lights (rain on the glass, a
-// far-off flash), which no theme names. Kept here, beside the art, so the
+// sweet, foil); these are only the window's own lights (rain on the glass,
+// the clouds, the moon's light through them, a far-off flash, the tea's
+// steam), which no theme names. Kept here, beside the art, so the
 // screens' source stays tokens-only (hub-test).
 
 /** The window art's geometry as fractions (scripts/brand/window.py): frame, sill, mullion, the cross's height. */
@@ -18,6 +19,78 @@ export const WINDOW_ART = {
   height: 2796,
   /** The candle's flame on the sill (window.py's FLAME), as shares of the art. */
   flame: { x: 0.2248, y: 0.8498 },
+  /** The moon (window.py's MOON): its centre as shares of the art, its radius as a share of the art's width. */
+  moon: { x: 0.6729, y: 0.8062, r: 0.0651 },
+  /** The mug's mouth (window.py's mug): its centre as shares of the art, its width as a share of the art's width. */
+  mug: { x: 0.4155, y: 0.9063, w: 0.0775 },
+} as const;
+
+/**
+ * Thin rain cloud drifting across the glass, left to right, most of it in a
+ * band over the moon (veiling it as it passes) and a few wisps higher up:
+ * each a soft oval, `x`, `y` its start as shares of the art, `w`, `h` its size
+ * as shares of the art's width, drifting `speed` points a second and wrapping
+ * round the glass. A cloud lights up silver as it nears the moon (its `lit`
+ * twin's opacity, by its distance in moon radii, out to `reach`). Under
+ * reduced motion they hold their starting places (one across the moon).
+ */
+export const CLOUDS = {
+  list: [
+    { x: 0.62, y: 0.792, w: 0.46, h: 0.05, speed: 5, alpha: 0.5 },
+    { x: 0.08, y: 0.818, w: 0.6, h: 0.04, speed: 3.4, alpha: 0.42 },
+    { x: 0.95, y: 0.776, w: 0.38, h: 0.03, speed: 6.2, alpha: 0.36 },
+    { x: 0.35, y: 0.835, w: 0.5, h: 0.035, speed: 4.2, alpha: 0.34 },
+    { x: 0.3, y: 0.11, w: 0.7, h: 0.06, speed: 3, alpha: 0.3 },
+    { x: 0.8, y: 0.46, w: 0.55, h: 0.05, speed: 3.8, alpha: 0.26 },
+  ],
+  /** Dusky plum cloud, and its moonlit silver. */
+  color: "rgb(98, 74, 118)",
+  lit: "rgb(218, 206, 232)",
+  clear: "rgba(218, 206, 232, 0)",
+  /** How far past the glass's edges a cloud goes before it wraps, as a share of the glass's width. */
+  margin: 0.45,
+  /** Blur, as a share of the cloud's height. */
+  blur: 0.45,
+  /** A cloud is lit out to this many moon radii from the moon; at most `litMax`. */
+  reach: 4,
+  litMax: 0.75,
+  /** The moon's light over the clouds: a soft silver corona `corona` moon radii wide, at `glow` (screen). */
+  corona: 3.2,
+  glow: 0.22,
+} as const;
+
+/**
+ * Steam off the tea: `wisps` thin curls rising `rise` mug-widths from the
+ * mug's mouth, swaying `amp` mug-widths as waves travel up them (`waves`
+ * along each, `speed` radians a second), fading in just over the rim and out
+ * at the top. Points: `width` and `blur`. Under reduced motion they hold
+ * still at `still` seconds.
+ */
+export const STEAM = {
+  wisps: [
+    { dx: -0.18, phase: 0, rise: 1.7, lean: -0.14 },
+    { dx: 0.06, phase: 2.1, rise: 2.1, lean: 0.08 },
+    { dx: 0.26, phase: 4.2, rise: 1.5, lean: 0.22 },
+  ],
+  amp: 0.11,
+  /** The sway grows from this share of `amp` at the rim to all of it at the top. */
+  swayFrom: 0.3,
+  waves: 1.6,
+  speed: 2.2,
+  /** How fast each wisp's strength breathes (radians a second), and between what opacities. */
+  breath: 0.8,
+  low: 0.45,
+  high: 1,
+  segments: 14,
+  /** It starts this far over the rim, as a share of the mug's width. */
+  lift: 0.12,
+  width: 3.4,
+  blur: 1.8,
+  color: "rgba(255, 240, 232, 0.62)",
+  clear: "rgba(255, 240, 232, 0)",
+  /** Along each wisp, rim to top: clear, in, held, out. */
+  fade: [0, 0.18, 0.5, 1],
+  still: 1.3,
 } as const;
 
 /** The rain the app adds on the glass: fewer and softer than before (the rain stays subtle). */
@@ -48,19 +121,33 @@ export const RAIN = {
   trailWidth: 1.5,
 } as const;
 
-/** Far-off lightning, softer than before: a lavender flicker every `every` + up to `spread` ms. */
+/**
+ * Far-off lightning, inside the clouds: every `every` + up to `spread` ms a
+ * soft lavender glow flickers up in one of `spots` (shares of the art, low
+ * over the treeline or high in the overcast), `radius` art-widths across,
+ * lighting the cloud round it: never the whole sky (the moon stays veiled).
+ */
 export const LIGHTNING = {
   color: "rgb(214, 204, 255)",
+  clear: "rgba(214, 204, 255, 0)",
+  spots: [
+    { x: 0.2, y: 0.8 },
+    { x: 0.88, y: 0.79 },
+    { x: 0.45, y: 0.84 },
+    { x: 0.25, y: 0.1 },
+    { x: 0.8, y: 0.14 },
+  ],
+  radius: 0.42,
   first: 3500,
   firstSpread: 4000,
   every: 9000,
   spread: 10000,
   // Two flickers and a fade: peak, dip, peak, out.
   steps: [
-    { to: 0.2, ms: 60 },
-    { to: 0.03, ms: 90 },
-    { to: 0.14, ms: 70 },
-    { to: 0, ms: 300 },
+    { to: 0.55, ms: 70 },
+    { to: 0.12, ms: 90 },
+    { to: 0.4, ms: 80 },
+    { to: 0, ms: 420 },
   ],
 } as const;
 
@@ -99,16 +186,20 @@ export const FAIRY = {
   speed: 1.3,
 } as const;
 
-/** How much of the column the deck fills: smaller cards, the sill and the cat in view below them. */
-export const DECK_SHARE = 0.8;
+/**
+ * Home's deck leaves `peek` under each card's words before the next card
+ * (less than ref.layout.hub.modes.deck.peek, the cards a little shorter, so
+ * the sill cat has room under them).
+ */
+export const DECK = { peek: 24 } as const;
 
 /**
- * The sill cat: `width` at most, never under `minWidth` (else it's left
- * out); its art's height / width (assets/characters/cat_sit.png); its feet
- * `sink` below the sill's top edge; at least `gap` clear of the deck; `right`
- * from the screen's right edge.
+ * The sill cat: `width` (the deck leaves room for it), never under
+ * `minWidth` (else it's left out); its art's height / width
+ * (assets/characters/cat_sit.png); its feet `sink` below the sill's top edge;
+ * at least `gap` clear of the deck; `right` from the screen's right edge.
  */
-export const CAT = { width: 64, minWidth: 34, aspect: 640 / 444, sink: 6, gap: 6, right: 32 } as const;
+export const CAT = { width: 104, minWidth: 56, aspect: 640 / 444, sink: 6, gap: 6, right: 30 } as const;
 
 /** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
 export const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620, reducedDuration: 200, back: 1.1, fade: 1.6, /** The cat pops up after the logo and the three cards. */ cat: 4 } as const;

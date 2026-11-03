@@ -37,7 +37,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import { continueHref, type CaseToContinue } from "./caseStatus";
 import { Chip, GearGlyph } from "./Chip";
-import { deckLayout, deckTilt } from "./deck";
+import { deckTilt, homeDeck } from "./deck";
 import { SittingCat } from "@/play2/SittingCat";
 import { HubNotice } from "./HubNotice";
 import { ModeCard } from "./ModeCard";
@@ -45,7 +45,7 @@ import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
 import { WindowBackdrop, windowGeometry } from "./WindowBackdrop";
-import { CAT, COVER, DECK_SHARE, FALL, RADIANS } from "./art/nook";
+import { CAT, COVER, FALL } from "./art/nook";
 import { LogoSparkle } from "./LogoSparkle";
 import { focusForAccessibility } from "@/lib/a11y";
 
@@ -99,16 +99,18 @@ export function HubScreen() {
   const [words, setWords] = useState<Partial<Record<Genre, number>>>({});
   const columnTop = viewport?.y ?? insets.top + HEADER;
   const column = viewport?.height ?? windowHeight - insets.top - HEADER;
-  // The deck takes most of the column, leaving the window's sill clear for the cat.
-  const deckRoom = column - M.top - insets.bottom - M.foot;
-  const deck = deckLayout(deckRoom * DECK_SHARE, Math.max(0, ...Object.values(words)), GENRES.length);
-  const fits = deck.height <= deckRoom;
-  // The cat sits on the sill, under the deck: as large as the room between
-  // them allows, and left out where there's too little (or the deck scrolls).
+  // The deck fills the column down to the room the cat needs on the window's
+  // sill; the cat sits under it, never touching it, and is left out where
+  // there's too little room (or the deck scrolls).
   const sillTop = windowHeight - windowGeometry(windowWidth, windowHeight).sill;
-  const deckBottom = columnTop + M.top + deck.height + tiltOverhang(windowWidth - 2 * M.edge);
-  const catWidth = Math.min(CAT.width, (sillTop + CAT.sink - deckBottom - CAT.gap) / CAT.aspect);
-  const showCat = fits && catWidth >= CAT.minWidth;
+  const { deck, fits, bottom: deckBottom, cat: catWidth } = homeDeck({
+    room: column - M.top - insets.bottom - M.foot,
+    top: columnTop + M.top,
+    sillTop,
+    cardWidth: windowWidth - 2 * M.edge,
+    words: Math.max(0, ...Object.values(words)),
+    count: GENRES.length,
+  });
 
   // Home is the shell: no mode while it is in front.
   useModeOnFocus(null);
@@ -407,9 +409,9 @@ export function HubScreen() {
         </ScrollView>
 
         {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
-        {showCat ? (
+        {catWidth > 0 ? (
           <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
-            <SittingCat width={Math.floor(catWidth)} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill" />
+            <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill" />
           </View>
         ) : null}
 
@@ -440,12 +442,6 @@ export function HubScreen() {
       ) : null}
     </View>
   );
-}
-
-/** How far the turned cards reach below their unturned box: half the card's width times the steepest tilt's sine. */
-function tiltOverhang(cardWidth: number): number {
-  const steepest = Math.max(...ref.layout.hub.modes.deck.tilt.map(Math.abs));
-  return Math.ceil((cardWidth / 2) * Math.sin(steepest * RADIANS));
 }
 
 function useFallIn(index: number) {

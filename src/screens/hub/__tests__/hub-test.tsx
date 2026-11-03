@@ -15,9 +15,10 @@ import { introHref } from "@/screens/mode/routes";
 import { RESUME_COPY, SERIES } from "@/screens/mode/copy";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref, shellTheme } from "@/theme/tokens";
-import { COVER, DECK_SHARE, SETTINGS } from "../art/nook";
-import { deckLayout, deckTilt } from "../deck";
+import { CAT, COVER, DECK, SETTINGS } from "../art/nook";
+import { deckLayout, deckTilt, homeDeck, tiltOverhang } from "../deck";
 import { HubScreen } from "../HubScreen";
+import { windowGeometry } from "../WindowBackdrop";
 
 jest.mock("expo-router", () => {
   const { useEffect } = jest.requireActual("react");
@@ -191,8 +192,9 @@ describe("01 · Home: the deck of mode cards", () => {
   it("deals the cards as a deck: equal cards, each lying over the one above by the deck's cover, alternately turned, later cards on top", async () => {
     await renderHub();
     await act(async () => layoutColumn(600));
-    // The deck takes DECK_SHARE of the column, leaving the sill and the cat in view below it.
-    const deck = deckLayout((600 - M.top - M.foot) * DECK_SHARE, 0, 3);
+    // The deck fills the column down to the room the cat needs on the sill.
+    const { width, height } = Dimensions.get("window");
+    const { deck } = homeDeck({ room: 600 - M.top - M.foot, top: M.top, sillTop: height - windowGeometry(width, height).sill, cardWidth: width - 2 * M.edge, words: 0, count: 3 });
     const slots = GENRE_LIST.map(slot);
     const deals = GENRE_LIST.map((genre) => styleOf(screen.getByTestId(`hub-card-${genre}-deal`)));
     for (const [i, style] of deals.entries()) {
@@ -239,7 +241,7 @@ describe("01 · Home: the deck of mode cards", () => {
       [554, 300], // large text
     ]) {
       const deck = deckLayout(available, words, 3);
-      expect(deck.card - deck.overlap).toBeGreaterThanOrEqual(words + M.deck.peek);
+      expect(deck.card - deck.overlap).toBeGreaterThanOrEqual(words + DECK.peek);
       // A card's centre (where an accessibility tap lands) is on its own uncovered part.
       expect(deck.card / 2).toBeLessThan(deck.card - deck.overlap);
       expect(deck.card).toBeGreaterThanOrEqual(M.minHeight);
@@ -260,6 +262,39 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(large.overlap).toBe(Math.round(large.card * M.deck.cover));
   });
 
+  it("leaves the cat its room on the sill under the deck, never touching the cards, and leaves it out when there's too little", () => {
+    // The column under the header (65) and the safe areas; the words as a phone measures them (114) and as the web build does (134).
+    const phone = ({ width, height, top, bottom }: { width: number; height: number; top: number; bottom: number }, words: number) => {
+      const columnTop = top + 65;
+      const sillTop = height - windowGeometry(width, height).sill;
+      return { sillTop, ...homeDeck({ room: height - columnTop - M.top - bottom - M.foot, top: columnTop + M.top, sillTop, cardWidth: width - 2 * M.edge, words, count: 3 }) };
+    };
+    const iphone = { width: 390, height: 844, top: 47, bottom: 34 };
+    const web = { width: 390, height: 844, top: 0, bottom: 0 };
+    const se = { width: 375, height: 667, top: 20, bottom: 0 };
+    const max = { width: 430, height: 932, top: 59, bottom: 34 };
+    for (const [screenSize, words] of [[iphone, 114], [web, 134], [max, 114], [se, 114], [se, 134], [iphone, 300]] as const) {
+      const at = phone(screenSize, words);
+      expect(at.deck.card - at.deck.overlap).toBeGreaterThanOrEqual(words + DECK.peek);
+      if (at.cat > 0) {
+        expect(at.cat).toBeGreaterThanOrEqual(CAT.minWidth);
+        expect(at.cat).toBeLessThanOrEqual(CAT.width);
+        // The cat's head stays CAT.gap clear of the deck's turned corners.
+        expect(at.sillTop + CAT.sink - at.cat * CAT.aspect).toBeGreaterThanOrEqual(at.bottom + CAT.gap);
+        expect(at.bottom).toBe(M.top + screenSize.top + 65 + at.deck.height + tiltOverhang(screenSize.width - 2 * M.edge));
+      }
+    }
+    // A full-size cat on a 390 x 844 phone and the Pro Max, the deck filling the rest.
+    expect(phone(iphone, 114).cat).toBe(CAT.width);
+    // Where the words are taller (the web build's fonts) the cards win a few points and the cat gives them up.
+    expect(phone(web, 134).cat).toBeGreaterThan(CAT.width * 0.9);
+    expect(phone(max, 114).cat).toBe(CAT.width);
+    // The SE's deck takes the whole column: no room for the cat; large text scrolls the deck: no cat either.
+    expect(phone(se, 114).cat).toBe(0);
+    expect(phone(iphone, 300).fits).toBe(false);
+    expect(phone(iphone, 300).cat).toBe(0);
+  });
+
   it("grows every card together when large text makes one card's words taller", async () => {
     await renderHub();
     await act(async () => layoutColumn(600));
@@ -268,7 +303,7 @@ describe("01 · Home: the deck of mode cards", () => {
     const after = deckLayout(600 - M.top - M.foot, 320, 3);
     expect(after.card).toBeGreaterThan(before);
     for (const genre of GENRE_LIST) expect(slot(genre).height).toBe(after.card);
-    expect(after.card - after.overlap).toBeGreaterThanOrEqual(320 + M.deck.peek);
+    expect(after.card - after.overlap).toBeGreaterThanOrEqual(320 + DECK.peek);
   });
 
   it("every card is tappable, overlap or not: each one's own tap runs its own mode", async () => {

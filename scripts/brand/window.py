@@ -2,15 +2,19 @@
 # a rainy night. A four-pane window fills the phone, its frame and sill on the
 # screen's edges and a cross of mullions, the wood painted a deep plum-brown
 # and warmed by candlelight from the sill. Behind the glass: a midnight-indigo
-# sky going plum toward a dusky mauve horizon, a few stars, a full moon rising
-# over a soft treeline in the lower right pane (the cat sits in front of it),
-# all seen through wet glass, beaded with rain. On the sill at the left, a
+# sky going plum toward a dusky mauve horizon under a low, rainy overcast: a
+# full moon in the lower right pane, veiled by thin cloud (a soft corona
+# through it, a band of cloud across its face), over a soft treeline (the cat
+# sits on the sill beside it, its head over the moon's edge), only a few
+# stars in the gaps, all seen through wet glass, beaded with rain. On the sill at the left, a
 # little stack of books with a lit candle on top; its light pools on the sill
-# and the frame. The app animates the flame's glow, the rain, the fairy lights
-# and the far-off lightning over it (src/screens/hub/WindowBackdrop.tsx).
+# and the frame; beside them a mug of tea. The app animates the flame's glow,
+# the rain, clouds drifting over the moon, lightning far off inside the
+# clouds, steam off the tea and the fairy lights over it
+# (src/screens/hub/WindowBackdrop.tsx).
 #
 # Usage: python3 scripts/brand/window.py assets/backdrop/window.jpg
-# The geometry (F, SILL, M, MY, the candle's flame) is mirrored as fractions in
+# The geometry (F, SILL, M, MY, the candle's flame, the moon, the mug's mouth) is mirrored as fractions in
 # src/screens/hub/art/nook.ts: change both together.
 import sys, numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -25,7 +29,7 @@ SILL_TOP = H - SILL
 CX = W // 2
 # The candle on the sill (its flame's centre), and the moon behind the lower right pane.
 FLAME = (290, SILL_TOP - 270)
-MOON = (1000, SILL_TOP - 318, 88)
+MOON = (868, 2254, 84)
 
 yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
 v = yy / H
@@ -64,11 +68,12 @@ sky = ramp(v, [
     (0.90, (112, 68, 112)),
     (1.0, (124, 80, 118)),
 ])
-clouds = np.clip((0.6 * noise(300) + 0.4 * noise(120) - 0.48) * 2.0, 0, 1)
-sky += clouds[..., None] * np.array([34, 22, 46], np.float32) * (0.35 + 0.65 * v[..., None])
-# The moon's halo lifts the sky round it, warm lavender.
-halo = soft_disc(MOON[0], MOON[1], MOON[2] * 5.2, 1.6)
-sky += halo[..., None] * np.array([52, 40, 74], np.float32)
+# A low, rainy overcast: soft cloud everywhere, thicker in long drifting bands.
+clouds = np.clip((0.55 * noise(300) + 0.3 * noise(120) + 0.15 * noise(40) - 0.36) * 1.7, 0, 1)
+sky += clouds[..., None] * np.array([40, 28, 54], np.float32) * (0.45 + 0.55 * v[..., None])
+# The moon's light through the cloud: a wide, soft corona, lighting the cloud round it most.
+halo = soft_disc(MOON[0], MOON[1], MOON[2] * 6.5, 1.8)
+sky += halo[..., None] * np.array([46, 38, 70], np.float32) * (0.6 + 0.8 * clouds[..., None])
 img = Image.fromarray(np.clip(sky, 0, 255).astype(np.uint8)).convert("RGBA")
 d = ImageDraw.Draw(img)
 
@@ -76,7 +81,7 @@ d = ImageDraw.Draw(img)
 mx, my, mr = MOON
 moon = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 md = ImageDraw.Draw(moon)
-md.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(250, 238, 226, 255))
+md.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(236, 224, 222, 230))
 marks = Image.new("L", (W, H), 0)
 mk = ImageDraw.Draw(marks)
 for (ox, oy, rr) in [(-30, -24, 34), (22, 10, 26), (-8, 38, 20), (40, -36, 14), (-46, 22, 12)]:
@@ -87,7 +92,22 @@ shade.putalpha(marks)
 moon = Image.alpha_composite(moon, Image.composite(shade, Image.new("RGBA", (W, H), (0, 0, 0, 0)), moon.getchannel("A")))
 glow = moon.filter(ImageFilter.GaussianBlur(22)); glow.putalpha(glow.getchannel("A").point(lambda a: int(a * 0.6)))
 img = Image.alpha_composite(img, glow)
-img = Image.alpha_composite(img, moon)
+img = Image.alpha_composite(img, moon.filter(ImageFilter.GaussianBlur(2.5)))
+# The veil: thin cloud across the moon's face, lit silver where it crosses it, plum away from it.
+veil = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+vd = ImageDraw.Draw(veil)
+# A bank across its lower half, a thin streak over its top, wisps trailing off either side.
+for (ox, oy, rx, ry, a) in [(-60, 52, 300, 44, 225), (90, 30, 220, 26, 170), (-30, -34, 230, 14, 150), (150, -58, 150, 10, 110),
+                            (-280, 70, 220, 26, 120), (260, 6, 200, 16, 100)]:
+    vd.ellipse([mx + ox - rx, my + oy - ry, mx + ox + rx, my + oy + ry], fill=(128, 100, 146, a))
+veil = veil.filter(ImageFilter.GaussianBlur(14))
+lit_veil = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+ImageDraw.Draw(lit_veil).ellipse([mx - mr * 1.6, my - mr * 1.6, mx + mr * 1.6, my + mr * 1.6], fill=(255, 255, 255, 255))
+lit_veil = lit_veil.filter(ImageFilter.GaussianBlur(40)).getchannel("A")
+va = np.asarray(veil).astype(np.float32)
+k = (np.asarray(lit_veil).astype(np.float32) / 255.0)[..., None]
+va[..., :3] = va[..., :3] * (1 - k) + np.array([206, 190, 220], np.float32) * k
+img = Image.alpha_composite(img, Image.fromarray(np.clip(va, 0, 255).astype(np.uint8), "RGBA"))
 
 # 3. The treeline: two soft rows of pines low across the panes, the far row hazed plum.
 d = ImageDraw.Draw(img)
@@ -104,8 +124,8 @@ def pine(cx, base, h, w, colour):
 
 
 for base, colour, n, hmin, hmax in [
-    (int(H * 0.915), (56, 36, 74), 18, 110, 280),
-    (int(H * 0.94), (28, 18, 38), 14, 150, 330),
+    (int(H * 0.925), (56, 36, 74), 18, 70, 210),
+    (int(H * 0.945), (28, 18, 38), 14, 100, 240),
 ]:
     for _ in range(n):
         cx = int(rng.integers(-60, W + 60))
@@ -114,7 +134,7 @@ for base, colour, n, hmin, hmax in [
     d.rectangle([0, base, W, H], fill=colour)
 img = img.filter(ImageFilter.GaussianBlur(7))   # seen through wet glass
 
-# Stars, sparse and mostly high up: tiny warm-white points, a few with a glow.
+# A few stars, only high up and only in the gaps of the cloud (it's a rainy night): tiny, dim.
 stars = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 sd = ImageDraw.Draw(stars)
 for _ in range(120):
@@ -122,7 +142,10 @@ for _ in range(120):
     if rng.random() < 0.5:
         y *= 0.55
     r = float(rng.choice([1.5, 2, 2.5, 3.5], p=[.4, .3, .2, .1]))
-    a = int(rng.uniform(120, 230) * (1 - y / H))
+    gap = 1 - clouds[min(H - 1, int(y)), min(W - 1, int(x))]
+    if y > H * 0.45 or gap < 0.75:
+        continue
+    a = int(rng.uniform(90, 170) * (1 - y / H) * gap)
     sd.ellipse([x - r, y - r, x + r, y + r], fill=(255, 238, 228, a))
 img = img.convert('RGBA')
 img = Image.alpha_composite(img, stars.filter(ImageFilter.GaussianBlur(1.2)))
@@ -219,7 +242,7 @@ p.ellipse([fx - cw, ctop - 9, fx + cw, ctop + 9], fill=(246, 228, 204))
 for (dx, L) in [(-20, 40), (14, 24), (26, 54)]:
     p.rounded_rectangle([fx + dx - 5, ctop, fx + dx + 5, ctop + L], 5, fill=(246, 228, 204))
 p.line([(fx, ctop - 2), (fx + 1, ctop - 18)], fill=(40, 26, 30), width=4)
-# A mug of tea beside them: blush pink, a little heart on it, its handle to the right.
+# A mug of tea beside them: blush pink, plain, its handle to the right (the app adds its steam).
 mx0, mx1 = fx + 196, fx + 296
 mtop = base - 118
 p.rounded_rectangle([mx1 - 14, mtop + 26, mx1 + 34, mtop + 84], 22, outline=(190, 114, 140), width=12)
@@ -227,8 +250,6 @@ p.rounded_rectangle([mx0, mtop, mx1, base - 2], 16, fill=(208, 128, 156))
 p.rounded_rectangle([mx0 + 60, mtop + 4, mx1, base - 2], 16, fill=(180, 104, 132))
 p.ellipse([mx0, mtop - 10, mx1, mtop + 12], fill=(186, 110, 138))
 p.ellipse([mx0 + 8, mtop - 5, mx1 - 8, mtop + 8], fill=(120, 66, 44))
-hx, hy = mx0 + 42, mtop + 54
-p.polygon([(hx, hy + 14), (hx - 16, hy - 2), (hx - 9, hy - 11), (hx, hy - 4), (hx + 9, hy - 11), (hx + 16, hy - 2)], fill=(252, 232, 236))
 # Shading on the candle: dark on the right, away from the room's light.
 cs = Image.new("L", (W, H), 0)
 ImageDraw.Draw(cs).rectangle([fx + 8, ctop, fx + cw, dish_y - 6], fill=90)
@@ -268,4 +289,5 @@ img = Image.alpha_composite(img, flame.filter(ImageFilter.GaussianBlur(2.2)))
 
 img.convert("RGB").save(sys.argv[1], quality=88)
 img.convert("RGB").resize((W // 4, H // 4)).save(sys.argv[2] if len(sys.argv) > 2 else "preview.png")
-print("panes", F / W, F / H, SILL / H, M / W, MY / H, "flame", fx / W, fy / H, "moon", mx / W, my / H, mr / W)
+print("panes", F / W, F / H, SILL / H, M / W, MY / H, "flame", fx / W, fy / H, "moon", MOON[0] / W, MOON[1] / H, MOON[2] / W,
+      "mug", (mx0 + mx1) / 2 / W, mtop / H, (mx1 - mx0) / W)
