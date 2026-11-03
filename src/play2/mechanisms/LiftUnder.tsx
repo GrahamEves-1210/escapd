@@ -17,7 +17,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
   const feedback = useFeedback();
   const lifted = state.lifted === true;
   const onCommit = useCallback(() => {
-    feedback.paper();
+    feedback.cloth();
     onSet("lifted", true);
   }, [feedback, onSet]);
   // Put back: shut, laid down, straightened. The room keeps what was found.

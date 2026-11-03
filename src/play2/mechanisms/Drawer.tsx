@@ -25,7 +25,7 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
   const { showLocked, markTried } = useLockedLine(locked);
 
   const onCommit = useCallback(() => {
-    feedback.thud();
+    feedback.drawer();
     onSet("open", true);
   }, [feedback, onSet]);
   // Put back: shut, laid down, straightened. The room keeps what was found.

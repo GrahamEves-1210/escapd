@@ -59,7 +59,7 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled, done }:
 
   const passed = useCallback((rounded: number) => {
     aim.current = rounded;
-    feedback.tick();
+    feedback.detent();
     onChange(mod(rounded, n));
   }, [feedback, onChange, n]);
 
@@ -73,7 +73,7 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled, done }:
   const step = (delta: 1 | -1) => {
     if (disabled) return;
     aim.current += delta;
-    feedback.tick();
+    feedback.detent();
     onChange(mod(aim.current, n));
     pos.set(withTiming(aim.current, settle(reducedMotion, 160)));
   };
