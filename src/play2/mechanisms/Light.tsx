@@ -46,7 +46,9 @@ function Lamp({ target, state, onSet, busy, width }: MechanismProps) {
 
   const toggle = useCallback(() => {
     if (busy) return;
-    feedback.press();
+    // Switching on: the rocker's click and hum; off, a plain press.
+    if (on) feedback.press();
+    else feedback.uvSwitch();
     onSet("on", !on);
   }, [busy, feedback, onSet, on]);
   const caught = useCallback(() => feedback.tick(), [feedback]);
@@ -70,8 +72,10 @@ function Lamp({ target, state, onSet, busy, width }: MechanismProps) {
     },
   });
 
+  // The chain stretches from its top and the bead rides its end: both moved by transforms of the
+  // same pull (the chain's layout never changes), so the bead stays on the chain, pulled or springing back.
   const beadStyle = useAnimatedStyle(() => ({ transform: [{ translateY: pull.get() }] }));
-  const chainStyle = useAnimatedStyle(() => ({ height: CHAIN + pull.get() }));
+  const chainStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: (CHAIN + pull.get()) / CHAIN }] }));
   const poolStyle = useAnimatedStyle(() => ({ opacity: glow.get() * (uv ? 0.42 : 0.3) }));
   const bulbStyle = useAnimatedStyle(() => ({ opacity: 0.25 + glow.get() * 0.75 }));
 
@@ -124,8 +128,9 @@ const styles = StyleSheet.create({
     borderRightColor: "transparent",
   },
   bulb: { width: 34, height: 14, borderBottomLeftRadius: 17, borderBottomRightRadius: 17 },
-  chainAnchor: { position: "absolute", top: ref.space.lg + 40, left: "50%", marginLeft: SHADE_W / 2 - 34, alignItems: "center", width: ref.hit.min },
-  chain: { width: 1.5 },
-  beadHit: { width: ref.hit.min, height: ref.hit.min, alignItems: "center", justifyContent: "center", marginTop: -ref.hit.min / 2 + 7 },
+  chainAnchor: { position: "absolute", top: ref.space.lg + 40, left: "50%", marginLeft: SHADE_W / 2 - 34, alignItems: "center", width: ref.hit.min, height: CHAIN + ref.hit.min / 2 },
+  chain: { width: 1.5, height: CHAIN, transformOrigin: "50% 0%" },
+  // Centred on the chain's end (the bead's middle on it, as if threaded).
+  beadHit: { position: "absolute", left: 0, top: CHAIN - ref.hit.min / 2, width: ref.hit.min, height: ref.hit.min, alignItems: "center", justifyContent: "center" },
   bead: { width: 14, height: 14, borderRadius: 7, borderWidth: StyleSheet.hairlineWidth },
 });

@@ -60,11 +60,12 @@ describe("the tray", () => {
 });
 
 describe("the magnifier", () => {
-  it("looks through its lens: up and left of its middle, as the art draws it", () => {
+  it("looks through its lens: up and right of its middle, as the art draws it", () => {
     const p = lensPoint(200, 300);
-    expect(p.x).toBeLessThan(200);
+    expect(p.x).toBeGreaterThan(200);
     expect(p.y).toBeLessThan(300);
-    expect(200 - p.x).toBeLessThan(TOOL / 2);
+    expect(p.x - 200).toBeLessThan(TOOL / 2);
+    expect(300 - p.y).toBeLessThan(TOOL / 2);
   });
 
   it("is drawn in its corner, ready to pick up", async () => {

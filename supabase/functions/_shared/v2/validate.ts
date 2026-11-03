@@ -5,10 +5,12 @@ import { ARCHETYPES, type ArchetypeId, type HostRule } from "./archetypes.ts";
 import { categoryOf, isObjectType, isPortableType, type ObjectType } from "./taxonomy.ts";
 import {
   type Condition, type Effect, MODES, type ObjectDef, OVERLAYS, type RoomDefinitionV2, type RoomSecretV2,
-  type Trigger, type Value,
+  TRACE_KINDS, type Trigger, type Value,
 } from "./types.ts";
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** The pre-game brief's cap (two to four sentences). */
+export const BRIEF_MAX = 600;
 const SLOT_REF = /\{\{\s*([a-z0-9_]+)\s*\}\}/g;
 export const slotRefs = (text: string): string[] => [...text.matchAll(SLOT_REF)].map((m) => m[1]);
 
@@ -21,6 +23,9 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
   if (def.schema_version !== 2) err("schema_version must be 2");
   if (!MODES.includes(def.mode)) err(`unknown mode ${def.mode}`);
   for (const k of ["title", "objective"] as const) if (typeof def[k] !== "string" || !def[k].trim()) err(`${k} is required`);
+  if (def.brief !== undefined && (typeof def.brief !== "string" || !def.brief.trim() || def.brief.length > BRIEF_MAX)) {
+    err(`brief must be a non-empty string of at most ${BRIEF_MAX} characters`);
+  }
 
   const targets = new Map<string, ObjectDef | null>();   // objects and items share one id space
   const unique = (id: string, what: string, set: Set<string> | Map<string, unknown>) => {
@@ -38,6 +43,14 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
     if (o.outline !== undefined && !(Array.isArray(o.outline) && o.outline.length >= 3 && o.outline.length <= 64
       && o.outline.every((p) => p && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1))) err(`${o.id}: outline must be 3-64 points inside the photo`);
     if (!isObjectType(o.type)) { err(`${o.id}: unknown type ${o.type}`); continue; }
+    if (o.trace !== undefined) {
+      // A UV trace: a mark on the photo, not a thing to work. Its anchor is a real object on the same photo (when kept).
+      const t = o.trace;
+      if (!t || !TRACE_KINDS.includes(t.kind) || !["on", "wall", "floor"].includes(t.surface) || typeof t.anchor !== "string" || !Number.isInteger(t.seed)) err(`${o.id}: malformed trace`);
+      if (o.archetype !== null || o.controls.length || o.exit || o.removable || o.hidden || o.submit) err(`${o.id}: a trace has no archetype, controls or role`);
+      const anchor = def.objects.find((x) => x.id === t?.anchor);
+      if (anchor && (anchor.trace || anchor.photo_index !== o.photo_index)) err(`${o.id}: a trace's anchor is a real object on its photo`);
+    }
     const expected = new Map<string, string>();
     if (o.archetype !== null) {
       const spec = ARCHETYPES[o.archetype as ArchetypeId];
@@ -116,7 +129,8 @@ function validateSecret(def: RoomDefinitionV2, secret: RoomSecretV2, targets: Ma
     if (!secret.slots[r]) err(`${c.id}: unknown slot {{${r}}}`);
     else if (secret.slots[r].from) err(`${c.id}: derived slot {{${r}}} must never be shown`);
   }
-  if (`${def.title} ${def.objective} ${def.intro ?? ""}`.includes("{{")) err("public header text cannot hold slots");
+  if (`${def.title} ${def.objective} ${def.intro ?? ""} ${def.brief ?? ""}`.includes("{{")) err("public header text cannot hold slots");
+  for (const k of secret.keep ?? []) if (typeof k !== "string" || !k.trim()) err("keep holds non-empty phrases");
 
   const steps = new Set(secret.steps.map((s) => s.id));
   for (const s of secret.steps) {

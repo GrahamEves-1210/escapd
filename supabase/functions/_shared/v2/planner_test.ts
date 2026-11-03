@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { renderCard } from "./engine.ts";
+import { applyAction, initialState, renderCard } from "./engine.ts";
 import { planRoom, type PlanResult } from "./planner.ts";
 import { BEDROOM_NO_DOOR, BEDROOM_WITH_DOOR, FULL_15, obj, planProblems, seededRandomInt, SPARSE_5 } from "./test_fixtures.ts";
 import { MODES } from "./types.ts";
@@ -198,4 +198,68 @@ Deno.test("planner: a box mostly inside another object's is never kept as an emp
     const kept = r.definition.objects.find((o) => o.id === "safe");
     if (kept) assert(used.has(kept.id) || Object.values(r.secret.slots).some((s) => s.value === kept.id), `${mode}: the safe is an empty herring`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// The case's header, the evidence, the UV traces
+// ---------------------------------------------------------------------------
+Deno.test("planner: no invented case names; every case has a brief in its mode's voice", () => {
+  for (const mode of MODES) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(FULL_15, mode, seed);
+    assert(/^Case no\. \d{5}$/.test(def.title), def.title);
+    assert(def.brief && def.brief.length <= 600 && !/[0-9]/.test(def.brief), def.brief);
+    const sentences = def.brief.split(/(?<=[.!?])\s+/).length;
+    assert(sentences >= 2 && sentences <= 4, `${mode}: ${sentences} sentences`);
+    // Crime scene: the time of death the alibis are read against is stated up front, and kept.
+    if (mode === "crime_scene") for (const k of secret.keep ?? []) assert(def.brief.includes(k) && def.objective.includes(k));
+  }
+});
+
+Deno.test("planner: evidence reads as documents, never a verdict; names are plain", () => {
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(inv, mode, seed);
+    for (const c of def.cards) {
+      const text = renderCard(c, secret);
+      assert(!/ruled out|eliminated|✗/i.test(text), `${mode}: a verdict: ${text}`);
+      assert(!/personal effect/i.test(`${c.title} ${text}`), c.title);
+    }
+    for (const n of [...def.items.map((i) => i.name), ...def.objects.map((o) => o.label)]) assert(!/personal effect/i.test(n), n);
+  }
+});
+
+Deno.test("planner: UV traces sit on the photo by a real object, and the torch then the magnifier read them", () => {
+  let rooms = 0;
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(inv, mode, seed);
+    const traces = def.objects.filter((o) => o.trace);
+    if (!traces.length) continue;
+    rooms++;
+    const torch = def.items.find((i) => i.archetype === "Light")!;
+    assert(torch, `${mode}: traces but no UV flashlight`);
+    for (const t of traces) {
+      const b = t.box;
+      assert(b.x >= 0 && b.y >= 0 && b.x + b.w <= 1 && b.y + b.h <= 1, `${t.id} off the photo`);
+      if (t.trace!.surface === "floor") assert(b.y >= 0.5, `${t.id}: a floor trace in the top half`);
+      if (t.trace!.surface === "wall") assert(b.y + b.h <= 0.73, `${t.id}: a wall trace on the floor`);
+      const anchor = inv.find((o) => def.objects.some((d) => d.id === t.trace!.anchor && d.label === o.label));
+      if (anchor) assertEquals(anchor.photo_index, t.photo_index);
+      // Under the magnifier before the light finds it: nothing. After: its report.
+      let state = initialState(def);
+      state = { ...state, inventory: [torch.id] };
+      assertEquals(applyAction(def, secret, state, { type: "inspect", object: t.id }).result.outcome, "nothing");
+      const lit = applyAction(def, secret, state, { type: "use_item", item: torch.id, object: t.id });
+      assertEquals(lit.result.outcome, "ok");
+      assert(lit.result.effects.some((e) => e.do === "overlay" && e.object === t.id));
+      const read = applyAction(def, secret, lit.state, { type: "inspect", object: t.id });
+      assert(read.result.effects.some((e) => e.do === "show_card"), `${t.id}: no report`);
+    }
+    // Two traces on one photo never overlap.
+    for (const a of traces) for (const c of traces) {
+      if (a === c || a.photo_index !== c.photo_index) continue;
+      const ox = Math.min(a.box.x + a.box.w, c.box.x + c.box.w) - Math.max(a.box.x, c.box.x);
+      const oy = Math.min(a.box.y + a.box.h, c.box.y + c.box.h) - Math.max(a.box.y, c.box.y);
+      assert(ox <= 0 || oy <= 0, `${a.id} overlaps ${c.id}`);
+    }
+  }
+  assert(rooms >= 30, `only ${rooms} of 54 rooms have UV traces`);
 });

@@ -9,22 +9,27 @@
 // Touch is one pan (the beam) racing one tap (look); both are hit-tested here.
 // Screen readers get one button per visible object instead (accessibilityTap).
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
   BlurMask, Canvas, Circle, Group, Oval, Paint, Path, RadialGradient, Rect, RoundedRect, vec,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
-import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, {
+  Easing, cancelAnimation, useAnimatedStyle, useDerivedValue, useSharedValue, withRepeat, withTiming, type SharedValue,
+} from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { Overlay, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
+import { outlinePath } from "@/game/outline";
+import { useTheme } from "@/theme/ThemeProvider";
 import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
 import { V2 } from "./layout";
 import { useOutlines } from "./useOutlines";
+import { UvTrace, type StageTrace } from "./UvTrace";
 
 export interface StageObject {
   id: string;
@@ -49,6 +54,10 @@ export interface StageProps {
   uv?: boolean;
   /** Writing revealed on objects (glow marks): shown under the UV beam, or always while a lamp is lit. */
   marks?: { object: string; box: Box; text: string }[];
+  /** UV traces on this photo (prints, stains, footprints, writing): drawn only under the UV beam. */
+  traces?: StageTrace[];
+  /** The trace under the UV beam's centre as it moves (UV reveals it after a moment). */
+  onTrace?: (traceId: string | null) => void;
   /** The object under the beam's centre as it moves (UV checks it after a moment). */
   onHover?: (objectId: string | null) => void;
   /** Where the beam points (photo fractions), owned by the parent so others can follow it. */
@@ -84,9 +93,22 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], onHover, onFrame, focus = null, beam, enter = 0,
+  uv = false, marks = [], traces = [], onTrace, onHover, onFrame, focus = null, beam, enter = 0,
 }: StageProps) {
   const theme = useModeTheme();
+  const { reducedMotion } = useTheme();
+  // The glints' shimmer: one slow clock for every outline (still, with reduced motion or no glints).
+  const shimmer = useSharedValue(0);
+  useEffect(() => {
+    if (reducedMotion || !glints) {
+      cancelAnimation(shimmer);
+      shimmer.set(-1);
+      return;
+    }
+    shimmer.set(0);
+    shimmer.set(withRepeat(withTiming(1, { duration: GLINT.shimmerMs, easing: Easing.linear }), -1, false));
+    return () => cancelAnimation(shimmer);
+  }, [reducedMotion, glints, shimmer]);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
   // The room fills the whole view, edge to edge like a game's viewport (no
@@ -255,8 +277,8 @@ export function Stage({
               ))}
               {/* The dark, with the beam and every lit lamp punched out of it. */}
               <Group layer={<Paint />}>
-                <Rect x={0} y={0} width={W} height={H} color={`rgba(0,0,0,${uv ? Math.min(0.92, darkness + 0.06) : darkness})`} />
-                <Beam tx={tx} ty={ty} w={W} h={H} r={R} />
+                <Rect x={0} y={0} width={W} height={H} color={`rgba(0,0,0,${uv ? Math.min(0.95, darkness + 0.04) : darkness})`} />
+                <Beam tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} />
                 {lamps.map((l) => {
                   const cx = (l.box.x + l.box.w / 2) * W;
                   const cy = (l.box.y + l.box.h / 2) * H;
@@ -268,19 +290,20 @@ export function Stage({
                   );
                 })}
               </Group>
-              {/* The UV flashlight: its beam glows violet. */}
-              {uv ? <Beam tx={tx} ty={ty} w={W} h={H} r={R} tint="rgba(150,95,255,0.30)" /> : null}
+              {/* The light itself: a faint warm cast in the torch's pool, or the UV flashlight's violet. */}
+              <Beam tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} tint />
               {/* Glints: an outline that catches the beam. */}
               {glints
                 ? objects.map((o) => (
-                    <Glint key={o.id} box={o.box} seen={o.seen} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R} color={theme.ink} outline={outlines[o.id]} />
+                    <Glint
+                      key={o.id} box={o.box} seen={o.seen} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R}
+                      color={uv ? GLINT.uv : theme.ink} outline={outlines[o.id]} shimmer={shimmer} uv={uv}
+                    />
                   ))
                 : null}
             </Canvas>
-            {/* Invisible ink: drawn on the object, seen where the UV beam falls (or everywhere while a lamp is lit). */}
-            {marks.map((m) => (
-              <InkMark key={m.object} mark={m} w={W} h={H} tx={tx} ty={ty} r={R} always={lamps.length > 0} uv={uv} />
-            ))}
+            {/* UV traces and invisible ink: seen where the UV beam falls (ink on objects also while a lamp is lit). */}
+            <UvTrace traces={traces} marks={marks} genre={genre} w={W} h={H} tx={tx} ty={ty} r={R} uv={uv} lampLit={lamps.length > 0} onTrace={onTrace} onOpen={onLook} />
             {/* One button per object for screen readers; no touch handlers, so the gestures above get every touch. */}
             {objects.map((o) => (
               <View
@@ -312,56 +335,68 @@ export function Stage({
   );
 }
 
-function Beam({ tx, ty, w, h, r, tint }: { tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; tint?: string }) {
+/**
+ * The torch's light. Punched out of the dark (dstOut) with a long, soft
+ * falloff, like a real torch's pool: full in the middle, easing off through
+ * the outer half, no edge. With `tint`, the colour the light casts over what it
+ * falls on, drawn over the dark: a faint warm cast, or the UV flashlight's
+ * violet (and the UV light is dimmer: less of the room shows through it).
+ */
+function Beam({ tx, ty, w, h, r, uv, tint = false }: {
+  tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; uv: boolean; tint?: boolean;
+}) {
+  const reach = r * BEAM.feather;
   const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
   const cx = useDerivedValue(() => tx.get() * w);
   const cy = useDerivedValue(() => ty.get() * h);
   if (tint) {
-    // A coloured pool over the lit area (the UV flashlight).
+    const colors = uv ? BEAM.uvTint : BEAM.warmTint;
     return (
-      <Circle cx={cx} cy={cy} r={r}>
-        <RadialGradient c={c} r={r} colors={[tint, tint, "rgba(0,0,0,0)"]} positions={[0, 0.55, 1]} />
+      <Circle cx={cx} cy={cy} r={reach}>
+        <RadialGradient c={c} r={reach} colors={colors} positions={BEAM.stops} />
       </Circle>
     );
   }
   return (
-    <Circle cx={cx} cy={cy} r={r} blendMode="dstOut">
-      <RadialGradient c={c} r={r} colors={["rgba(0,0,0,1)", "rgba(0,0,0,0.92)", "rgba(0,0,0,0)"]} positions={[0, 0.5, 1]} />
+    <Circle cx={cx} cy={cy} r={reach} blendMode="dstOut">
+      <RadialGradient c={c} r={reach} colors={uv ? BEAM.uvClear : BEAM.clear} positions={BEAM.stops} />
     </Circle>
   );
 }
 
-/**
- * Writing in invisible ink on an object: a digit, a word, a door symbol and its
- * number, in glowing violet, as someone wrote it there. Seen only where the UV
- * beam falls (fading at its edge), or plainly while a lamp is lit.
- */
-function InkMark({ mark, w, h, tx, ty, r, always, uv }: {
-  mark: { box: Box; text: string }; w: number; h: number; tx: SharedValue<number>; ty: SharedValue<number>; r: number; always: boolean; uv: boolean;
-}) {
-  const { box } = mark;
-  const cx = (box.x + box.w / 2) * w;
-  const cy = (box.y + box.h / 2) * h;
-  const size = Math.max(16, Math.min(44, Math.min(box.w * w, box.h * h) * 0.45));
-  const style = useAnimatedStyle(() => {
-    if (always) return { opacity: 1 };
-    if (!uv) return { opacity: 0 };
-    const d = Math.hypot(tx.get() * w - cx, ty.get() * h - cy);
-    return { opacity: Math.max(0, Math.min(1, 1.6 * (1 - d / r))) };
-  });
-  return (
-    <Animated.View pointerEvents="none" style={[styles.ink, { left: box.x * w, top: box.y * h, width: box.w * w, height: box.h * h }, style]}>
-      <Text style={[styles.inkText, { fontSize: size, lineHeight: size * 1.15 }]} accessibilityLabel={`Written in invisible ink: ${mark.text}`}>
-        {mark.text}
-      </Text>
-    </Animated.View>
-  );
-}
+/** The beam's falloff: a smooth, Gaussian-like curve over these stops (as a share of its reach). */
+const FALLOFF = [1, 0.97, 0.86, 0.64, 0.4, 0.2, 0.07, 0];
+const rgba = (rgb: string, a: number) => `rgba(${rgb},${+a.toFixed(3)})`;
+const BEAM = {
+  /** The pool reaches this far past the beam's radius, its soft edge feathered out over the extra. */
+  feather: 1.18,
+  stops: [0, 0.16, 0.33, 0.5, 0.65, 0.79, 0.91, 1],
+  clear: FALLOFF.map((a) => rgba("0,0,0", a)),
+  uvClear: FALLOFF.map((a) => rgba("0,0,0", a * 0.72)),
+  warmTint: FALLOFF.map((a) => rgba("255,206,150", a * 0.1)),
+  uvTint: FALLOFF.map((a) => rgba("138,86,255", a * 0.4)),
+};
 
-function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline }: {
+/** The glints' look: a soft blurred glow on the outline and a fine crisp line, brighter under the beam. */
+const GLINT = {
+  line: 1.3,
+  /** The line under the beam's centre, hot white (violet under UV), fading out to the beam's edge. */
+  hot: "rgba(255,250,240,1)",
+  hotUv: "rgba(230,214,255,1)",
+  /** The glow under UV: the outlines light up violet. */
+  uv: "rgb(196,168,255)",
+  /** A spark of light that runs along the outline, this share of it long, once round in this long. */
+  spark: 0.07,
+  shimmerMs: 4200,
+};
+
+function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline, shimmer, uv }: {
   box: Box; seen: boolean; assist: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
   /** The object's outline (photo fractions): the glint runs along its real edge. */
   outline?: { x: number; y: number }[];
+  /** The shimmer's clock (0..1, round and round; below 0: still). */
+  shimmer: SharedValue<number>;
+  uv: boolean;
 }) {
   const bx = box.x * w, by = box.y * h, bw = box.w * w, bh = box.h * h;
   // Only where the beam is: nothing glints in the dark. Lit by how near the
@@ -373,20 +408,32 @@ function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline }: {
     const glint = (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
     return assist ? Math.max(glint, V2.glint.assist) : glint;
   });
-  const path = useMemo(
-    () => (outline && outline.length >= 3
-      ? outline.map((p, i) => `${i ? "L" : "M"} ${(p.x * w).toFixed(1)} ${(p.y * h).toFixed(1)}`).join(" ") + " Z"
-      : null),
-    [outline, w, h],
-  );
+  // The beam's centre, for the line's hot spot.
+  const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
+  // The spark's run along the outline (each object's starts somewhere else round it).
+  const offset = (Math.abs(Math.sin(bx * 12.9898 + by * 78.233)) * 43758.5453) % 1;
+  const sparkStart = useDerivedValue(() => (shimmer.get() < 0 ? 0 : (shimmer.get() + offset) % 1));
+  const sparkEnd = useDerivedValue(() => (shimmer.get() < 0 ? 0 : Math.min(1, ((shimmer.get() + offset) % 1) + GLINT.spark)));
+  // A smooth curve through the outline, spikes cleaned off, corners kept (src/game/outline.ts).
+  const path = useMemo(() => (outline && outline.length >= 3 ? outlinePath(outline, w, h) : null), [outline, w, h]);
   if (path) {
+    const hot = uv ? GLINT.hotUv : GLINT.hot;
     return (
       <Group opacity={opacity}>
-        {/* A soft halo hugging the edge, then a fine line on the edge itself. */}
-        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.halo} strokeJoin="round" opacity={0.4}>
+        {/* A soft glow hugging the edge, */}
+        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.halo} strokeJoin="round" strokeCap="round" opacity={uv ? 0.6 : 0.4} antiAlias>
           <BlurMask blur={V2.glint.blur} style="normal" />
         </Path>
-        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.stroke} strokeJoin="round" />
+        {/* a fine crisp line on the edge itself, */}
+        <Path path={path} color={color} style="stroke" strokeWidth={GLINT.line} strokeJoin="round" strokeCap="round" antiAlias opacity={0.85} />
+        {/* hot where the beam's centre falls on it, */}
+        <Path path={path} style="stroke" strokeWidth={GLINT.line + 0.4} strokeJoin="round" strokeCap="round" antiAlias>
+          <RadialGradient c={c} r={r * 0.75} colors={[hot, hot.replace(/,1\)$/, ",0.35)"), "rgba(255,255,255,0)"]} positions={[0, 0.45, 1]} />
+        </Path>
+        {/* and a spark of light running round it. */}
+        <Path path={path} color={hot} style="stroke" strokeWidth={2.4} strokeCap="round" strokeJoin="round" start={sparkStart} end={sparkEnd} antiAlias opacity={0.75}>
+          <BlurMask blur={1.6} style="solid" />
+        </Path>
       </Group>
     );
   }
@@ -396,7 +443,7 @@ function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline }: {
     <Group opacity={opacity}>
       <Oval
         x={bx + bw * inset} y={by + bh * inset} width={bw * (1 - 2 * inset)} height={bh * (1 - 2 * inset)}
-        color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={V2.glint.oval}
+        color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={V2.glint.oval} antiAlias
       >
         <BlurMask blur={2} style="normal" />
       </Oval>
@@ -408,7 +455,7 @@ function OverlayMark({ kind, box, w, h, ink, glow }: { kind: Overlay; box: Box; 
   const x = box.x * w, y = box.y * h, bw = box.w * w, bh = box.h * h;
   switch (kind) {
     case "glow_mark":
-      // The writing itself is drawn by InkMark, under the beam.
+      // The writing itself is drawn by UvTrace, under the beam.
       return null;
     case "panel_open":
       return (
@@ -431,10 +478,5 @@ const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },
-  ink: { position: "absolute", alignItems: "center", justifyContent: "center" },
-  inkText: {
-    color: "rgb(205,170,255)", fontWeight: "700", textAlign: "center", transform: [{ rotate: "-6deg" }],
-    textShadowColor: "rgba(150,95,255,0.95)", textShadowRadius: 10, textShadowOffset: { width: 0, height: 0 },
-  },
   probe: { ...StyleSheet.absoluteFill, opacity: 0 },
 });

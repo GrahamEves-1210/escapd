@@ -19,9 +19,10 @@
 //
 // An object filling its whole box keeps the box's edge, which is its own; a
 // shape too small, or no clearer than the background's own noise, is null.
-import { outlineOfMask, type Point } from "../../supabase/functions/_shared/v2/outline.ts";
+import { cleanOutline, outlineOfMask, simplifyLoop, type Point } from "../../supabase/functions/_shared/v2/outline.ts";
 
 export type { Point };
+export { cleanOutline };
 
 export interface OutlineRegion {
   /** RGBA, unpremultiplied, row-major. */
@@ -289,4 +290,101 @@ function erode(m: Uint8Array, w: number, h: number): Uint8Array {
     }
   }
   return out;
+}
+
+/** A turn sharper than this (degrees) between two long-enough edges is a corner, kept crisp. */
+const CORNER_DEG = 50;
+/** An edge shorter than this share of the outline's size is the trace's wobble, never a corner's side. */
+const CORNER_EDGE = 0.06;
+/** A corner's rounding (px): crisp, but not a needle. */
+const CORNER_ROUND = 2.5;
+
+/**
+ * An outline (photo fractions) as a smooth SVG path in a w x h frame: cleaned
+ * first (cleanOutline: spikes, ears, notches, self-crossings), its wobbles
+ * eased out, then drawn as cubic Béziers through its points (Catmull-Rom
+ * tangents, scaled to each segment so a curve never overshoots into a loop),
+ * except at real corners (a sharp turn between two long edges, a door's or a
+ * frame's), which stay crisp with only a slight rounding, their edges straight.
+ * Null when fewer than three points survive.
+ */
+export function outlinePath(outline: readonly Point[], w: number, h: number): string | null {
+  if (outline.length < 3 || w <= 0 || h <= 0) return null;
+  let pts = cleanOutline(outline.map((p) => ({ x: p.x * w, y: p.y * h })));
+  // Points closer than a pixel are one point.
+  pts = pts.filter((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    return i === pts.length - 1 || Math.hypot(q.x - p.x, q.y - p.y) >= 0.8;
+  });
+  if (pts.length < 3) return null;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pts) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+  const size = Math.max(maxX - minX, maxY - minY);
+  // The trace's small jogs (a shelf's boards nudging its side out a pixel) straightened: simplified
+  // again at a tolerance a little under 1% of the outline's size (the curve puts the roundness back).
+  if (pts.length > 6) pts = cleanOutline(simplifyLoop(pts, Math.max(1, 0.008 * size)));
+  const n = pts.length;
+  if (n < 3) return null;
+  const longEdge = Math.max(4, CORNER_EDGE * size);
+  const at = (i: number) => pts[((i % n) + n) % n];
+  const len = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+  const corner = pts.map((p, i) => {
+    const a = at(i - 1), b = at(i + 1);
+    if (len(a, p) < longEdge || len(p, b) < longEdge) return false;
+    const t1 = Math.atan2(p.y - a.y, p.x - a.x), t2 = Math.atan2(b.y - p.y, b.x - p.x);
+    let turn = Math.abs(t2 - t1);
+    if (turn > Math.PI) turn = 2 * Math.PI - turn;
+    return (turn * 180) / Math.PI > CORNER_DEG;
+  });
+  // Ease the wobbles: each point between corners drawn halfway toward the line through its
+  // neighbours, never more than a pixel (the trace's jitter is that small; a real bend is bigger).
+  pts = pts.map((p, i) => {
+    if (corner[i]) return p;
+    const a = at(i - 1), b = at(i + 1);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    if (l2 < 1e-9) return p;
+    const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+    let mx = (a.x + t * dx - p.x) * 0.5, my = (a.y + t * dy - p.y) * 0.5;
+    const m = Math.hypot(mx, my);
+    if (m > 1) { mx /= m; my /= m; }
+    return { x: p.x + mx, y: p.y + my };
+  });
+  const unit = (x: number, y: number) => {
+    const l = Math.hypot(x, y) || 1;
+    return { x: x / l, y: y / l };
+  };
+  // Nodes the curve runs through, each with its tangent in and out; a corner is two nodes either side of it.
+  type Node = { p: Point; tin: Point; tout: Point; round?: Point };
+  const nodes: Node[] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = at(i - 1), b = at(i + 1);
+    if (corner[i]) {
+      const din = unit(p.x - a.x, p.y - a.y), dout = unit(b.x - p.x, b.y - p.y);
+      const r = Math.min(CORNER_ROUND, len(a, p) * 0.25, len(p, b) * 0.25);
+      nodes.push({ p: { x: p.x - din.x * r, y: p.y - din.y * r }, tin: din, tout: din, round: p });
+      nodes.push({ p: { x: p.x + dout.x * r, y: p.y + dout.y * r }, tin: dout, tout: dout });
+    } else {
+      // Next to a corner, the edge runs straight at it: the tangent along that edge.
+      const t = corner[(i + 1) % n] && corner[(i - 1 + n) % n] ? unit(b.x - a.x, b.y - a.y)
+        : corner[(i + 1) % n] ? unit(b.x - p.x, b.y - p.y)
+        : corner[(i - 1 + n) % n] ? unit(p.x - a.x, p.y - a.y)
+        : unit(b.x - a.x, b.y - a.y);
+      nodes.push({ p, tin: t, tout: t });
+    }
+  }
+  const f = (v: number) => (Math.round(v * 10) / 10).toString();
+  let d = `M ${f(nodes[0].p.x)} ${f(nodes[0].p.y)}`;
+  for (let i = 0; i < nodes.length; i++) {
+    const A = nodes[i], B = nodes[(i + 1) % nodes.length];
+    if (A.round) {
+      // Round the corner: a quadratic through the corner point, as a cubic.
+      const c = A.round;
+      d += ` C ${f(A.p.x + (2 / 3) * (c.x - A.p.x))} ${f(A.p.y + (2 / 3) * (c.y - A.p.y))} ${f(B.p.x + (2 / 3) * (c.x - B.p.x))} ${f(B.p.y + (2 / 3) * (c.y - B.p.y))} ${f(B.p.x)} ${f(B.p.y)}`;
+      continue;
+    }
+    const l = len(A.p, B.p) / 3;
+    d += ` C ${f(A.p.x + A.tout.x * l)} ${f(A.p.y + A.tout.y * l)} ${f(B.p.x - B.tin.x * l)} ${f(B.p.y - B.tin.y * l)} ${f(B.p.x)} ${f(B.p.y)}`;
+  }
+  return d + " Z";
 }

@@ -25,7 +25,7 @@ export const MOTIFS: Record<Exclude<MotifId, "finale">, MotifSpec> = {
   set_state: { id: "set_state", summary: "a value learned elsewhere sets a mechanism (clock hands, tuning dial)", delivers: ["info", "item"], minSteps: 2, archetypes: ["ClockHands", "TuningDial"], weight: w(1.5, 1, 1.2) },
   cross_reference: { id: "cross_reference", summary: "one object says where in a book to look", delivers: ["info"], minSteps: 2, archetypes: ["Readable"], maxPerRoom: 1, weight: w(1, 1.4, 0.9) },
   decode: { id: "decode", summary: "an encoded message plus a cipher wheel set to an offset", delivers: ["info"], minSteps: 4, archetypes: ["Decoder"], maxPerRoom: 1, weight: w(1.3, 0.8, 1) },
-  tool_reveal: { id: "tool_reveal", summary: "a found UV torch used on something already seen (a revisit)", delivers: ["info"], minSteps: 2, archetypes: ["Light"], maxPerRoom: 1, weight: w(1.2, 1, 1.3) },
+  tool_reveal: { id: "tool_reveal", summary: "a found UV torch shows traces on the photo (then read under the magnifier), or a mark on something already seen", delivers: ["info"], minSteps: 2, archetypes: ["Light"], maxPerRoom: 1, weight: w(2, 2, 2) },
   room_change: { id: "room_change", summary: "a lamp changes the room and marks another object", delivers: ["info"], minSteps: 2, fixed: true, archetypes: ["Light"], maxPerRoom: 1, weight: w(1.2, 0.9, 1.5) },
   ordering: { id: "ordering", summary: "an order learned in pieces, entered in sequence (the ritual)", delivers: ["info"], minSteps: 1, archetypes: ["Door"], weight: w(0, 0, 1) },
   contain_lock: { id: "contain_lock", summary: "a key or a code opens a container (at most one per room)", delivers: ["info", "item"], minSteps: 2, archetypes: ["Drawer", "CombinationLock"], maxPerRoom: 1, weight: w(1, 0.7, 0.7) },

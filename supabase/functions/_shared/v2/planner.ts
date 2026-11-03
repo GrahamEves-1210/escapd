@@ -15,15 +15,16 @@ import { type Box1000, boxArea, boxToRect, isValidBox } from "../geometry.ts";
 import { cryptoInt, isWeakCode, mintSuffix, type RandomInt, slugId } from "../mint.ts";
 import { type ArchetypeId, type ControlDomain, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, SYMBOLS, variantSpec } from "./archetypes.ts";
 import {
-  ALIBIS, capitalise, describeObject, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES, ordinalLine, type Pick, romanMark,
-  SUSPECTS, writeCard,
+  ALIBIS, capitalise, caseLabel, describeObject, type Evidence, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES, optionEvidence,
+  ordinalLine, type Pick, romanMark, suspectEvidence, SUSPECTS, TIME_OF_DEATH, TRACE_BEATS, TRACE_HERRINGS, TRACE_LABELS, TRACE_REPORTS,
+  TRACE_VALUE, VICTIMS, writeCard,
 } from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
 import { simulate, type SimReport } from "./simulate.ts";
-import { categoryOf, type InventoryObject, isPortableType } from "./taxonomy.ts";
+import { categoryOf, type InventoryObject, isPortableType, type ObjectCategory } from "./taxonomy.ts";
 import type {
-  AccuseOption, CardDef, Condition, Effect, FinaleDef, ItemDef, Mode, MotifId, ObjectDef, RoomDefinitionV2,
-  RoomSecretV2, Rule, SlotKind, SlotValue, StateValue, StepDef, Trigger,
+  AccuseOption, CardDef, Condition, Effect, FinaleDef, ItemDef, Mode, MotifId, ObjectDef, Rect, RoomDefinitionV2,
+  RoomSecretV2, Rule, SlotKind, SlotValue, StateValue, StepDef, TraceKind, TraceSpec, Trigger,
 } from "./types.ts";
 import { validateDefinition } from "./validate.ts";
 
@@ -106,8 +107,38 @@ interface Option { motif: MotifId; min: number; fixed: boolean; run: () => strin
 interface SlotMeta {
   tag?: string;          // digits: the door wheels' symbols they belong on
   ordinal?: number;      // object: the ritual position (0-based)
-  ruleOut?: string;      // option: the finding that rules it out, with {{s}} for its name
+  evidence?: Evidence;   // option: the document (or UV forensics) that rules it out, with {{s}} for its name
 }
+
+/** A UV trace placed on the photo: on or beside a real object (`anchor`), or on the floor by it. */
+interface Trace {
+  id: string;
+  kind: TraceKind;
+  anchor: string;            // the anchor's id (Bounds are copied on rollback, so never held by reference)
+  photo: number;
+  surface: TraceSpec["surface"];
+  rect: Rect;
+  where: string;             // "the wall beside the bookshelf"
+  label: string;
+  seed: number;
+  /** It carries a value (else it leads nowhere). */
+  lead: boolean;
+}
+
+const TRACE_SIZE: Record<TraceKind, [number, number]> = {
+  prints: [0.12, 0.09], palm: [0.13, 0.14], writing: [0.28, 0.09], stain: [0.18, 0.11], footprints: [0.36, 0.2],
+};
+const TRACE_SURFACES: Record<TraceKind, TraceSpec["surface"][]> = {
+  prints: ["on", "wall"], palm: ["on", "wall"], writing: ["wall", "on"], stain: ["floor", "wall"], footprints: ["floor"],
+};
+/** Things a print or writing can sit on (not a cushion, not a plant). */
+const TRACE_HOSTS: ObjectCategory[] = ["furniture", "storage", "door", "wall", "electronic", "instrument"];
+/** At most this many traces carry one step's values (one each); more and the plain glow mark is used. */
+const MAX_TRACES = 3;
+
+const overlapArea = (a: Rect, b: Rect) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const listOf = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 /** What a step hands over: an item into the hand, or a card to read where it was found. */
 type Payload = { item: string } | { card: string };
@@ -125,6 +156,12 @@ class Builder {
   ciphers: { slot: string; of: string[]; offset: string }[] = [];
   removable: Bound | null = null;
   ids = new Set<string>();
+  /** UV traces on the photos. */
+  traces: Trace[] = [];
+  /** Objects waiting on the value an info step is being built for: a trace's report must not name them. */
+  consumers: Bound[] = [];
+  /** Ritual positions whose card names an object (a trace's "the floor by the rug"): never that object. */
+  namedAt = new Map<string, string[]>();
 
   /** Text choices draw from their own stream, so wording never changes a room's structure. */
   pick: Pick;
@@ -144,11 +181,12 @@ class Builder {
   snap(): () => void {
     const pool = this.pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
     const [slots, used, values, ciphers, ids] = [{ ...this.slots }, { ...this.used }, new Set(this.values), [...this.ciphers], new Set(this.ids)];
-    const n = [this.items.length, this.cards.length, this.rules.length, this.steps.length];
+    const n = [this.items.length, this.cards.length, this.rules.length, this.steps.length, this.traces.length];
+    const named = new Map(this.namedAt);
     return () => {
       this.pool = pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
-      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids) });
-      this.items.length = n[0]; this.cards.length = n[1]; this.rules.length = n[2]; this.steps.length = n[3];
+      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids), namedAt: new Map(named) });
+      this.items.length = n[0]; this.cards.length = n[1]; this.rules.length = n[2]; this.steps.length = n[3]; this.traces.length = n[4];
     };
   }
 
@@ -228,7 +266,8 @@ class Builder {
       case "page": return spoken ? `page ${ref}` : `p. ${ref}`;
       case "offset": return spoken ? `plus ${ref}` : `+${ref}`;
       case "cipher": return mark ? ref : `${ref}, letters that spell nothing`;
-      case "option": return mark ? `✗ ${ref}` : (m.ruleOut ?? "{{s}}: ruled out.").replace("{{s}}", ref);
+      // On a surface, only the inspector's question; on a card, the evidence itself (never "ruled out").
+      case "option": return mark ? `${ref}?` : (m.evidence?.line ?? "{{s}}").replace(/\{\{s\}\}/g, ref);
       case "object": return mark ? romanMark(m.ordinal ?? 0, ref) : ordinalLine(m.ordinal ?? 0, ref);
       default: return ref;
     }
@@ -241,8 +280,14 @@ class Builder {
 
   /** A card with `slots`, written as a finding in the mode's voice; it never names what a value is for. */
   clue(medium: Medium, slots: string[]): string {
+    // One piece of crime-scene evidence found on its own is the document itself (a hotel register, a coroner's note).
+    const ev = slots.length === 1 ? this.meta.get(slots[0])?.evidence : undefined;
+    if (ev && (medium === "found" || medium === "read" || medium === "pages")) {
+      return this.plainCard(ev.title, `${medium === "pages" ? "Folded in at that page. " : ""}${ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`)}`);
+    }
     const list = slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
-    const { title, text } = writeCard(this.mode, medium, slots.map((s) => this.phrase(s, false, medium === "radio")), list, this.pick);
+    const kind = slots.length === 1 ? this.slots[slots[0]].kind : undefined;
+    const { title, text } = writeCard(this.mode, medium, slots.map((s) => this.phrase(s, false, medium === "radio")), list, this.pick, kind);
     return this.plainCard(title, text);
   }
 
@@ -260,9 +305,9 @@ class Builder {
     return id;
   }
 
-  step(motif: MotifId, thread: number | null, object: string | undefined, requires: string[], hints: [string, string, string], optional = false): string {
+  step(motif: MotifId, thread: number | null, object: string | undefined, requires: string[], hints: [string, string, string], optional = false, title?: string): string {
     const id = `step_${this.steps.length + 1}`;
-    this.steps.push({ id, title: STEP_TITLE[motif], thread, motif, ...(object ? { object } : {}), requires, hints, ...(optional ? { optional } : {}) });
+    this.steps.push({ id, title: title ?? STEP_TITLE[motif], thread, motif, ...(object ? { object } : {}), requires, hints, ...(optional ? { optional } : {}) });
     return id;
   }
 
@@ -369,7 +414,7 @@ class Builder {
       const b = this.bind(p, thread, "contain", "submit");
       const m = this.mint(b.variant as "digits" | "letters" | "symbols");
       const code = this.slot("code", m.value, m.text);
-      const up = this.info([code], budget - 1, thread, depth + 1);
+      const up = this.waitingOn(b, () => this.info([code], budget - 1, thread, depth + 1));
       if (!up) return null;
       const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.", `The ${b.inv.label} has a three-wheel lock; the code is written somewhere.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
       this.rule({ on: "submit", object: b.id }, [{ if: "submitted", eq: { slot: code } }],
@@ -397,7 +442,7 @@ class Builder {
     // No "for the clock": which thing a value belongs to is the player's to work out.
     const input = this.slot(kind, m.value);
     if (clock) b.initial.time = this.mint("time").value;
-    const up = this.info([input], budget - 1, thread, depth + 1);
+    const up = this.waitingOn(b, () => this.info([input], budget - 1, thread, depth + 1));
     if (!up) return null;
     const control = clock ? "time" : "freq";
     const payload = item ?? (clock ? this.note(slots) : null);
@@ -419,7 +464,7 @@ class Builder {
     const b = this.bind(p, thread, "set");
     // No "in the bookshelf": which book a page number belongs to is the player's to work out.
     const page = this.slot("page", this.mint("page").value);
-    const up = this.info([page], budget - 1, thread, depth + 1);
+    const up = this.waitingOn(b, () => this.info([page], budget - 1, thread, depth + 1));
     if (!up) return null;
     const s = this.step("cross_reference", thread, b.id, [up], ["One clue points into a book.", `A page number you found belongs to the ${b.inv.label}.`, `Find page {{${page}}} in the ${b.inv.label}.`]);
     this.rule({ on: "control", target: b.id, control: "page" }, [{ if: "control", target: b.id, control: "page", eq: { slot: page } }],
@@ -443,7 +488,24 @@ class Builder {
     return s2;
   }
 
+  /** `f` builds what `b` waits on: no trace report written meanwhile may name `b`. */
+  waitingOn<T>(b: Bound, f: () => T): T {
+    this.consumers.push(b);
+    try {
+      return f();
+    } finally {
+      this.consumers.pop();
+    }
+  }
+
   toolReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    // Traces on the photo itself when there's room for both steps (light it, then lift it); else a glow on an object.
+    if (budget >= 2 && slots.length <= MAX_TRACES) {
+      const restore = this.snap();
+      const s = this.traceReveal(slots, budget, thread, depth, budget >= 3);
+      if (s) return s;
+      restore();
+    }
     // No card: a description would only sit beside the torch, repeating it.
     const torch = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
     const up = this.deliver(torch, budget - 1, thread, depth);
@@ -456,6 +518,174 @@ class Builder {
     this.rule({ on: "use", item: torch, object: target.id }, [],
       [{ do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }, { do: "show_card", card: this.clue("uv", slots) }], s);
     return s;
+  }
+
+  // ---- UV traces -------------------------------------------------------------
+  /** Kinds of trace that can carry a slot, in a seeded order of preference. */
+  traceKinds(slot: string | null): TraceKind[] {
+    const shuffle = <T>(xs: T[]): T[] => xs.map((x) => [this.rng(), x] as const).sort((a, b) => a[0] - b[0]).map(([, x]) => x);
+    if (slot === null) return shuffle(Object.keys(TRACE_HERRINGS[this.mode]) as TraceKind[]);
+    const ev = this.meta.get(slot)?.evidence;
+    const kinds = ev ? (Object.keys(ev.traces) as TraceKind[]) : (Object.keys(TRACE_VALUE[this.mode]) as TraceKind[]);
+    const fresh = (k: TraceKind) => (this.traces.some((t) => t.kind === k) ? 1 : 0);
+    // Writing first in noir (it carries the code's look); otherwise kinds not yet in the room first.
+    return shuffle(kinds).sort((a, b) => fresh(a) - fresh(b) || (this.mode === "noir" ? (b === "writing" ? 1 : 0) - (a === "writing" ? 1 : 0) : 0));
+  }
+
+  /** Where a trace of `kind` fits on or by `b` on its photo, clear of other traces: the rect and the surface. */
+  fitTrace(kind: TraceKind, b: Bound): { surface: TraceSpec["surface"]; rect: Rect; where: string } | null {
+    const a = boxToRect(b.inv.box, { padding: 0 });
+    const [w, h] = TRACE_SIZE[kind];
+    const photo = b.inv.photo_index;
+    const others = [this.exit, ...this.pool].filter((o) => o.id !== b.id && o.inv.photo_index === photo).map((o) => boxToRect(o.inv.box, { padding: 0 }));
+    const placed = this.traces.filter((t) => t.photo === photo).map((t) => t.rect);
+    const label = b.inv.label;
+    const rug = b.inv.type === "rug";
+    const host = TRACE_HOSTS.includes(categoryOf(b.inv.type));
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    const tryRect = (x: number, y: number, maxOverlap: number): Rect | null => {
+      const r = { x: r3(Math.min(0.99 - w, Math.max(0.01, x))), y: r3(Math.min(0.99 - h, Math.max(0.01, y))), w, h };
+      if (Math.abs(r.x - x) > 0.04 || Math.abs(r.y - y) > 0.04) return null;   // pushed far off where it belongs
+      if (placed.some((p) => overlapArea(p, r) > 0)) return null;
+      if (others.some((o) => overlapArea(o, r) > maxOverlap * w * h)) return null;
+      return r;
+    };
+    for (const surface of TRACE_SURFACES[kind]) {
+      const spots: { x: number; y: number; max: number; where: string }[] = [];
+      if (surface === "on" && host && !rug && a.w >= w * 1.25 && a.h >= h * 1.25) {
+        const where = /\bdrawers?\b/i.test(label) ? `the front of the ${label}` : b.inv.type === "door" && kind === "prints" ? `the ${label}, by the handle` : `the ${label}`;
+        const at = (fx: number, fy: number) => spots.push({ x: a.x + a.w * fx - w / 2, y: a.y + a.h * fy - h / 2, max: 0.5, where });
+        if (b.inv.type === "door") at(kind === "prints" ? 0.78 : 0.5, kind === "palm" ? 0.35 : 0.48);
+        else if (/\bdrawers?\b/i.test(label)) at(0.5, 0.35);
+        else { at(0.5, 0.3); at(0.3, 0.55); at(0.7, 0.5); }
+      } else if (surface === "wall" && !rug && categoryOf(b.inv.type) !== "textile") {
+        const y = a.y + Math.min(0.15, a.h * 0.2);
+        spots.push({ x: a.x - w - 0.02, y, max: 0.1, where: `the wall beside the ${label}` });
+        spots.push({ x: a.x + a.w + 0.02, y, max: 0.1, where: `the wall beside the ${label}` });
+        spots.push({ x: a.x + a.w / 2 - w / 2, y: a.y - h - 0.03, max: 0.1, where: `the wall above the ${label}` });
+      } else if (surface === "floor") {
+        if (rug && a.w >= w * 1.1 && a.h >= h * 0.9) spots.push({ x: a.x + a.w / 2 - w / 2, y: a.y + a.h / 2 - h / 2, max: 1, where: `the ${label}` });
+        else if (!rug && a.y + a.h >= 0.55) {
+          const y = Math.min(0.97 - h, Math.max(0.62, a.y + a.h + 0.01));
+          for (const fx of [0.5, 0.2, 0.8]) spots.push({ x: a.x + a.w * fx - w / 2, y, max: 0.45, where: `the floor by the ${label}` });
+        }
+      }
+      for (const p of spots) {
+        if (surface === "wall" && p.y + h > 0.72) continue;   // a wall is above the floor
+        const rect = tryRect(p.x, p.y, p.max);
+        if (rect) return { surface, rect, where: p.where };
+      }
+    }
+    return null;
+  }
+
+  /** A trace for `slot` (null: one that leads nowhere), on the best object that has room for it. */
+  placeTrace(slot: string | null, thread: number, exclude: (string | undefined)[]): Trace | null {
+    const photos = new Set(this.traces.map((t) => t.photo));
+    const ranked = [...(slot === null ? [this.exit] : []), ...this.pool]
+      .filter((b) => b !== this.removable && !exclude.includes(b.id))
+      .map((b) => [b.inv.salience * 0.5 + this.rng() * 0.8 + (b.threads.includes(thread) ? 0.6 : 0) + (b.roles > 0 ? 0.3 : 0) +
+        (photos.has(b.inv.photo_index) ? 0 : 0.5), b] as const)
+      .sort((x, y) => y[0] - x[0]).map(([, b]) => b);
+    for (const kind of this.traceKinds(slot)) {
+      for (const b of ranked) {
+        const fit = this.fitTrace(kind, b);
+        if (!fit) continue;
+        let id: string;
+        do id = `trace_${mintSuffix(this.rint)}`; while (this.ids.has(id));
+        this.ids.add(id);
+        const t: Trace = { id, kind, anchor: b.id, photo: b.inv.photo_index, ...fit, label: TRACE_LABELS[this.mode][kind], seed: Math.floor(this.rng() * 1e6), lead: slot !== null };
+        this.traces.push(t);
+        return t;
+      }
+    }
+    return null;
+  }
+
+  /** The report on a trace: the forensics (crime scene), or what it says (a value), or the room's story (a herring). */
+  traceCard(t: Trace, slot: string | null): string {
+    const title = TRACE_REPORTS[this.mode][t.kind];
+    const where = (s: string) => s.split("{where}").join(t.where);
+    if (slot === null) return this.plainCard(title, where(TRACE_HERRINGS[this.mode][t.kind]!));
+    const ev = this.meta.get(slot)?.evidence;
+    if (ev) return this.plainCard(title, where(ev.traces[t.kind]!).replace(/\{\{s\}\}/g, `{{${slot}}}`));
+    const lead = where(this.pick(TRACE_VALUE[this.mode][t.kind]!));
+    const v = this.phrase(slot);
+    return this.plainCard(title, LIST_KINDS.includes(this.slots[slot].kind) ? `${lead}\n${v}` : `${lead} ${/[.!?]$/.test(v) ? v : `${v}.`}`);
+  }
+
+  /**
+   * Traces on the photo (prints, a stain, footprints, writing), one per slot, seen only under the UV
+   * flashlight: shining it on one shows it (and, for writing, what it says); dragging the magnifier onto
+   * it then reads its report. Two steps after the torch: light them all, then read them all.
+   */
+  traceReveal(slots: string[], budget: number, thread: number, depth: number, twoSteps: boolean): string | null {
+    const torch = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
+    const up = this.deliver(torch, budget - (twoSteps ? 2 : 1), thread, depth);
+    if (!up) return null;
+    const source = this.steps.find((s) => s.id === up)?.object;
+    // A report names where it was lifted: never the object its value goes to (nor the way out).
+    // (By label too: a report on "the wall beside the desk lamp" would name the desk.)
+    const named = [this.exit, ...this.consumers].map((c) => new RegExp(`\\b${c.inv.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
+    const exclude = [source, ...[this.exit, ...this.pool].filter((b) => named.some((re) => re.test(b.inv.label))).map((b) => b.id)];
+    const traces: { t: Trace; slot: string }[] = [];
+    for (const slot of slots) {
+      const t = this.placeTrace(slot, thread, exclude);
+      if (!t) return null;
+      traces.push({ t, slot });
+      if (this.slots[slot].kind === "object") this.namedAt.set(slot, [...(this.namedAt.get(slot) ?? []), t.anchor]);
+    }
+    const reveal = (t: Trace, slot: string | null): Effect[] => [
+      { do: "overlay", object: t.id, overlay: "glow_mark", ...(t.kind === "writing" && slot ? { text: this.mark([slot]) } : {}) },
+      { do: "set_state", target: t.id, key: "revealed", value: true },
+      { do: "beat", text: TRACE_BEATS[t.kind].replace("{where}", t.where) },
+    ];
+    const revealed = (t: Trace): Condition => ({ if: "state", target: t.id, key: "revealed", eq: { lit: true } });
+    const lifted = (t: Trace): Condition => ({ if: "state", target: t.id, key: "lifted", eq: { lit: true } });
+    const one = traces.length === 1;
+    const first = traces[0].t;
+    const wheres = listOf(traces.map(({ t }) => t.where));
+    const anchors = listOf([...new Set(traces.map(({ t }) => this.labelOf(t.anchor)))].map((l) => `the ${l}`));
+    const names = listOf([...new Set(traces.map(({ t }) => t.label.toLowerCase()))]);
+    const each = listOf(traces.map(({ t }) => `the ${t.label.toLowerCase()} on ${t.where}`));
+    const reports = one ? "the report" : "each report";
+    // Two steps (light it, then read it), or, short of room, one that asks for both.
+    const lit = twoSteps
+      ? this.step("tool_reveal", thread, first.id, [up], [
+        "Some things in here only show under ultraviolet.",
+        `Something on or near ${anchors} only shows under UV.`,
+        `Switch to the UV flashlight and hold the beam on ${wheres} until it glows.`,
+      ], false, "Under the light")
+      : undefined;
+    const read = this.step("tool_reveal", thread, first.id, [lit ?? up], twoSteps
+      ? [
+        "What glows under the UV light can be looked at closely.",
+        `Drag the magnifier onto the ${names} you found under the UV light.`,
+        `Drag the magnifier onto ${each}, and read ${reports}.`,
+      ]
+      : [
+        "Some things in here only show under ultraviolet.",
+        `Sweep the UV flashlight over ${anchors}; what glows can be looked at closely.`,
+        `With the UV flashlight on, hold the beam on ${wheres} until it glows, then drag the magnifier onto it and read ${reports}.`,
+      ], false, twoSteps ? "Send it to forensics" : "Under the light");
+    // Lighting any of them solves "under the light" (the first glow is the discovery); reading is done once all are read.
+    for (const { t, slot } of traces) {
+      this.rule({ on: "use", item: torch, object: t.id }, [], reveal(t, slot), lit);
+      this.rule({ on: "inspect", object: t.id }, [revealed(t)],
+        [{ do: "show_card", card: this.traceCard(t, slot) }, { do: "set_state", target: t.id, key: "lifted", value: true }], one ? read : undefined);
+    }
+    if (!one) this.rule({ on: "auto" }, traces.map(({ t }) => lifted(t)), [], read);
+    // Now and then a trace that leads nowhere (the victim's own prints, a cleaner's polish), for a sweep to turn up.
+    const h = this.rng() < 0.6 ? this.placeTrace(null, thread, [source]) : null;
+    if (h) {
+      this.rule({ on: "use", item: torch, object: h.id }, [], reveal(h, null));
+      this.rule({ on: "inspect", object: h.id }, [revealed(h)], [{ do: "show_card", card: this.traceCard(h, null) }]);
+    }
+    return read;
+  }
+
+  labelOf(id: string): string {
+    return [this.exit, ...this.pool].find((b) => b.id === id)?.inv.label ?? id;
   }
 
   split(slots: string[], thread: number): string | null {
@@ -538,6 +768,7 @@ const NESTED = 0.6;
 
 function buildCandidate(
   inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number, trng: () => number,
+  seed: string | number,
 ): Candidate | string {
   const taken = new Set<string>();
   const mk = (o: InventoryObject): Bound => ({ inv: o, id: slugId(o.label, taken), hostable: hostableArchetypes(o), archetype: null, roles: 0, triggers: [], threads: [], initial: {} });
@@ -595,8 +826,13 @@ function buildCandidate(
     // A deduction: three named options per question; the evidence rules two out of each, so exactly
     // one suspect, one motive and one method survive. Each true answer is derived from the two
     // eliminations (never written anywhere), and the accusation from the three answers.
+    // Each wrong option gets its evidence now: a document (or UV forensics) that rules it out by what it says.
     const alibis = B.sample(ALIBIS, 2);
-    const pools = [B.sample(SUSPECTS, 3).map((name) => ({ name, ruleOut: "" })), B.sample(MOTIVES, 3), B.sample(METHODS, 3)];
+    const pools: { name: string; evidence: () => Evidence }[][] = [
+      B.sample(SUSPECTS, 3).map((name) => ({ name, evidence: () => suspectEvidence(alibis.shift()!, B.pick) })),
+      B.sample(MOTIVES, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
+      B.sample(METHODS, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
+    ];
     const dims = pools.map((pool, i) => {
       const options: AccuseOption[] = pool.map(({ name }) => {
         let id: string;
@@ -605,7 +841,7 @@ function buildCandidate(
         return { id, name };
       });
       const right = rint(3);
-      const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, { ruleOut: i === 0 ? alibis.shift()! : pool[j].ruleOut })]);
+      const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, { evidence: pool[j].evidence() })]);
       return { options, ruledOut, slot: B.slot("option", options[right].id, options[right].name, undefined, ruledOut) };
     });
     const evidence = dims.flatMap((d) => d.ruledOut);
@@ -658,7 +894,9 @@ function buildCandidate(
       const picked = new Map<string, Bound>();
       for (const name of order) {
         const taken = [...picked.values()].map((c) => c.id);
-        const excludeIds = level === 0 ? [...taken, ...unclear, ...foundAt(name)] : level === 1 ? [...taken, ...unclear] : taken;
+        // Never the object its own card names (a trace's "the floor by the rug"), at any level.
+        const named = B.namedAt.get(name) ?? [];
+        const excludeIds = level === 0 ? [...taken, ...unclear, ...foundAt(name), ...named] : level === 1 ? [...taken, ...unclear, ...named] : [...taken, ...named];
         const p = B.pickObject({ trigger: "ritual", thread: -1, preferUsed: true, excludeIds });
         if (!p) return null;
         picked.set(name, B.bind(p, -1, "ritual"));
@@ -697,7 +935,8 @@ function buildCandidate(
     const keepsake = B.pick(KEEPSAKES[mode]);
     if (!B.contain({ card: B.plainCard(keepsake.title, keepsake.lead) }, -2, true)) restore();
   }
-  const portable = B.pool.filter((b) => b.roles === 0 && isPortableType(b.inv.type) && categoryOf(b.inv.type) !== "textile" &&
+  const anchors = new Set(B.traces.map((t) => t.anchor));
+  const portable = B.pool.filter((b) => b.roles === 0 && !anchors.has(b.id) && isPortableType(b.inv.type) && categoryOf(b.inv.type) !== "textile" &&
     b.inv.fully_visible && boxArea(b.inv.box) <= 0.08 && b.inv.salience >= 0.2);
   if (portable.length && rng() < 0.75) {
     const b = portable[0];
@@ -733,14 +972,25 @@ function buildCandidate(
       ...(removable ? { removable: true } : {}),
     };
   };
-  const objects = [exit, ...used, ...herrings].map(toDef);
+  // UV traces: marks on the photo, not objects of the room; drawn only under the UV beam.
+  const traceDefs = B.traces.map((t): ObjectDef => ({
+    id: t.id, photo_index: t.photo, box: t.rect, label: t.label, type: "other", archetype: null, controls: [], initial: { revealed: false },
+    trace: { kind: t.kind, surface: t.surface, anchor: t.anchor, seed: t.seed },
+  }));
+  const objects = [...[exit, ...used, ...herrings].map(toDef), ...traceDefs];
+  const victim = mode === "crime_scene" ? B.pick(VICTIMS) : undefined;
   const definition: RoomDefinitionV2 = {
     schema_version: 2, mode,
-    title: B.pick(voice.titles),
+    // No invented case names: the case is the player's own room.
+    title: caseLabel(seed),
     objective: voice.objective(exit.inv.label),
+    brief: B.pick(voice.briefs)({ exit: exit.inv.label, victim }),
     objects, items: B.items, cards: B.cards, finale,
   };
-  const secret: RoomSecretV2 = { schema_version: 2, slots: B.slots, rules: B.rules, steps: B.steps, ending: B.pick(voice.endings) };
+  const secret: RoomSecretV2 = {
+    schema_version: 2, slots: B.slots, rules: B.rules, steps: B.steps, ending: B.pick(voice.endings),
+    ...(mode === "crime_scene" ? { keep: [TIME_OF_DEATH] } : {}),
+  };
 
   const errors = validateDefinition(definition, secret);
   if (errors.length) return `invalid: ${errors[0]}`;
@@ -750,13 +1000,15 @@ function buildCandidate(
   const perObject = new Map<string, number>();
   for (const s of required) if (s.object) perObject.set(s.object, (perObject.get(s.object) ?? 0) + 1);
   const revisits = [...perObject.values()].filter((k) => k >= 2).length;
-  const roomChanges = B.rules.filter((r) => r.step && required.some((s) => s.id === r.step) && r.effects.some((e) => e.do === "overlay")).length;
+  const traceIds = new Set(B.traces.filter((t) => t.lead).map((t) => t.id));
+  const lights = (r: Rule) => r.trigger.on === "use" && traceIds.has(r.trigger.object) && r.effects.some((e) => e.do === "set_state");
+  const roomChanges = B.rules.filter((r) => ((r.step && required.some((s) => s.id === r.step)) || lights(r)) && r.effects.some((e) => e.do === "overlay")).length;
   if (required.length < STEP_BAND.min || required.length > STEP_BAND.max) return `steps: ${required.length} outside ${STEP_BAND.min}-${STEP_BAND.max}`;
   if (revisits < 1) return "no revisit";
   if (roomChanges < 1) return "no room change";
 
-  const byId = new Map([exit, ...B.pool].map((b) => [b.id, b]));
-  const photos = new Set(required.flatMap((s) => (s.object ? [byId.get(s.object)!.inv.photo_index] : []))).size;
+  const photoOf = new Map([...[exit, ...B.pool].map((b) => [b.id, b.inv.photo_index] as const), ...B.traces.map((t) => [t.id, t.photo] as const)]);
+  const photos = new Set(required.flatMap((s) => (s.object ? [photoOf.get(s.object)!] : []))).size;
   const allPhotos = new Set(inv.map((o) => o.photo_index)).size;
   const motifs = required.map((s) => s.motif);
   const openings = required.filter((s) => s.requires.length === 0).length;
@@ -792,7 +1044,7 @@ export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanR
     for (let c = round * n; c < (round + 1) * n; c++) {
       const rng = seededRandom(`${opts.seed}:${opts.mode}:${c}`);
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
-      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`));
+      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed);
       if (typeof r === "string") fail(r); else built.push(r);
     }
     built.sort((a, b) => b.summary.score - a.summary.score);

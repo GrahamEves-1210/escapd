@@ -86,7 +86,8 @@ export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
   stage("plan", { ...plan.summary, motifs: plan.summary.motifs.join(","), steps: plan.report.metrics.requiredSteps });
 
   // Outlines, while the words are written: the objects and their boxes are fixed now.
-  const outlines = segmentObjects(ctx, photos, plan.definition.objects);
+  // (Not the UV traces: they're marks the planner drew on the photo, with nothing there to segment.)
+  const outlines = segmentObjects(ctx, photos, plan.definition.objects.filter((o) => !o.trace));
 
   // Words. The planner's room already passed the simulator; the words must not break it.
   const text = await writeAuthor(ctx, plan.definition, plan.secret, photos);

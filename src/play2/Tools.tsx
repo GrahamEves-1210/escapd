@@ -3,21 +3,24 @@
 // assets/brand/magnifier.png), picked up and dragged onto something to look
 // closer, then springing back to its corner; the flashlight bottom right
 // (drawn to match it, scripts/brand/flashlight.py), fixed in its corner and
-// turning on its handle to aim at its beam.
+// turning on its handle to aim at its beam; with the UV light on, its lens
+// glows violet (assets/brand/flashlight-uv.png) and so does its beam (Stage).
 import { Image, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CarryBody, type Carry } from "./Carry";
 
-export const TOOL = 64;
+/** The tools' size (points): big enough to read as the brass heirlooms they are, clear of the cat and the tray. */
+export const TOOL = 88;
 
 const MAGNIFIER = require("../../assets/brand/magnifier.png") as number;
 const FLASHLIGHT = require("../../assets/brand/flashlight.png") as number;
+const FLASHLIGHT_UV = require("../../assets/brand/flashlight-uv.png") as number;
 /** How far the flashlight may turn either way from straight up (degrees): it stays a held light, never upside down. */
 const AIM = 70;
-/** The magnifier's lens centre, from the art's centre (fractions of its size): what it looks at. */
-const LENS = { x: -0.12, y: -0.14 };
+/** The magnifier's lens centre, from the art's centre (fractions of its size): what it looks at (the art holds the lens up and right). */
+const LENS = { x: 0.12, y: -0.17 };
 /** In hand it's a little bigger, and rides this far above where it was held. */
 const GROW = 0.2;
 const RAISE = 16;
@@ -107,8 +110,7 @@ export function Flashlight({ at, beamX, beamY, frame, uv }: {
   return (
     <View pointerEvents="none" style={[styles.tool, at]} testID="v2-flashlight">
       <Animated.View style={[styles.pivot, style]}>
-        {uv ? <View style={styles.uvGlow} /> : null}
-        <Image source={FLASHLIGHT} style={styles.art} resizeMode="contain" />
+        <Image source={uv ? FLASHLIGHT_UV : FLASHLIGHT} style={styles.art} resizeMode="contain" />
       </Animated.View>
     </View>
   );
@@ -119,5 +121,4 @@ const styles = StyleSheet.create({
   lifted: { zIndex: 60 },
   pivot: { width: TOOL, height: TOOL, transformOrigin: "50% 85%" },
   art: { width: TOOL, height: TOOL },
-  uvGlow: { position: "absolute", left: TOOL * 0.2, top: 0, width: TOOL * 0.6, height: TOOL * 0.35, borderRadius: TOOL, backgroundColor: "rgba(160,110,255,0.75)" },
 });

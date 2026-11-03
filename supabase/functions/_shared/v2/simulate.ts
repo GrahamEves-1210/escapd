@@ -208,6 +208,7 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
   const win = wins[0];
   const path = win === undefined ? [] : pathTo(win);
   const stepObject = new Map(secret.steps.map((s) => [s.id, s.object]));
+  const traceIds = new Set(def.objects.filter((o) => o.trace).map((o) => o.id));
   const touches = new Map<string, number>();
   let roomChanges = 0;
   let branchSum = 0;
@@ -223,6 +224,11 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
         const obj = stepObject.get(r.step);
         if (obj) touches.set(obj, (touches.get(obj) ?? 0) + 1);
         if (r.effects.some((e) => e.do === "overlay")) roomChanges++;
+      }
+      // A UV trace lit up changes what the photo shows, whether or not its rule solves a step.
+      for (const rid of n.fired.slice(s.fired.length)) {
+        const r = firedRule.get(rid)!;
+        if (!r.step && r.trigger.on === "use" && traceIds.has(r.trigger.object) && r.effects.some((e) => e.do === "overlay")) roomChanges++;
       }
       s = n;
       k = index.get(keyOf(n))!;

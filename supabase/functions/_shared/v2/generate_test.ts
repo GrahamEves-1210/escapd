@@ -83,7 +83,8 @@ function author(call: JsonCall<unknown>) {
   const hints = new Map([...brief.matchAll(/^(step_\d+)\b.*Hints now: (.*)$/gm)].map((m) => [m[1], JSON.parse(`[${m[2].replaceAll(" / ", ",")}]`) as string[]]));
   const names = ["Ada Finch", "Bram Hollis", "Cora Vane", "Greed", "Jealousy", "Revenge", "Sleeping draught", "Loose rail", "Cold tea"];
   return {
-    title: "The Second Ledger", objective: "Find what Leo hid and leave by the door.", intro: "The room is as you left it. Almost.",
+    objective: "Find what Leo hid and leave by the door, close to midnight.", intro: "The room is as you left it. Almost.",
+    brief: "Leo left in a hurry, close to midnight. You came to find out why. Start with the desk.",
     ending: "The door gives, and the night air comes in.",
     objects: ids(call, "objects").map((id) => ({ id, name: "Something old" })),
     items: ids(call, "items").map((id) => ({ id, name: "Brass thing" })),
@@ -110,21 +111,26 @@ for (const mode of ["noir", "crime_scene", "paranormal"] as const) {
     assertEquals(def.schema_version, 2);
     assertEquals(def.mode, mode);
     assertEquals(def.photos, [{ photo_id: "photo-a" }, { photo_id: "photo-b" }, { photo_id: "photo-c" }]);
-    assertEquals(def.title, "The Second Ledger");
+    // The case keeps its neutral label (no invented names); the author's brief is used.
+    assert(/^Case no\. \d{5}$/.test(def.title), def.title);
+    assertEquals(def.brief, "Leo left in a hurry, close to midnight. You came to find out why. Start with the desk.");
     assertEquals(def.objects.filter((o) => o.exit).map((o) => o.type), ["door"]);
     assert(simulate(def, secret).ok, simulate(def, secret).errors.join("; "));
     // Three perception calls, one verification, one author call; one segmentation call per photo with objects.
-    const photosWithObjects = new Set(def.objects.map((o) => o.photo_index)).size;
+    const photosWithObjects = new Set(def.objects.filter((o) => !o.trace).map((o) => o.photo_index)).size;
     assertEquals(p.stages().filter((s) => s !== "segmentation").sort(), ["perception", "perception", "perception", "prose", "verification"]);
     assertEquals(p.stages().filter((s) => s === "segmentation").length, photosWithObjects);
     // Every object has its outline (the fake's masks are ellipses filling each box), inside its box.
-    for (const o of def.objects) {
+    // (UV traces are marks the planner drew: nothing to segment.)
+    for (const o of def.objects.filter((x) => !x.trace)) {
       assert(o.outline && o.outline.length >= 8 && o.outline.length <= 64, `${o.id} has an outline`);
       const b = o.box, slack = 0.002;
       assert(o.outline.every((q) => q.x >= b.x - slack && q.x <= b.x + b.w + slack && q.y >= b.y - slack && q.y <= b.y + b.h + slack), `${o.id}'s outline is in its box`);
     }
     // No answer is written into the public room.
-    const json = JSON.stringify(def).toLowerCase();
+    // (Its words, that is: numbers such as boxes, outlines and trace seeds can hold any digits.)
+    const words = (v: unknown): string[] => (typeof v === "string" ? [v] : v && typeof v === "object" ? Object.values(v).flatMap(words) : []);
+    const json = words(def).join("\n").toLowerCase();
     for (const s of Object.values(secret.slots)) {
       if (s.kind !== "option" && s.kind !== "object" && s.value.length >= 3) assert(!json.includes(s.value.toLowerCase()), s.value);
     }
@@ -205,11 +211,12 @@ Deno.test("author: a card or hint that drops, adds or repeats a placeholder, or 
   const card = definition.cards.find((c) => c.text.includes("{{"))!;
   const ref = /\{\{\s*([a-z0-9_]+)\s*\}\}/.exec(card.text)![0];
   const text = emptyText();
-  text.title = "Room 12";                                    // digit: rejected
+  text.brief = "Room 12 is cold.";                            // digit: rejected
   text.objective = "Get out through the door.";               // fine
   text.cards.set(card.id, { title: "Ticket", text: `${ref} and ${ref}` });   // repeated: rejected
   const out = applyAuthor(definition, secret, text);
   assertEquals(out.definition.title, definition.title);
+  assertEquals(out.definition.brief, definition.brief);
   assertEquals(out.definition.objective, "Get out through the door.");
   assertEquals(out.definition.cards.find((c) => c.id === card.id)!.text, card.text);
   assertEquals(out.definition.cards.find((c) => c.id === card.id)!.title, "Ticket");
@@ -290,4 +297,17 @@ Deno.test("perception v2: the schema enumerates no types (Gemini refuses it); th
   });
   assertEquals(parsed.objects.map((o) => o.type), ["wall_clock", "sofa", "other"]);
   assertEquals(parsed.objects[0].features, ["has_hands", "wall_mounted"]);
+});
+
+Deno.test("author: a crime-scene objective or brief that drops the time of death keeps the planner's words", async () => {
+  const { definition, secret } = await planned("crime_scene");
+  assert(secret.keep?.length && definition.brief?.includes(secret.keep[0]) && definition.objective.includes(secret.keep[0]));
+  const text = emptyText();
+  text.objective = "A death is part of this case. Name who, why and how at the door.";
+  text.brief = "Someone died here. You're the detective. Work it out.";
+  const out = applyAuthor(definition, secret, text);
+  assertEquals(out.definition.objective, definition.objective);
+  assertEquals(out.definition.brief, definition.brief);
+  text.objective = `A death, ${secret.keep[0]}. Name who, why and how at the door.`;
+  assertEquals(applyAuthor(definition, secret, text).definition.objective, text.objective);
 });

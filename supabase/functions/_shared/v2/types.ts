@@ -39,6 +39,23 @@ export interface ObjectDef {
   /** The object's real outline in photo fractions (0..1), closed, at most 64 points: the glint
    *  hugs it. From Gemini's segmentation (segment.ts); absent on older rooms or when it failed. */
   outline?: { x: number; y: number }[];
+  /** A UV trace on the photo (prints, a stain, footprints, writing): not an object of the room but a
+   *  mark on or near one, drawn only under the UV beam. The torch used on it reveals it (state
+   *  `revealed`); the magnifier on it then reads its forensics report. Never tappable by itself. */
+  trace?: TraceSpec;
+}
+
+export const TRACE_KINDS = ["prints", "palm", "writing", "stain", "footprints"] as const;
+export type TraceKind = typeof TRACE_KINDS[number];
+
+export interface TraceSpec {
+  kind: TraceKind;
+  /** Where it lies: on the anchor object itself, on the wall beside it, or on the floor by it. */
+  surface: "on" | "wall" | "floor";
+  /** The real object it is on or near. */
+  anchor: Id;
+  /** Seeds the procedural drawing (whorls, droplets, the stride), so it looks the same every time. */
+  seed: number;
 }
 
 export interface ItemDef {
@@ -67,8 +84,11 @@ export type FinaleDef =
 export interface RoomDefinitionV2 {
   schema_version: 2;
   mode: Mode;
+  /** A neutral case label ("Case no. 04127"): rooms have no invented names. */
   title: string;
   objective: string;
+  /** The pre-game brief: two to four sentences in the mode's voice (what happened, who you are, what to find). */
+  brief?: string;
   intro?: string;
   /** The room's photos, in photo_index order (stored rooms; a room planned on the device has none). */
   photos?: { photo_id: string }[];
@@ -155,6 +175,9 @@ export interface RoomSecretV2 {
   rules: Rule[];
   steps: StepDef[];
   ending: string;
+  /** Facts the words must keep (crime scene: the time of death the alibis are read against): the
+   *  author's objective and brief are kept only if they still state each one. */
+  keep?: string[];
 }
 
 // ---------------------------------------------------------------------------
