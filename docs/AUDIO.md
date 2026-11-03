@@ -2,49 +2,77 @@
 
 Two kinds: the **effects and room tones** in `assets/audio/` (self-generated, below) and the **music** in `assets/music/` (the user's tracks, see "Music").
 
-Every sound in `assets/audio/` is **self-generated**: synthesized from seeded noise, filters, envelopes and a small reverb by `scripts/audio/generate.mjs`, then encoded with ffmpeg's native AAC encoder. No samples or recordings were downloaded or used, so there is nothing third-party to license or attribute. The files belong to the project like its code.
+Every sound in `assets/audio/` is **self-generated**: synthesized from seeded noise, modal resonators, envelopes and a small procedural room, then encoded with ffmpeg's native AAC encoder. No samples or recordings were downloaded or used, so there is nothing third-party to license or attribute. The files belong to the project like its code.
 
-Rebuild them all (Node 18+ and ffmpeg on PATH):
+Two scripts build them:
+
+- `scripts/audio/foley.py` (Python 3.10+, numpy, scipy): the **interaction foley**, every cue below except the shutter and typewriter. Soft, warm, close-mic and quiet, in the manner of modern indie mobile puzzle games: wood, paper, cloth, glass, a little brass, a cat. No 8-bit blips or synth beeps.
+- `scripts/audio/generate.mjs` (Node 18+): the camera **shutter**, the **typewriter** and the three **room tones** (unchanged by the foley redesign).
 
 ```sh
-node scripts/audio/generate.mjs              # every sound
-node scripts/audio/generate.mjs stamp paper  # just these
-WAV_DIR=/tmp/wavs node scripts/audio/generate.mjs  # also keep 16-bit WAVs for inspection
+pip install numpy scipy                           # once (matplotlib too, for the contact sheet)
+python3 scripts/audio/foley.py                    # every foley cue
+python3 scripts/audio/foley.py drawer purr        # just these
+WAV_DIR=/tmp/wavs python3 scripts/audio/foley.py  # also keep the 16-bit WAVs
+python3 scripts/audio/contact_sheet.py /tmp/wavs  # waveform + spectrogram of each, in /tmp/wavs/contact-sheet.png
+
+node scripts/audio/generate.mjs                   # shutter, typewriter, room tones
+node scripts/audio/generate.mjs room-noir         # just this one
 ```
 
-The output is deterministic (seeded PRNG, bit-exact encode), so a rebuild changes only what you edit.
+Both are deterministic (seeded noise, bit-exact encode), so a rebuild changes only what you edit. `foley.py` prints each cue's length, size, loudness, peak, the share of its energy above 300 Hz (what a phone speaker can play) and the encoder setting it used.
+
+### How the foley is made
+
+- **Impacts** (taps, knocks, the drawer's stop, the stamp, the bolt, ticks) are physical models: a *contact pulse* (a half-sine; shorter is harder and brighter, 0.25 ms for a detent to 1.6 ms for the rubber stamp) rings a bank of two-pole *modal resonators*, each a frequency, a decay and a level. The banks are the materials (`WOOD_BLOCK`, `DESK`, `BRASS_BOLT`, `GLASS_TICK` and so on at the top of the cue section). Phone speakers give up below about 250 Hz, so every "low" body also carries modes between 300 Hz and 1 kHz.
+- **Textures** (paper, cloth, the drawer's slide, whooshes) are seeded noise through fixed and moving band-passes (a state-variable filter swept sample by sample), shaped by envelopes and grain clouds (paper fibre cracks, fabric threads, the drawer's ~45 Hz stick-slip).
+- **Tones** (the unlock chime, the solved shimmer, the pickup sparkle) are additive bells: a warm, celesta-like bar (mostly fundamental) and a small, glassier bell for sparkles, each partial decaying on its own, each note dying away over its last third.
+- Every layer ends on a short fade, every cue goes through a small procedural room (early reflections and a damped noise tail, wet 3 to 20 %), a 40 Hz high-pass and a 12 kHz roll-off; its tail is trimmed 60 dB down and faded to exact zero, and its start eased in over 0.5 ms. No clicks at either end.
+- **Levelling:** each cue is brought to **-18 LUFS momentary max** (BS.1770 K-weighting, the loudest 400 ms) unless that would push its 4x-oversampled peak over **-1.5 dBTP**; then the ceiling wins, so the shortest transients (detent, press, snap) sit a few dB quieter. The final mix is the per-cue volume in `src/game/sound.ts`.
+- **Encoding:** mono AAC-LC in `.m4a`, 44.1 kHz, 96 kbit/s. Every encode is decoded and checked: ffmpeg's default coder now and then mangles one sharp low transient (the stamp decoded 4 dB over full scale), so a file that overshoots -0.5 dBFS or drifts from its source falls back to the `fast` coder, then 160 kbit/s.
 
 ## Format
 
-- Effects: mono AAC-LC in `.m4a`, 44.1 kHz, about 64 kbit/s, normalized to -1 dBFS peak (press to -3 dBFS). Playback volume per sound is set in `src/game/sound.ts`.
+- Foley: as above. Volume per cue in `src/game/sound.ts` (`EFFECTS`).
+- Shutter and typewriter: mono AAC-LC, 44.1 kHz, about 64 kbit/s, normalized to -1 dBFS peak.
 - Room tones: mono AAC-LC in `.m4a`, 32 kHz, about 40 kbit/s, 16 s seamless loops normalized to -3 dBFS peak and played quietly (volume 0.1 to 0.12). Noise layers are generated 2 s long and the tail crossfaded over the head; tonal layers use whole cycles in 16 s; the final filters run circularly, so the last sample runs into the first.
 
 ## Files
 
-| File | Cue (`useFeedback()`) | What it is | How it's made | Size | Duration |
-|---|---|---|---|---|---|
-| `press.m4a` | `press` | A very quiet felt click for buttons (volume 0.22) | A 1 ms band-passed noise click, a 230 Hz body and a low-passed thump | 1.7 KB | 0.07 s |
-| `knock.m4a` | `thud` | A soft knock on wood for a firm moment | A gliding 175 Hz sine body, a band-passed (720 Hz) knock, a short click, small room | 3.7 KB | 0.32 s |
-| `paper.m4a` | `paper` | A sheet lifted and turned: rustle, crackle, the page landing | Pink noise through a band-pass sweeping 1.3 to 3.9 kHz, ~50 tiny high-passed fibre crackles, a low-passed flap | 5.2 KB | 0.50 s |
-| `shutter.m4a` | `shutter` (camera) | A mechanical shutter: curtain, gear whirr, mirror slap | Two clicks 72 ms apart, each a noise transient, a 1.1 kHz body and inharmonic metal partials (2.4 to 7.9 kHz); a gated band-passed whirr between | 3.7 KB | 0.32 s |
-| `typewriter.m4a` | `typewriter` | A run of six typewriter keys | Per key: a key-top click, the typebar striking the platen (low-passed noise, a 1.1 to 1.4 kHz resonance, a 145 Hz platen thump, a faint bar ring) and an escapement tick; irregular 72 to 125 ms spacing | 7.5 KB | 0.78 s |
-| `unlock.m4a` | `unlock` | A heavy lock: the bolt's clunk, then the latch at 110 ms | Bolt: a 100 to 70 Hz thump, a low-passed slap, five struck-steel partials. Latch: a bright click, three partials and a small spring ring. Timed to the haptic pattern in `feedback.ts` | 6.7 KB | 0.70 s |
-| `wrong-code.m4a` | `wrongCode` | The handle rattles and won't give, then an old buzzer at 90 ms | Three decaying metallic rattles, then a band-limited 110 Hz saw with a gated noise armature through a 950 Hz band-pass "horn", sagging in pitch at the end | 5.7 KB | 0.58 s |
-| `pickup.m4a` | `pickup` | An item dropped into the evidence tray: thump, bounce, settle | A 165 Hz thump with a 430 Hz box resonance and a click, a smaller bounce at 78 ms, three tiny rattles | 4.4 KB | 0.42 s |
-| `stamp.m4a` | `stamp` | A rubber stamp slammed onto a sheet on a wooden desk | An 80 to 50 Hz thump, a low-passed slap, a rubber smack (900 Hz), desk resonances at 182 Hz and 436 Hz, three small things on the desk jumping, a medium room | 7.2 KB | 0.75 s |
-| `solved.m4a` | `solved` | The case-solved sting: an upright bass on C, vibraphone climbing into Cm6/9 | A Karplus-Strong plucked C2; vibraphone notes (partials 1 : 4 : 10, mallet click, 5.4 Hz motor tremolo) Eb4 at 0, G4 at 260 ms, A4 + D5 at 400 ms (the haptic beats); a brush swish and a soft ride; a larger room | 27.4 KB | 3.30 s |
-| `room-noir.m4a` | room tone, noir | Rain on the office window, a rumble, a faint mains hum | Pink noise band-limited to 0.9 to 7 kHz with a slow drift; ~30 drop ticks a second (2.2 to 6 kHz) and fatter drips; low-passed brown-noise rumble; 60/120/180/240 Hz hum | 81.5 KB | 16.00 s (loop) |
-| `room-crime-scene.m4a` | room tone, crime scene | A low, tense transformer hum | 55 / 55.25 Hz and 110 / 110.5 Hz pairs beating every 4 s, swelling every 8 s; odd harmonics (275 to 825 Hz) a phone speaker can play, breathing on 16 s; dark brown-noise rumble; a thin 3.2 kHz tension band | 81.4 KB | 16.00 s (loop) |
-| `room-paranormal.m4a` | room tone, paranormal | A cold, airy drone | Pink-noise wind through a band-pass sweeping around 0.5 to 1.4 kHz on 16 s and 8 s cycles, a faint whistle band above it, a low hush; a glassy pad (A3, E4, B4 with detuned twins, a faint E6 shimmer) fading in and out slowly | 81.6 KB | 16.00 s (loop) |
+| File | Cue (`useFeedback()`) | Volume | What it is | How it's made | Size | Length |
+|---|---|---|---|---|---|---|
+| `press.m4a` | `press` | 0.25 | A soft, rounded fingertip tap on a felt-covered wooden key: buttons, chips, cards | A 0.5 ms contact into four modes (380 Hz, 1.15 kHz, 2.3 kHz, 3.6 kHz), a tiny room | 2.6 KB | 0.12 s |
+| `knock.m4a` | `thud` | 0.5 | A wooden block set down on a cloth-topped table: a firm, physical moment | A 1.4 ms contact into a five-mode wood block (150 Hz to 1.7 kHz, strongest at 565 Hz) and a quieter second face, small room | 4.3 KB | 0.26 s |
+| `paper.m4a` | `paper` | 0.45 | A note picked up and opened: a crisp crinkle, the sheet flexing open, a light papery landing | ~70 fibre cracks (0.8 to 4 ms noise grains band-passed between 1.8 and 8.5 kHz, thinning out), a band sweeping 0.8 to 2.6 kHz, a landing tap at 310 ms | 6.5 KB | 0.43 s |
+| `pickup.m4a` | `pickup` | 0.5 | Something found: a soft wood-and-glass tick, then a tiny three-note sparkle | A 0.9 ms contact into a glass-and-wood bank (620 Hz to 6.9 kHz); glass-bell pings E7, G7, C8 at 45, 85, 125 ms; a breath of high air | 8.5 KB | 0.63 s |
+| `snap.m4a` | `snap` | 0.5 | An item used and fitting: a clean two-part click, in, then seated | A hard 0.4 ms contact into five modes (520 Hz to 5.2 kHz); a softer seating click 28 ms later | 3.4 KB | 0.18 s |
+| `detent.m4a` | `detent` | 0.3 | A code or lock wheel stepping one place: one tiny, fine mechanical tick | A 0.25 ms contact into small-metal modes (650 Hz, 1.9 to 7.2 kHz, 2 to 9 ms decays) | 2.0 KB | 0.07 s |
+| `unlock.m4a` | `unlock` | 0.65 | A correct code: a warm brass bolt clunks across, the latch clicks at 110 ms, a soft chime | A 30 ms slide, a 1 ms contact into a brass bolt (88 Hz to 3.3 kHz, strongest at 436 Hz); a latch click at 110 ms; celesta G5 and D6 (an open fifth) at 130 and 145 ms. Timed to the haptic pattern | 12.2 KB | 0.93 s |
+| `wrong-code.m4a` | `wrongCode` | 0.5 | It doesn't give: two gentle, muted wooden knocks at 0 and 90 ms (the haptic beats). Not a buzzer | Two soft contacts into a muted wood bank (104 to 862 Hz, short decays), the second a little lower and softer; two dull latch ticks; low-passed at 1.8 kHz | 5.3 KB | 0.35 s |
+| `stamp.m4a` | `stamp` | 0.75 | A thick rubber stamp pressed onto paper on a wooden desk, lifted with a faint peel | A 1.6 ms contact into a desk (96 Hz to 1.1 kHz); a band-passed rubber smack; a hint of paper crush; a sticky crackle at 170 ms | 4.6 KB | 0.31 s |
+| `solved.m4a` | `solved` | 0.55 | The case solved: a warm, short magical shimmer | Celesta E5 at 0, G5 at 260 ms, C6 + E6 at 400 ms (the haptic beats) over a soft chorused Cmaj9 pad; a cascade of 16 tiny glass notes (C pentatonic, octave 7); a rising air band; a larger room | 23.3 KB | 1.86 s |
+| `drawer.m4a` | `drawer` | 0.55 | A wooden drawer sliding out, its soft thud at the stop at 170 ms (the firm haptic's beat) | Friction noise with a ragged ~45 Hz stick-slip grain ringing the drawer box (212, 468, 884 Hz); a 1.3 ms contact into the stop (118 Hz to 1.5 kHz); two tiny knocks of what's inside | 6.8 KB | 0.47 s |
+| `cloth.m4a` | `cloth` | 0.45 | A cloth lifted off something: a soft, close fabric rustle and the air under it | 140 soft thread grains over a hush, through a band wandering 0.9 to 2.2 kHz, low-passed at 4.2 kHz; a low-passed puff of air | 5.9 KB | 0.39 s |
+| `uv-switch.m4a` | `uvSwitch` | 0.45 | The UV light on: a soft rocker click, then a warm electric hum flickering up and fading | A 0.5 ms contact into a rocker (0.8 to 4.1 kHz); a 9-harmonic hum settling 96 to 120 Hz, flickering (smoothed) in its first 60 ms; a faint 120 Hz-pulsed fizz at 2.6 to 5.2 kHz | 7.4 KB | 0.52 s |
+| `lens-up.m4a` | `lensUp` | 0.35 | The magnifier lifted: a soft upward whoosh with the faintest glint of glass | Noise through a band sweeping 450 Hz to 1.9 kHz, low-passed at 4.5 kHz; a very quiet A7 glass ping at 140 ms | 5.1 KB | 0.32 s |
+| `lens-down.m4a` | `lensDown` | 0.4 | The magnifier set down: a short falling breath, then a soft glass-on-wood tick | A band falling 1.5 kHz to 600 Hz; a 0.9 ms contact at 65 ms into glass-on-wood modes (420 Hz to 4.3 kHz) | 4.0 KB | 0.22 s |
+| `purr.m4a` | `purr` | 0.5 | The cat, rubbed: a short, low, soft purr, one breath out (~25 Hz) and one in (softer, ~27.5 Hz) | A jittered pulse train exciting noise and a buzz through chest and nose resonances (180, 330, 620, 980 Hz), under 1.2 kHz; faded in and out (a one-shot: a replay restarts it, so a rub can retrigger it) | 20.4 KB | 1.61 s |
+| `shutter.m4a` | `shutter` (camera) | 0.95 | A mechanical shutter: curtain, gear whirr, mirror slap (`generate.mjs`) | Two clicks 72 ms apart, each a noise transient, a 1.1 kHz body and inharmonic metal partials (2.4 to 7.9 kHz); a gated band-passed whirr between | 3.7 KB | 0.32 s |
+| `typewriter.m4a` | `typewriter` | 0.45 | A run of six typewriter keys (`generate.mjs`) | Per key: a key-top click, the typebar striking the platen (low-passed noise, a 1.1 to 1.4 kHz resonance, a 145 Hz platen thump, a faint bar ring) and an escapement tick; irregular 72 to 125 ms spacing | 7.5 KB | 0.78 s |
+| `room-noir.m4a` | room tone, noir | 0.12 | Rain on the office window, a rumble, a faint mains hum | Pink noise band-limited to 0.9 to 7 kHz with a slow drift; ~30 drop ticks a second (2.2 to 6 kHz) and fatter drips; low-passed brown-noise rumble; 60/120/180/240 Hz hum | 81.5 KB | 16.00 s (loop) |
+| `room-crime-scene.m4a` | room tone, crime scene | 0.1 | A low, tense transformer hum | 55 / 55.25 Hz and 110 / 110.5 Hz pairs beating every 4 s, swelling every 8 s; odd harmonics (275 to 825 Hz) a phone speaker can play, breathing on 16 s; dark brown-noise rumble; a thin 3.2 kHz tension band | 81.4 KB | 16.00 s (loop) |
+| `room-paranormal.m4a` | room tone, paranormal | 0.11 | A cold, airy drone | Pink-noise wind through a band-pass sweeping around 0.5 to 1.4 kHz on 16 s and 8 s cycles, a faint whistle band above it, a low hush; a glassy pad (A3, E4, B4 with detuned twins, a faint E6 shimmer) fading in and out slowly | 81.6 KB | 16.00 s (loop) |
 
-All thirteen files total about 340 KB. Licence for every file: self-generated for Escapd (no third-party material).
+All twenty-one files total about 380 KB. Licence for every file: self-generated for Escapd (no third-party material).
 
 ## Playback
 
 - `src/game/sound.ts` loads each effect once (the first `useFeedback()` with sound on preloads them) and replays from the start. It never throws: on the web, or when a load or play fails, the cue is silent and its haptic still fires.
 - The audio session respects the **iOS silent switch** (`playsInSilentMode: false`, the ambient category; Android likewise stays quiet in silent or vibrate ringer modes) and **mixes with other audio** (`interruptionMode: "mixWithOthers"`): the player's music keeps playing at its own volume, and no audio focus is requested. Nothing plays in the background.
 - Sound follows the server setting `sound_enabled` (the Sound switch in the hub's Settings sheet); haptics follow `haptics_enabled`. Each is independent of the other.
-- Silent cues: `tick`, `success`, `warning`, `error` (outcomes the screen states; the game moments carry their own sounds). `typewriter` is sound only, with no haptic.
+- Silent cues: `tick`, `success`, `warning`, `error` (outcomes the screen states; the game moments carry their own sounds). `tick` stays silent because it fires everywhere (pagers, scales, toggles); a lock or code wheel that wants an audible step calls `detent` (the tick haptic plus the tiny tick sound). `typewriter` is sound only, with no haptic.
+- Patterns: `wrongCode` (heavy, then the error notification at 90 ms), `unlock` (medium, light at 110 ms), `solved` (success, light at 260 ms, medium at 400 ms) and `drawer` (light, medium at 170 ms, the stop) put their later haptics on the beats their sounds are cut to (`PATTERN` in `src/game/feedback.ts`).
+- The interaction cues and where they belong: `drawer` a drawer or compartment opening; `cloth` a cloth lifted; `paper` a note or card; `pickup` an item found; `snap` an item used and fitting; `detent` a wheel's step; `unlock` a lock opening; `wrongCode` a wrong code or accusation; `uvSwitch` the UV light on; `lensUp` / `lensDown` the magnifier lifted and set down; `purr` the cat rubbed.
 - Room tone: `useRoomTone(active)` (`src/game/useRoomTone.ts`), mounted by `app/play/[roomId].tsx` and `app/tutorial/index.tsx`. It plays the active mode's loop (`useMode()`, noir when none), fades in over 1.6 s and out over 0.7 s, crossfades when the mode changes, and fades out when the screen loses focus, the app leaves the foreground, sound is turned off or the screen unmounts.
 - The app config's `expo-audio` plugin asks for no microphone and no background audio.
 
@@ -66,7 +94,7 @@ Every level is in `src/game/sound.ts`, in one place (`EFFECTS`, `TONES`, `MUSIC`
 
 | What | Level |
 |---|---|
-| Effects | 0.45 to 0.95 (the press click 0.22) |
+| Effects | 0.25 to 0.95 (press 0.25, detent 0.3; the foley is loudness-matched, so these are the mix) |
 | Music (`MUSIC.level`) | 0.35, times each track's `trim` (1 for now; set once the real tracks are in, to even out their loudness) |
 | Room tone | 0.1 to 0.12; while music plays, half that (`MUSIC.roomTone` 0.5), faded over 1.2 s, back up when the music stops |
 

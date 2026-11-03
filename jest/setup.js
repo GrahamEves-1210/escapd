@@ -27,6 +27,14 @@ jest.mock("@/game/feedback", () => ({
     solved: jest.fn(),
     shutter: jest.fn(),
     typewriter: jest.fn(),
+    drawer: jest.fn(),
+    cloth: jest.fn(),
+    snap: jest.fn(),
+    detent: jest.fn(),
+    uvSwitch: jest.fn(),
+    lensUp: jest.fn(),
+    lensDown: jest.fn(),
+    purr: jest.fn(),
   }),
 }));
 

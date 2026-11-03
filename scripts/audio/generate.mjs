@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-// Builds every sound in assets/audio/ from nothing: seeded noise, filters,
-// envelopes and a small reverb, synthesized here and encoded with ffmpeg.
-// No samples are downloaded, so every file is self-generated (docs/AUDIO.md).
+// Builds the camera shutter, the typewriter and the three room tones in
+// assets/audio/ from nothing: seeded noise, filters, envelopes and a small
+// reverb, synthesized here and encoded with ffmpeg. The interaction foley
+// (press, knock, paper, pickup, unlock, drawer, purr and the rest) is built
+// by scripts/audio/foley.py. No samples are downloaded, so every file is
+// self-generated (docs/AUDIO.md).
 //
-//   node scripts/audio/generate.mjs           # all sounds
-//   node scripts/audio/generate.mjs stamp     # just the named ones
+//   node scripts/audio/generate.mjs              # all of these
+//   node scripts/audio/generate.mjs room-noir    # just the named ones
 //   WAV_DIR=/tmp/wavs node scripts/audio/generate.mjs  # also keep the 16-bit WAVs there (for inspection)
 //
 // Needs Node 18+ and ffmpeg (with its native aac encoder) on PATH. The output
@@ -192,27 +195,6 @@ function reverb(x, { room = 0.5, damp = 0.5, wet = 0.15 } = {}) {
   return y;
 }
 
-/** Karplus-Strong plucked string: a noise-filled delay line with a damped averaging loop. */
-function pluck(r, sec, freq, { damping = 0.996, brightness = 0.5 } = {}) {
-  const x = buf(sec);
-  const period = SR / freq;
-  // The two-tap average adds half a sample of delay.
-  const len = Math.round(period - 0.5);
-  // A soft pluck: low-passed noise in the line.
-  let line = biquad(white(r, len), "lp", 400 + 3000 * brightness, 0.7);
-  line = Float64Array.from(line);
-  let idx = 0;
-  for (let i = 0; i < x.length; i++) {
-    const a = line[idx];
-    const b = line[(idx + 1) % len];
-    const v = (a + b) * 0.5 * damping;
-    x[i] = a;
-    line[idx] = v;
-    idx = (idx + 1) % len;
-  }
-  return x;
-}
-
 function fadeEdges(x, inSec = 0.001, outSec = 0.01) {
   const ni = samples(inSec), no = samples(outSec);
   for (let i = 0; i < ni && i < x.length; i++) x[i] *= i / ni;
@@ -268,49 +250,6 @@ function drift(r, n, hz) {
 // The sounds
 // ---------------------------------------------------------------------------
 
-/** A soft felt click for button presses. Played very quietly. */
-function press() {
-  const r = rng(11);
-  const x = buf(0.07);
-  mix(x, burst(r, 0.07, hit(0.0012), [["bp", 2400, 1.1]]), 0, 0.8);
-  mix(x, shape(sine(0.07, 230), hit(0.01)), 0, 0.25);
-  mix(x, burst(r, 0.07, hit(0.004), [["lp", 900, 0.7]]), 0, 0.35);
-  return fadeEdges(normalize(clean(x, 80), -3));
-}
-
-/** A soft knock on wood for a firm moment (thud). */
-function knock() {
-  const r = rng(12);
-  const x = buf(0.32);
-  mix(x, shape(sine(0.32, (t) => 175 - 25 * Math.min(1, t / 0.03)), hit(0.028)), 0, 0.8);
-  mix(x, burst(r, 0.32, hit(0.018), [["bp", 720, 2.2]]), 0, 0.9);
-  mix(x, burst(r, 0.32, hit(0.0015), [["hp", 1800, 0.7]]), 0, 0.35);
-  return fadeEdges(normalize(reverb(clean(x, 60), { room: 0.3, wet: 0.08 }), -1), 0.001, 0.08);
-}
-
-/** A sheet of paper lifted and turned: a swept rustle, crackle, then a soft flap. */
-function paper() {
-  const r = rng(21);
-  const sec = 0.5;
-  const n = samples(sec);
-  const body = 0.34; // seconds of rustle
-  const bump = (t) => (t > body ? 0 : Math.pow(Math.max(0, Math.sin((Math.PI * t) / body)), 1.5));
-  // Swept rustle: the sheet sliding.
-  let rustle = sweepBandpass(pink(r, n), (i) => 1300 + 2600 * Math.min(1, i / SR / body), 1.4);
-  rustle = shape(biquad(rustle, "hp", 700, 0.7), bump);
-  const x = new Float64Array(n);
-  mix(x, rustle, 0, 0.9);
-  // Crackle: tiny paper fibres, densest mid-gesture.
-  for (let t = 0.01; t < body; t += between(r, 0.002, 0.012)) {
-    const g = bump(t) * between(r, 0.15, 0.6);
-    mix(x, burst(r, 0.01, hit(between(r, 0.0003, 0.0012)), [["hp", between(r, 2200, 4200), 0.8]]), t, g);
-  }
-  // The flap as the page lands.
-  mix(x, burst(r, 0.12, hit(0.02, 0.004), [["lp", 700, 0.7], ["hp", 120, 0.7]]), body - 0.05, 1.1);
-  mix(x, burst(r, 0.05, hit(0.004), [["bp", 2600, 1]]), body - 0.045, 0.25);
-  return fadeEdges(normalize(reverb(clean(x, 90), { room: 0.25, wet: 0.1 }), -1), 0.002, 0.06);
-}
-
 /** A mechanical camera shutter: the first curtain, the gear, the mirror slapping back. */
 function shutter() {
   const r = rng(31);
@@ -348,119 +287,6 @@ function typewriter() {
     t += between(r, 0.072, 0.125);
   }
   return fadeEdges(normalize(reverb(clean(x, 80), { room: 0.4, wet: 0.09 }), -1), 0.001, 0.08);
-}
-
-/** A heavy lock opening: the bolt's clunk, then the latch 110 ms later (feedback.ts PATTERN.latch). */
-function unlock() {
-  const r = rng(51);
-  const sec = 0.7;
-  const x = buf(sec);
-  // Bolt: a low thump, a dull slap and struck steel.
-  mix(x, shape(sine(sec, (t) => 70 + 30 * Math.exp(-t / 0.02)), hit(0.06)), 0, 0.85);
-  mix(x, burst(r, 0.12, hit(0.014), [["lp", 1300, 0.8]]), 0, 0.75);
-  mix(x, partials(r, 0.3, [[612, 0.22, 0.09], [1338, 0.2, 0.06], [2207, 0.15, 0.04], [3482, 0.1, 0.025], [5130, 0.06, 0.015]]), 0, 1);
-  mix(x, burst(r, 0.04, hit(0.0008), [["hp", 2000, 0.7]]), 0, 0.5);
-  // Latch: a lighter, brighter click and a little spring ring.
-  const latch = 0.11;
-  mix(x, burst(r, 0.04, hit(0.0007), [["hp", 2500, 0.7]]), latch, 0.55);
-  mix(x, partials(r, 0.2, [[3110, 0.2, 0.02], [4720, 0.14, 0.014], [6880, 0.08, 0.009]]), latch, 1);
-  mix(x, shape(sine(0.56, (t) => 1850 + 12 * Math.sin(TAU * 31 * t)), hit(0.07)), latch + 0.002, 0.05);
-  mix(x, burst(r, 0.08, hit(0.01), [["lp", 600, 0.7]]), latch, 0.3);
-  return fadeEdges(normalize(reverb(clean(x, 50), { room: 0.35, wet: 0.11 }), -1), 0.0005, 0.12);
-}
-
-/** A wrong code: the handle rattles and won't give, then an old buzzer (at 90 ms, feedback.ts PATTERN.wrongCode). */
-function wrongCode() {
-  const r = rng(61);
-  const sec = 0.58;
-  const x = buf(sec);
-  [0, 0.027, 0.052].forEach((at, k) => {
-    const g = [1, 0.6, 0.35][k];
-    mix(x, burst(r, 0.05, hit(0.002), [["bp", 1650, 2]]), at, 0.6 * g);
-    mix(x, partials(r, 0.08, [[905, 0.25, 0.03], [2380, 0.12, 0.015]]), at, g);
-    mix(x, shape(sine(0.16, 118), hit(0.02)), at, 0.5 * g);
-  });
-  // The buzzer: a band-limited saw with a rattling armature, through a small horn.
-  const start = 0.09, len = 0.33;
-  const f0 = (t) => 110 - 6 * Math.max(0, (t - len + 0.08) / 0.08);
-  const saw = buf(len);
-  let p = 0;
-  for (let i = 0; i < saw.length; i++) {
-    const t = i / SR;
-    let v = 0;
-    for (let h = 1; h * 110 < 4000; h++) v += Math.sin(h * p) / h;
-    const gate = Math.sin(p) > 0.6 ? 1 : 0.25;
-    saw[i] = v * 0.6 + (r() * 2 - 1) * gate * 0.5;
-    p += (TAU * f0(t)) / SR;
-  }
-  let buzz = biquad(biquad(saw, "bp", 950, 0.9), "lp", 3200, 0.7);
-  buzz = shape(buzz, (t) => Math.min(1, t / 0.008) * Math.min(1, (len - t) / 0.04) * (0.85 + 0.15 * Math.sin(TAU * 13 * t)));
-  mix(x, buzz, start, 0.9);
-  return fadeEdges(normalize(reverb(clean(x, 70), { room: 0.25, wet: 0.06 }), -1), 0.0005, 0.06);
-}
-
-/** An item dropped into the evidence tray: a thump, a small bounce, a settle. */
-function pickup() {
-  const r = rng(71);
-  const sec = 0.42;
-  const x = buf(sec);
-  const land = (at, g, pitch) => {
-    mix(x, shape(sine(0.2, (t) => pitch - 30 * Math.min(1, t / 0.04)), hit(0.03)), at, 0.75 * g);
-    mix(x, burst(r, 0.05, hit(0.006), [["lp", 2600, 0.7]]), at, 0.6 * g);
-    mix(x, burst(r, 0.36, hit(0.045), [["bp", 430, 3]]), at, 0.45 * g);
-    mix(x, burst(r, 0.02, hit(0.0008), [["hp", 2400, 0.7]]), at, 0.25 * g);
-  };
-  land(0, 1, 165);
-  land(0.078, 0.38, 185);
-  for (const at of [0.122, 0.141, 0.155]) mix(x, burst(r, 0.02, hit(0.0012), [["bp", between(r, 1800, 2600), 1.5]]), at, 0.1);
-  return fadeEdges(normalize(reverb(clean(x, 60), { room: 0.3, wet: 0.09 }), -1), 0.0005, 0.08);
-}
-
-/** A rubber stamp slammed onto a sheet on a wooden desk. */
-function stamp() {
-  const r = rng(81);
-  const sec = 0.75;
-  const x = buf(sec);
-  const at = 0.004;
-  mix(x, burst(r, 0.03, (t) => Math.pow(t / 0.03, 2), [["bp", 3000, 0.8]]), 0, 0.06); // the paper's last flutter
-  mix(x, shape(sine(sec, (t) => 50 + 30 * Math.exp(-t / 0.025)), hit(0.085)), at, 1);
-  mix(x, burst(r, 0.08, hit(0.007), [["lp", 3400, 0.7]]), at, 0.95);
-  mix(x, burst(r, 0.08, hit(0.02), [["bp", 900, 1]]), at, 0.45);
-  mix(x, burst(r, 0.75, hit(0.12), [["bp", 182, 6]]), at, 0.9);
-  mix(x, burst(r, 0.65, hit(0.08), [["bp", 436, 5]]), at, 0.4);
-  // Things on the desk jump: a pen, a cup.
-  for (const t of [0.032, 0.061, 0.094]) mix(x, partials(r, 0.06, [[between(r, 2600, 4200), 0.12, 0.012], [between(r, 5000, 6500), 0.06, 0.006]]), t, between(r, 0.4, 0.8));
-  return fadeEdges(normalize(reverb(clean(x, 40), { room: 0.5, damp: 0.45, wet: 0.13 }), -1), 0.001, 0.15);
-}
-
-/** Case solved: a noir sting. An upright bass on C, vibraphone climbing into Cm6/9 with motor tremolo, a brush. */
-function solved() {
-  const r = rng(91);
-  const sec = 3.3;
-  const x = buf(sec);
-  const tremolo = (t) => 1 - 0.32 * (0.5 + 0.5 * Math.sin(TAU * 5.4 * t - Math.PI / 2));
-  const vib = (freq, at, g) => {
-    const n = buf(sec - at);
-    // Vibraphone bars ring at 1 : 4 : 10; the overtones die first.
-    mix(n, shape(sine(sec - at, freq, r() * TAU), (t) => hit(1.25, 0.002)(t) * tremolo(t + at)), 0, 1);
-    mix(n, shape(sine(sec - at, freq * 4, r() * TAU), hit(0.22, 0.001)), 0, 0.22);
-    mix(n, shape(sine(sec - at, freq * 10, r() * TAU), hit(0.05, 0.0005)), 0, 0.07);
-    mix(n, burst(r, 0.03, hit(0.0012), [["lp", 2800, 0.7]]), 0, 0.12); // the mallet
-    mix(x, n, at, g);
-  };
-  // Bass: a plucked C2 with a little sine weight under it.
-  mix(x, biquad(pluck(r, sec, 65.41, { damping: 0.9985, brightness: 0.25 }), "lp", 900, 0.7), 0, 0.55);
-  mix(x, shape(sine(sec, 65.41), hit(0.6, 0.004)), 0, 0.35);
-  // Vibes on the haptic beats (0, 260, 400 ms): Eb4, G4, then A4 + D5.
-  vib(311.13, 0, 0.42);
-  vib(392.0, 0.26, 0.38);
-  vib(440.0, 0.4, 0.33);
-  vib(587.33, 0.4, 0.3);
-  // A brush swept on the snare, and a soft ride ping.
-  mix(x, burst(r, 0.45, (t) => Math.pow(Math.sin((Math.PI * t) / 0.45), 2), [["bp", 5200, 0.6]]), 0, 0.07);
-  mix(x, burst(r, sec, hit(0.6, 0.002), [["bp", 7400, 2.5]]), 0, 0.05);
-  const fade = (t) => (t < sec - 0.9 ? 1 : Math.pow((sec - t) / 0.9, 1.5));
-  return fadeEdges(normalize(shape(reverb(clean(x, 45), { room: 0.78, damp: 0.4, wet: 0.24 }), fade), -1), 0.001, 0.02);
 }
 
 // Room tones: 16 s seamless loops. Periodic layers use whole cycles in 16 s
@@ -544,16 +370,8 @@ function roomParanormal() {
 const EFFECT = { rate: 44100, bitrate: "64k" };
 const TONE = { rate: 32000, bitrate: "40k" };
 const SOUNDS = {
-  press: [press, EFFECT],
-  knock: [knock, EFFECT],
-  paper: [paper, EFFECT],
   shutter: [shutter, EFFECT],
   typewriter: [typewriter, EFFECT],
-  unlock: [unlock, EFFECT],
-  "wrong-code": [wrongCode, EFFECT],
-  pickup: [pickup, EFFECT],
-  stamp: [stamp, EFFECT],
-  solved: [solved, EFFECT],
   "room-noir": [roomNoir, TONE],
   "room-crime-scene": [roomCrime, TONE],
   "room-paranormal": [roomParanormal, TONE],

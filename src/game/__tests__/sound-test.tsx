@@ -37,15 +37,27 @@ const audio = require("expo-audio") as {
 jest.mock("../../../assets/audio/unlock.m4a", () => "unlock.m4a");
 jest.mock("../../../assets/audio/shutter.m4a", () => "shutter.m4a");
 jest.mock("../../../assets/audio/typewriter.m4a", () => "typewriter.m4a");
+jest.mock("../../../assets/audio/drawer.m4a", () => "drawer.m4a");
+jest.mock("../../../assets/audio/detent.m4a", () => "detent.m4a");
+jest.mock("../../../assets/audio/purr.m4a", () => "purr.m4a");
 jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
 jest.mock("../../../assets/audio/room-paranormal.m4a", () => "room-paranormal.m4a");
 const SOURCE = {
   unlock: "unlock.m4a",
   shutter: "shutter.m4a",
   typewriter: "typewriter.m4a",
+  drawer: "drawer.m4a",
+  detent: "detent.m4a",
+  purr: "purr.m4a",
   noir: "room-noir.m4a",
   paranormal: "room-paranormal.m4a",
 };
+
+// Every cue with a sound (tick, tap and the outcomes are silent).
+const INTERACTION_CUES = [
+  "press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter",
+  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr",
+] as const;
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
 const played = () => audio.__players.filter((p) => p.play.mock.calls.length > 0);
@@ -96,13 +108,45 @@ describe("cues with sound", () => {
   it("plays nothing when sound is off, and the haptics are untouched", async () => {
     mockPrefs.sound_enabled = false;
     const { result } = await renderHook(() => useFeedback());
-    for (const cue of ["press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter"] as const) {
-      result.current[cue]();
-    }
+    for (const cue of INTERACTION_CUES) result.current[cue]();
     jest.runAllTimers();
     expect(audio.createAudioPlayer).not.toHaveBeenCalled();
     expect(played()).toEqual([]);
-    expect(haptics()).toBeGreaterThan(9);
+    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 2);
+  });
+
+  it("every interaction cue plays one sound of its own", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    const used = new Set<unknown>();
+    for (const cue of INTERACTION_CUES) {
+      const before = new Set(played());
+      result.current[cue]();
+      const fresh = played().filter((p) => !before.has(p) || p.play.mock.calls.length > 1);
+      expect(fresh).toHaveLength(1);
+      used.add(fresh[0]);
+      fresh[0].play.mockClear();
+    }
+    expect(used.size).toBe(INTERACTION_CUES.length);
+  });
+
+  it("the drawer's firm haptic lands at its stop, on the sound's thud", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    result.current.drawer();
+    expect(playerFor(SOURCE.drawer)!.play).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+    expect(Haptics.impactAsync).not.toHaveBeenCalledWith("medium");
+    jest.advanceTimersByTime(170);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("medium");
+  });
+
+  it("a wheel's detent ticks with a sound, and the cat purrs, each from its own file", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    for (let i = 0; i < 5; i++) result.current.detent();
+    expect(playerFor(SOURCE.detent)!.play).toHaveBeenCalledTimes(5);
+    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(5);
+    result.current.purr();
+    expect(playerFor(SOURCE.purr)!.play).toHaveBeenCalledTimes(1);
+    expect(played()).toHaveLength(2);
   });
 
   it("haptics off leaves the sound on", async () => {

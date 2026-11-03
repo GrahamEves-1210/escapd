@@ -6,7 +6,8 @@
 // (following the player's sound_enabled), useRoomTone.ts runs the ambience
 // and music.ts / useMusic.ts the music. Every file and its level is here, in
 // one place: EFFECTS, TONES and MUSIC. The files and how they were made are in docs/AUDIO.md; they are
-// rebuilt by scripts/audio/generate.mjs.
+// rebuilt by scripts/audio/foley.py (the interaction foley) and scripts/audio/generate.mjs (the shutter,
+// the typewriter and the room tones).
 //
 // The audio session respects the iOS silent switch (playsInSilentMode: false,
 // the "ambient" category; Android likewise stays quiet in silent or vibrate
@@ -26,20 +27,54 @@ export type SoundName =
   | "wrongCode"
   | "pickup"
   | "stamp"
-  | "solved";
+  | "solved"
+  | "drawer"
+  | "cloth"
+  | "snap"
+  | "detent"
+  | "uvSwitch"
+  | "lensUp"
+  | "lensDown"
+  | "purr";
 
+// The interaction foley (scripts/audio/foley.py) is levelled to one loudness
+// (-18 LUFS momentary, peaks capped at -1.5 dBTP), so these volumes are the
+// mix: soft and close, the small things quietest, the big moments a little
+// over. The shutter and typewriter (scripts/audio/generate.mjs) are peak-normalized.
 const EFFECTS: Record<SoundName, { source: number; volume: number }> = {
-  // A felt click, kept very quiet so buttons don't clatter.
-  press: { source: require("../../assets/audio/press.m4a"), volume: 0.22 },
-  knock: { source: require("../../assets/audio/knock.m4a"), volume: 0.45 },
-  paper: { source: require("../../assets/audio/paper.m4a"), volume: 0.55 },
+  // A soft fingertip tap, kept quiet so buttons never clatter.
+  press: { source: require("../../assets/audio/press.m4a"), volume: 0.25 },
+  // A wooden block set down on a cloth-topped table.
+  knock: { source: require("../../assets/audio/knock.m4a"), volume: 0.5 },
+  // A note picked up and opened: crinkle, flex, a papery landing.
+  paper: { source: require("../../assets/audio/paper.m4a"), volume: 0.45 },
   shutter: { source: require("../../assets/audio/shutter.m4a"), volume: 0.95 },
   typewriter: { source: require("../../assets/audio/typewriter.m4a"), volume: 0.45 },
-  unlock: { source: require("../../assets/audio/unlock.m4a"), volume: 0.85 },
+  // A brass bolt's warm clunk, the latch at 110 ms, a soft open-fifth chime.
+  unlock: { source: require("../../assets/audio/unlock.m4a"), volume: 0.65 },
+  // Two gentle, muted wooden knocks: it doesn't give. No buzzer.
   wrongCode: { source: require("../../assets/audio/wrong-code.m4a"), volume: 0.5 },
-  pickup: { source: require("../../assets/audio/pickup.m4a"), volume: 0.7 },
-  stamp: { source: require("../../assets/audio/stamp.m4a"), volume: 0.9 },
-  solved: { source: require("../../assets/audio/solved.m4a"), volume: 0.7 },
+  // A soft wood-and-glass tick and a tiny three-note sparkle.
+  pickup: { source: require("../../assets/audio/pickup.m4a"), volume: 0.5 },
+  // A thick rubber stamp on paper on a wooden desk, with a faint peel.
+  stamp: { source: require("../../assets/audio/stamp.m4a"), volume: 0.75 },
+  // A warm, short celesta shimmer on the haptic beats.
+  solved: { source: require("../../assets/audio/solved.m4a"), volume: 0.55 },
+  // A wooden drawer sliding out, its soft thud at the stop at 170 ms.
+  drawer: { source: require("../../assets/audio/drawer.m4a"), volume: 0.55 },
+  // A cloth lifted: a soft, close rustle.
+  cloth: { source: require("../../assets/audio/cloth.m4a"), volume: 0.45 },
+  // An item used and fitting: a clean two-part click.
+  snap: { source: require("../../assets/audio/snap.m4a"), volume: 0.5 },
+  // A code wheel's step: one tiny mechanical tick. Fires often, so it's the quietest.
+  detent: { source: require("../../assets/audio/detent.m4a"), volume: 0.3 },
+  // The UV light on: a rocker click and a warm electric hum flickering up.
+  uvSwitch: { source: require("../../assets/audio/uv-switch.m4a"), volume: 0.45 },
+  // The magnifier lifted (a soft whoosh) and set down (a glass-on-wood tick).
+  lensUp: { source: require("../../assets/audio/lens-up.m4a"), volume: 0.35 },
+  lensDown: { source: require("../../assets/audio/lens-down.m4a"), volume: 0.4 },
+  // The cat, rubbed: a short, low, soft purr (1.6 s, faded at both ends; replays restart it).
+  purr: { source: require("../../assets/audio/purr.m4a"), volume: 0.5 },
 };
 
 // Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).
@@ -59,7 +94,7 @@ export type TrackName = "theme" | "crime" | "paranormal";
 
 /**
  * Music: one looping track at a time, under the effects (shutter 0.95, stamp
- * 0.9, unlock 0.85) and over the room tone. `level` is every track's
+ * 0.75, unlock 0.65) and over the room tone. `level` is every track's
  * playback volume times its `trim`, for evening out the supplied tracks'
  * loudness. While music plays the room tone drops to `roomTone` of its level
  * (fading over `fade.duck`), so rain or a hum and the music don't muddy each

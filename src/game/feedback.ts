@@ -9,20 +9,33 @@
 //   toggle, a segment, a step in the guide). The lightest. Silent.
 // - press: a button, chip or card pressed in. A very quiet felt click.
 // - thud: a firm, physical moment (an item landing, a lock giving way). A
-//   soft knock on wood.
+//   wooden block set down on a cloth-topped table.
 // - success / warning / error: an outcome the screen also states. Silent:
 //   the moments below carry their own sounds.
 // The game's own moments (GAME_FEEL_PROMPT.md), each one named so a screen
 // asks for the moment, not a vibration, and each has its own sound
 // (src/game/sound.ts, docs/AUDIO.md):
-// - paper: a clue, note or sheet opening. As light as press; a page turning.
-// - pickup: an item landing in the evidence tray. A thud; the item dropping in.
+// - paper: a clue, note or sheet opening. As light as press; crisp paper.
+// - pickup: an item found and kept. A thud; a soft wood-and-glass tick and a
+//   tiny sparkle.
 // - wrongCode: a wrong code or accusation. A heavy thud, then the error buzz;
-//   the handle rattling, then an old buzzer.
-// - unlock: a correct code; the lock's bolt, then its latch a beat later.
-// - stamp: a rubber stamp slamming down (CASE CLOSED, GUILTY). Heavy.
+//   two gentle, muted wooden knocks (it doesn't give), never a buzzer.
+// - unlock: a correct code; the lock's bolt, then its latch a beat later; a
+//   warm brass clunk, the latch, a soft chime.
+// - stamp: a rubber stamp pressed down (CASE CLOSED, GUILTY). Heavy; a thick
+//   rubber thump on a wooden desk.
 // - solved: the case solved. The success pattern, then two closing taps; a
-//   short noir sting on the same beats.
+//   warm, short celesta shimmer on the same beats.
+// - drawer: a drawer pulled open. A light tap as it goes, a firm one at the
+//   stop; a wooden slide and its soft thud on the same beat.
+// - cloth: a cloth lifted off something. Light; a soft rustle.
+// - snap: an item used on something and fitting. Medium; a clean click.
+// - detent: a lock or code wheel stepping one place. The tick haptic, with a
+//   tiny mechanical tick (tick itself stays silent: it fires everywhere).
+// - uvSwitch: the UV light turned on. Light; a rocker click and a soft hum.
+// - lensUp / lensDown: the magnifier lifted (the tick haptic, a soft whoosh)
+//   and set down (light; a glass-on-wood tick).
+// - purr: the cat, rubbed. Light; a short, low, soft purr.
 // - shutter: the camera taking a photo. A thud and a mechanical shutter.
 // - typewriter: text typing itself out in a game moment. Sound only, no
 //   haptic: a short run of keys.
@@ -32,7 +45,7 @@ import { usePreferences } from "./preferences";
 import { playSound, preloadSounds, type SoundName } from "./sound";
 
 /** The beats of the patterns, in ms after the first. The sounds are cut to the same beats. */
-const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400] } as const;
+const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170 } as const;
 
 export function useFeedback() {
   const { haptics_enabled, sound_enabled } = usePreferences();
@@ -105,6 +118,39 @@ export function useFeedback() {
         sound("shutter");
       },
       typewriter: () => sound("typewriter"),
+      drawer: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        later(PATTERN.drawer, () => impact(Haptics.ImpactFeedbackStyle.Medium));
+        sound("drawer");
+      },
+      cloth: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        sound("cloth");
+      },
+      snap: () => {
+        impact(Haptics.ImpactFeedbackStyle.Medium);
+        sound("snap");
+      },
+      detent: () => {
+        tick();
+        sound("detent");
+      },
+      uvSwitch: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        sound("uvSwitch");
+      },
+      lensUp: () => {
+        tick();
+        sound("lensUp");
+      },
+      lensDown: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        sound("lensDown");
+      },
+      purr: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        sound("purr");
+      },
     };
   }, [haptics_enabled, sound_enabled]);
 }
