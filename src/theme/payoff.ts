@@ -55,7 +55,7 @@ export const LIGHT = {
 /** The build wait's prints: their paper and the milky blank they develop from. */
 export const DEVELOPING = { paper: "#FBF6EE", blank: "#E9E0D3" } as const;
 
-/** The payoff's faces: a book's last line, its page number, a chapter kicker, "The End", a seal's word, a library stamp, the app's name. */
+/** The payoff's faces: a book's last line, its page number, a chapter kicker, "The End", a seal's word, a library stamp, the app's name, the recap's story. */
 export const PAYOFF_TYPE = {
   last: { fontFamily: font.narrativeItalic, fontSize: 17, lineHeight: 23 },
   lastLarge: { fontFamily: font.narrativeItalic, fontSize: 19, lineHeight: 27 },
@@ -65,6 +65,9 @@ export const PAYOFF_TYPE = {
   seal: { fontFamily: ref.font.cover, textTransform: "uppercase", letterSpacing: 0.8 },
   library: { fontFamily: "CourierPrime_700Bold", fontSize: 12, lineHeight: 16, letterSpacing: 1.2, textTransform: "uppercase" },
   brand: { fontFamily: ref.font.cover, fontSize: 13, lineHeight: 18, letterSpacing: 2.4 },
+  /** Case closed's recap: the solution's story in the book face, its answer called out in the bold cut. */
+  story: { fontFamily: font.narrative, fontSize: 16, lineHeight: 22 },
+  storyStrong: { fontFamily: font.wordmark, fontVariant: ["lining-nums"] },
 } as const satisfies Record<string, TextStyle>;
 
 /** Handwriting at `size` (never below ref.type.handSmall), in the hand face. */
@@ -88,3 +91,16 @@ export function alpha(hex: string, a: number): string {
   const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
+
+/**
+ * The brief's paper, per mode (src/play2/Brief.tsx): noir's is a book's
+ * opening page (the page's cream); crime scene's a manila case folder (its
+ * face and the deeper tab behind it) holding a typed sheet; paranormal's a
+ * note on pale moonlit lavender, written in indigo ink. Every ink reads at
+ * 4.5:1 or more on the paper it is written on (brief-test, contrast).
+ */
+export const BRIEF_PAPER: Record<Genre, { paper: string; ink: string; muted: string; rule: string; folder?: string; tab?: string }> = {
+  noir: { paper: PAGE.paper, ink: PAGE.ink, muted: PAGE.muted, rule: PAGE.rule },
+  crime_scene: { paper: "#FBF7EE", ink: PAGE.ink, muted: "#5F4C44", rule: "rgba(42, 28, 36, 0.14)", folder: "#E2C690", tab: "#CFAE6E" },
+  paranormal: { paper: "#EFECF8", ink: "#262058", muted: "#585192", rule: "rgba(38, 32, 88, 0.16)" },
+};

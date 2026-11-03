@@ -3,36 +3,49 @@
 //   - it rises from behind the ledge with a springy overshoot,
 //   - it breathes (a slow squash and stretch), blinks now and then, and
 //     tilts its head toward the light,
-//   - its slit pupils follow the flashlight's beam, opening wide in the dark
-//     and narrowing to slits as the light comes near,
+//   - its pupils are a real cat's: thin slits in ordinary light, rounder as
+//     the light goes far off and it sits in the dark, rounder still when
+//     something has its interest (a glance, thinking), and wide and round for
+//     a moment when the player finds something, easing back to slits. They
+//     follow the flashlight's beam, or wherever it's glancing,
 //   - it reacts with squash and stretch: a crouch, a happy pop and a burst of
 //     sparkles when the player finds something; a flinch and a quick duck when
 //     they get something wrong (`reaction` changes),
 //   - it has moods, shown with floating marks like a mascot's: "?"s drift up
-//     while the case is thinking (`mood`), and when the light hasn't moved for
-//     a long while it dozes off on the ledge, eyes shut, "z"s rising, until the
-//     light moves again (or it has something to show) and it pops back up,
+//     while the case is thinking (`mood`), its eyes on what it's thinking
+//     about (the light on the photo, or `lookAt`), and when the light hasn't
+//     moved for a long while it dozes off on the ledge, eyes shut, "z"s
+//     rising, until the light moves again (or it has something to show) and it
+//     pops back up,
 //   - now and then it ducks behind the ledge and peeks back up,
 //   - it keeps an eye on the game: it perks up when the light passes over
 //     something worth a look and yawns at an empty drawer (`reaction`), glances
 //     at what the player hasn't looked at yet when they're stuck (`lookAt`:
 //     it leans that way, a "!" or "?" bobbing on that side, now and then a word),
-//     sits with its lids half shut while a wrong answer's cooldown runs
-//     (`waiting`), and has had enough after too much petting,
+//     and sits with its lids half shut while a wrong answer's cooldown runs
+//     (`waiting`),
+//   - it likes being stroked (usePetting): a hand on it and it shuts its eyes
+//     with a small flinch; rubbed, it leans into the hand, sways and purrs (a
+//     fine shiver through it, a soft beat in the hand, "prr"); let go, its eyes
+//     open slowly and it gives a content blink. Rough, quick taps, and it has
+//     had enough for a while ("Enough."),
 //   - and it says a short line now and then in a speech bubble (`say`).
 // It all moves at 12 frames a second, like stop motion: the animations run
 // smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
 // pupils and eyelids are drawn over the eyes. Under reduced motion it sits
-// still apart from its eyes; its marks (a pet's heart, a glance's "!") show
+// still apart from its eyes; its marks (a purr's "prr", a glance's "!") show
 // without moving.
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View, type AccessibilityActionEvent } from "react-native";
 import { SparkleIcon } from "phosphor-react-native";
+import { GestureDetector, GestureHandlerRootView, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
-  Easing, useAnimatedReaction, useAnimatedStyle, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
-  type SharedValue,
+  Easing, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring,
+  withTiming, type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import { useFeedback, type Feedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { measureInWindow } from "@/render/PickupFlight";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -44,8 +57,15 @@ const ART_W = 560;
 const ART_H = 585;
 const EYES = [{ x: 0.3329, y: 0.5336 }, { x: 0.7061, y: 0.5336 }] as const;
 const EYE_R = { x: 0.0949, y: 0.0833 };
-/** Pupil width: a slit in the light, round in the dark (fractions of the art's width). */
-const PUPIL = { slit: 0.026, wide: 0.085, h: 0.15 };
+/**
+ * Pupils: a slit `slitW` of the art's width across and `slitH` of its height
+ * tall in ordinary light; fully open (`dilate` 1: surprised), a disc `round`
+ * of its width across. In between, a tall oval. Centred `drop` (of its height)
+ * below the eye's centre, the middle of the art's iris.
+ */
+const PUPIL = { slitW: 0.02, slitH: 0.115, round: 0.15, minW: 1.2, drop: 0.006 };
+/** How open the pupils go (0 slit, 1 round): the light far off (the dark), thinking, glancing, perking up. */
+const DILATE = { dark: 0.6, darkFrom: 300, darkOver: 500, think: 0.45, glance: 0.3, warm: 0.65 };
 const FUR = "#0B0806";
 /** It sits this far (of its height) behind the ledge, so its bottom edge never shows when it turns. */
 const SINK = 0.05;
@@ -57,12 +77,18 @@ const DOZE_AFTER = 70000;
 const SPEECH_MS = 2650;
 /** At most one line this often (ms); a rule line may cut in on a flavour one. */
 const SPEECH_GAP = 6000;
-/** Petted more than this many times in PET_WINDOW ms, it's had enough for ENOUGH_MS. */
+/** Rough handling: more than this many quick taps in PET_WINDOW ms and it's had enough for ENOUGH_MS. Rubbing never counts. */
 const PET_LIMIT = 4;
 const PET_WINDOW = 3000;
 const ENOUGH_MS = 3000;
-/** Under reduced motion a pet's heart shows, still, this long (ms). */
-const HEART_MS = 1200;
+/**
+ * Petting: a touch shorter than `tap` ms that never moved is a tap (a poke, not
+ * a stroke). A hand held `settle` ms, or moving, starts the purr: a breath of
+ * it (its sound and a haptic pulse, useFeedback's purr) every `beat` ms, and
+ * it sways over `cycle` ms. A screen
+ * reader's pet purrs `a11y` ms (its rub action, `a11yRub`).
+ */
+export const PET = { tap: 260, settle: 350, beat: 1500, cycle: 2400, a11y: 1600, a11yRub: 3200 } as const;
 /** Glancing, it leans this far (degrees, and of its width) toward the place: more than toward the light. */
 const GLANCE_LEAN = { deg: 6, shift: 0.1 };
 
@@ -90,8 +116,270 @@ export type CatReaction = { kind: "found" | "wrong" | "warm" | "empty"; at: numb
 export type CatMood = "idle" | "thinking";
 /** A line for it to say (a new `at` each time). `rule` lines (the game's rules) win over flavour ones. */
 export type CatLine = { text: string; at: number; rule?: boolean } | null;
-/** Somewhere to look instead of the light (window points), with a "!" toward it (`wonder`: a "?"), and maybe a word (`line`). */
-export type CatLook = { x: number; y: number; wonder?: boolean; line?: string } | null;
+/**
+ * Somewhere to look instead of the light: window points, or (`from: "cat"`)
+ * points from the cat's own centre. With a "!" toward it (`wonder`: a "?";
+ * `quiet`: no mark, just its eyes and a lean), and maybe a word (`line`).
+ * `track`: the spot drifts left at `speed` pt/s for `span` pt and flicks back,
+ * over and over (watching prints go by on a moving string). Not under reduced motion.
+ */
+export type CatLook = {
+  x: number; y: number; wonder?: boolean; line?: string; quiet?: boolean; from?: "cat"; track?: { speed: number; span: number };
+} | null;
+
+/**
+ * One breath of a purr: the feedback module's purr (a soft purr, one breath
+ * out and in, and a light haptic), and halfway through it a fainter tick in
+ * the hand, so the purr is felt as a rhythm.
+ */
+function purrBreath(feedback: Feedback) {
+  feedback.purr();
+  return setTimeout(() => feedback.tick(), PET.beat / 2);
+}
+
+/** What a screen reader can do with the cat: pet it (a double tap), or give it a longer rub. */
+export const PET_ACTIONS = [{ name: "activate", label: "Pet the cat" }, { name: "rub", label: "Rub the cat" }];
+
+/**
+ * A hand on the cat (both cats): touch-down shuts its eyes (`touch` 0..1) with
+ * a small flinch (`poke`, a few frames); held or rubbed, it leans toward the
+ * hand (`lean` -1..1) and purrs (`purr` 0..1, `clock` running round 0..1 for
+ * the sway and the shiver; useFeedback's purr each breath, `purring` for the "prr"); let go,
+ * its eyes open slowly with a content blink. Quick taps, more than PET_LIMIT
+ * in PET_WINDOW, are rough handling: `onRough`. While `sulking` a hand gets a
+ * flinch away and nothing else. `gesture` goes on the touch layer, `onAction`
+ * on its accessibility actions (PET_ACTIONS). Under reduced motion only the
+ * eyes move (and the purr's beat and mark).
+ */
+export function usePetting({ width, reducedMotion, sulking, onRough, onTouch }: {
+  width: number;
+  reducedMotion: boolean;
+  sulking: boolean;
+  onRough: () => void;
+  /** Any touch, and each purr beat (the peeking cat stays awake). */
+  onTouch?: () => void;
+}) {
+  const feedback = useFeedback();
+  const touch = useSharedValue(0);
+  const lean = useSharedValue(0);
+  const poke = useSharedValue(0);
+  const purr = useSharedValue(0);
+  const clock = useSharedValue(0);
+  // Read on the UI thread at touch-down.
+  const cross = useSharedValue(sulking);
+  const still = useSharedValue(reducedMotion);
+  useEffect(() => {
+    cross.set(sulking);
+    still.set(reducedMotion);
+  }, [sulking, reducedMotion, cross, still]);
+  const [purring, setPurring] = useState(false);
+  const hand = useRef({ at: 0, purring: false, taps: [] as number[] });
+  const timers = useRef<{
+    settle?: ReturnType<typeof setTimeout>; beat?: ReturnType<typeof setInterval>; half?: ReturnType<typeof setTimeout>;
+    stop?: ReturnType<typeof setTimeout>; a11y?: ReturnType<typeof setTimeout>;
+  }>({});
+  // The latest callbacks and props for the handlers below, which the gesture keeps from its first render.
+  const latest = useRef({ feedback, onRough, onTouch, sulking, reducedMotion });
+  useEffect(() => {
+    latest.current = { feedback, onRough, onTouch, sulking, reducedMotion };
+  });
+
+  const startPurr = () => {
+    const l = latest.current;
+    if (hand.current.purring || l.sulking) return;
+    hand.current.purring = true;
+    setPurring(true);
+    clearTimeout(timers.current.stop);
+    if (!l.reducedMotion) {
+      purr.set(withTiming(1, { duration: 400 }));
+      clock.set(withSequence(withTiming(0, { duration: 0 }), withRepeat(withTiming(1, { duration: PET.cycle, easing: Easing.linear }), -1, false)));
+    }
+    timers.current.half = purrBreath(l.feedback);
+    clearInterval(timers.current.beat);
+    timers.current.beat = setInterval(() => {
+      timers.current.half = purrBreath(latest.current.feedback);
+      latest.current.onTouch?.();
+    }, PET.beat);
+  };
+  const stopPurr = () => {
+    clearTimeout(timers.current.settle);
+    clearInterval(timers.current.beat);
+    clearTimeout(timers.current.half);
+    if (!hand.current.purring) return;
+    hand.current.purring = false;
+    setPurring(false);
+    purr.set(withTiming(0, { duration: 450 }));
+    // The sway's clock stops once the purr has faded.
+    timers.current.stop = setTimeout(() => cancelAnimation(clock), 500);
+  };
+  /** Its eyes open slowly, then a content blink: shut slowly, and open. */
+  const contentBlink = () => {
+    touch.set(withSequence(
+      withTiming(0.45, { duration: 420, easing: Easing.out(Easing.quad) }),
+      withDelay(220, withTiming(1, { duration: 240, easing: Easing.inOut(Easing.sin) })),
+      withDelay(160, withTiming(0, { duration: 520, easing: Easing.inOut(Easing.sin) })),
+    ));
+    if (!latest.current.reducedMotion) lean.set(withSpring(0, { damping: 12, stiffness: 90 }));
+  };
+
+  // The gesture's JS side: touch-down, the first rub, let go.
+  const down = () => {
+    hand.current.at = Date.now();
+    latest.current.onTouch?.();
+    clearTimeout(timers.current.settle);
+    if (latest.current.sulking) return;
+    timers.current.settle = setTimeout(startPurr, PET.settle);
+  };
+  const rubbed = () => {
+    if (!latest.current.sulking) startPurr();
+  };
+  const up = (moved: boolean) => {
+    const now = Date.now();
+    const wasTap = !moved && now - hand.current.at < PET.tap;
+    stopPurr();
+    if (latest.current.sulking) return;
+    contentBlink();
+    if (!wasTap) return;
+    // Rough handling: quick taps, one after another.
+    hand.current.taps = [...hand.current.taps.filter((t) => now - t < PET_WINDOW), now];
+    if (hand.current.taps.length > PET_LIMIT) {
+      hand.current.taps = [];
+      touch.set(withTiming(0, { duration: 120 }));
+      latest.current.onRough();
+    }
+  };
+
+  const rubbing = useSharedValue(false);
+  const half = width / 2;
+  const gesture = usePanGesture({
+    minDistance: 4,
+    maxPointers: 1,
+    testID: "cat-rub",
+    onBegin: (e) => {
+      "worklet";
+      rubbing.set(false);
+      const side = Math.max(-1, Math.min(1, (e.x - half) / half));
+      if (!still.get()) poke.set(withSequence(withTiming(cross.get() ? 1.4 : 1, { duration: 60 }), withSpring(0, { damping: 9, stiffness: 160 })));
+      if (cross.get()) {
+        // Had enough: it pulls away from the hand.
+        if (!still.get()) lean.set(withSequence(withTiming(-side * 0.8, { duration: 90 }), withSpring(0, { damping: 10, stiffness: 100 })));
+      } else {
+        touch.set(withTiming(1, { duration: 90 }));
+        if (!still.get()) lean.set(withTiming(side * 0.5, { duration: 160 }));
+      }
+      scheduleOnRN(down);
+    },
+    onActivate: () => {
+      "worklet";
+      rubbing.set(true);
+      scheduleOnRN(rubbed);
+    },
+    onUpdate: (e) => {
+      "worklet";
+      if (cross.get() || still.get()) return;
+      // It leans into the hand, toward where it is and the way it's going.
+      const at = (e.x - half) / half + e.velocityX / 2500;
+      lean.set(withTiming(Math.max(-1, Math.min(1, at)), { duration: 120 }));
+    },
+    onFinalize: () => {
+      "worklet";
+      const moved = rubbing.get();
+      rubbing.set(false);
+      scheduleOnRN(up, moved);
+    },
+  });
+
+  // A screen reader's pet: eyes shut, a purr a moment, then the content blink.
+  const onAction = (e: AccessibilityActionEvent) => {
+    const name = e.nativeEvent.actionName;
+    if (name !== "activate" && name !== "rub") return;
+    latest.current.onTouch?.();
+    if (latest.current.sulking) return;
+    clearTimeout(timers.current.a11y);
+    touch.set(withTiming(1, { duration: 120 }));
+    startPurr();
+    timers.current.a11y = setTimeout(() => {
+      stopPurr();
+      contentBlink();
+    }, name === "rub" ? PET.a11yRub : PET.a11y);
+  };
+
+  // Rough handling ends any purr; and nothing outlives the cat.
+  useEffect(() => {
+    if (sulking) stopPurr();
+    // stopPurr reads refs and shared values only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sulking]);
+  useEffect(() => () => {
+    const t = timers.current;
+    clearTimeout(t.settle);
+    clearInterval(t.beat);
+    clearTimeout(t.half);
+    clearTimeout(t.stop);
+    clearTimeout(t.a11y);
+  }, []);
+
+  return { touch, lean, poke, purr, clock, purring, gesture, onAction };
+}
+
+/** The petting's motion on a cat's body (not under reduced motion): the flinch, the lean, the purr's sway and shiver. */
+export function pettingMotion(touchDown: number, lean: number, purr: number, clock: number, width: number, height: number) {
+  "worklet";
+  const sway = Math.sin(clock * Math.PI * 2) * purr;
+  // The shiver: a new tiny offset each drawn frame (the clock is somewhere new every 1/12 s).
+  const jx = Math.sin(clock * 5023.3) * purr;
+  const jy = Math.abs(Math.sin(clock * 3911.7)) * purr;
+  const jr = Math.sin(clock * 7741.9) * purr;
+  return {
+    x: lean * width * 0.05 + jx * width * 0.012,
+    y: touchDown * height * 0.04 + jy * height * 0.008,
+    rotate: lean * 5 + sway * 1.8 + jr * 0.5,
+    sx: 1 + touchDown * 0.04,
+    sy: 1 - touchDown * 0.06,
+  };
+}
+
+/** Indices into the cat's stop-motion frame. */
+const F = {
+  rise: 0, hop: 1, breath: 2, tilt: 3, lid: 4, sx: 5, sy: 6, doze: 7, think: 8, bx: 9, by: 10, droop: 11, gaze: 12, gx: 13, gy: 14,
+  excite: 15, touch: 16, lean: 17, purr: 18, clock: 19, rel: 20, track: 21, poke: 22,
+} as const;
+
+/** Where it sits and the photo's frame (window points). `known`: both measured; `seated`: where it sits is. */
+type At = { ox: number; oy: number; fx: number; fy: number; fw: number; fh: number; known: boolean; seated: boolean };
+
+/**
+ * Where it's looking, from a point on the cat (`ex`, `ey`, from its top-left):
+ * the light, or where it's glancing, blended by the glance. `weight`: how far
+ * its eyes go there (a glance easing in or out, with no light to fall back
+ * on); `dark`: how far off the light is (points), when there is one.
+ */
+function aim(v: number[], ex: number, ey: number, w: number, h: number, at: At) {
+  "worklet";
+  const g = v[F.gaze];
+  let lx = 0, ly = 0, light = false;
+  if (at.known) {
+    lx = at.fx + v[F.bx] * at.fw - (at.ox + ex);
+    ly = at.fy + v[F.by] * at.fh - (at.oy + ey);
+    light = true;
+  }
+  let gx = 0, gy = 0, glance = false;
+  if (g > 0) {
+    if (v[F.rel] > 0.5) {
+      gx = v[F.gx] + v[F.track] - (ex - w / 2);
+      gy = v[F.gy] - (ey - h / 2);
+      glance = true;
+    } else if (at.seated) {
+      gx = v[F.gx] - (at.ox + ex);
+      gy = v[F.gy] - (at.oy + ey);
+      glance = true;
+    }
+  }
+  const dark = light ? Math.hypot(lx, ly) : 0;
+  if (light && glance) return { dx: lx * (1 - g) + gx * g, dy: ly * (1 - g) + gy * g, weight: 1, has: true, light, dark };
+  if (glance) return { dx: gx, dy: gy, weight: g, has: true, light, dark };
+  return { dx: lx, dy: ly, weight: light ? 1 : 0, has: light, light, dark };
+}
 
 export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle", say = null, lookAt = null, waiting = false }: {
   /** On-screen width (points). */
@@ -105,7 +393,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   mood?: CatMood;
   /** Something to say (a new `at` each time); shown if no other line was up too recently. */
   say?: CatLine;
-  /** Where its eyes go while set, over the light. */
+  /** Where its eyes go while set, over the light (while thinking too: what it's thinking about). */
   lookAt?: CatLook;
   /** A wrong answer's cooldown is running: it sits with its lids half shut. */
   waiting?: boolean;
@@ -129,21 +417,23 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   // Squash and stretch (1 at rest), scaled from the ledge.
   const sx = useSharedValue(1);
   const sy = useSharedValue(1);
-  // Dozing (0 awake, 1 asleep) and thinking (0..1: eyes up, head cocked, up a little higher).
+  // Dozing (0 awake, 1 asleep) and thinking (0..1: head cocked, up a little higher, pupils half open).
   const doze = useSharedValue(0);
   const think = useSharedValue(0);
+  // Its pupils thrown open (to 1: a find's surprise) or narrowed (to -1: a flinch), easing back.
+  const excite = useSharedValue(0);
   // When the light last moved (ms), for dozing off.
   const lastMove = useSharedValue(0);
   const [asleep, setAsleep] = useState(false);
-  const [petAt, setPetAt] = useState<number | null>(null);
-  // Lids half shut (0..1): waiting out a cooldown, or had enough of petting.
+  // Lids half shut (0..1): waiting out a cooldown, or had enough of rough handling.
   const droop = useSharedValue(0);
-  // Looking somewhere other than the light (0..1), and where (window points).
+  // Looking somewhere other than the light (0..1), and where (window points, or from its centre: `rel`),
+  // the spot drifting by `track` (points).
   const gaze = useSharedValue(0);
   const gx = useSharedValue(0);
   const gy = useSharedValue(0);
-  // Recent pets (ms), and whether it has had enough.
-  const pets = useRef<number[]>([]);
+  const rel = useSharedValue(0);
+  const track = useSharedValue(0);
   const [annoyed, setAnnoyed] = useState(false);
   // The line it's saying, and when the last one went up (and whether it was a rule).
   const [line, setLine] = useState<{ text: string; at: number } | null>(null);
@@ -177,29 +467,22 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       withSpring(0, { damping: 10, stiffness: 120 }),
     ));
     lid.set(withSequence(withTiming(0.55, { duration: 80 }), withDelay(500, withTiming(0, { duration: 160 }))));
+    excite.set(withSequence(withTiming(-1, { duration: 80 }), withDelay(500, withTiming(0, { duration: 400 }))));
   };
-  // Petted: a happy pop and a heart; it wakes up. Too much of it and it's had enough: it flinches and won't be petted for a while.
-  const pet = () => {
-    if (annoyed) return;
-    const now = Date.now();
-    lastMove.set(now);
-    pets.current = [...pets.current.filter((t) => now - t < PET_WINDOW), now];
-    if (pets.current.length > PET_LIMIT) {
-      pets.current = [];
+
+  // Stroked: eyes shut, it leans in and purrs (usePetting). Rough, quick taps: it's had enough, flinches,
+  // and won't be petted for a while. Any touch wakes it.
+  const petting = usePetting({
+    width,
+    reducedMotion,
+    sulking: annoyed,
+    onTouch: () => lastMove.set(Date.now()),
+    onRough: () => {
       setAnnoyed(true);
       speak("Enough.", true);
       if (!reducedMotion) flinch(0.12);
-      return;
-    }
-    setPetAt(now);
-    if (!reducedMotion) pop(0.16);
-  };
-  // Under reduced motion the heart has no animation to end it: it's taken down.
-  useEffect(() => {
-    if (!reducedMotion || petAt === null) return;
-    const timer = setTimeout(() => setPetAt(null), HEART_MS);
-    return () => clearTimeout(timer);
-  }, [reducedMotion, petAt]);
+    },
+  });
 
   // Had enough: lids half shut for a while, then it lets you pet it again.
   useEffect(() => {
@@ -224,7 +507,8 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
 
   // A glance somewhere: the eyes go there and it leans that way (a glance
   // wakes it: it comes before dozing), maybe with a word, then back to the light.
-  const lookX = lookAt?.x, lookY = lookAt?.y, lookLine = lookAt?.line;
+  const lookX = lookAt?.x, lookY = lookAt?.y, lookLine = lookAt?.line, lookRel = lookAt?.from === "cat";
+  const trackSpeed = lookAt?.track?.speed ?? 0, trackSpan = lookAt?.track?.span ?? 0;
   useEffect(() => {
     if (lookX === undefined || lookY === undefined) {
       gaze.set(withTiming(0, { duration: 260 }));
@@ -232,10 +516,22 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     }
     gx.set(lookX);
     gy.set(lookY);
+    rel.set(lookRel ? 1 : 0);
     gaze.set(withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }));
     lastMove.set(Date.now());
     if (lookLine) speak(lookLine, false);
-  }, [lookX, lookY, lookLine, gaze, gx, gy, lastMove]);
+  }, [lookX, lookY, lookLine, lookRel, gaze, gx, gy, rel, lastMove]);
+  // Watching something go by: its eyes follow it left, then flick back to the next.
+  useEffect(() => {
+    if (reducedMotion || trackSpeed <= 0 || trackSpan <= 0) {
+      track.set(withTiming(0, { duration: 200 }));
+      return;
+    }
+    track.set(withRepeat(withSequence(
+      withTiming(-trackSpan, { duration: (trackSpan / trackSpeed) * 1000, easing: Easing.linear }),
+      withTiming(0, { duration: 160, easing: Easing.out(Easing.quad) }),
+    ), -1, false));
+  }, [reducedMotion, trackSpeed, trackSpan, track]);
 
   useEffect(() => {
     if (reducedMotion) return;
@@ -258,7 +554,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       blink = setTimeout(doBlink, 2600 + Math.random() * 3800);
     };
     const doTilt = () => {
-      if (!reducedMotion && doze.get() < 0.5 && think.get() < 0.5) {
+      if (!reducedMotion && doze.get() < 0.5 && think.get() < 0.5 && petting.touch.get() < 0.1) {
         if (Math.random() < 0.3) {
           // Duck behind the ledge, then peek back up.
           rise.set(withSequence(
@@ -279,13 +575,20 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
       clearTimeout(blink);
       clearTimeout(tilt);
     };
-  }, [lid, idleTilt, reducedMotion, rise, sy, doze, think, height]);
+  }, [lid, idleTilt, reducedMotion, rise, sy, doze, think, height, petting.touch]);
 
   // Reactions.
   useEffect(() => {
     if (!reaction) return;
     // Whatever happened wakes it.
     lastMove.set(Date.now());
+    if (reaction.kind === "found") {
+      // Surprised: eyes wide, pupils thrown open round, easing back to slits. (Its eyes move under reduced motion too.)
+      lid.set(withTiming(0, { duration: 60 }));
+      excite.set(withSequence(withTiming(1, { duration: 80 }), withDelay(650, withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.quad) }))));
+    } else if (reaction.kind === "warm") {
+      excite.set(withSequence(withTiming(DILATE.warm, { duration: 100 }), withDelay(400, withTiming(0, { duration: 900 }))));
+    }
     if (reducedMotion) return;
     if (reaction.kind === "found") {
       pop(0.2);
@@ -304,9 +607,9 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     }
     // pop and flinch read shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reaction, reducedMotion, hop, lid, height]);
+  }, [reaction, reducedMotion, hop, lid, excite, height]);
 
-  // Thinking: head cocked, eyes up, raised a little, "?"s rising.
+  // Thinking: head cocked, raised a little, pupils half open on what it's thinking about, "?"s rising.
   useEffect(() => {
     lastMove.set(Date.now());
     think.set(withSpring(mood === "thinking" ? 1 : 0, { damping: 9, stiffness: 120 }));
@@ -339,46 +642,50 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
   }, [asleep, mood, reducedMotion, doze, lastMove]);
 
   // The light's position against the cat (window points), for the lean and the pupils.
-  const ox = origin?.x ?? 0, oy = origin?.y ?? 0;
-  const fx = frame?.x ?? 0, fy = frame?.y ?? 0, fw = frame?.width ?? 0, fh = frame?.height ?? 0;
-  const known = !!origin && !!frame;
-  const seated = !!origin;
+  const at: At = {
+    ox: origin?.x ?? 0, oy: origin?.y ?? 0,
+    fx: frame?.x ?? 0, fy: frame?.y ?? 0, fw: frame?.width ?? 0, fh: frame?.height ?? 0,
+    known: !!origin && !!frame, seated: !!origin,
+  };
 
-  // Everything the cat's drawn from, at 12 frames a second (indices: see the reads below).
+  // Everything the cat's drawn from, at 12 frames a second (indices: F).
   const f = useStopMotion(
-    [rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY, droop, gaze, gx, gy],
-    [reducedMotion ? 0 : height, 0, 0, 0, 0, 1, 1, 0, 0, 0.5, 0.5, 0, 0, 0, 0],
+    [rise, hop, breath, idleTilt, lid, sx, sy, doze, think, beamX, beamY, droop, gaze, gx, gy,
+      excite, petting.touch, petting.lean, petting.purr, petting.clock, rel, track, petting.poke],
+    [reducedMotion ? 0 : height, 0, 0, 0, 0, 1, 1, 0, 0, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   );
   const body = useAnimatedStyle(() => {
-    const [r, h, b, tilt, , squashX, squashY, z, t, bx, , , g, lx] = f.get();
+    const v = f.get();
+    const g = v[F.gaze], z = v[F.doze], t = v[F.think], b = v[F.breath];
     let lean = 0, shift = 0;
-    if (seated && (known || g > 0)) {
+    const a = aim(v, width / 2, height / 2, width, height, at);
+    if (a.has) {
       // Toward the light, or (further, so it reads) toward where it's glancing.
-      const at = known ? fx + bx * fw : lx;
-      const dx = at * (1 - g) + lx * g - (ox + width / 2);
+      const dx = a.dx * a.weight;
       const most = 4 + (GLANCE_LEAN.deg - 4) * g;
       lean = Math.max(-most, Math.min(most, dx / (60 - 40 * g)));
       shift = Math.max(-1, Math.min(1, dx / 60)) * GLANCE_LEAN.shift * width * g;
     }
+    // A hand on it: the flinch, the lean into the hand, the purr.
+    const p = pettingMotion(v[F.poke], v[F.lean], v[F.purr], v[F.clock], width, height);
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
     return {
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
-        { translateY: Math.max(0, r + h + (1 - b) * 1.5 + z * height * 0.14) + height * SINK },
-        { translateX: shift * (1 - z) },
+        { translateY: Math.max(0, v[F.rise] + v[F.hop] + (1 - b) * 1.5 + z * height * 0.14 + p.y) + height * SINK },
+        { translateX: shift * (1 - z) + p.x },
         // Small turns only, so a tilt never lifts the art's cut-off bottom edge into view.
-        { rotate: `${lean * (1 - z) + tilt + t * 4 - z * 3}deg` },
+        { rotate: `${lean * (1 - z) + v[F.tilt] + t * 4 - z * 3 + p.rotate}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
-        { scaleY: squashY * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
-        { scaleX: squashX * (1 - b * 0.012 * deep) },
+        { scaleY: v[F.sy] * p.sy * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
+        { scaleX: v[F.sx] * p.sx * (1 - b * 0.012 * deep) },
       ],
     };
   });
 
-  // A find's sparkles play once per find (they end invisible); a pet's heart likewise.
+  // A find's sparkles play once per find (they end invisible).
   const burst = reaction?.kind === "found" ? reaction.at : null;
-  const shownBurst = petAt !== null && (burst === null || petAt > burst) ? { at: petAt, text: "♥" } : burst !== null ? { at: burst, text: "!" } : null;
   // The light over something worth a look: a small "!".
   const perk = reaction?.kind === "warm" ? reaction.at : null;
   const mark = { color: theme.ink, fontFamily: theme.display.fontFamily };
@@ -401,14 +708,10 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Mark glyph="z" size={width * 0.3} dx={width * 0.1} delay={1100} style={mark} drift still={reducedMotion} />
         </>
       ) : null}
-      {shownBurst && !reducedMotion ? (
+      {petting.purring ? <Purr size={width} style={mark} still={reducedMotion} /> : null}
+      {burst !== null && !reducedMotion ? (
         <View style={{ transform: [{ translateX: -width * 0.35 }] }}>
-          <Burst key={shownBurst.at} size={width} color={theme.ink} glyph={mark} text={shownBurst.text} />
-        </View>
-      ) : null}
-      {petAt !== null && reducedMotion ? (
-        <View style={[styles.mark, { transform: [{ translateX: -width * 0.35 }, { translateY: -width * 0.2 }] }]} testID="v2-cat-heart">
-          <Text allowFontScaling={false} style={[styles.markText, mark, { fontSize: width * 0.6, lineHeight: width * 0.7 }]}>♥</Text>
+          <Burst key={burst} size={width} color={theme.ink} glyph={mark} text="!" />
         </View>
       ) : null}
       {perk !== null && !reducedMotion ? (
@@ -416,7 +719,7 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
           <Burst key={perk} size={width * 0.6} color={theme.ink} glyph={mark} text="!" sparkles={false} />
         </View>
       ) : null}
-      {lookAt ? (
+      {lookAt && !lookAt.quiet ? (
         // Beside its head on the side it's looking (the marks' row is centred 0.4 of its width right of it).
         <View style={{ transform: [{ translateX: -width * 0.4 + side * width * 0.55 }] }}>
           <Pointer key={`${lookAt.x},${lookAt.y}`} size={width * 0.7} side={side} glyph={mark} text={lookAt.wonder ? "?" : "!"} still={reducedMotion} />
@@ -439,13 +742,48 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
         testID="v2-cat"
       >
         <Image source={ART} style={{ position: "absolute", left: 0, top: 0, width, height }} resizeMode="contain" />
-        {/* Tap it: a happy pop and a heart (and it wakes up). */}
-        <Pressable onPress={pet} style={StyleSheet.absoluteFill} accessibilityRole="button" accessibilityLabel="Pet the cat" testID="v2-cat-pet" />
         {EYES.map((eye, i) => (
-          <Eye key={i} eye={eye} width={width} height={height} known={known} seated={seated} at={{ ox, oy, fx, fy, fw, fh }} f={f} />
+          <Eye key={i} eye={eye} width={width} height={height} at={at} f={f} />
         ))}
+        {/* Over it all, the hand's layer: stroke it (it purrs), or give it a rub from a screen reader. */}
+        <PetLayer petting={petting} label="Pet the cat" testID="v2-cat-pet" />
       </Animated.View>
     </View>
+    </View>
+  );
+}
+
+/**
+ * The hand's layer over a cat: the petting gesture, and the button a screen
+ * reader finds ("Pet the cat"; double tap pets it, its rub action rubs it).
+ * It brings its own gesture root, so a cat works wherever it's drawn (inside
+ * the app's root this adds nothing).
+ */
+export function PetLayer({ petting, label, testID }: { petting: ReturnType<typeof usePetting>; label: string; testID: string }) {
+  return (
+    <GestureHandlerRootView style={StyleSheet.absoluteFill}>
+      <GestureDetector gesture={petting.gesture}>
+        <View
+          style={StyleSheet.absoluteFill}
+          collapsable={false}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint="Stroke it and it purrs."
+          accessibilityActions={PET_ACTIONS}
+          onAccessibilityAction={petting.onAction}
+          testID={testID}
+        />
+      </GestureDetector>
+    </GestureHandlerRootView>
+  );
+}
+
+/** A purr, written out: a small "prr" drifting up off its head while it purrs (still under reduced motion). */
+export function Purr({ size, style, still }: { size: number; style: { color: string; fontFamily?: string }; still: boolean }) {
+  return (
+    <View style={{ transform: [{ translateX: size * 0.3 }] }} testID="cat-purr">
+      <Mark glyph="prr" size={size * 0.2} dx={0} delay={0} style={style} drift still={still} />
     </View>
   );
 }
@@ -590,50 +928,59 @@ function Spark({ t, angle, reach, size, color }: { t: SharedValue<number[]>; ang
   );
 }
 
-function Eye({ eye, width, height, known, seated, at, f }: {
-  /** `known`: where it sits and the photo's frame are both measured; `seated`: where it sits is. */
-  eye: { x: number; y: number }; width: number; height: number; known: boolean; seated: boolean;
-  at: { ox: number; oy: number; fx: number; fy: number; fw: number; fh: number };
-  /** The cat's stop-motion frame (useStopMotion). */
+function Eye({ eye, width, height, at, f }: {
+  eye: { x: number; y: number }; width: number; height: number; at: At;
+  /** The cat's stop-motion frame (useStopMotion; indices F). */
   f: SharedValue<number[]>;
 }) {
   const cx = eye.x * width;
   const cy = eye.y * height;
   const ew = EYE_R.x * width * 2.35;
   const eh = EYE_R.y * height * 2.45;
-  const ph = height * PUPIL.h;
   const rangeX = width * EYE_R.x * 0.55;
   const rangeY = height * EYE_R.y * 0.35;
   const pupil = useAnimatedStyle(() => {
-    const [, , , , , , , , t, beamX, beamY, , g, lx, ly] = f.get();
-    let dx = 0, dy = 0, open = 1;
-    if (seated && (known || g > 0)) {
-      // The light, or where it's glancing instead.
-      const px = known ? at.fx + beamX * at.fw : lx;
-      const py = known ? at.fy + beamY * at.fh : ly;
-      const bx = px * (1 - g) + lx * g - (at.ox + cx);
-      const by = py * (1 - g) + ly * g - (at.oy + cy);
-      const d = Math.hypot(bx, by) || 1;
-      const pull = Math.min(1, d / 160);
-      dx = (bx / d) * rangeX * pull;
-      dy = (by / d) * rangeY * pull;
-      // Near the light the pupil narrows to a slit; far off, in the dark, it opens wide.
-      open = Math.max(0, Math.min(1, (d - 120) / 380));
+    const v = f.get();
+    const t = v[F.think], g = v[F.gaze];
+    const a = aim(v, cx, cy, width, height, at);
+    // How open: a slit in ordinary light; the light far off (the room dark round it), rounder; thinking or
+    // glancing (interested), half open; a find throws it wide open, a flinch narrows it.
+    let open = a.light ? DILATE.dark * Math.max(0, Math.min(1, (a.dark - DILATE.darkFrom) / DILATE.darkOver)) : 0;
+    open = Math.max(open, DILATE.think * t, DILATE.glance * g);
+    const ex = v[F.excite];
+    open = ex >= 0 ? Math.max(open, ex) : open * (1 + ex);
+    // A round pupil has less room to move across the eye than a slit; a slit, as tall as the eye, barely moves up or down.
+    const rx = rangeX * (1 - 0.55 * open);
+    const ry = rangeY * (0.35 + 0.25 * open);
+    let dx = 0, dy = 0;
+    if (a.has) {
+      const d = Math.hypot(a.dx, a.dy) || 1;
+      const pull = Math.min(1, d / 160) * a.weight;
+      dx = (a.dx / d) * rx * pull;
+      dy = (a.dy / d) * ry * pull;
+    } else {
+      // Thinking with nothing to look at: up and off to the side.
+      dx = rx * 0.7 * t;
+      dy = -ry * 1.1 * t;
     }
-    // Thinking, it looks up and off to the side, wide-eyed.
-    dx = dx * (1 - t) + rangeX * 0.7 * t;
-    dy = dy * (1 - t) - rangeY * 1.1 * t;
-    open = open * (1 - t) + 0.8 * t;
-    const pw = width * (PUPIL.slit + (PUPIL.wide - PUPIL.slit) * open);
-    return { width: pw, borderRadius: pw, left: cx - pw / 2, transform: [{ translateX: dx }, { translateY: dy }] };
+    const pw = Math.max(PUPIL.minW, width * (PUPIL.slitW + (PUPIL.round - PUPIL.slitW) * open));
+    const ph = height * PUPIL.slitH + (width * PUPIL.round - height * PUPIL.slitH) * open;
+    return {
+      width: pw, height: ph, borderRadius: Math.min(pw, ph) / 2, left: cx - pw / 2, top: cy + height * PUPIL.drop - ph / 2,
+      transform: [{ translateX: dx }, { translateY: dy }],
+    };
   });
-  // Dozing, the lids sit shut (a blink can't open them); sulking, half shut.
-  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(f.get()[4], f.get()[7], f.get()[11] * 0.5) }] }));
-  // Shut (asleep, or mid-blink), a curved lash line where the eye was.
-  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (Math.max(f.get()[4], f.get()[7]) - 0.7) / 0.3) }));
+  // Dozing, the lids sit shut (a blink can't open them); sulking, half shut; a hand on it, shut, content.
+  const shut = (v: number[]) => {
+    "worklet";
+    return Math.max(v[F.lid], v[F.doze], v[F.touch]);
+  };
+  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(shut(f.get()), f.get()[F.droop] * 0.5) }] }));
+  // Shut (asleep, petted, or mid-blink), a curved lash line where the eye was.
+  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (shut(f.get()) - 0.7) / 0.3) }));
   return (
     <>
-      <Animated.View style={[styles.pupil, { top: cy - ph / 2, height: ph }, pupil]} />
+      <Animated.View style={[styles.pupil, pupil]} />
       {/* The eyelid closes from the top down over the eye. */}
       <Animated.View style={[styles.lid, { left: cx - ew / 2, top: cy - eh / 2, width: ew, height: eh, borderRadius: ew / 2 }, lidStyle]} />
       <Animated.View

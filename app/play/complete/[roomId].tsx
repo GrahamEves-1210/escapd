@@ -5,15 +5,19 @@
 // the room snaps back to its own colours); then how the game went (time,
 // tips, wrong answers) and the rating they earn.
 //
-// The player passes the mode, the case's name, its lines, the accused
-// suspect's id and (a v2 game) its own stats as params, and the case in the
-// closed-case stash (closedCase.ts: in memory, and kept on the device for a
-// reload). The stats are the v2 game's own count when there is one, else the
-// completed session's (a v1 game is played on the server). After a reload
-// with nothing kept, the case's name and the accused are read from the
-// completed session's definition (a v2 room's: its name only). The room's
-// photo (the polaroid on case closed's last page) is signed again when it
-// isn't in memory.
+// The player passes the mode, its lines, the accused suspect's id and (a v2
+// game) its own stats as params, and the case in the closed-case stash
+// (closedCase.ts: in memory, and kept on the device for a reload), and a v2
+// game's recap (caseRecord.ts: what happened, the clues found). The stats are
+// the v2 game's own count when there is one, else the completed session's (a
+// v1 game is played on the server). After a reload with nothing kept, the
+// accused is read from the completed session's definition. The room's photo
+// (the polaroid on case closed's last page) is signed again when it isn't in
+// memory.
+//
+// The case is never named by its invented title (the `title` param is the
+// player's, and kept for it): the page says the mode's series line and the
+// case's number ("Case no. 0427", from the room's id).
 //
 // Then the pinned actions: Start a new case in the same mode (the photo
 // guide's pill, openCapture({ genre })), or Done (home).
@@ -30,7 +34,8 @@ import { CaseClosed } from "@/render/CaseClosed";
 import { closedCaseFor, loadClosedCase, resolveClosedPhoto, statsFromParams, type ClosedCase } from "@/render/closedCase";
 import type { SceneSource } from "@/render/SceneView";
 import { PLAY_COPY } from "@/render/voice";
-import { caseSummary, caseSummaryFromStats, type CaseSummary } from "@/render/victory";
+import { caseLabel, caseSummary, caseSummaryFromStats, type CaseRecap, type CaseSummary } from "@/render/victory";
+import { loadRecap, recapFor } from "@/play2/caseRecord";
 
 /** How long a reload waits for the room's photo before it shows the case without it (ms). */
 const PHOTO_WAIT = 1500;
@@ -56,16 +61,29 @@ export default function PlayCompleteScreen() {
     };
   }, [roomId, stash]);
 
+  // The recap: in memory right after play, else as kept on the device (undefined while it loads).
+  const [recap, setRecap] = useState<CaseRecap | null | undefined>(() => recapFor(roomId) ?? undefined);
+  useEffect(() => {
+    if (recap !== undefined) return;
+    let cancelled = false;
+    loadRecap(roomId).then((kept) => {
+      if (!cancelled) setRecap(kept);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, recap]);
+
   const genre = parseGenre(params.genre) ?? stash?.genre ?? "noir";
   // The game's own stats: the params' (they survive a reload), else the stash's.
   const ownStats = statsFromParams(params) ?? stash?.stats;
   // undefined while the session loads; null when there is none to read.
   const [session, setSession] = useState<CaseSummary | null | undefined>(undefined);
-  const [fetched, setFetched] = useState<{ title?: string; accused?: AccuseOption & { contradicted?: boolean } } | null>(null);
+  const [fetched, setFetched] = useState<{ accused?: AccuseOption & { contradicted?: boolean } } | null>(null);
   const suspect = params.suspect || undefined;
-  const loaded = stash !== undefined;
-  // A reload with nothing kept: the case's name, and the accused, from the session's definition.
-  const needsDefinition = loaded && ((!params.title && !stash?.title) || (!!suspect && !stash?.accused));
+  const loaded = stash !== undefined && recap !== undefined;
+  // A reload with nothing kept: the accused, from the session's definition.
+  const needsDefinition = loaded && !!suspect && !stash?.accused;
   const needsSession = loaded && !ownStats;
 
   useEffect(() => {
@@ -77,14 +95,11 @@ export default function PlayCompleteScreen() {
         if (needsSession) setSession(caseSummary(s));
         if (!s || !needsDefinition) return;
         const def = await getPlayableDefinition(s.puzzle_version_id);
-        // A v2 room has no suspects to look up: just its name.
-        if (def.schema_version !== 1) {
-          if (!cancelled) setFetched({ title: def.title });
-          return;
-        }
+        // A v2 room has no suspects to look up.
+        if (def.schema_version !== 1) return;
         const contradicted = (s.state as { contradicted?: string[] } | null)?.contradicted ?? [];
         const accused = suspectById(def, suspect);
-        if (!cancelled) setFetched({ title: def.title, accused: accused && { ...accused, contradicted: contradicted.includes(accused.id) } });
+        if (!cancelled) setFetched({ accused: accused && { ...accused, contradicted: contradicted.includes(accused.id) } });
       })
       .catch(() => {
         if (!cancelled) setSession((current) => current ?? null);
@@ -112,7 +127,6 @@ export default function PlayCompleteScreen() {
     };
   }, [roomId, needsPhoto, stash?.photoRef]);
 
-  const title = params.title || stash?.title || fetched?.title || "Untitled case";
   const accused = stash?.accused ?? fetched?.accused;
   const summary = ownStats ? caseSummaryFromStats(ownStats) : session;
 
@@ -129,12 +143,13 @@ export default function PlayCompleteScreen() {
   return (
     <CaseClosed
       genre={genre}
-      title={title}
+      caseNo={caseLabel(roomId)}
       message={params.message || undefined}
       exit={params.exit || undefined}
       summary={summary}
       accused={accused}
-      recap={stash?.motive || stash?.method ? { why: stash.motive, how: stash.method } : undefined}
+      charge={stash?.motive || stash?.method ? { why: stash.motive, how: stash.method } : undefined}
+      recap={recap}
       photo={photo}
       actions={(
         <>

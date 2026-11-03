@@ -1,13 +1,38 @@
 // The cat mounts with its eyes and lids, takes a find and a wrong answer, thinks with "?"s, and dozes off when the light is still (long after a stuck glance would come).
-// It says lines (one at a time, rule lines first), glances where it's told (a mark on that side, now and then a word), and has had enough after too much petting.
-// Under reduced motion a pet still shows its heart.
+// It says lines (one at a time, rule lines first), and glances where it's told (a mark on that side, now and then a word; thinking, quietly).
+// Stroked it purrs (no heart), a screen reader can pet it or rub it, and rough quick taps (never stroking) are too much. The sitting cat purrs too.
 // Its cues: a scolding after three wrong answers in a row, a perk once per thing the light finds, glances when the player is stuck (at the way out once everything's been looked at).
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
+import { createGestureController } from "react-native-gesture-handler/jest-utils";
 import { makeMutable } from "react-native-reanimated";
 import type { PlayState, RoomDefinitionV2 } from "@/engine/v2";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { PeekingCat } from "../PeekingCat";
+import { PET, PeekingCat } from "../PeekingCat";
+import { SittingCat } from "../SittingCat";
 import { useCatCues } from "../useCatCues";
+
+/** A hand on the cat, step by step (the petting gesture). Under fake timers: what the gesture hands the JS thread runs on a timer. */
+function hand() {
+  const c = createGestureController("cat-rub");
+  const step = (fn: () => void) => act(async () => {
+    fn();
+    jest.advanceTimersByTime(1);
+  });
+  let moved = false;
+  return {
+    down: (x: number, y = 30) => step(() => c.begin({ x, y })),
+    rub: (x: number, y = 30, velocityX = 0) => step(() => {
+      if (!moved) c.activate({ x, y });
+      moved = true;
+      c.update({ x, y, velocityX });
+    }),
+    up: (x: number, y = 30) => step(() => {
+      if (moved) c.end({ x, y });
+      else c.fail({ x, y });
+      moved = false;
+    }),
+  };
+}
 
 describe("PeekingCat", () => {
   it("draws, follows a beam and reacts", async () => {
@@ -103,7 +128,32 @@ describe("PeekingCat", () => {
     }
   });
 
-  it("shows a pet's heart under reduced motion, still, and takes it down", async () => {
+  it("purrs when stroked, never a heart, and opens its eyes again when let go", async () => {
+    jest.useFakeTimers();
+    try {
+      const x = makeMutable(0.5), y = makeMutable(0.4);
+      const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={null} />);
+      // Touch down, rub across it, keep stroking: it purrs.
+      const h = hand();
+      await h.down(10);
+      await h.rub(20);
+      await h.rub(48, 32, 600);
+      expect(screen.getByTestId("cat-purr")).toHaveTextContent("prr");
+      expect(screen.queryByText("♥")).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
+      // Let go: the purr stops.
+      await h.up(48);
+      expect(screen.queryByTestId("cat-purr")).toBeNull();
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("stays a button for a screen reader: a pet and a rub purr a moment, still under reduced motion", async () => {
     jest.useFakeTimers();
     try {
       const x = makeMutable(0.5), y = makeMutable(0.4);
@@ -112,27 +162,100 @@ describe("PeekingCat", () => {
           <PeekingCat width={58} beamX={x} beamY={y} frame={null} />
         </ThemeProvider>,
       );
-      await fireEvent.press(screen.getByTestId("v2-cat-pet"));
-      expect(screen.getByTestId("v2-cat-heart")).toHaveTextContent("♥");
+      const cat = screen.getByRole("button", { name: "Pet the cat" });
+      expect(cat.props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual(["activate", "rub"]);
+      await fireEvent(cat, "accessibilityAction", { nativeEvent: { actionName: "activate" } });
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
       await act(async () => {
-        jest.advanceTimersByTime(1500);
+        jest.advanceTimersByTime(PET.a11y + 100);
       });
-      expect(screen.queryByTestId("v2-cat-heart")).toBeNull();
+      expect(screen.queryByTestId("cat-purr")).toBeNull();
+      await fireEvent(cat, "accessibilityAction", { nativeEvent: { actionName: "rub" } });
+      await act(async () => {
+        jest.advanceTimersByTime(PET.a11y + 100);
+      });
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
+      await act(async () => {
+        jest.advanceTimersByTime(PET.a11yRub);
+      });
+      expect(screen.queryByTestId("cat-purr")).toBeNull();
       await view.unmount();
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it("has had enough after too much petting", async () => {
+  it("has had enough after rough, quick taps, but never of being stroked", async () => {
     jest.useFakeTimers();
     try {
       const x = makeMutable(0.5), y = makeMutable(0.4);
       const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={null} />);
-      for (let i = 0; i < 4; i++) await fireEvent.press(screen.getByTestId("v2-cat-pet"));
+      const h = hand();
+      const stroke = async () => {
+        await h.down(10);
+        await h.rub(30);
+        await h.rub(50);
+        await h.up(50);
+      };
+      const tap = async () => {
+        await h.down(29);
+        await h.up(29);
+      };
+      for (let i = 0; i < 8; i++) await stroke();
       expect(screen.queryByText("Enough.")).toBeNull();
-      await fireEvent.press(screen.getByTestId("v2-cat-pet"));
+      for (let i = 0; i < 4; i++) await tap();
+      expect(screen.queryByText("Enough.")).toBeNull();
+      await tap();
       expect(screen.getByText("Enough.")).toBeTruthy();
+      // Sulking, a hand gets no purr.
+      await h.down(10);
+      await h.rub(40);
+      await act(async () => {
+        jest.advanceTimersByTime(PET.settle + 100);
+      });
+      expect(screen.queryByTestId("cat-purr")).toBeNull();
+      await h.up(40);
+      // A while later it lets you stroke it again.
+      await act(async () => {
+        jest.advanceTimersByTime(3200);
+      });
+      await h.down(10);
+      await act(async () => {
+        jest.advanceTimersByTime(PET.settle + 100);
+      });
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
+      await h.up(10);
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("thinks with its eyes on what it's told to look at, quietly (no mark)", async () => {
+    const x = makeMutable(0.5), y = makeMutable(0.4);
+    const view = await render(
+      <PeekingCat width={60} beamX={x} beamY={y} frame={null} mood="thinking" lookAt={{ x: -60, y: 170, from: "cat", quiet: true, track: { speed: 24, span: 140 } }} />,
+    );
+    expect(screen.getAllByText("?")).toHaveLength(3);
+    expect(screen.queryByTestId("v2-cat-point")).toBeNull();
+    await view.unmount();
+  });
+});
+
+describe("SittingCat", () => {
+  it("purrs when stroked, as a button a screen reader can pet", async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await render(<SittingCat width={100} label="The black cat, on the window sill" />);
+      const cat = screen.getByRole("button", { name: "The black cat, on the window sill. Pet the cat" });
+      const h = hand();
+      await h.down(30, 60);
+      await h.rub(60, 60);
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
+      await h.up(60, 60);
+      expect(screen.queryByTestId("cat-purr")).toBeNull();
+      await fireEvent(cat, "accessibilityAction", { nativeEvent: { actionName: "activate" } });
+      expect(screen.getByTestId("cat-purr")).toBeTruthy();
       await view.unmount();
     } finally {
       jest.useRealTimers();

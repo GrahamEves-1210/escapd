@@ -1,11 +1,13 @@
 // Case closed per mode (/play/complete/<id>), the last page of her mystery:
-// the series line, the room's polaroid with the case's name handwritten on
-// it, a gold-foil seal (noir: CASE CLOSED; crime scene: GUILTY, the culprit,
+// the series line, the room's polaroid with the case's number handwritten on
+// it (never an invented title), a gold-foil seal (noir: CASE CLOSED; crime scene: GUILTY, the culprit,
 // motive and method on the library card; paranormal: THE PRESENCE IS GONE,
 // the room back in full colour), the cat, the record's stats (a v2 game's
 // own count, else the session's numbers), the rating (magnifiers in brass;
-// paranormal's moons) and the `stamp` then `solved` cues. A reload reads the
-// case kept on the device and signs the room's photo again.
+// paranormal's moons) with what earned it, the cat's line, and the `stamp`
+// then `solved` cues. A v2 game's recap: what happened, the clues that proved
+// it, the clues found. A reload reads the case kept on the device and signs
+// the room's photo again.
 import { Dimensions, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
@@ -16,9 +18,12 @@ import { getMode } from "@/game/mode";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
 import PlayCompleteScreen from "../../../app/play/complete/[roomId]";
-import { CLOSED_LAYOUT, SHELF_LINE, stampDate, withoutCaseClosed } from "../CaseClosed";
+import { CLOSED_LAYOUT, RECAP_KICKER, stampDate, withoutCaseClosed } from "../CaseClosed";
 import { PAGE, PAGE_INK, POLAROID, SEAL } from "../keepsake";
 import { stashClosedCase } from "../closedCase";
+import { caseLabel, type CaseRecap } from "../victory";
+import { PAYOFF_TYPE } from "@/theme/payoff";
+import { keepRecap } from "@/play2/caseRecord";
 import { crimeCase } from "../__fixtures__/modeCases";
 
 jest.mock("expo-router", () => ({
@@ -79,7 +84,7 @@ function NoirCompleteScreen() {
 describe("Case closed: noir", () => {
   beforeEach(() => noirParams());
 
-  it("the last page: the series line, the polaroid with the name handwritten, the CASE CLOSED seal, the record and the rating", async () => {
+  it("the last page: the series line, the polaroid with the case's number handwritten, the CASE CLOSED seal, the record and the rating", async () => {
     await render(<NoirCompleteScreen />);
     expect(getMode()).toBe("noir");
     expect(mocked.getLatestSession).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001", "completed");
@@ -91,9 +96,11 @@ describe("Case closed: noir", () => {
     // The seal is pressed onto the page, its word in dark ink on gold foil.
     expect(within(card).getByTestId("closed-stamp")).toBeTruthy();
     expect(flat(screen.getByText("Case closed"))).toMatchObject({ color: SEAL.ink, fontFamily: ref.font.cover, textTransform: "uppercase" });
-    // The case's name handwritten in the polaroid's foot.
+    // The case's number handwritten in the polaroid's foot: never the room's invented title.
     const title = screen.getByTestId("closed-title");
-    expect(title.props.children).toBe("The Study");
+    expect(title.props.children).toBe(caseLabel(NOIR_ROOM.roomId));
+    expect(title.props.children).toMatch(/^Case no\. \d{4}$/);
+    expect(screen.queryByText("The Study")).toBeNull();
     expect(title.props.accessibilityRole).toBe("header");
     expect(flat(title)).toMatchObject({ fontFamily: NOIR.hand.fontFamily, color: PAGE.ink });
     expect(screen.getByLabelText("The room")).toBeTruthy();
@@ -111,6 +118,9 @@ describe("Case closed: noir", () => {
     expect(screen.getByText("Observation", hidden)).toBeTruthy();
     expect(screen.getByTestId("closed-rating-filled-1")).toBeTruthy();
     expect(screen.queryByTestId("closed-rating-filled-2")).toBeNull();
+    // What earned it, and the cat's word on it.
+    expect(screen.getByTestId("closed-reason").props.children).toBe("2 magnifiers for 1 tip and 2 wrong codes. No tips and no wrong codes earns 3.");
+    expect(screen.getByTestId("closed-cat-line").props.children).toBe("I only helped a little \u2665");
     // Where a screenshot is from: the library's stamp, SOLVED and the day.
     expect(screen.getByText(`Solved · ${stampDate()}`)).toBeTruthy();
     // The cat, sitting beside the polaroid.
@@ -237,7 +247,7 @@ describe("Case closed: custom rooms", () => {
     // GUILTY takes CASE CLOSED's place.
     expect(screen.getByTestId("closed-guilty")).toBeTruthy();
     expect(screen.queryByTestId("closed-stamp")).toBeNull();
-    expect(screen.getByTestId("closed-title").props.children).toBe("The Poisoned Toast");
+    expect(screen.getByTestId("closed-title").props.children).toBe(caseLabel(ROOM));
     expect(await screen.findByLabelText("Time: 8 min")).toBeTruthy();
     // Crime scene's count includes wrong accusations.
     expect(screen.getByLabelText("Wrong calls: 2")).toBeTruthy();
@@ -246,24 +256,27 @@ describe("Case closed: custom rooms", () => {
     expect(mocked.getPlayableDefinition).not.toHaveBeenCalled();
   });
 
-  it("after a reload, reads the case's name and the accused from the completed session's definition", async () => {
+  it("after a reload, reads the accused from the completed session's definition (and never shows its title)", async () => {
     params.mockReturnValue({ roomId: "other-room", genre: "crime_scene", suspect: "s_tobias" });
     mocked.getPlayableDefinition.mockResolvedValue(crimeCase());
     await render(<PlayCompleteScreen />);
-    expect(await screen.findByText("The Poisoned Toast")).toBeTruthy();
+    expect(await screen.findByText(caseLabel("other-room"))).toBeTruthy();
     expect(mocked.getLatestSession).toHaveBeenCalledWith("other-room", "completed");
     expect(mocked.getPlayableDefinition).toHaveBeenCalledWith("v1");
     expect((await screen.findByTestId("closed-accused")).props.accessibilityLabel).toMatch(/^Guilty\. Tobias Reed/);
+    expect(screen.queryByText("The Poisoned Toast")).toBeNull();
   });
 
-  it("after a reload of a v2 room, reads only the case's name (no suspects to look up): CASE CLOSED", async () => {
+  it("after a reload of a v2 room, there are no suspects to look up: CASE CLOSED, the case's number", async () => {
     params.mockReturnValue({ roomId: "v2-room", genre: "crime_scene", suspect: "s_tobias" });
     mocked.getPlayableDefinition.mockResolvedValue({
       schema_version: 2, mode: "crime_scene", title: "The Locked Study", objective: "Get out.",
       photos: [{ photo_id: "a" }], objects: [], items: [], cards: [], finale: { kind: "combination", wheels: 3 },
     } as unknown as Awaited<ReturnType<typeof api.getPlayableDefinition>>);
     await render(<PlayCompleteScreen />);
-    expect(await screen.findByText("The Locked Study")).toBeTruthy();
+    await waitFor(() => expect(mocked.getPlayableDefinition).toHaveBeenCalled());
+    expect(await screen.findByText(caseLabel("v2-room"))).toBeTruthy();
+    expect(screen.queryByText("The Locked Study")).toBeNull();
     expect(screen.queryByTestId("closed-accused")).toBeNull();
     expect(screen.getByTestId("closed-stamp")).toBeTruthy();
   });
@@ -360,7 +373,7 @@ describe("Case closed: a v2 game", () => {
       expect(screen.getByText(label, hidden)).toBeTruthy();
       expect(flat(screen.getByText(value, hidden))).toMatchObject({ fontFamily: CRIME.hand.fontFamily, color: PAGE.ink });
     }
-    expect(screen.getByTestId("closed-recap", hidden)).toBeTruthy();
+    expect(screen.getByTestId("closed-charge", hidden)).toBeTruthy();
     expect(screen.queryByTestId("closed-stamp")).toBeNull();
     // GUILTY is on the seal; the line's own "Case closed." is left out too.
     expect(screen.getByText("The accusation holds.")).toBeTruthy();
@@ -376,8 +389,9 @@ describe("Case closed: a v2 game", () => {
     params.mockReturnValue({ roomId: ROOM, genre: "crime_scene", suspect: "s_1" });
     await render(<PlayCompleteScreen />);
     expect((await screen.findByTestId("closed-accused")).props.accessibilityLabel).toMatch(/^Guilty\. Silas Whitlock\./);
-    expect(screen.getByText("The Study")).toBeTruthy();
-    expect(screen.getByTestId("closed-recap", hidden)).toBeTruthy();
+    expect(screen.getByText(caseLabel(ROOM))).toBeTruthy();
+    expect(screen.queryByText("The Study")).toBeNull();
+    expect(screen.getByTestId("closed-charge", hidden)).toBeTruthy();
     expect(await screen.findByLabelText("Time: 2 min")).toBeTruthy();
     expect(screen.getByLabelText("Rating: 2 of 3 magnifiers")).toBeTruthy();
     expect(mocked.getLatestSession).not.toHaveBeenCalled();
@@ -416,22 +430,80 @@ describe("Case closed: a v2 game", () => {
   });
 });
 
-// One screen with no scroll at the default text size: on a 390 x 844 phone in
-// every mode, and on an iPhone SE (375 x 667, no bottom inset) for noir and
-// paranormal, with all three stats, the rating, the ending's line and the
-// exit line. Jest has no layout engine, so this adds the page up from its own
-// sizes and checks the polaroid the screen draws is the one that fits.
+// A v2 game's recap: what happened (the answer called out), the clues that
+// proved it, the clues found as a fourth stat.
+describe("Case closed: the recap", () => {
+  const ROOM = "c0220000-0000-4000-8000-000000000044";
+  const RECAP: CaseRecap = {
+    story: [{ text: "The combination was " }, { text: "5 3 5", strong: true }, { text: ": two pieces you found and fit together." }],
+    evidence: ["Taped note", "Between the pages"],
+    found: 3,
+    total: 4,
+  };
+
+  it("noir: what happened in place of the ending's line, the clues that proved it, the clues found", async () => {
+    keepRecap(ROOM, RECAP);
+    params.mockReturnValue({ roomId: ROOM, genre: "noir", title: "The Long Night", message: "The last tumbler drops.", hints: "0", wrong: "0", ms: "300000" });
+    await render(<PlayCompleteScreen />);
+    expect(screen.getByText(RECAP_KICKER.noir)).toBeTruthy();
+    const story = screen.getByTestId("closed-story-text");
+    expect(flat(story)).toMatchObject({ ...PAYOFF_TYPE.story, color: PAGE.ink });
+    // The answer, in the bold cut and the mode's page ink.
+    expect(flat(screen.getByText("5 3 5"))).toMatchObject({ ...PAYOFF_TYPE.storyStrong, color: PAGE_INK.noir });
+    expect(screen.getByTestId("closed-evidence")).toBeTruthy();
+    expect(screen.getByText("Taped note, Between the pages")).toBeTruthy();
+    // The ending's line gives way to the story (the way out's page showed it).
+    expect(screen.queryByText("The last tumbler drops.")).toBeNull();
+    expect(screen.queryByText("The Long Night")).toBeNull();
+    expect(await screen.findByLabelText("Clues found: 3 of 4")).toBeTruthy();
+    expect(screen.getByLabelText("Rating: 3 of 3 magnifiers")).toBeTruthy();
+    expect(screen.getByTestId("closed-reason").props.children).toBe("3 magnifiers: solved with no tips and no wrong codes.");
+    expect(screen.getByTestId("closed-cat-line").props.children).toBe("Not one tip. I'm impressed \u2665");
+  });
+
+  it("crime scene: the story tells who, why and how, so the ruled culprit lines give way to it", async () => {
+    keepRecap(ROOM, { story: [{ text: "Silas Whitlock", strong: true }, { text: " did it." }], evidence: ["Taped statement"], found: 2, total: 3 });
+    stashClosedCase({ roomId: ROOM, genre: "crime_scene", accused: { id: "s_1", name: "Silas Whitlock" }, motive: "Gambling debts", method: "Strangling" });
+    params.mockReturnValue({ roomId: ROOM, genre: "crime_scene", suspect: "s_1", hints: "1", wrong: "1", ms: "300000" });
+    await render(<PlayCompleteScreen />);
+    expect(screen.getByText(RECAP_KICKER.crime_scene)).toBeTruthy();
+    expect(screen.getByTestId("closed-guilty")).toBeTruthy();
+    expect(screen.queryByTestId("closed-accused")).toBeNull();
+    expect(await screen.findByLabelText("Wrong calls: 1")).toBeTruthy();
+  });
+
+  it("after a reload, reads the recap kept on the device for this room only", async () => {
+    await AsyncStorage.setItem("escapd.v2.recap", JSON.stringify({ roomId: "kept-room", recap: RECAP }));
+    params.mockReturnValue({ roomId: "kept-room", genre: "paranormal", hints: "0", wrong: "0", ms: "1000" });
+    await render(<PlayCompleteScreen />);
+    expect(await screen.findByText(RECAP_KICKER.paranormal)).toBeTruthy();
+    await screen.unmount();
+    params.mockReturnValue({ roomId: "another-room", genre: "paranormal", hints: "0", wrong: "0", ms: "1000" });
+    await render(<PlayCompleteScreen />);
+    expect(await screen.findByTestId("case-closed-paranormal")).toBeTruthy();
+    expect(screen.queryByTestId("closed-story")).toBeNull();
+  });
+});
+
+// One screen with no scroll at the default text size on a 390 x 844 phone in
+// every mode, with the recap, four stats, the rating and its reason and the
+// cat's line. Jest has no layout engine, so this adds the page up from its own
+// sizes and checks the polaroid the screen draws is the one that fits. A
+// smaller phone scrolls, but the polaroid keeps photo.min and the cat never
+// sits on the seal.
 describe("Case closed: fits one screen", () => {
   const T = ref.type;
   const pad = 2 * C.pad + 2 * L.pad;
   const actions = L.actions + Math.max(ref.space.ctaBottom, L.bottomMin);
-  const record = (rows: number) => rows * L.row;
-  // The ending's line (one line at 375) and the exit line under it.
-  const message = L.last.lineHeight + 20;
-  const parts = (rows: number) => [L.head, message, record(rows), L.cell, L.mark + 8, L.footer];
-  const page = (photo: number, rows = 0) => {
-    const p = parts(rows).filter(Boolean);
-    return pad + L.heroPad + photo + POLAROID.frame + POLAROID.foot + p.length * L.gap + p.reduce((a, b) => a + b, 0);
+  // The recap: its kicker, three lines of story, one of evidence; the reason's two lines.
+  const story = L.kicker + 4 + 3 * L.story.lineHeight + 4 + L.evidence;
+  const parts = [L.head, story, L.cell, L.mark + 8 + 2 * L.reason.lineHeight, L.catLine.lineHeight, L.footer];
+  const page = (photo: number) => L.slack + pad + L.heroPad + photo + POLAROID.frame + POLAROID.foot + parts.length * L.gap + parts.reduce((a, b) => a + b, 0);
+  const RECAP: CaseRecap = {
+    story: [{ text: "It wanted its ritual finished in order: " }, { text: "the drawer", strong: true }, { text: ", then " }, { text: "the rug", strong: true }, { text: ". Once it was done, it let go." }],
+    evidence: ["Child's drawing", "Under UV"],
+    found: 3,
+    total: 4,
   };
 
   let window: ReturnType<typeof Dimensions.get>;
@@ -443,32 +515,29 @@ describe("Case closed: fits one screen", () => {
   });
   const size = (width: number, height: number) => Dimensions.set({ window: { ...window, width, height, fontScale: 1 } });
 
-  it("an iPhone SE: noir's and paranormal's page, the polaroid at least photo.min, over the actions", async () => {
-    size(375, 667);
-    for (const genre of ["noir", "paranormal"] as const) {
-      params.mockReturnValue({ roomId: `${genre}-se`, genre, title: "The Study", message: "The lock gives with a soft click.", exit: "The door swings open.", hints: "1", wrong: "1", ms: "300000" });
+  it("a 390 x 844 phone: every mode's page with its recap, over the actions", async () => {
+    size(390, 844);
+    for (const genre of ["noir", "crime_scene", "paranormal"] as const) {
+      keepRecap(`${genre}-tall`, RECAP);
+      params.mockReturnValue({ roomId: `${genre}-tall`, genre, hints: "1", wrong: "1", ms: "300000" });
       await render(<PlayCompleteScreen />);
-      expect(await screen.findByLabelText(/^Time:/)).toBeTruthy();
-      const polaroid = flat(screen.getByTestId("closed-polaroid"));
-      const photo = (polaroid.width as number) - 2 * POLAROID.frame;
+      expect(await screen.findByLabelText(/^Clues found:/)).toBeTruthy();
+      const photo = (flat(screen.getByTestId("closed-polaroid")).width as number) - 2 * POLAROID.frame;
       expect(photo).toBeGreaterThanOrEqual(L.photo.min);
-      // The safe-area mock's top inset is 0: the screen sizes the polaroid to what's left under it.
-      expect(page(photo) + actions).toBeLessThanOrEqual(667);
-      // No room to spare for the cat's line over the page.
-      expect(screen.queryByText(SHELF_LINE)).toBeNull();
+      expect(page(photo) + actions).toBeLessThanOrEqual(844);
       await screen.unmount();
     }
   });
 
-  it("a 390 x 844 phone: crime scene's page with its culprit, motive and method too; the cat's line over it", async () => {
-    size(390, 844);
-    stashClosedCase({ roomId: "crime-tall", genre: "crime_scene", title: "The Study", accused: { id: "s_1", name: "Silas Whitlock" }, motive: "Gambling debts", method: "Poison in the tea" });
-    params.mockReturnValue({ roomId: "crime-tall", genre: "crime_scene", title: "The Study", message: "The accusation holds.", suspect: "s_1", hints: "1", wrong: "1", ms: "300000" });
+  it("an iPhone SE: the polaroid keeps photo.min, and the page scrolls", async () => {
+    size(375, 667);
+    keepRecap("se-room", RECAP);
+    params.mockReturnValue({ roomId: "se-room", genre: "noir", hints: "1", wrong: "1", ms: "300000" });
     await render(<PlayCompleteScreen />);
     expect(await screen.findByLabelText(/^Time:/)).toBeTruthy();
     const photo = (flat(screen.getByTestId("closed-polaroid")).width as number) - 2 * POLAROID.frame;
-    expect(photo).toBeGreaterThanOrEqual(L.photo.min);
-    expect(page(photo, 3) + actions).toBeLessThanOrEqual(844);
+    expect(photo).toBe(L.photo.min);
+    expect(screen.getByTestId("closed-scroll")).toBeTruthy();
   });
 
   it("the actions keep their size: the guide's pill and quiet pills, at least 44 tall", async () => {

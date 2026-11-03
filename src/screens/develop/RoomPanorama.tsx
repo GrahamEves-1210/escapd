@@ -226,7 +226,7 @@ export function RoomPanorama({ photos, ready, style }: {
               <StillRoom photos={photos} ready={ready} />
             ) : (
               <Animated.View style={[styles.strip, { width: copies * pitch, height }, strip]} testID="build-strip">
-                <FairyLights width={copies * pitch} pitch={pitch} y={PIN.string} line={theme.foil} bulb={theme.glow} />
+                <FairyLights width={copies * pitch} pitch={pitch} phase={threadPhase(tile, pitch)} y={PIN.string} line={theme.foil} bulb={theme.glow} />
                 {Array.from({ length: copies }, (_, i) => (
                   <HangingPrint
                     key={i}
@@ -288,7 +288,36 @@ function Beam({ width, height, veil, tint }: { width: number; height: number; ve
 }
 
 /** A print on the string: `string` pt from the top; its `frame` of paper and deeper `foot`; `inset` from its slot's sides; how far it `lean`s and sways. */
-const PIN = { string: 16, top: 26, frame: 7, foot: 24, inset: 12, bottom: 14, aspect: 0.8, lean: 2.6, sway: 1.2, swayPeriod: 2600 } as const;
+const PIN = { string: 16, top: 26, frame: 7, foot: 24, inset: 12, bottom: 14, aspect: 0.8, lean: 2.6, sway: 1.2, swayPeriod: 2600, tapeDepth: 4 } as const;
+/** The string's stroke, and each print's thread's. */
+const STRING = { width: 1.2, sag: 5, thread: 1 } as const;
+
+/**
+ * Where print `i`'s thread meets the string: the middle of its slot, `tile /
+ * 2` in from the slot's left. The string is pinned up at a node every half
+ * pitch and sags between them, and its nodes sit on the threads (`phase`
+ * here), so each thread starts exactly on the string, at the point it pivots
+ * round as it sways; the whole strip, string and prints, drifts as one.
+ */
+export function threadX(index: number, tile: number, pitch: number): number {
+  return index * pitch + tile / 2;
+}
+
+/** The string's first node, so its nodes (every half pitch) land on the threads. */
+export function threadPhase(tile: number, pitch: number): number {
+  const half = pitch / 2;
+  return half > 0 ? (((tile / 2) % half) + half) % half : 0;
+}
+
+/** The string's height at `x`: pinned at `y` on each node, its control point `sag` lower between them (a quadratic per half pitch, dipping sag / 2). */
+export function stringY(x: number, pitch: number, phase: number, y = PIN.string, sag = STRING.sag): number {
+  const half = pitch / 2;
+  if (!(half > 0)) return y;
+  const t = ((((x - phase) % half) + half) % half) / half;
+  // The control point is `sag` below the chord's middle and x runs evenly with t: 2 t (1 - t) sag below the nodes.
+  return y + 2 * t * (1 - t) * sag;
+}
+
 /** How far down each print hangs on its thread, as shares of the room left under it: a garland of different lengths. */
 const DROPS = [0.1, 0.75, 0.35, 0.95, 0.5] as const;
 const PRINT = DEVELOPING;
@@ -327,11 +356,16 @@ function HangingPrint({ index, uri, genre, left, tile, height, frameWidth, pitch
   const w = tile - PIN.inset * 2;
   const h = Math.min(height - PIN.top - PIN.bottom, Math.round(w / PIN.aspect));
   const drop = Math.max(0, height - PIN.top - PIN.bottom - h) * DROPS[index % DROPS.length];
+  // The print's top, below the string, where the tape pegs the thread.
+  const hung = PIN.top + drop - PIN.string;
   return (
-    <Animated.View style={[styles.hang, { left: left + PIN.inset, top: PIN.string + 4, width: w, height: h + drop + PIN.top - PIN.string - 4 }, sway]}>
-      {/* Its thread, from the string down to the peg. */}
-      <View style={[styles.thread, { height: drop + PIN.top - PIN.string, backgroundColor: thread }]} />
-      <View style={[styles.hung, { top: drop + PIN.top - PIN.string - 4, height: h }]}>
+    // Hung from the string's node over its middle (threadX): the box's top
+    // centre sits on the string and the sway turns about it, so the thread
+    // never leaves the string.
+    <Animated.View style={[styles.hang, { left: left + PIN.inset, top: PIN.string, width: w, height: hung + h }, sway]} testID={`build-hang-${index}`}>
+      {/* Its thread, from the string down under the tape. */}
+      <View style={[styles.thread, { left: (w - STRING.thread) / 2, height: hung + PIN.tapeDepth, backgroundColor: thread }]} testID={`build-thread-${index}`} />
+      <View style={[styles.hung, { top: hung, height: h }]}>
       <View style={[styles.print, StyleSheet.absoluteFill]}>
         <View style={styles.printPhoto}>
           <TreatedImage source={uri} genre={genre} maxEdge={BAKE} contentFit="cover" style={StyleSheet.absoluteFill} testID={`build-photo-${index}`} />
@@ -344,13 +378,21 @@ function HangingPrint({ index, uri, genre, left, tile, height, frameWidth, pitch
   );
 }
 
-/** The string the prints hang from: a gold thread with little warm lights along it, glowing. */
-function FairyLights({ width, pitch, y, line, bulb }: { width: number; pitch: number; y: number; line: string; bulb: string }) {
+/**
+ * The string the prints hang from: a gold thread with little warm lights
+ * along it, glowing. Pinned up at a node every half pitch from `phase` (the
+ * prints' threads hang from every other one) and sagging between; a bulb in
+ * each dip.
+ */
+function FairyLights({ width, pitch, phase, y, line, bulb }: { width: number; pitch: number; phase: number; y: number; line: string; bulb: string }) {
   const id = `fl${useId().replace(/[^A-Za-z0-9]/g, "")}`;
-  const sag = 5;
-  let d = `M0 ${y}`;
-  for (let x = 0; x < width; x += pitch / 2) d += ` Q${x + pitch / 4} ${y + sag} ${x + pitch / 2} ${y}`;
-  const bulbs = Array.from({ length: Math.ceil(width / (pitch / 2)) }, (_, i) => i * (pitch / 2) + pitch / 4);
+  const sag = STRING.sag;
+  const half = pitch / 2;
+  // From the node before x = 0, so the string covers the strip's left end too.
+  const first = phase - half;
+  let d = `M${first} ${y}`;
+  for (let x = first; x < width; x += half) d += ` Q${x + half / 2} ${y + sag} ${x + half} ${y}`;
+  const bulbs = Array.from({ length: Math.ceil((width - first) / half) }, (_, i) => first + i * half + half / 2);
   return (
     <Svg width={width} height={y + 18} style={styles.lights} pointerEvents="none">
       <Defs>
@@ -359,7 +401,7 @@ function FairyLights({ width, pitch, y, line, bulb }: { width: number; pitch: nu
           <Stop offset={1} stopColor={bulb} stopOpacity={0} />
         </RadialGradient>
       </Defs>
-      <Path d={d} stroke={line} strokeOpacity={0.75} strokeWidth={1.2} fill="none" />
+      <Path d={d} stroke={line} strokeOpacity={0.75} strokeWidth={STRING.width} fill="none" testID="build-string" />
       {bulbs.map((x) => (
         <Circle key={`h${x}`} cx={x} cy={y + sag * 0.75 + 4} r={9} fill={`url(#${id})`} />
       ))}
@@ -398,7 +440,7 @@ const styles = StyleSheet.create({
   strip: { position: "absolute", top: 0, left: 0 },
   lights: { position: "absolute", left: 0, top: 0 },
   hang: { position: "absolute", transformOrigin: "50% 0%" },
-  thread: { position: "absolute", top: 0, left: "50%", width: 1, opacity: 0.7 },
+  thread: { position: "absolute", top: 0, width: STRING.thread, opacity: 0.7 },
   hung: { position: "absolute", left: 0, right: 0 },
   print: { backgroundColor: PRINT.paper, padding: PIN.frame, paddingBottom: PIN.foot, borderRadius: 3, boxShadow: LIGHT.hangShade },
   printPhoto: { flex: 1, overflow: "hidden", borderRadius: 1, backgroundColor: PRINT.blank },

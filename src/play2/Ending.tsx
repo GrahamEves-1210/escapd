@@ -11,8 +11,9 @@
 // round it; a headline in the mode's voice and display face (never one that
 // says what the ending's own text already says); the ending's text set as a
 // book's last line; a fleuron rule and "The End" in the cover face's italic,
-// in the mode's page ink. The button at the foot, at least ref.space.lg off
-// the bottom edge.
+// in the mode's page ink. A running head over it, as a book's page has: the
+// series line and the case's number (never an invented title). The button at
+// the foot, at least ref.space.lg off the bottom edge.
 import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,6 +29,7 @@ import type { SceneSource } from "@/render/SceneView";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { FleuronRule, Twinkle } from "@/render/keepsake";
+import { SERIES_LINE, caseLabel } from "@/render/victory";
 import { LIGHT, PAGE_INK, PAYOFF_TYPE, alpha, mix } from "@/theme/payoff";
 import { SittingCat } from "./SittingCat";
 
@@ -84,10 +86,17 @@ export function endingHeadline(genre: Genre, text: string): string {
   return options.find((h) => !said.includes(words(h))) ?? options[options.length - 1];
 }
 
-export function Ending({ text, door, genre, onDone }: {
+/** The page's running head: the series line, and the case's number when the room is known. */
+export function runningHead(genre: Genre, roomId?: string): string {
+  return roomId ? `${SERIES_LINE[genre]} \u00b7 ${caseLabel(roomId)}` : SERIES_LINE[genre];
+}
+
+export function Ending({ text, door, genre, roomId, onDone }: {
   text: string;
   door?: { source: SceneSource; cacheKey?: string; box: Box };
   genre: Genre;
+  /** The room: its case number in the running head. */
+  roomId?: string;
   onDone: () => void;
 }) {
   const theme = themeFor(genre);
@@ -165,6 +174,7 @@ export function Ending({ text, door, genre, onDone }: {
         ]}
         testID="v2-ending-words"
       >
+        <Text style={[styles.runningHead, { color: alpha(look.ink, 0.72) }]} testID="v2-ending-head">{runningHead(genre, roomId)}</Text>
         <View style={styles.middle}>
           {/* The cat saw you out. */}
           <View>
@@ -209,6 +219,7 @@ const styles = StyleSheet.create({
   heading: { alignItems: "center", gap: 4 },
   chapter: PAYOFF_TYPE.chapter,
   folio: { ...PAYOFF_TYPE.folio, textAlign: "center", marginBottom: ref.space.sm },
+  runningHead: { ...PAYOFF_TYPE.folio, textAlign: "center" },
   headline: { fontSize: 28, lineHeight: 34, textAlign: "center" },
   // The book's last line.
   text: { ...PAYOFF_TYPE.lastLarge, textAlign: "center", maxWidth: 320 },

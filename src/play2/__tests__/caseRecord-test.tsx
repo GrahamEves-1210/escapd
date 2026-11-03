@@ -8,7 +8,7 @@ import { simulate, type Action } from "@/engine/v2";
 import * as api from "@/lib/escapd-api";
 import type { PuzzleDefinitionV1 } from "@/lib/puzzle-types";
 import { planFromV1 } from "../adapter";
-import { solvedAccusation, useCaseRecord } from "../caseRecord";
+import { caseRecap, loadRecap, recapFor, solvedAccusation, useCaseRecord } from "../caseRecord";
 import { useRoomV2 } from "../useRoomV2";
 
 jest.mock("@/lib/escapd-api", () => ({
@@ -81,6 +81,52 @@ describe("solvedAccusation", () => {
   });
 });
 
+describe("caseRecap: what happened in the case", () => {
+  const planFor = (genre: "noir" | "crime_scene" | "paranormal") => {
+    const plan = planFromV1(`${ROOM}-${genre}`, { ...study(), genre });
+    if (!plan.ok) throw new Error(plan.detail);
+    return plan;
+  };
+  const text = (r: ReturnType<typeof caseRecap>) => r.story.map((p) => p.text).join("");
+
+  it("noir: the combination, called out, and the clues that carried its pieces", () => {
+    const { definition: def, secret } = planFor("noir");
+    const recap = caseRecap(def, secret, def.cards.map((c) => c.id));
+    const code = Object.values(secret.slots).find((v) => v.kind === "code" && v.from)!;
+    expect(recap.story.find((p) => p.strong)?.text).toBe(code.value.split("|").join(" "));
+    expect(text(recap)).toMatch(/^The combination was /);
+    expect(recap.evidence.length).toBeGreaterThan(0);
+    for (const title of recap.evidence) expect(def.cards.map((c) => c.title)).toContain(title);
+    expect(recap).toMatchObject({ found: def.cards.length, total: def.cards.length });
+  });
+
+  it("crime scene: who did it, why and how", () => {
+    const { definition: def, secret } = planFor("crime_scene");
+    const right = solvedAccusation(def, secret)!;
+    const recap = caseRecap(def, secret, [def.cards[0].id], right);
+    expect(text(recap)).toContain(`${right.who.name} did it`);
+    expect(recap.story.filter((p) => p.strong)).toHaveLength(3);
+    expect(recap).toMatchObject({ found: 1, total: def.cards.length });
+  });
+
+  it("paranormal: the ritual's order, by the objects' names, and what it meant", () => {
+    const { definition: def, secret } = planFor("paranormal");
+    const recap = caseRecap(def, secret, []);
+    const order = recap.story.filter((p) => p.strong).map((p) => p.text);
+    expect(order.length).toBe((def.finale as { length: number }).length);
+    for (const name of order) expect(name).toMatch(/^the /);
+    expect(text(recap)).toMatch(/let go/);
+    expect(recap.found).toBe(0);
+  });
+
+  it("without the answer on the device (a room on the server): the mode's words, the clues she found", () => {
+    const { definition: def } = planFor("noir");
+    const recap = caseRecap(def, null, [def.cards[1].id]);
+    expect(recap.story.some((p) => p.strong)).toBe(false);
+    expect(recap.evidence).toEqual([def.cards[1].title]);
+  });
+});
+
 describe("useCaseRecord", () => {
   it("counts the hints, the wrong answers and the time played, and hands case closed the case", async () => {
     const plan = planned();
@@ -120,6 +166,25 @@ describe("useCaseRecord", () => {
     expect(done.genre).toBe("crime_scene");
     expect(done.accusation).toEqual(right);
     expect(done.photoRef).toEqual({ photo_id: "a" });
+    // The recap: who, why and how, every clue found; handed to case closed.
+    expect(done.recap?.story.filter((p) => p.strong).map((p) => p.text)).toEqual([right.who.name, right.why!.name.toLowerCase(), right.how!.name.toLowerCase()]);
+    expect(done.recap?.found).toBe(result.current.v2.state!.cards.length);
+    expect(done.recap?.total).toBe(plan.definition.cards.length);
+    expect(recapFor(ROOM)).toEqual(done.recap);
+    expect(await loadRecap(ROOM)).toEqual(done.recap);
+  });
+
+  it("waits while paused (the brief over the room): no play time", async () => {
+    const { result, rerender } = await renderHook(({ paused }: { paused: boolean }) => {
+      const v2 = useRoomV2(ROOM);
+      return { v2, record: useCaseRecord(ROOM, v2, { paused }) };
+    }, { initialProps: { paused: true } });
+    await loaded(result as unknown as { current: Game });
+    clock += 40_000;
+    expect(result.current.record.finish().stats.ms).toBe(0);
+    await rerender({ paused: false });
+    clock += 3_000;
+    expect(result.current.record.finish().stats.ms).toBe(3_000);
   });
 
   it("keeps the count when the game is left and resumed, and starts it again with the room", async () => {

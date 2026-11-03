@@ -25,6 +25,43 @@ export interface CaseSummary {
   wrong?: number;
 }
 
+/** A run of the solution's story: plain, or `strong` (the answer itself, called out). */
+export interface StoryPart {
+  text: string;
+  strong?: boolean;
+}
+
+/**
+ * What happened in the case, for case closed's recap (built where the game
+ * holds the answer: src/play2/caseRecord.ts, caseRecap): the solution's story
+ * in a sentence or two (noir: the combination; crime scene: who, why and how;
+ * paranormal: the ritual and what it meant), the casebook cards that proved
+ * it, and how many of the case's clues she found.
+ */
+export interface CaseRecap {
+  story: StoryPart[];
+  /** The titles of the clues that proved it, as her casebook has them. */
+  evidence: string[];
+  /** Clues found, of the case's clues. */
+  found?: number;
+  total?: number;
+}
+
+/**
+ * The case's number: a neutral label in place of an invented title, the
+ * same for the same room (a hash of its id), 0001 to 9999.
+ */
+export function caseNumber(roomId: string): string {
+  let n = 7;
+  for (const ch of roomId) n = (n * 33 + ch.charCodeAt(0)) % 99991;
+  return String((n % 9999) + 1).padStart(4, "0");
+}
+
+/** "Case no. 0427": how the screens name a case (never an invented title). */
+export function caseLabel(roomId: string): string {
+  return `Case no. ${caseNumber(roomId)}`;
+}
+
 /** How a v2 game went, counted on the device as it was played (src/play2/caseRecord.ts). */
 export interface CaseStats {
   /** Hint rungs taken. */
@@ -125,15 +162,68 @@ export const RATING_LABEL: Record<Genre, string> = {
   paranormal: "Second sight",
 };
 
-/** The stats in the order they land, each with its label and the line a screen reader speaks. */
-export function statLines(genre: Genre, summary: CaseSummary | null | undefined) {
-  if (!summary) return [];
-  const lines: { key: "time" | "hints" | "wrong"; label: string; value: string }[] = [];
-  if (summary.time !== undefined) lines.push({ key: "time", label: "Time", value: summary.time });
-  // Hints are the informant's tips (Informant.tsx): each new tip counts as one.
-  if (summary.hints !== undefined) lines.push({ key: "hints", label: "Tips taken", value: String(summary.hints) });
-  if (summary.wrong !== undefined) lines.push({ key: "wrong", label: WRONG_LABEL[genre], value: String(summary.wrong) });
+/** The wrong-answer stat's noun in a sentence, singular and plural. */
+const WRONG_NOUN: Record<Genre, [string, string]> = {
+  noir: ["wrong code", "wrong codes"],
+  crime_scene: ["wrong call", "wrong calls"],
+  paranormal: ["misstep", "missteps"],
+};
+
+/** A stat cell's own short label (the cells are a quarter of the page across); `label` is what a screen reader says. */
+const SHORT: Record<"time" | "hints" | "wrong" | "clues", string> = { time: "Time", hints: "Tips", wrong: "Wrong", clues: "Clues" };
+const SHORT_WRONG: Record<Genre, string> = { noir: "Wrong", crime_scene: "Wrong", paranormal: "Missteps" };
+
+export type StatKey = "time" | "hints" | "wrong" | "clues";
+
+/**
+ * The stats in the order they land, each with its label (what a screen
+ * reader says), its cell's short label and its value. `clues`: the clues
+ * found of the case's clues (a v2 game's recap), as "3 of 4".
+ */
+export function statLines(genre: Genre, summary: CaseSummary | null | undefined, clues?: { found?: number; total?: number } | null) {
+  const lines: { key: StatKey; label: string; short: string; value: string }[] = [];
+  if (summary) {
+    if (summary.time !== undefined) lines.push({ key: "time", label: "Time", short: SHORT.time, value: summary.time });
+    // Hints are the informant's tips (Informant.tsx): each new tip counts as one.
+    if (summary.hints !== undefined) lines.push({ key: "hints", label: "Tips taken", short: SHORT.hints, value: String(summary.hints) });
+    if (summary.wrong !== undefined) lines.push({ key: "wrong", label: WRONG_LABEL[genre], short: SHORT_WRONG[genre], value: String(summary.wrong) });
+  }
+  const found = count(clues?.found);
+  const total = count(clues?.total);
+  if (found !== undefined && total !== undefined && total > 0) {
+    lines.push({ key: "clues", label: "Clues found", short: SHORT.clues, value: `${Math.min(found, total)} of ${total}` });
+  }
   return lines;
+}
+
+const plural = (n: number, [one, many]: [string, string]) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * What earned the rating, in a line: "3 magnifiers: solved with no tips and
+ * no wrong codes." Lower ratings say what cost the marks and what earns the
+ * next one. Null when there is no rating.
+ */
+export function ratingReason(genre: Genre, summary: Pick<CaseSummary, "hints" | "wrong"> | null | undefined): string | null {
+  const rating = magnifierRating(summary);
+  if (!rating) return null;
+  const hints = summary!.hints!;
+  const wrong = summary!.wrong!;
+  const marks: [string, string] = RATING_MARK[genre] === "moon" ? ["moon", "moons"] : ["magnifier", "magnifiers"];
+  const wrongs = WRONG_NOUN[genre];
+  const head = plural(rating, marks);
+  if (rating === 3) return `${head}: solved with no tips and no ${wrongs[1]}.`;
+  const cost = [hints ? plural(hints, ["tip", "tips"]) : "", wrong ? plural(wrong, wrongs) : ""].filter(Boolean).join(" and ");
+  const next = rating === 2 ? `No tips and no ${wrongs[1]} earns 3.` : `At most 1 tip and 2 ${wrongs[1]} earns 2.`;
+  return `${head} for ${cost}. ${next}`;
+}
+
+/** The cat's line on case closed, by how it went. */
+export function catVerdict(summary: Pick<CaseSummary, "hints" | "wrong"> | null | undefined): string {
+  const rating = magnifierRating(summary);
+  if (rating === 3) return "Not one tip. I'm impressed \u2665";
+  if (rating === 2) return summary!.hints ? "I only helped a little \u2665" : "A wrong turn or two. Still brilliant \u2665";
+  if (rating === 1) return "We got there together \u2665";
+  return "Another one for your shelf \u2665";
 }
 
 /** When each part of the moment happens, in ms after case closed mounts. */

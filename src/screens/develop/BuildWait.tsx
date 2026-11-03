@@ -210,7 +210,8 @@ export function BuildWait({ stage, photos, onLeave, open }: {
         <Animated.View style={[styles.stage, nudgeStyle]}>
           <RoomPanorama photos={photos} ready={ready} style={styles.room} />
           <View style={styles.cat} pointerEvents="box-none">
-            <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} mood={ready ? "idle" : "thinking"} />
+            <PeekingCat width={60} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} mood={ready ? "idle" : "thinking"}
+              lookAt={ready ? null : { x: -60, y: 170, from: "cat", quiet: true, track: { speed: D.drift.speed, span: 140 } }} />
           </View>
           {ready ? (
             <View style={styles.stampSlot} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">

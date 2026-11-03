@@ -28,7 +28,7 @@ import {
   waitStatus,
 } from "../copy";
 import { SEAL } from "@/render/keepsake";
-import { TILE_ASPECT, panoramaLayout, wrapOffset } from "../RoomPanorama";
+import { TILE_ASPECT, panoramaLayout, stringY, threadPhase, threadX, wrapOffset } from "../RoomPanorama";
 
 let mockStage: DevStage = { kind: "checking" };
 const mockRetry = jest.fn();
@@ -183,6 +183,35 @@ describe("the room's arithmetic", () => {
     // The copies always reach a frame's width past the end of one turn.
     expect((copies - 6) * pitch).toBeGreaterThanOrEqual(353 + pitch);
     expect(panoramaLayout(0, 353, 400).copies).toBe(0);
+  });
+
+  it("hangs every print's thread from a node of the string, for any frame size", () => {
+    for (const [width, height] of [[353, 400], [358, 312], [343, 260], [390, 520]]) {
+      const { tile, pitch, copies } = panoramaLayout(6, width, height);
+      const phase = threadPhase(tile, pitch);
+      for (let i = 0; i < copies; i += 1) {
+        // On the node: the string's own height there, the top of its pull.
+        expect(stringY(threadX(i, tile, pitch), pitch, phase)).toBeCloseTo(16, 9);
+      }
+      // Between two threads the string sags (half its control's 5), and is back up at the next.
+      expect(stringY(threadX(0, tile, pitch) + pitch / 4, pitch, phase)).toBeCloseTo(16 + 2.5, 9);
+    }
+  });
+
+  it("pivots each print where its thread meets the string, so the sway never pulls it off", async () => {
+    await renderScreen(running);
+    const { tile, pitch } = panoramaLayout(6, FRAME.width, FRAME.height);
+    for (const i of [0, 1, 4]) {
+      const hang = StyleSheet.flatten(screen.getByTestId(`build-hang-${i}`, hidden).props.style);
+      // The box's top centre (its transformOrigin) on the thread's node.
+      expect(hang.transformOrigin).toBe("50% 0%");
+      expect((hang.left as number) + (hang.width as number) / 2).toBeCloseTo(threadX(i, tile, pitch), 9);
+      expect(hang.top).toBe(16);
+      // The thread starts at that top, centred on it.
+      const thread = StyleSheet.flatten(screen.getByTestId(`build-thread-${i}`, hidden).props.style);
+      expect(thread.top).toBe(0);
+      expect((thread.left as number) + (thread.width as number) / 2).toBeCloseTo((hang.width as number) / 2, 9);
+    }
   });
 
   it("wraps the turn round the loop", () => {

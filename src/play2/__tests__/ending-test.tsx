@@ -7,7 +7,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref } from "@/theme/tokens";
 import { PAYOFF_TYPE } from "@/theme/payoff";
-import { ENDING, Ending, endingHeadline, endingLight, pageNumber } from "../Ending";
+import { caseLabel } from "@/render/victory";
+import { ENDING, Ending, endingHeadline, endingLight, pageNumber, runningHead } from "../Ending";
 
 jest.mock("@shopify/react-native-skia", () => {
   const base = jest.requireActual("../../../jest/skia-mock");
@@ -92,5 +93,14 @@ describe("the last page", () => {
     expect(screen.getByText("Chapter the last")).toBeTruthy();
     expect(screen.getByText(`· ${pageNumber("The lock gives.")} ·`, { includeHiddenElements: true })).toBeTruthy();
     expect(pageNumber("The lock gives.")).toBe(pageNumber("The lock gives."));
+  });
+});
+
+describe("the running head", () => {
+  it("is the series line and the case's number, never an invented title", async () => {
+    expect(runningHead("noir")).toBe("A Detective Noir Mystery");
+    expect(runningHead("paranormal", "room-1")).toBe(`A Moonlit Mystery \u00b7 ${caseLabel("room-1")}`);
+    await render(<Ending text="The lock gives." genre="crime_scene" roomId="room-2" onDone={() => {}} />);
+    expect(screen.getByTestId("v2-ending-head").props.children).toBe(`A True Crime Club Mystery \u00b7 ${caseLabel("room-2")}`);
   });
 });

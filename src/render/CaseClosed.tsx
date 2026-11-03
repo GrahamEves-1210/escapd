@@ -4,14 +4,18 @@
 // One card she'd screenshot: a page of warm cream book paper, its bookmark
 // ribbon in the mode's sweet colour, the series line ("A Moonlit Mystery")
 // over a fleuron rule; the room's photo tucked into photo corners as a
-// polaroid with the case's name handwritten in its foot; a gold-foil seal
+// polaroid with the case's number handwritten in its foot (never an invented
+// title: "Case no. 0427", victory.ts caseLabel); a gold-foil seal
 // pressed on with the mode's word (noir: CASE CLOSED; crime scene: GUILTY;
 // paranormal: THE PRESENCE IS GONE, as the room snaps back to its own
-// colours); the sitting cat beside it, cheering; the ending's line set like
-// a book's last line; then the library card's record, each entry handwritten
-// on its ruled line (crime scene's culprit, motive and method; the time, the
-// tips taken, the wrong calls; the rating: magnifiers in brass, or
-// paranormal's "Second sight" in moons); and at its foot the app's name and a
+// colours); the sitting cat beside it, cheering; then what happened (a v2
+// game's recap, caseRecord.ts: the solution in a sentence or two, the
+// answer called out in bold, and the casebook clues that proved it; without
+// one, the ending's line set like a book's last line, and crime scene's
+// culprit, motive and method on ruled lines); then the record's cells (the
+// time, the tips taken, the wrong calls, the clues found of the case's); the
+// rating (magnifiers in brass, or paranormal's "Second sight" in moons) with
+// what earned it; the cat's line on how it went; and at its foot the app's name and a
 // library date stamp, SOLVED and the day, so a screenshot says where it's
 // from. Behind it, the mode's ground and its soft glow; a few twinkles; a
 // little confetti when the seal lands. Then the pinned actions.
@@ -33,9 +37,8 @@
 // sentence of the case's lines that only says so again is left out.
 //
 // It fits one screen with no scroll at the default text size on a 390 x 844
-// phone, and down to an iPhone SE for noir and paranormal: the polaroid is
-// sized to the height left over (from photo.min up to its share of the
-// page's width). Crime scene's longer record, and large text, scroll.
+// phone: the polaroid is sized to the height left over (from photo.min up to
+// its share of the page's width). A smaller phone, and large text, scroll.
 //
 // Sharing (not built: neither react-native-view-shot nor expo-sharing is a
 // dependency): the page is one View (`testID="case-card"`, held in `card`),
@@ -58,9 +61,12 @@ import {
 import { MagnifierRating } from "./MagnifierRating";
 import type { SceneSource } from "./SceneView";
 import { suspectA11yLabel, type SuspectFace } from "./SuspectFile";
-import { RATING_LABEL, RATING_MARK, SERIES_LINE, magnifierRating, statLines, victoryTimeline, type CaseSummary, type VictoryTimeline } from "./victory";
+import {
+  RATING_LABEL, RATING_MARK, SERIES_LINE, catVerdict, magnifierRating, ratingReason, statLines, victoryTimeline,
+  type CaseRecap, type CaseSummary, type StatKey, type VictoryTimeline,
+} from "./victory";
 
-export type { CaseSummary } from "./victory";
+export type { CaseRecap, CaseSummary } from "./victory";
 
 const C = ref.layout.play.complete;
 
@@ -72,7 +78,7 @@ export const CLOSED_LAYOUT = {
   radius: 22,
   gap: 9,
   /** The polaroid's photo (square): at least `min`, at most `max`, and no more than `share` of the page's inner width. */
-  photo: { min: 108, max: 232, share: 0.65 },
+  photo: { min: 140, max: 232, share: 0.65 },
   /** Room in the photo row for the polaroid's tilt and its corners. */
   heroPad: 14,
   /** The polaroid's tilt; the seal's. */
@@ -97,17 +103,27 @@ export const CLOSED_LAYOUT = {
   mark: 24,
   /** The footer line. */
   footer: 26,
-  /** The cat's line over the page, shown with `room` pt to spare. */
-  shelf: { size: 22, lineHeight: 28, gap: 14, room: 90 },
+  /** What happened: its kicker, the story's type, the evidence line. */
+  kicker: PAYOFF_TYPE.chapter.lineHeight,
+  story: PAYOFF_TYPE.story,
+  evidence: 20,
+  /** The rating's reason, under its marks. */
+  reason: { fontSize: 13, lineHeight: 18 },
+  /** The cat's line, handwritten. */
+  catLine: { size: 18, lineHeight: 22 },
+  /** Kept spare under the budget: its line counts are estimates, not layout. */
+  slack: 12,
   /** The actions never sit closer than this to the bottom edge. */
   bottomMin: ref.space.lg,
   /** The pinned band: its top pad, the pill, the gap, the quiet pill. */
   actions: C.actions.pad + ref.button.ghost.height + ref.space.sm + ref.button.quiet.height,
 } as const;
 const L = CLOSED_LAYOUT;
+/** The sitting cat's height over its width (its art: 444 x 640). */
+const CAT_ASPECT = 640 / 444;
 
-/** The cat's line over the page, on a tall phone. */
-export const SHELF_LINE = "Another one for your shelf \u2665";
+/** What the recap is headed, per mode. */
+export const RECAP_KICKER: Record<Genre, string> = { noir: "What happened", crime_scene: "The solution", paranormal: "What it wanted" };
 
 
 const CASE_CLOSED = /^\s*case closed[.!]*\s*$/i;
@@ -136,7 +152,8 @@ export type CaseCard = ComponentRef<typeof View>;
 
 export interface CaseClosedProps {
   genre: Genre;
-  title: string;
+  /** The case's neutral label, handwritten on the polaroid: "Case no. 0427" (victory.ts, caseLabel). */
+  caseNo: string;
   message?: string;
   exit?: string;
   /** The completed session's stats (victory.ts, caseSummary). undefined while loading; null when there are none. */
@@ -144,7 +161,9 @@ export interface CaseClosedProps {
   /** Crime scene: the suspect the player accused. */
   accused?: SuspectFace | null;
   /** Crime scene: why and how, as the accusation named them (the record's motive and method). */
-  recap?: { why?: string; how?: string } | null;
+  charge?: { why?: string; how?: string } | null;
+  /** What happened in the case, and the clues found (a v2 game's: caseRecord.ts, caseRecap). */
+  recap?: CaseRecap | null;
   /** The room's photo, for the polaroid (paranormal's snaps back to its own colours). Without one, the mode's drawn cover. */
   photo?: SceneSource | null;
   /** A closing line over the actions. */
@@ -176,7 +195,7 @@ export function stampDate(d = new Date()): string {
 const linesFor = (text: string | undefined, size: number, width: number, max: number) =>
   text ? Math.min(max, Math.max(1, Math.ceil((text.length * size * 0.5) / Math.max(1, width)))) : 0;
 
-export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, summary, accused, recap, photo, next, actions }: CaseClosedProps) {
+export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, summary, accused, charge, recap, photo, next, actions }: CaseClosedProps) {
   const theme = themeFor(genre);
   const payoff = look(theme, genre);
   const { reducedMotion: reduced } = useTheme();
@@ -233,7 +252,7 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
     if (plan) return;
     const make = (s: CaseSummary | null) => {
       const at = elapsed();
-      const timeline = victoryTimeline({ genre, reduced, stats: statLines(genre, s).length, rating: magnifierRating(s), dataAt: at });
+      const timeline = victoryTimeline({ genre, reduced, stats: statLines(genre, s, recap).length, rating: magnifierRating(s), dataAt: at });
       setPlan({ at, timeline, summary: s });
     };
     if (summary !== undefined) {
@@ -265,47 +284,48 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
   // A late answer (after the plan gave up on it) shows without its beats.
   const late = plan && !plan.summary && summary ? summary : null;
   const shown = plan ? (plan.summary ?? late) : null;
-  const lines = statLines(genre, shown);
+  const lines = statLines(genre, shown, recap);
   const rating = magnifierRating(shown);
+  const reason = ratingReason(genre, shown);
+  const story = recap?.story.length ? recap : null;
   const since = (t: number | undefined) => (late || t === undefined ? 0 : Math.max(0, t - (plan?.at ?? 0)));
   const statDelay = (i: number) => (reduced ? since(plan?.timeline.stats[0]) : since(plan?.timeline.stats[i]));
 
-  // Crime scene's record: the culprit, then why and how.
-  const caseRows = guilty && accused
-    ? ([["Culprit", accused.name], ["Motive", recap?.why], ["Method", recap?.how]] as [string, string | undefined][]).filter((r): r is [string, string] => !!r[1])
+  // Crime scene's record, without a recap to tell it: the culprit, then why and how.
+  const caseRows = guilty && accused && !story
+    ? ([["Culprit", accused.name], ["Motive", charge?.why], ["Method", charge?.how]] as [string, string | undefined][]).filter((r): r is [string, string] => !!r[1])
     : [];
+  // Without a recap, the ending's line, as a book's last line.
+  const lastWords = !story && (message || exit);
 
   // The polaroid takes the height left over, up to its share of the page's width.
   const inner = width - 2 * (L.edge + L.pad);
   const actionsHeight = L.actions + (next ? ref.layout.play.type.hint.lineHeight + ref.space.sm : 0) + Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin);
-  const lastHeight = linesFor(message, L.last.fontSize, inner, 3) * L.last.lineHeight + linesFor(exit, 15, inner, 2) * 20;
-  const parts = [L.head, lastHeight, caseRows.length * L.row, lines.length ? L.cell : 0, rating || lines.length ? L.mark + 8 : 0, L.footer].filter(Boolean);
-  const fixed = insets.top + 2 * C.pad + 2 * L.pad + L.heroPad + parts.length * L.gap + parts.reduce((a, b) => a + b, 0) + actionsHeight;
+  const lastHeight = lastWords ? linesFor(message, L.last.fontSize, inner, 3) * L.last.lineHeight + linesFor(exit, 15, inner, 2) * 20 : 0;
+  const storyText = story ? story.story.map((p) => p.text).join("") : "";
+  const storyHeight = story
+    ? L.kicker + 4 + linesFor(storyText, L.story.fontSize * 1.04, inner, 5) * L.story.lineHeight + (story.evidence.length ? 4 + linesFor(story.evidence.join(", ") + "From your casebook: ", 15, inner, 2) * L.evidence : 0)
+    : 0;
+  const ratingHeight = rating ? L.mark + 8 + (reason ? linesFor(reason, L.reason.fontSize, inner, 3) * L.reason.lineHeight : 0) : lines.length ? L.mark + 8 : 0;
+  const catHeight = L.catLine.lineHeight;
+  const parts = [L.head, lastHeight, storyHeight, caseRows.length * L.row, lines.length ? L.cell : 0, ratingHeight, catHeight, L.footer].filter(Boolean);
+  const fixed = insets.top + 2 * C.pad + 2 * L.pad + L.heroPad + parts.length * L.gap + parts.reduce((a, b) => a + b, 0) + actionsHeight + L.slack;
   const side = Math.round(Math.max(L.photo.min, Math.min(L.photo.max, inner * L.photo.share, height - fixed - POLAROID.frame - POLAROID.foot)));
   const polaroidW = side + POLAROID.frame * 2;
   const polaroidH = side + POLAROID.frame + POLAROID.foot;
   const heroH = polaroidH + L.heroPad;
   const column = inner - polaroidW;
-  const catW = Math.round(Math.max(56, Math.min(L.cat, column - 12)));
-  // On a tall phone, the cat's line over the page: the book goes on her shelf.
-  const spare = height - fixed - polaroidH;
-  const shelfLine = spare > L.shelf.room;
+  const sealSize = Math.min(L.seal, column + 34);
+  // The cat sits under the seal, never over it.
+  const catW = Math.round(Math.max(52, Math.min(L.cat, column - 12, (heroH - sealSize - 6) / CAT_ASPECT)));
   const sealWord = guilty ? "Guilty" : SEAL_WORD[genre];
   const sealTestID = guilty ? "closed-guilty" : paranormal ? "closed-gone" : "closed-stamp";
-  const sealSize = Math.min(L.seal, column + 34);
 
   return (
     <View style={[styles.root, { backgroundColor: theme.ground, paddingTop: insets.top }]} testID={`case-closed-${genre}`}>
       <Backdrop glow={payoff.glow} sweet={payoff.sweet} />
       {/* The column fills the space over the actions: the page is centred in it. */}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} testID="closed-scroll">
-        {shelfLine ? (
-          <Beat delay={reduced ? 0 : C.beat.cta * 6} reduced={reduced} style={styles.shelf}>
-            <Text style={[handType(L.shelf.size, L.shelf.lineHeight), styles.centre, { color: payoff.sweet }]} testID="closed-shelf">
-              {SHELF_LINE}
-            </Text>
-          </Beat>
-        ) : null}
         <Beat delay={0} reduced={reduced} rise={16}>
           <Animated.View style={nudgeStyle}>
             {/* The page under it: the book's next leaf, a shade deeper. */}
@@ -332,8 +352,8 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                     source={photo}
                     genre={genre}
                     original={paranormal && snapped}
-                    caption={title}
-                    captionSize={captionSize(title, side)}
+                    caption={caseNo}
+                    captionSize={captionSize(caseNo, side)}
                     lookOf={{ ...payoff, paper: PAGE.print }}
                     tilt={L.tilt.polaroid}
                     shade={PAGE.printShade}
@@ -372,7 +392,22 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                 />
               </View>
 
-              {message || exit ? (
+              {story ? (
+                <Beat delay={head.impact} reduced={reduced} style={styles.recap} testID="closed-story">
+                  <Text style={[PAYOFF_TYPE.chapter, styles.centre, { color: payoff.pageInk }]}>{RECAP_KICKER[genre]}</Text>
+                  <Text style={[styles.story, styles.centre, { color: PAGE.ink }]} testID="closed-story-text">
+                    {story.story.map((part, i) => (part.strong ? <Text key={i} style={[styles.strong, { color: payoff.pageInk }]}>{part.text}</Text> : part.text))}
+                  </Text>
+                  {story.evidence.length ? (
+                    <Text style={[styles.evidence, styles.centre, { color: PAGE.muted }]} testID="closed-evidence">
+                      {"From your casebook: "}
+                      <Text style={[handType(16, L.evidence), { color: PAGE.ink }]}>{story.evidence.join(", ")}</Text>
+                    </Text>
+                  ) : null}
+                </Beat>
+              ) : null}
+
+              {lastWords ? (
                 <Beat delay={head.impact} reduced={reduced} style={styles.words}>
                   {message ? <Text style={[L.last, styles.centre, { color: PAGE.ink }]} testID="closed-message">{message}</Text> : null}
                   {exit ? <Text style={[styles.exit, styles.centre, { color: PAGE.muted }]}>{exit}</Text> : null}
@@ -383,7 +418,7 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                 <Beat delay={head.impact} reduced={reduced}>
                   <View
                     accessible
-                    accessibilityLabel={[`Guilty. ${suspectA11yLabel(accused!)}`, recap?.why && `Why: ${recap.why}.`, recap?.how && `How: ${recap.how}.`].filter(Boolean).join(" ")}
+                    accessibilityLabel={[`Guilty. ${suspectA11yLabel(accused!)}`, charge?.why && `Why: ${charge.why}.`, charge?.how && `How: ${charge.how}.`].filter(Boolean).join(" ")}
                     testID="closed-accused"
                   >
                     {caseRows.map(([label, value], i) => (
@@ -392,7 +427,7 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                         label={label}
                         value={value}
                                                 first={i === 0}
-                        testID={label === "Culprit" ? undefined : label === "Motive" ? "closed-recap" : "closed-recap-how"}
+                        testID={label === "Culprit" ? undefined : label === "Motive" ? "closed-charge" : "closed-charge-how"}
                       />
                     ))}
                   </View>
@@ -406,10 +441,10 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                     <Beat key={line.key} delay={statDelay(i)} reduced={reduced || !!late} rise={8} style={[styles.cell, i > 0 && { borderLeftColor: PAGE.rule, borderLeftWidth: 1 }]}>
                       <View style={styles.cellInner} accessible accessibilityLabel={`${line.label}: ${line.value}`} testID={`closed-stat-${line.key}`}>
                         <View style={styles.entryLabel}>
-                          {line.key === "time" ? <ClockMark size={L.icon} color={payoff.pageInk} /> : line.key === "hints" ? <TipMark size={L.icon} color={payoff.pageInk} /> : <CrossMark size={L.icon} color={payoff.pageInk} />}
+                          <StatMark kind={line.key} color={payoff.pageInk} />
                           <Figure value={line.value} />
                         </View>
-                        <Text style={[styles.label, styles.cellLabel, { color: PAGE.muted }]} numberOfLines={1}>{line.label}</Text>
+                        <Text style={[styles.label, styles.cellLabel, { color: PAGE.muted }]} numberOfLines={1}>{line.short}</Text>
                       </View>
                     </Beat>
                   ))}
@@ -431,8 +466,16 @@ export function CaseClosed({ genre, title, message: rawMessage, exit: rawExit, s
                     delays={plan.timeline.magnifiers.map(since)}
                     testID="closed-rating"
                   />
+                  {reason ? <Text style={[styles.reason, styles.centre, { color: PAGE.muted }]} testID="closed-reason">{reason}</Text> : null}
                 </Beat>
               ) : null}
+
+              {/* The cat's word on how it went. */}
+              <Beat delay={plan ? since(plan.timeline.solved) : head.impact} reduced={reduced}>
+                <Text style={[handType(L.catLine.size, L.catLine.lineHeight), styles.centre, { color: payoff.pageInk }]} testID="closed-cat-line">
+                  {catVerdict(shown)}
+                </Text>
+              </Beat>
 
               {/* Where a screenshot is from: the app, and the library's stamp. */}
               <View style={styles.footer}>
@@ -491,6 +534,25 @@ function Entry({ label, value, first, testID }: {
   );
 }
 
+/** A stat cell's mark: a clock, a tip, a cross, a clue card. */
+function StatMark({ kind, color }: { kind: StatKey; color: string }) {
+  if (kind === "time") return <ClockMark size={L.icon} color={color} />;
+  if (kind === "hints") return <TipMark size={L.icon} color={color} />;
+  if (kind === "wrong") return <CrossMark size={L.icon} color={color} />;
+  return <ClueMark size={L.icon} color={color} />;
+}
+
+/** A clue card, drawn: a little index card with a folded corner and two lines. */
+function ClueMark({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <Path d="M3 2.5 H10 L13 5.5 V13.5 H3 Z" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+      <Path d="M10 2.5 V5.5 H13" stroke={color} strokeWidth={1.3} strokeLinejoin="round" />
+      <Path d="M5.5 8.5 H10.5 M5.5 11 H9" stroke={color} strokeWidth={1.3} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 /** A stat's value, handwritten: its figures lining, its units (min, h) a step down. */
 function Figure({ value }: { value: string }) {
   const parts = value.split(/(\d+)/).filter(Boolean);
@@ -541,7 +603,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
   content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: L.edge, paddingVertical: C.pad },
-  shelf: { marginBottom: L.shelf.gap },
   leaf: { ...StyleSheet.absoluteFill, borderRadius: L.radius, transform: [{ rotate: "1.2deg" }, { translateY: 5 }], ...ref.curve },
   card: { padding: L.pad, gap: L.gap, borderRadius: L.radius, ...ref.curve },
   ribbon: { position: "absolute", top: 0, right: 26 },
@@ -562,7 +623,12 @@ const styles = StyleSheet.create({
   cell: { flex: 1 },
   cellInner: { alignItems: "center", paddingVertical: 6, paddingHorizontal: 2, gap: 1 },
   cellLabel: { letterSpacing: 0.5 },
-  rating: { paddingTop: 0 },
+  rating: { paddingTop: 0, gap: 2 },
+  reason: { ...L.reason, paddingHorizontal: 6 },
+  recap: { alignItems: "center", alignSelf: "stretch", gap: 4, paddingHorizontal: 4 },
+  story: L.story,
+  strong: PAYOFF_TYPE.storyStrong,
+  evidence: { fontSize: 13, lineHeight: L.evidence },
   footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", minHeight: L.footer },
   brand: PAYOFF_TYPE.brand,
   twinkleA: { top: -8, left: 18 },

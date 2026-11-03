@@ -23,6 +23,7 @@ import { Toast } from "@/render/Toast";
 import { ref } from "@/theme/tokens";
 import { Casebook } from "./Casebook";
 import { useCaseRecord, type V2Completion } from "./caseRecord";
+import { Brief, useBrief } from "./Brief";
 import { Ending } from "./Ending";
 import { capitalise, InspectView, type Content } from "./InspectView";
 import { CarriedItem, ItemTray, isUvLight, type SlotNode } from "./ItemTray";
@@ -34,6 +35,7 @@ import { Flashlight, Magnifier, TOOL } from "./Tools";
 import { useCatCues } from "./useCatCues";
 import { itemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
+import type { StageTrace } from "./UvTrace";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 
 export interface PlayerV2Props {
@@ -87,7 +89,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const insets = useSafeAreaInsets();
   const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, act, hint, restart, cooldown, ui, keepUi, finish } = v2;
   const sources = useSceneSources(roomId, scene);
-  const record = useCaseRecord(roomId, v2);
+  // The brief over the room when the case is first opened (remembered per room); the clock waits for it.
+  const brief = useBrief(roomId, {
+    ready: phase.kind === "ready" && !!state,
+    fresh: !!state && !completed && state.cards.length + state.solved.length + state.inventory.length + v2.hintsUsed === 0,
+  });
+  const record = useCaseRecord(roomId, v2, { paused: brief.open || brief.pending });
 
   const [view, setView] = useState(0);
   // Which way the player last turned (the next view slides in from that side).
@@ -188,7 +195,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const photos = def ? Math.max(1, ...def.objects.map((o) => o.photo_index + 1)) : 1;
   const toast = useCallback((text: string) => setToasts((t) => [...t.slice(-2), text]), []);
   // The cat's read of the game: it glances when the player is stuck, perks up, referees, yawns.
-  const cues = useCatCues({ def, state, view, photos, frame, watching: !open && !casebook && !completed, cooldown, contents, react: setCatReaction });
+  const cues = useCatCues({ def, state, view, photos, frame, watching: !open && !casebook && !completed && !brief.open, cooldown, contents, react: setCatReaction });
   // What the cat says belongs to where it was said: a new close-up (or none, or the casebook) starts it quiet,
   // so a line from the last one ("Empty.") never comes up again over the next.
   const place = open ? `${open.kind}:${open.id}` : casebook ? "casebook" : "room";
@@ -395,6 +402,16 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true);
     }, 400);
   };
+  // A UV trace on the photo (prints, a stain, footprints): the light kept on it a moment reveals it.
+  const traceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onTrace = (traceId: string | null) => {
+    if (traceTimer.current) clearTimeout(traceTimer.current);
+    if (!uvOn || !uvItem || !traceId || uvChecked.includes(traceId)) return;
+    traceTimer.current = setTimeout(async () => {
+      setUvChecked((list) => [...list, traceId]);
+      take(await act({ type: "use_item", item: uvItem.id, object: traceId }), "room", true);
+    }, 300);
+  };
 
   const askHint = async () => {
     if (await hint()) {
@@ -421,14 +438,22 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const objectState = (id: string) => state.objects[id] ?? {};
   const visible = (o: ObjectDef) => !objectState(o.id).hidden && !objectState(o.id).removed;
+  // UV traces aren't things to tap: they're drawn by the Stage under the UV beam (and looked at with the magnifier).
   const stageObjects: StageObject[] = def.objects
-    .filter((o) => o.photo_index === view && visible(o))
+    .filter((o) => o.photo_index === view && visible(o) && !o.trace)
     .map((o) => ({ id: o.id, label: o.label, box: o.box, outline: o.outline, seen: state.seen.includes(o.id) }));
   const marks = state.overlays
     .filter((ov) => ov.overlay === "glow_mark" && ov.mark)
     .map((ov) => ({ ov, o: objectById(ov.object) }))
-    .filter(({ o }) => o && o.photo_index === view)
+    .filter(({ o }) => o && o.photo_index === view && !o.trace)
     .map(({ ov, o }) => ({ object: ov.object, box: o!.box, text: ov.mark! }));
+  const traces: StageTrace[] = def.objects
+    .filter((o) => o.trace && o.photo_index === view)
+    .map((o) => ({
+      id: o.id, label: o.label, kind: o.trace!.kind, surface: o.trace!.surface, seed: o.trace!.seed, box: o.box,
+      revealed: objectState(o.id).revealed === true,
+      mark: state.overlays.find((ov) => ov.object === o.id && ov.overlay === "glow_mark")?.mark,
+    }));
   const overlays = state.overlays
     .map((ov) => ({ ...ov, o: objectById(ov.object) }))
     .filter((ov) => ov.o && ov.o.photo_index === view)
@@ -460,7 +485,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   }
   const takeable = targetObject && !targetObject.archetype && targetObject.controls.some((c) => c.id === "taken") && !objectState(targetObject.id).taken;
   const ritualChoices = def.finale.kind === "ritual"
-    ? def.objects.filter((o) => !o.exit && state.seen.includes(o.id)).map((o) => ({ id: o.id, label: o.label }))
+    ? def.objects.filter((o) => !o.exit && !o.trace && state.seen.includes(o.id)).map((o) => ({ id: o.id, label: o.label }))
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
@@ -584,9 +609,16 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (open?.kind === "object") takeAt(target.id, result);
     else take(result, "room");
   };
+  /** A UV trace the light has found, under a point (window points): the magnifier reads it before what it's on. */
+  const traceUnder = (x: number, y: number) => {
+    if (!frame || y > trayTop) return null;
+    const fx = (x - frame.x) / frame.width, fy = (y - frame.y) / frame.height, slack = 0.03;
+    const t = traces.find((c) => c.revealed && fx >= c.box.x - slack && fx <= c.box.x + c.box.w + slack && fy >= c.box.y - slack && fy <= c.box.y + c.box.h + slack);
+    return t ? { id: t.id, x: frame.x + (t.box.x + t.box.w / 2) * frame.width, y: frame.y + (t.box.y + t.box.h / 2) * frame.height } : null;
+  };
   /** The magnifier let go, at its lens: on something in the room, it snaps in and that opens; else back to its corner. */
   const dropLens = (x: number, y: number) => {
-    const target = busy || x < 0 ? null : objectUnder(x, y);
+    const target = busy || x < 0 ? null : traceUnder(x, y) ?? objectUnder(x, y);
     if (!target) {
       lens.home();
       return;
@@ -636,6 +668,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             assist={false}
             uv={uvOn}
             marks={marks}
+            traces={traces}
+            onTrace={onTrace}
             focus={targetObject && targetObject.photo_index === view ? targetObject.box : null}
             beam={beam}
             onHover={onHover}
@@ -755,10 +789,19 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             pointerEvents="box-none"
             onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
           >
-            {/* The cat, peering over the ledge, eyes on your light (over the close-up's sheet while that's up). */}
-            {open || casebook ? null : <View style={styles.cat} pointerEvents="box-none">{cat}</View>}
             <View style={styles.trayWrap}>{tray}</View>
           </View>
+          {/* The cat, peering over the ledge, eyes on your light (over the close-up's sheet while that's up). Drawn
+              after the ledge, at its measured height: a percentage inset on an absolute child of the auto-height
+              ledge is dropped on iOS (Yoga), which left it centred in the ledge, under the tray's slots. */}
+          {open || casebook ? null : (
+            <View
+              style={[styles.cat, { bottom: ledgeTop === null ? V2.tray.height + ref.space.sm * 2 + insets.bottom + 1 : windowHeight - ledgeTop }]}
+              pointerEvents="box-none"
+            >
+              {cat}
+            </View>
+          )}
         </View>
       ) : null}
 
@@ -828,11 +871,14 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
+      {brief.open && !completed ? <Brief def={def} roomId={roomId} onBegin={brief.dismiss} /> : null}
+
       {completed ? (
         <Ending
           text={ending ?? ""}
           door={exitObject && sources.kind === "ready" ? { source: sources.sources[exitObject.photo_index], cacheKey: photoKey(exitObject.photo_index), box: exitObject.box } : undefined}
           genre={def.mode}
+          roomId={roomId}
           onDone={() => onComplete(record.finish(sources))}
         />
       ) : null}
@@ -872,7 +918,8 @@ const styles = StyleSheet.create({
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
   ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: 1 },
   // Just right of the magnifier (bottom-left of the photo), clear of it.
-  cat: { position: "absolute", left: ref.space.sm + TOOL + ref.space.sm, bottom: "100%" },
+  // Above everything in the foot (zIndex, and elevation on Android), its bottom on the ledge's top edge.
+  cat: { position: "absolute", left: ref.space.sm + TOOL + ref.space.sm, zIndex: 20, elevation: 20 },
   trayWrap: { flex: 1 },
   itemCard: {
     alignSelf: "center", maxWidth: 360, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.sm + 2,
