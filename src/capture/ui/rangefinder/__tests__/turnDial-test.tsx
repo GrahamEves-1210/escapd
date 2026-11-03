@@ -1,10 +1,13 @@
 import { AccessibilityInfo, Platform } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
-import { dialPoint, dialStops } from "@/capture/turn";
+import { getAnimatedStyle } from "react-native-reanimated";
+import { LENS_FOV, dialPoint, dialStops, edgeX, targetX, viewX } from "@/capture/turn";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { COPY } from "../copy";
 import { TurnDial, type TurnDialProps } from "../TurnDial";
+import { GUIDE } from "../../look";
+import { guideEdge } from "../TurnGuide";
 import { resetTurnSensorForTests } from "../useTurnTracking";
 
 // A DeviceMotion the test drives: availability, and samples sent to every listener.
@@ -32,14 +35,18 @@ const announce = jest.mocked(AccessibilityInfo.announceForAccessibility);
 const hidden = { includeHiddenElements: true } as const;
 
 let clock = 0;
-/** The phone upright (gravity down its y axis), turning at `rate` deg/s for `seconds`, 30 samples a second (iOS axes: beta is y). */
+/**
+ * The phone upright (gravity down its y axis), turning right at `rate` deg/s
+ * (negative: left) for `seconds`, 30 samples a second. iOS axes: beta is y,
+ * and a turn to the right is a negative rotation about y (up).
+ */
 async function turn(rate: number, seconds: number) {
   await act(async () => {
     const samples = Math.round(seconds * 30);
     for (let i = 0; i <= samples; i += 1) {
       clock += i === 0 ? 0 : 1 / 30;
       const sample = {
-        rotationRate: { alpha: 0, beta: rate, gamma: 0, timestamp: clock },
+        rotationRate: { alpha: 0, beta: -rate, gamma: 0, timestamp: clock },
         accelerationIncludingGravity: { x: 0, y: -9.8, z: 0, timestamp: clock },
       };
       for (const fn of sensors.mockMotion.listeners) fn(sample);
@@ -60,6 +67,7 @@ function props(overrides: Partial<TurnDialProps> = {}): TurnDialProps {
     line: "Photo 2 of 6",
     accessibilityLabel: (reached) => (reached ? `Photo 2 of 6. ${COPY.turnReached}` : "Photo 2 of 6."),
     onReached: jest.fn(),
+    fov: LENS_FOV.wide,
     ...overrides,
   };
 }
@@ -151,13 +159,17 @@ describe("turn dial: live tracking", () => {
     expect(onReached).toHaveBeenCalledTimes(1);
   });
 
-  it("counts a turn to the left too, and ignores tremor", async () => {
+  it("counts only a turn to the right (the stops go clockwise), and ignores tremor", async () => {
     const onReached = jest.fn();
     await render(<TurnDial {...props({ onReached })} />);
     await flush();
     await turn(1, 3);
     expect(arc()).toBeNull();
     await turn(-60, 1);
+    expect(onReached).not.toHaveBeenCalled();
+    expect(arc()).toBeNull();
+    // Back past the start and on round to the right: 60 back, then 60 more.
+    await turn(60, 2);
     expect(onReached).toHaveBeenCalledTimes(1);
   });
 
@@ -250,6 +262,96 @@ describe("turn dial: live tracking", () => {
     expect(onReached).not.toHaveBeenCalled();
     await turn(60, 0.05);
     expect(onReached).toHaveBeenCalledTimes(1);
+  });
+});
+
+const animatedStyleOf = getAnimatedStyle as unknown as (node: unknown) => { transform?: { translateX?: number; scaleX?: number }[] };
+/** The edge line's offset across the feed, as a share of its width: the last photo's right edge at 1 + this. */
+const ghostShift = (width: number) => (animatedStyleOf(screen.getByTestId("turn-guide-edge", hidden).parent).transform?.[0].translateX ?? NaN) / width;
+/** Where each strip of the last photo is drawn now, as shares of the feed's width: [left, right]. */
+const strips = (width: number) =>
+  Array.from({ length: GUIDE.ghostStrips }, (_, i) => {
+    const t = animatedStyleOf(screen.getByTestId(`turn-ghost-photo-${i}`, hidden).parent).transform ?? [];
+    const w = width / GUIDE.ghostStrips;
+    const centre = (i + 0.5) * w + (t[0]?.translateX ?? NaN);
+    const half = ((t[1]?.scaleX ?? NaN) * w) / 2;
+    return [(centre - half) / width, (centre + half) / width];
+  });
+const markX = () => Number(screen.getByTestId(/turn-guide-mark-(line|reached)/, hidden).props.x1);
+
+describe("turn guide: the last photo's edge, fixed to the room", () => {
+  // 1x's 3:4 feed on 393 x 852.
+  const W = 365;
+  const H = 486.7;
+  const ghost = { uri: "file://plate-1.jpg", width: W, height: H };
+  // 1x's 8 stops, photo 2 next: a 45-degree turn on a 53-degree view.
+  const stops = dialStops(8);
+  const main = (overrides: Partial<TurnDialProps> = {}) =>
+    props({ stops, taken: [true, ...Array(7).fill(false)], fov: LENS_FOV.main, ghost, ...overrides });
+
+  it("shows only with a photo to follow while the turn is shown", async () => {
+    const view = await render(<TurnDial {...main({ ghost: null })} />);
+    expect(screen.queryByTestId("turn-guide", hidden)).toBeNull();
+    await view.rerender(<TurnDial {...main({ active: false })} />);
+    expect(screen.queryByTestId("turn-guide", hidden)).toBeNull();
+    await view.rerender(<TurnDial {...main()} />);
+    expect(screen.getByTestId("turn-guide", hidden)).toBeTruthy();
+  });
+
+  it("marks where the edge goes for the plan's turn: 60.4 pt in on 1x's feed, the overlap left of it", async () => {
+    await render(<TurnDial {...main()} />);
+    expect(markX()).toBeCloseTo(targetX(45, LENS_FOV.main) * W, 6);
+    expect(markX()).toBeCloseTo(60.4, 0);
+  });
+
+  it("without motion, waits on the mark: the strip of the last photo the next one shares", async () => {
+    sensors.DeviceMotion.isAvailableAsync.mockResolvedValue(false);
+    await render(<TurnDial {...main()} />);
+    await flush();
+    expect(1 + ghostShift(W)).toBeCloseTo(markX() / W, 6);
+    expect(screen.queryByTestId("turn-guide-arrow", hidden)).toBeNull();
+  });
+
+  it("lies over the feed right after the shutter, then slides left with the turn, exactly as the room does", async () => {
+    await render(<TurnDial {...main()} />);
+    await flush();
+    await turn(1, 1 / 30);
+    // No turn yet: the last photo exactly over the feed, its edge on the frame's right edge.
+    expect(ghostShift(W)).toBeCloseTo(0, 6);
+    expect(screen.getByTestId("turn-guide-arrow", hidden)).toBeTruthy();
+    strips(W).forEach(([left, right], i) => {
+      expect(left).toBeCloseTo(i / GUIDE.ghostStrips, 6);
+      expect(right).toBeCloseTo((i + 1) / GUIDE.ghostStrips, 6);
+    });
+    // 10 degrees right: the edge 0.797 across (a pinhole view 53 across).
+    await turn(60, 1 / 6);
+    expect(1 + ghostShift(W)).toBeCloseTo(edgeX(10, LENS_FOV.main), 6);
+    expect(1 + ghostShift(W)).toBeCloseTo(0.797, 3);
+    // The photo's strips follow the room: each side where its direction now is, the last one ending on the edge, no seams.
+    const now = strips(W);
+    expect(now[now.length - 1][1]).toBeCloseTo(edgeX(10, LENS_FOV.main), 6);
+    for (let i = 1; i < now.length; i += 1) expect(now[i][0]).toBeCloseTo(now[i - 1][1], 6);
+    // Photo 1's middle (straight ahead then) is 10 degrees left of the feed's middle now.
+    expect(now[GUIDE.ghostStrips / 2][0]).toBeCloseTo(viewX(-10, LENS_FOV.main), 6);
+    expect(screen.getByTestId("turn-guide-mark-line", hidden)).toBeTruthy();
+    // 43 degrees: within 5 % of the turn, the edge just right of the mark (2 degrees, 14 pt) and the mark solid.
+    await turn(99, 1 / 3);
+    expect(1 + ghostShift(W)).toBeCloseTo(edgeX(43, LENS_FOV.main), 6);
+    expect((1 + ghostShift(W)) * W - markX()).toBeGreaterThan(0);
+    expect((1 + ghostShift(W)) * W - markX()).toBeLessThan(15);
+    expect(screen.getByTestId("turn-guide-mark-reached", hidden)).toBeTruthy();
+    expect(screen.queryByTestId("turn-guide-arrow", hidden)).toBeNull();
+  });
+
+  it("parks the edge just off the frame turning the wrong way, or past the whole view", async () => {
+    expect(guideEdge(-10, LENS_FOV.main)).toBeCloseTo(1.05, 9);
+    expect(guideEdge(-120, LENS_FOV.main)).toBeCloseTo(1.05, 9);
+    expect(guideEdge(60, LENS_FOV.main)).toBeCloseTo(-0.05, 9);
+    expect(guideEdge(200, LENS_FOV.main)).toBeCloseTo(-0.05, 9);
+    await render(<TurnDial {...main()} />);
+    await flush();
+    await turn(-30, 1 / 3);
+    expect(1 + ghostShift(W)).toBeCloseTo(1.05, 6);
   });
 });
 

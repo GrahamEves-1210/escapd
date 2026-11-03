@@ -9,7 +9,7 @@
 //
 // And its plan (src/capture/turn.ts): how many photos go all the way round
 // and each one's stop, for the lens the camera last reported in use (setRollLens;
-// 1x's 6, the server's cap, before any camera has, as with library photos
+// 1x's 8, the default lens's, before any camera has, as with library photos
 // alone). The plan's count is the roll's target: the camera is full and the
 // review screen stops offering "Add a photo" there. The first lens a camera
 // reports gets its even circle (firstLens; photos already in weren't taken on
@@ -59,7 +59,7 @@ export interface RollPlanState {
   plan: RollPlan;
 }
 
-/** Before any camera reports its lens: 1x's even circle, 6 photos (the server's cap). */
+/** Before any camera reports its lens: 1x's even circle (the default lens), 8 photos. */
 const UNKNOWN_LENS: LensChoice = "main";
 let planState: RollPlanState = { lens: null, plan: rollPlan(UNKNOWN_LENS) };
 const listeners = new Set<() => void>();

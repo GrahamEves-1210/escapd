@@ -4,8 +4,8 @@
 // and "Photo 2 of 5" in the meta style, white. The dial is a compass seen
 // from above: a thin textTertiary ring with a stop for each photo in the
 // roll's plan, photo 1 at the top and the rest clockwise at their stops
-// (src/capture/turn.ts: 5 72 apart on 0.5x, 6 60 apart on 1x; after a lens
-// switch mid-roll the stops still to take re-space). Taken
+// (src/capture/turn.ts: 8 45 apart on 1x, 6 60 apart on 0.5x; after a
+// lens switch mid-roll the stops still to take re-space). Taken
 // photos are white dots, the next a white ring, the rest small grey dots.
 // While the phone's motion is tracked (useTurnTracking) a white arc grows
 // along the ring from the last stop toward the next; once the turn is far
@@ -20,15 +20,17 @@
 // - Neutral instrument greys and white in every mode, as the privacy note.
 // - Screen readers: one element, "Photo 2 of 5.", and "Far enough. Take the
 //   photo." added (and announced once) when the turn is far enough.
+// Under the pill, between photos taken in turn, the turn guide on the feed
+// (TurnGuide.tsx): the last photo's edge, fixed to the room, sliding toward
+// the mark where it should sit for the plan's turn.
 import { useCallback } from "react";
-import { Image } from "expo-image";
-import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
-import { arcPath, dialPoint, TURN_REACHED, turnStep } from "@/capture/turn";
+import { arcPath, dialPoint, turnStep } from "@/capture/turn";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, ref } from "@/theme/tokens";
 import { COPY } from "./copy";
+import { TurnGuide } from "./TurnGuide";
 import { useTurnTracking } from "./useTurnTracking";
 
 const L = ref.layout.camera;
@@ -53,16 +55,18 @@ export interface TurnDialProps {
   /** The label without the "far enough" sentence; the dial adds it. */
   accessibilityLabel: (reached: boolean) => string;
   /**
-   * The ghost edge: the photo the turn is counted from, its right-hand strip
-   * drawn see-through where that part of the room now is, with a line where
-   * the photo ended. Null hides it (no photo to follow, retake mode, busy).
+   * The turn guide (TurnGuide.tsx): the photo the turn is counted from and
+   * the feed's size, over which its edge slides with the turn toward the
+   * mark. Null hides it (no photo to follow, retake mode, busy).
    */
-  ghost?: { uri: string; overlap: number; width: number; height: number } | null;
+  ghost?: { uri: string; width: number; height: number } | null;
+  /** The lens's view across the frame, degrees (LENS_FOV): places the guide's lines. */
+  fov: number;
   /** The light tick. */
   onReached: () => void;
 }
 
-export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, ghost = null }: TurnDialProps) {
+export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, fov, ghost = null }: TurnDialProps) {
   const { reducedMotion } = useTheme();
   const reachedNow = useCallback(() => {
     onReached();
@@ -78,7 +82,9 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
 
   return (
     <>
-    {ghost && active ? <GhostEdge {...ghost} /> : null}
+    {ghost && active && target !== null ? (
+      <TurnGuide {...ghost} fov={fov} step={step} turned={turn.turned} tracking={turn.tracking} reached={turn.reached} />
+    ) : null}
     <View
       style={styles.slot}
       pointerEvents="none"
@@ -130,33 +136,7 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
   );
 }
 
-/** How much of the last photo the ghost shows, in degrees of its right edge. */
-const GHOST_STRIP = 14;
-
-/**
- * The last photo's right edge, held still on the left of the frame: the
- * strip of it the next photo should share (the plan's overlap), see-through,
- * with a line where the last photo ended. Turn until the room lines up with
- * it, and shoot. It doesn't move with the phone: the room is matched to it.
- */
-function GhostEdge({ uri, overlap, width, height }: { uri: string; overlap: number; width: number; height: number }) {
-  // Photos that only just meet (1x) still get a thin edge to meet.
-  const share = Math.min(0.3, Math.max(0.06, overlap));
-  const stripW = width * share;
-  return (
-    <View pointerEvents="none" style={[styles.ghost, { left: 0, width: stripW, height }]} testID="turn-ghost">
-      <View style={[styles.ghostImage, { height, width }]}>
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} transition={0} />
-      </View>
-      <View style={styles.ghostLine} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  ghost: { position: "absolute", top: 0, overflow: "hidden" },
-  ghostImage: { position: "absolute", right: 0, top: 0, opacity: 0.45 },
-  ghostLine: { position: "absolute", right: 0, top: 0, bottom: 0, width: 2, backgroundColor: ref.color.textPrimary },
   // Top-centred on the feed.
   slot: { position: "absolute", left: 0, right: 0, top: T.inset, alignItems: "center" },
   pill: {

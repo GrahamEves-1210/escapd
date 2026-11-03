@@ -6,41 +6,60 @@
 //   from the lens's field of view, a target overlap and the photo limits, and
 //   switchLens: the plan re-spaced when the lens changes mid-roll;
 // - the sensor maths: how far the phone has turned about the vertical since
-//   the last photo, from DeviceMotion's rotation rate and gravity;
+//   the last photo, from DeviceMotion's rotation rate and gravity (signed:
+//   positive is a turn to the right, clockwise seen from above);
+// - the turn guide's geometry: where the last photo's edge is on the feed
+//   after a turn, and where it has to be for the plan's turn;
 // - the dial's geometry.
 import type { LensChoice } from "./ui/rangefinder/useLenses";
 import { MAX_PLATES, MIN_PLATES } from "./slots";
 
-/**
- * Each lens's horizontal field of view in degrees with the phone upright, for
- * the frame it shoots. The ultra-wide (13 mm full-frame equivalent) shoots
- * tall, 9:16: the 4:3 sensor's long side kept, its short side cut to 9/16 of
- * it, so across: 2 atan(9.75 / 13) = 74 (it would be 90 at 3:4). The main
- * lens (26 mm) shoots 3:4: 2 atan(13 / 26) = 53. Typical phones; close
- * enough to plan the turns.
- */
-export const LENS_FOV: Readonly<Record<LensChoice, number>> = { wide: 74, main: 53 };
+/** A phone's 4:3 sensor in full-frame-equivalent mm (the 43.27 mm diagonal): 34.62 x 25.96. */
+export const SENSOR_MM = { long: 43.27 * 0.8, short: 43.27 * 0.6 } as const;
+
+/** Each lens's 35 mm-equivalent focal length: the ultra-wide 13, the main lens 26. */
+export const LENS_MM: Readonly<Record<LensChoice, number>> = { wide: 13, main: 26 };
 
 /**
- * How much of their width neighbouring photos should share: enough to line
- * one up against the last (the camera's ghost strip shows exactly this
- * share). 0.5x (74) takes 6 photos 60 apart, sharing 14 degrees. Below, the
- * history of this number.
- * How much of their width neighbouring photos should share. 0: the fewest
- * photos that still go all the way round. 0.5x (92) takes 4 photos 90 apart,
- * which just meet (2 degrees shared): the ultra-wide sees enough that four
- * cover the room, and every extra photo is a near-duplicate to take and to
- * build from. The main lens (55) would need 7 and is held to 6 (60 apart),
- * leaving thin gaps, so its prompts word the turn edge to edge. 0.2 gave 0.5x
- * 5 photos 72 apart.
+ * The frame each lens shoots, width / height with the phone upright (the
+ * viewfinder and the crop follow it, ref.layout.camera frameAspect /
+ * frameAspectWide): 1x the sensor's own 3:4, as the phone's Camera app; 0.5x
+ * tall, 9:16 (the sensor's long side kept, the short side cut to 9/16 of it).
+ */
+export const LENS_ASPECT: Readonly<Record<LensChoice, number>> = { wide: 9 / 16, main: 3 / 4 };
+
+/** Half the frame's width in full-frame-equivalent mm: 12.98 on 1x (the sensor's short side), 9.73 on 0.5x. */
+export function frameHalfMm(lens: LensChoice): number {
+  return Math.min(SENSOR_MM.short, SENSOR_MM.long * LENS_ASPECT[lens]) / 2;
+}
+
+const DEGREES = 180 / Math.PI;
+
+/**
+ * Each lens's horizontal field of view in degrees with the phone upright,
+ * across the frame it shoots: 2 atan(half width / focal length). 1x:
+ * 2 atan(12.98 / 26) = 53.1 (a 24 mm main lens sees 56.8, so 26 errs toward
+ * more overlap); 0.5x: 2 atan(9.73 / 13) = 73.7. Typical phones; close
+ * enough to plan the turns and to place the turn guide's lines.
+ */
+export const LENS_FOV: Readonly<Record<LensChoice, number>> = {
+  wide: 2 * Math.atan(frameHalfMm("wide") / LENS_MM.wide) * DEGREES,
+  main: 2 * Math.atan(frameHalfMm("main") / LENS_MM.main) * DEGREES,
+};
+
+/**
+ * How much of their width neighbouring photos should share at least: enough
+ * to line one up against the last (the turn guide's ghost shows exactly this
+ * share). 1x (53.1) takes 8 photos 45 apart, sharing 8 degrees (15 %); 0.5x
+ * (73.7) 6 photos 60 apart, sharing 14 degrees (18 %). The user's own full
+ * turn with the Camera app at 1x took 7 to 8.
  */
 export const TARGET_OVERLAP = 0.15;
 
 /**
  * Neighbours that share any of the view overlap: "keep part of the last photo
- * in view" is something the player can do (0.5x's 4 photos share a sliver,
- * and the prompt keeps them from turning too far). Below it (1x, held to 6
- * photos, leaves thin gaps) the turn prompts word the turn edge to edge.
+ * in view" is something the player can do. Below it (a plan held to the photo
+ * limit, leaving thin gaps) the turn prompts word the turn edge to edge.
  */
 export const MIN_OVERLAP = 0;
 
@@ -81,12 +100,10 @@ function overlapOf(lens: LensChoice, step: number): Pick<TurnPlan, "overlap" | "
  * from the last kept stop back round to photo 1, is shared evenly between the
  * fewest more photos that keep TARGET_OVERLAP on this lens, held to the photo
  * limits (never fewer than the photos kept). With nothing kept it is an even
- * circle: 0.5x (92) 5 photos 72 apart, sharing about a fifth; the main lens
- * (55) would need 9, so held to 6 its turn is 60 and neighbours just meet (5
- * degrees of gap): a smaller turn would make them overlap but stop short of
- * the start, and the photos are shown as a loop round the room (the build
- * wait, the play screen), so the plan always closes the circle. The camera
- * says so on 1x and points to 0.5 where the phone has it.
+ * circle: 1x (53.1) 8 photos 45 apart, 0.5x (73.7) 6 photos 60 apart.
+ * Held to the limit, the turn widens rather than stop
+ * short of the start: the photos are shown as a loop round the room (the
+ * build wait, the play screen), so the plan always closes the circle.
  */
 export function rollPlan(lens: LensChoice, kept: readonly number[] = [], max = MAX_PLATES, min = MIN_PLATES): RollPlan {
   // Photo 1 is the start, at 0, whatever lens it was taken on.
@@ -209,16 +226,16 @@ export function integrateTurn(turned: number, rate: number, dt: number, deadband
 }
 
 /**
- * How far toward the next photo, 0 to 1. Either way round counts: the sign
- * of the turn depends on the platform's axes, and turning left still goes
- * all the way round.
+ * How far toward the next photo, 0 to 1. Only a turn to the right counts
+ * (turnRate is positive clockwise on both platforms): the stops go round
+ * clockwise, and the turn guide's lines only meet turning right.
  */
 export function turnProgress(turned: number, step: number): number {
-  if (!(step > 0)) return 0;
-  return Math.min(Math.abs(turned) / step, 1);
+  if (!(step > 0) || !(turned > 0)) return 0;
+  return Math.min(turned / step, 1);
 }
 
-/** Far enough: within 5 % of the turn (4 degrees at 72), well inside the overlap's margin. */
+/** Far enough: within 5 % of the turn (2.25 degrees at 1x's 45), well inside the overlap's margin. */
 export const TURN_REACHED = 0.95;
 
 export const isTurnReached = (progress: number) => progress >= TURN_REACHED;
@@ -231,6 +248,65 @@ export const isTurnReached = (progress: number) => progress >= TURN_REACHED;
 export function quantizeProgress(progress: number, reducedMotion: boolean): number {
   const steps = reducedMotion ? 4 : 50;
   return Math.floor(Math.min(Math.max(progress, 0), 1) * steps + 1e-9) / steps;
+}
+
+// ---- The turn guide's geometry (TurnGuide.tsx). The feed is a pinhole view
+// `fov` degrees across: a direction `a` degrees right of the view's middle
+// shows at x = W / 2 + (W / 2) tan(a) / tan(fov / 2). The last photo's right
+// edge was fov / 2 right of its middle; after the phone turns `turned`
+// degrees right it is (fov / 2 - turned) right of the feed's middle, so it
+// slides left across the feed as the player turns, fixed to the room.
+
+const RAD = Math.PI / 180;
+
+/**
+ * Where a direction `deg` degrees right of the view's middle shows on a feed
+ * `fov` degrees across, as a share of its width (0 its left edge, 1 its
+ * right). Off the feed it is below 0 or above 1; behind the phone (90 or more
+ * either side) it is -Infinity or Infinity.
+ */
+export function viewX(deg: number, fov: number): number {
+  "worklet";
+  if (deg <= -90) return -Infinity;
+  if (deg >= 90) return Infinity;
+  return 0.5 + (0.5 * Math.tan(deg * RAD)) / Math.tan((fov / 2) * RAD);
+}
+
+/** The direction (degrees right of the view's middle) that shows at share `x` of a feed `fov` across: viewX's inverse. */
+export function angleAtX(x: number, fov: number): number {
+  "worklet";
+  return Math.atan((x - 0.5) * 2 * Math.tan((fov / 2) * RAD)) / RAD;
+}
+
+/**
+ * Where the last photo's strip from share `from` to `to` of its width shows
+ * on the feed after a turn of `turned` degrees right: the same directions,
+ * now `turned` further left. The turn guide draws the last photo as such
+ * strips, each stretched to its place, so it lies on the room across its
+ * whole width (a turn bends a pinhole view: one shift for the whole photo
+ * would drift off the room by up to 2 % of the width away from its edge).
+ */
+export function ghostStrip(from: number, to: number, turned: number, fov: number): { left: number; right: number } {
+  "worklet";
+  // Directions behind the phone have no place on the feed: held just short of it, far off the frame.
+  const held = (a: number) => Math.min(Math.max(a, -89), 89);
+  return { left: viewX(held(angleAtX(from, fov) - turned), fov), right: viewX(held(angleAtX(to, fov) - turned), fov) };
+}
+
+/** Where the last photo's right edge is on the feed after turning `turned` degrees right (1 before any turn). */
+export function edgeX(turned: number, fov: number): number {
+  "worklet";
+  return viewX(fov / 2 - turned, fov);
+}
+
+/**
+ * The turn guide's mark: where the last photo's edge has to be for the
+ * plan's turn (`step`), as a share of the feed's width. Left of it the feed
+ * shares the last photo's view: the overlap, (fov - step) / fov of the turn.
+ */
+export function targetX(step: number, fov: number): number {
+  "worklet";
+  return edgeX(step, fov);
 }
 
 // ---- The dial's geometry: degrees clockwise from straight up, as a compass.

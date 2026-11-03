@@ -16,10 +16,13 @@
 // treatment. The live feed itself is never treated.
 // The player turns all the way round the room, a photo at each stop: the
 // lens in use sets how many and how far (the roll's plan, src/capture/roll.ts
-// and turn.ts: 5 photos 72 apart on 0.5x, the default where the phone has
-// one; 6 60 apart on 1x) and the turn dial on the feed shows the stops and,
-// where the phone's motion can be read, how far the player has turned since
-// the last photo's shutter. A lens switch mid-roll keeps the photos taken
+// and turn.ts: 8 photos 45 apart on 1x, the default, in 3:4; 6 60 apart on
+// 0.5x where the phone has it, in a tall 9:16) and the turn dial on the feed shows the stops
+// and, where the phone's motion can be read, how far the player has turned
+// since the last photo's shutter, with the turn guide: the last photo's edge
+// sliding with the room toward the mark where it should sit.
+// A lens switch mounts a fresh camera on the new lens (Viewfinder, cameraKey):
+// until it says it is ready the shutter, flash and lens wait. A lens switch mid-roll keeps the photos taken
 // where they are and re-spaces the stops still to take for the new lens (the
 // count never drops below the photos taken); once every stop is taken a
 // switch changes nothing. The turn prompts and the live turn only apply when the next
@@ -45,10 +48,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
 import { addPlate, firstOpenSlot, getPlates, getRollPlan, getRollPlanState, replacePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
 import { MIN_PLATES, platePrompts } from "@/capture/slots";
+import { LENS_FOV } from "@/capture/turn";
 import { useLibraryImport } from "@/capture/useLibraryImport";
 import { useShowAfter } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { motion, ref } from "@/theme/tokens";
+import { LENS_SWITCH_TIMEOUT } from "./look";
 import { useCapturePalette } from "./palette";
 import { ControlRow } from "./rangefinder/ControlRow";
 import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "./rangefinder/copy";
@@ -58,8 +63,8 @@ import { PlateCounter } from "./rangefinder/PlateCounter";
 import { Shutter } from "./rangefinder/Shutter";
 import { SQUARE_SLOP } from "./rangefinder/SquareButton";
 import { TurnDial } from "./rangefinder/TurnDial";
-import { useLenses } from "./rangefinder/useLenses";
-import { Viewfinder, viewfinderLayout } from "./rangefinder/Viewfinder";
+import { cameraKey, useLenses, type LensChoice } from "./rangefinder/useLenses";
+import { Viewfinder, frameFor, viewfinderLayout } from "./rangefinder/Viewfinder";
 import type { RangefinderProps } from "./types";
 import { announce, focusForAccessibility } from "@/lib/a11y";
 
@@ -81,7 +86,7 @@ const BOTTOM_ROW = Math.max(ref.button.thumbnail.size, ref.button.shutter.ring +
 const BOTTOM_PAD = (BOTTOM_ROW - ref.button.thumbnail.size) / 2;
 
 // On 393 x 852 (safe 59 / 34): square buttons y 67-111 at x 21-65 / 328-372;
-// the viewfinder x 14-379, y 140-626.7 (365 x 486.7, exactly 3:4); the zoom
+// the viewfinder y 140-626.7, 273.8 x 486.7 (exactly 9:16) centred; the zoom
 // track y 656.4-696.4; the thumbnail y 720.4-792.4, the counter's pill centred
 // on it (y 730.2-782.7), the shutter's ring y 721.6-796.6 (centre 2.7 lower).
 
@@ -96,7 +101,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const library = useLibraryImport({ retakeIndex });
   // The camera opens on the lens the roll is being taken on, so reopening it mid-roll keeps the plan.
   const lenses = useLenses(camera, getRollPlanState().lens);
-  const [ready, setReady] = useState(false);
+  // The camera (its cameraKey) that last said it was ready; null until the first one has.
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+  const ready = readyKey !== null;
   const [mountFailed, setMountFailed] = useState(false);
   const [shooting, setShooting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,7 +111,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const [held, setHeld] = useState<{ index: number; taken: number; inTurn: boolean } | null>(null);
   // The last photo the player took here, from the moment its shutter fired:
   // where they stand, and what the turn is counted from (`key` restarts it).
-  const [anchor, setAnchor] = useState<{ slot: number; key: string } | null>(null);
+  // `lens`: the lens it was taken on (the turn guide lays that photo over the feed only on the same lens).
+  const [anchor, setAnchor] = useState<{ slot: number; key: string; lens: LensChoice } | null>(null);
   const shutterCount = useRef(0);
   const [flash, setFlash] = useState(false);
   const [grid, setGrid] = useState(false);
@@ -116,12 +124,16 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const retake = retakeIndex !== null;
   const busy = shooting || library.busy;
   const live = ready && !mountFailed;
+  // A lens switch: the new lens's camera is mounting and not ready yet.
+  const currentKey = cameraKey(lenses.selectedLens);
+  const switching = live && readyKey !== currentKey;
+  // The lens's photo frame: the viewfinder, the feed's ratio and the crop.
+  const frame = frameFor(lenses.choice);
   // The 360 for the lens in use, live: a lens switch changes the plan, its
   // stops and its words at once. Until the phone's lenses are known (iOS
   // reads them once the camera is ready) the roll's lens stands, or on a new
-  // roll the ultra-wide most iPhones have, so the count doesn't change as the
-  // camera starts (a phone without one re-plans for 1x once it says so).
-  const plan = useRollPlan(lenses.settled ? lenses.choice : (getRollPlanState().lens ?? "wide"));
+  // roll 1x, the default, so the count doesn't change as the camera starts.
+  const plan = useRollPlan(lenses.settled ? lenses.choice : (getRollPlanState().lens ?? "main"));
   const prompts = useMemo(() => platePrompts(plan.stops), [plan.stops]);
   // The slot this shot fills: the retake's, or the first open one (the plan's count once every photo is in).
   const nextIndex = retakeIndex ?? firstOpenSlot(slots, plan.shots) ?? plan.shots;
@@ -155,8 +167,6 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   const turnListening = live && !retake && !full;
   const turnActive = turnListening && !busy && followsLast;
   const onTurned = feedback.tick;
-  // On 1x where the phone has 0.5: say the photos only just meet, and point to 0.5.
-  const lensNote = live && !full && lenses.ultraWide !== null && lenses.choice === "main" && !plan.overlaps ? COPY.lensNote : null;
 
   // Waits under ~1 s show nothing more; past it the thinking line takes the subtitle slot.
   const showThinking = useShowAfter(busy, L.thinkingDelay);
@@ -215,9 +225,19 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     }, [close]),
   );
 
+  // A new lens's camera that never reports ready doesn't hold the shutter for good.
+  useEffect(() => {
+    if (!switching) return;
+    const id = setTimeout(() => setReadyKey(currentKey), LENS_SWITCH_TIMEOUT);
+    return () => clearTimeout(id);
+  }, [switching, currentKey]);
+
   const shoot = async () => {
     const view = camera.current;
-    if (!view || inFlight.current || busy || full || !live) return;
+    if (!view || inFlight.current || busy || full || !live || switching) return;
+    // The lens (and frame) this photo is taken on, held through its processing.
+    const lens = lenses.choice;
+    const shotFrame = frame;
     inFlight.current = true;
     setShooting(true);
     setHeld({ index: nextIndex, taken: plates.length, inTurn });
@@ -230,9 +250,10 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       // from here, including while the photo is prepared.
       if (retakeIndex === null) {
         shutterCount.current += 1;
-        setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}` });
+        setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}`, lens });
       }
-      const plate = await processPhoto(picture, lenses.choice === "wide" ? ref.layout.camera.frameAspectWide : undefined);
+      // Cropped to the frame the player saw (3:4 on 1x, 9:16 on 0.5x).
+      const plate = await processPhoto(picture, shotFrame.aspect);
       if (retakeIndex === null) {
         // The plan's last photo fills the set: an outcome the prompt also states.
         if (addPlate(plate) && getPlates().length >= getRollPlan().shots) feedback.success();
@@ -281,20 +302,19 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     else router.push("/capture/review");
   };
 
-  const onCameraReady = () => {
-    if (ready) return;
-    setReady(true);
-    lenses.read();
+  // Each lens's camera says when it's ready; the lens list is read from the first.
+  const onCameraReady = (key: string) => {
+    if (!ready) lenses.read();
+    setReadyKey(key);
   };
 
   const onArea = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
     setArea((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
   };
-  // The viewfinder exactly 3:4, fitted into the space left and centred: it shrinks before any text does.
-  // 0.5x shoots tall (9:16): the frame, and the photo cropped to it.
-  const tall = lenses.choice === "wide";
-  const viewfinder = viewfinderLayout(area, tall ? ref.layout.camera.frameAspectWide : ref.layout.camera.frameAspect);
+  // The viewfinder exactly the lens's photo frame (3:4 on 1x, 9:16 on 0.5x),
+  // fitted into the space left and centred: it shrinks before any text does.
+  const viewfinder = viewfinderLayout(area, frame.aspect);
 
   return (
     <View
@@ -323,10 +343,9 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             cameraRef={camera}
             flash={flash ? "on" : "off"}
             selectedLens={lenses.selectedLens}
-            tall={tall}
+            ratio={frame.ratio}
             grid={grid}
             note={!retake && plates.length === 0}
-            lensNote={lensNote}
             overlay={
               <TurnDial
                 stops={plan.stops}
@@ -335,9 +354,11 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
                 listening={turnListening}
                 active={turnActive}
                 resetKey={anchor?.key ?? "none"}
-                ghost={turnActive && anchor && slots[anchor.slot]?.uri
-                  ? { uri: slots[anchor.slot]!.uri, overlap: plan.overlap, width: viewfinder.width, height: viewfinder.height }
+                // The last photo over the feed only on the lens it was taken on (the same view and frame).
+                ghost={turnActive && !switching && anchor && anchor.lens === lenses.choice && slots[anchor.slot]?.uri
+                  ? { uri: slots[anchor.slot]!.uri, width: viewfinder.width, height: viewfinder.height }
                   : null}
+                fov={LENS_FOV[lenses.choice]}
                 line={turnCopy(at, false).line}
                 accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}
                 onReached={onTurned}
@@ -355,7 +376,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
           feedback.tick();
           setFlash((on) => !on);
         }}
-        flashDisabled={!live || busy}
+        flashDisabled={!live || busy || switching}
         grid={grid}
         onGrid={() => {
           feedback.tick();
@@ -368,11 +389,11 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
           if (choice !== lenses.choice) feedback.tick();
           lenses.choose(choice);
         }}
-        lensDisabled={busy}
+        lensDisabled={busy || switching}
       />
       <View style={styles.bottomRow}>
         <PlateCounter current={counter.current} count={plan.shots} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
-        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full} busy={busy} onPress={shoot} testID="shutter" />
+        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full || switching} busy={busy} onPress={shoot} testID="shutter" />
         <LastPlate
           uri={lastUri}
           ring={!retake && plates.length >= MIN_PLATES}

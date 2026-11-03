@@ -10,6 +10,8 @@
 // most players already start turning), and the dial only shows it while
 // `active`. The step is read live, so a lens switch mid-turn rescales the
 // turn without losing it. `onReached` fires once per turn, while active.
+// The turn is signed, positive to the right (turnRate, src/capture/turn.ts):
+// only a turn to the right moves toward the next stop.
 //
 // It degrades to nothing: on the web (where motion needs a tap to allow it
 // and the camera is a preview), with no sensor, a sensor that won't start or
@@ -71,7 +73,10 @@ export interface TurnTracking {
   progress: number;
   /** This turn has gone far enough. */
   reached: boolean;
-  /** Degrees turned since the photo the turn is counted from, live at the sensor's rate (the ghost edge). */
+  /**
+   * Degrees turned since the photo the turn is counted from, signed (positive
+   * to the right), live at the sensor's rate: the turn guide's moving edge.
+   */
   turned: SharedValue<number>;
 }
 
@@ -126,7 +131,7 @@ export function useTurnTracking({ listening, active, step, resetKey, reducedMoti
       const dt = state.last === null ? 0 : t - state.last;
       state.last = t;
       state.turned = integrateTurn(state.turned, turnRate(rateAxes(rate, Platform.OS), state.gravity), dt);
-      turnedLive.set(Math.abs(state.turned));
+      turnedLive.set(state.turned);
       const raw = turnProgress(state.turned, now.step);
       const drawn = quantizeProgress(raw, now.reducedMotion);
       // Far enough is only said while the dial shows the turn; a turn made
@@ -151,7 +156,7 @@ export function useTurnTracking({ listening, active, step, resetKey, reducedMoti
       subscription?.remove();
       setTracking(false);
     };
-  }, [listening]);
+  }, [listening, turnedLive]);
 
   const live = tracking && listening && active;
   // Progress measured from an earlier photo is not shown for this one.

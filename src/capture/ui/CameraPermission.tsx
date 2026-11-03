@@ -99,7 +99,7 @@ export function CameraPermission({ permission, checking, requestPermission, reta
   const copyKey = denied ? "denied" : "default";
   const copy = PERMISSION_COPY[copyKey];
   // Roll ready (3 up to the plan's count) adds the light-table button; Roll
-  // full (the plan's count: 5 on 0.5x, 6 on 1x or before any camera has said)
+  // full (the plan's count: 8 on 1x or before any camera has said, 6 on 0.5x)
   // puts it in the quiet button's slot. Retake mode has neither.
   const rollCount = heldCount ?? plateCount;
   const full = !retake && rollCount >= rollPlan.shots;

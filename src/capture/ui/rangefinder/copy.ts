@@ -1,7 +1,7 @@
 // 02 · Camera: the words on the camera and its accessibility labels
 // (docs/DESIGN.md 02), in plain language: photos, Arabic numerals, "Review
 // your photos"; no film or darkroom words. Pure functions of the photos taken
-// and the roll's prompts (one per photo in its plan: 5 on 0.5x, 6 on 1x), so
+// and the roll's prompts (one per photo in its plan: 11 on 1x, 6 on 0.5x), so
 // the screen and its tests share one source. The photo prompts themselves
 // live in src/capture/slots.ts: the 360's turns, or in retake mode the view
 // and where to aim.
@@ -15,7 +15,7 @@ export const COPY = {
   cancelFill: "Back to your photos",
   library: "Choose photos from your library",
   libraryRetake: "Choose a photo instead",
-  // Every photo in the plan taken (5 on 0.5x, 6 on 1x).
+  // Every photo in the plan taken (11 on 1x, 6 on 0.5x).
   fullTitle: "All the way round",
   fullDetail: "Review your photos.",
   privacy: "Keep faces out of the shot.",
@@ -35,11 +35,10 @@ export const COPY = {
   shutterFull: "Take a photo",
   // The turn dial: announced once a turn is far enough (the light tick's words).
   turnReached: "Far enough. Take the photo.",
-  // On 1x six photos 60 degrees apart only just meet (src/capture/turn.ts):
-  // the turn prompts' detail says so instead of asking for overlap.
+  // A plan held to the photo limit whose photos only just meet
+  // (src/capture/turn.ts): the turn prompts' detail says so instead of
+  // asking for overlap.
   edgeDetail: "Start where the last photo ended.",
-  // On 1x where the phone has 0.5: a note on the feed pointing to it.
-  lensNote: "On 1.0 the photos only just meet. Switch to 0.5 to overlap them.",
 } as const;
 
 /**
@@ -50,8 +49,8 @@ export const COPY = {
  * `inTurn` (default true): the player stands at the photo before this one,
  * having just taken it, so the turn prompts apply; false places the photo by
  * its neighbours instead (`filled`: which slots hold a photo). `edgeToEdge`:
- * the lens's photos only just meet (1x), so the turn can't keep part of the
- * last photo in view.
+ * the plan's photos only just meet (held to the photo limit), so the turn
+ * can't keep part of the last photo in view.
  */
 export interface RollPosition {
   index: number;

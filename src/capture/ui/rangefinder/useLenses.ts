@@ -1,42 +1,56 @@
-// The 0.5x lens (docs/DESIGN.md 02): the default wherever the phone reports
-// an ultra-wide back lens, because the 360 (src/capture/turn.ts) goes round
-// in 5 photos that overlap only on the ultra-wide (1x needs 6 that only just
-// meet). Everywhere else the main lens (1x). The player can still switch, and
-// the camera starts on the lens the roll was being taken on (`initial`), so
-// reopening it mid-roll doesn't switch lens. expo-camera 58 lists lenses on
-// iOS only (getAvailableLensesAsync, onAvailableLensesChanged); the list is
-// read once the camera is ready, so the feed starts on 1x and moves to 0.5x
-// as soon as the ultra-wide is reported. Until then the lens isn't `settled`
-// and the camera keeps the roll's plan as it was. Android (whose `zoom` can't
-// go below 1x), iPhones without an ultra-wide and the web get 1x and no lens
-// control, settled at once.
+// The lenses. 1x (the main lens) is the default everywhere: the 360's plan
+// and its turn guide are tuned for it (src/capture/turn.ts: 8 photos in the
+// sensor's own 3:4, as the phone's Camera app). Where the phone reports an ultra-wide back lens the player
+// can switch to 0.5x (6 photos), and the camera starts on the lens the roll
+// was being taken on (`initial`), so reopening it mid-roll doesn't switch
+// lens. expo-camera 58 lists lenses on iOS only (getAvailableLensesAsync,
+// onAvailableLensesChanged), read once the camera is ready; until then the
+// lens isn't `settled`. Android (whose `zoom` can't go below 1x), iPhones
+// without an ultra-wide and the web get 1x and no lens control, settled at
+// once.
+//
+// Switching lens never reconfigures a running camera: `selectedLens` is the
+// ultra-wide on 0.5x and unset (the phone's own default back camera, at 1x)
+// on 1x, and the viewfinder mounts a fresh CameraView for each (keyed by
+// cameraKey), so each capture session starts on its lens. Swapping the
+// device under a running AVCaptureSession (0.5 to 1.0, naming the main lens
+// or unsetting it) crashed the app.
 import { useCallback, useState, type RefObject } from "react";
 import { Platform } from "react-native";
 import type { AvailableLenses, CameraView, LensInfo } from "expo-camera";
 
 /** AVCaptureDevice.DeviceType.builtInUltraWideCamera, as expo-camera reports it. */
 export const ULTRA_WIDE_LENS = "AVCaptureDeviceTypeBuiltInUltraWideCamera";
-/** The main (1x) back lens. Named explicitly on 1x: unsetting `selectedLens` on a running camera is fragile. */
+/** The main (1x) back lens, as expo-camera reports it. */
 export const MAIN_LENS = "AVCaptureDeviceTypeBuiltInWideAngleCamera";
 
 export type LensChoice = "wide" | "main";
 
 /**
- * The lens in use: the player's choice once they make one, otherwise the
- * ultra-wide when there is one; always "main" without an ultra-wide.
+ * The lens in use: the player's choice once they make one, otherwise 1x;
+ * always "main" without an ultra-wide.
  */
 export function lensFor(ultraWide: string | null, chosen: LensChoice | null): LensChoice {
   if (!ultraWide) return "main";
-  return chosen ?? "wide";
+  return chosen ?? "main";
+}
+
+/**
+ * The CameraView for a `selectedLens`: the viewfinder keys the camera by it,
+ * so a lens switch mounts a fresh camera on the new lens instead of swapping
+ * the device under a running one.
+ */
+export function cameraKey(selectedLens: string | undefined): string {
+  return selectedLens ?? "default";
 }
 
 export interface Lenses {
   /** The ultra-wide's deviceType, or null when the phone reports none (or hasn't yet). */
   ultraWide: string | null;
-  /** The lens in use: the ultra-wide unless the player picked 1x. Always "main" without an ultra-wide. */
+  /** The lens in use: 1x unless the player picked 0.5x. Always "main" without an ultra-wide. */
   choice: LensChoice;
   choose: (choice: LensChoice) => void;
-  /** CameraView `selectedLens`: the ultra-wide when chosen; the main lens by name on a phone that has both; otherwise unset. */
+  /** CameraView `selectedLens`: the ultra-wide on 0.5x; unset (the default back camera, 1x) otherwise. */
   selectedLens: string | undefined;
   /** Read the list. Call once the camera is ready. */
   read: () => void;
@@ -71,15 +85,14 @@ export function useLenses(camera: RefObject<CameraView | null>, initial: LensCho
   }, []);
 
   const ultraWide = lenses.find((lens) => lens.deviceType === ULTRA_WIDE_LENS)?.deviceType ?? null;
-  const main = lenses.find((lens) => lens.deviceType === MAIN_LENS)?.deviceType ?? null;
   const current = lensFor(ultraWide, choice);
 
   return {
     ultraWide,
     choice: current,
     choose: setChoice,
-    // 1x after 0.5: the main lens by name (when listed), never back to unset.
-    selectedLens: current === "wide" && ultraWide ? ultraWide : ultraWide && main ? main : undefined,
+    // Each lens is its own camera (cameraKey), so 1x is simply the default back camera.
+    selectedLens: current === "wide" && ultraWide ? ultraWide : undefined,
     read,
     onChanged,
     settled: listed,

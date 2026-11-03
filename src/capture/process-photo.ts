@@ -16,29 +16,47 @@ export interface ProcessedPlate {
   height: number;
 }
 
+export interface CropRect {
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The centred crop of a `width` x `height` image to `aspect` (width / height),
+ * in whole pixels and always inside the image; null when it already is that
+ * shape (within 1 %).
+ */
+export function centreCrop(width: number, height: number, aspect: number): CropRect | null {
+  if (!(width > 0) || !(height > 0) || !(aspect > 0)) return null;
+  const w = Math.floor(width);
+  const h = Math.floor(height);
+  if (w / h > aspect * 1.01) {
+    const cw = Math.max(1, Math.min(w, Math.round(h * aspect)));
+    return { originX: Math.floor((w - cw) / 2), originY: 0, width: cw, height: h };
+  }
+  if (w / h < aspect / 1.01) {
+    const ch = Math.max(1, Math.min(h, Math.round(w / aspect)));
+    return { originX: 0, originY: Math.floor((h - ch) / 2), width: w, height: ch };
+  }
+  return null;
+}
+
 /**
  * `aspect` (width / height, portrait): centre-crop to the viewfinder's frame,
- * so the photo is what the player framed (0.5x shoots tall, 9:16).
+ * so the photo is what the player framed (both lenses shoot tall, 9:16). The
+ * crop is worked out on the decoded image itself, as the phone hands it over
+ * (upright, its long edge capped), never on the camera's reported size, so it
+ * can't fall outside the image whatever way round or however rounded that is.
  */
 export async function processPhoto(source: RawPhoto, aspect?: number): Promise<ProcessedPlate> {
-  const context = ImageManipulator.manipulate(source.uri, {
+  let image = await ImageManipulator.manipulate(source.uri, {
     maxWidth: LONG_EDGE,
     maxHeight: LONG_EDGE,
-  });
-  if (aspect && source.width > 0 && source.height > 0) {
-    // The decoded size: the long edge capped at LONG_EDGE.
-    const scale = Math.min(1, LONG_EDGE / Math.max(source.width, source.height));
-    const w = Math.floor(source.width * scale);
-    const h = Math.floor(source.height * scale);
-    if (w / h > aspect + 0.01) {
-      const cw = Math.floor(h * aspect);
-      context.crop({ originX: Math.floor((w - cw) / 2), originY: 0, width: cw, height: h });
-    } else if (w / h < aspect - 0.01) {
-      const ch = Math.floor(w / aspect);
-      context.crop({ originX: 0, originY: Math.floor((h - ch) / 2), width: w, height: ch });
-    }
-  }
-  const image = await context.renderAsync();
+  }).renderAsync();
+  const crop = aspect ? centreCrop(image.width, image.height, aspect) : null;
+  if (crop) image = await ImageManipulator.manipulate(image).crop(crop).renderAsync();
   const saved = await image.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
   return { uri: saved.uri, width: saved.width, height: saved.height };
 }

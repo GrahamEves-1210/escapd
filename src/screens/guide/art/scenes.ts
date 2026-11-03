@@ -6,6 +6,7 @@
 // its middle (the 360, src/capture/slots.ts); steps 3 and 4 hold the hero
 // phone in front at the lower right, as the reference does, a mid or back
 // object behind it. Depth comes from brightness alone.
+import { LENS_FOV, turnPlan } from "@/capture/turn";
 import { ref } from "@/theme/tokens";
 import { arc, circle, polar, polyline, roundedRect, turnedRect } from "./geometry";
 import type { Mark, Point, Scene } from "./types";
@@ -73,21 +74,24 @@ function heldPhone(): Mark[] {
 // other steps), the doorway a gap in it, a shelf along the right wall and a
 // table in the far left corner. The player stands on the spot in the middle
 // (a context ring) and holds the phone out a little, its view a lit wedge out
-// to the walls. Views are about the ultra-wide's (92 degrees, drawn 90), so
-// two photos a turn apart (72) share about a fifth; every view's rays are
-// context and fade before the walls.
+// to the walls. Views are the main lens's (1x, the default: 53 degrees
+// across its 3:4 frame), so two photos a turn apart (45) share about a
+// sixth (src/capture/turn.ts); every view's rays are context and fade before
+// the walls.
 const ROOM = { left: 52, top: 18, right: 180, bottom: 246 };
 const WALL = 5;
 const DOOR_GAP = { left: 62, right: 94 };
-const HALF_VIEW = 45;
+const HALF_VIEW = LENS_FOV.main / 2;
 /** The middle of the room, where the player stands. */
 const MIDDLE: Point = [(ROOM.left + ROOM.right) / 2, (ROOM.top + ROOM.bottom) / 2];
 /** How far out from the middle the phone is held (to its centre). */
 const ARM = 32;
-/** One turn: the ultra-wide's 72, 5 photos all the way round (src/capture/turn.ts). */
-const TURN = 72;
-/** The ultra-wide's stops all the way round: photo 1 at the top, a turn apart. */
-const STOPS = [0, 1, 2, 3, 4].map((i) => i * TURN);
+/** 1x's 360 (src/capture/turn.ts): 8 photos all the way round. */
+const LENS_PLAN = turnPlan("main");
+/** One turn: 1x's 45. */
+const TURN = LENS_PLAN.step;
+/** 1x's stops all the way round: photo 1 at the top, a turn apart. */
+const STOPS = Array.from({ length: LENS_PLAN.shots }, (_, i) => i * TURN);
 
 /** Distance from `from` along `deg` to the room's inner wall. */
 function toWall(from: Point, deg: number): number {
@@ -201,8 +205,8 @@ const turn: Scene = {
 };
 
 // Step 3 · All the way round. The phone held in front shows the camera's turn
-// dial on its screen: a ring with a stop for each photo (the ultra-wide's
-// five), four taken (lit dots), the next a dark ring, the turn toward it an
+// dial on its screen: a ring with a stop for each photo (1x's eight), all
+// but the last taken (lit dots), the last a dark ring, the turn toward it an
 // arc. Behind the phone a large clockwise arrow (back) goes round with the
 // same stops on it, its head arriving back at the start.
 const ROUND: Point = [130, 112];
@@ -227,11 +231,11 @@ function dial(): Mark[] {
   const stop = (deg: number) => polar(DIAL, deg, DIAL_R);
   return [
     { d: circle(DIAL, DIAL_R), ink: "back" },
-    // The turn so far, from the fourth stop toward the last.
-    { d: arc(DIAL, DIAL_R, STOPS[3], STOPS[3] + 55), ink: "mid" },
+    // The turn so far, from the last photo taken toward the last stop.
+    { d: arc(DIAL, DIAL_R, STOPS[STOPS.length - 2], STOPS[STOPS.length - 2] + TURN * 0.75), ink: "mid" },
     ...STOPS.slice(0, -1).map((deg): Mark => ({ d: circle(stop(deg), 2.6), ink: "mid", fill: "panel" })),
     { d: circle(stop(STOPS[STOPS.length - 1]), 3.2), ink: "mid", fill: "tag" },
-    // "Photo 5 of 5" under it, as print.
+    // "Photo 8 of 8" under it, as print.
     { d: "M117 197H143", ink: "textDim" },
   ];
 }

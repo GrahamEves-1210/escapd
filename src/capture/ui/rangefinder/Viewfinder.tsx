@@ -1,14 +1,18 @@
 // The viewfinder, Once's: one big rounded black well (ref.color.void,
 // ref.radius.viewfinder 40 continuous) holding the live feed, with no border,
-// shadow or overlay, a hard edge against the ground. The box is exactly 3:4,
-// fitted by containBox into the space the header and the control row leave,
-// so it shrinks before any text does. Over the feed, ESCAPD's own: the
-// framing grid (when on), the turn dial at the top (`overlay`, TurnDial.tsx)
-// and at the foot the lens note (on 1x where the phone has 0.5) over the
-// privacy note (until photo 1), both the same see-through black pill.
+// shadow or overlay, a hard edge against the ground. The box is exactly the
+// lens's photo frame (frameFor: 3:4 on 1x, as the phone's Camera app; tall
+// 9:16 on 0.5x, the photo centre-cropped to it), fitted by containBox into
+// the space the header and the control row leave, so it shrinks before any
+// text does. The CameraView is keyed by its lens (cameraKey): a lens switch
+// mounts a fresh camera on the new lens with its own frame and feed ratio
+// from the start, rather than swapping the device (and the ratio) under a
+// running one, which crashed on 0.5 to 1.0. Over the feed, ESCAPD's own: the framing
+// grid (when on), the turn guide and dial (`overlay`, TurnDial.tsx) and at
+// the foot the privacy note (until photo 1), a see-through black pill.
 import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { CameraView, type AvailableLenses, type CameraMountError, type FlashMode } from "expo-camera";
+import { CameraView, type AvailableLenses, type CameraMountError, type CameraRatio, type FlashMode } from "expo-camera";
 import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { toEasing, useStateProgress } from "@/components/noir";
@@ -16,23 +20,32 @@ import { containBox, type Box } from "@/render/geometry";
 import { curve, ref } from "@/theme/tokens";
 import { useCapturePalette } from "../palette";
 import { COPY } from "./copy";
+import { cameraKey, type LensChoice } from "./useLenses";
 
 const L = ref.layout.camera;
 
 /**
+ * The photo's frame on `lens`: its aspect (width / height, upright; the
+ * viewfinder's box and the crop) and the feed's ratio (CameraView `ratio`,
+ * Android). 1x the sensor's own 3:4; 0.5x tall, 9:16.
+ */
+export function frameFor(lens: LensChoice): { aspect: number; ratio: CameraRatio } {
+  return lens === "wide" ? { aspect: L.frameAspectWide, ratio: L.feedRatioWide } : { aspect: L.frameAspect, ratio: L.feedRatio };
+}
+
+/**
  * A note over the feed that shows at once and fades out before it unmounts
- * (after photo 1 the privacy note goes; the lens note goes on 0.5). A
- * shared-value fade, not a Reanimated `exiting` layout animation: those
- * crashed the app (Fabric's layout animation proxy), and switching to 1x
- * mounts the lens note right as the camera changes lens. Opacity, so reduced
- * motion keeps it.
+ * (after photo 1 the privacy note goes). A shared-value fade, not a
+ * Reanimated `exiting` layout animation: those crashed the app (Fabric's
+ * layout animation proxy). Opacity, so reduced motion keeps it.
  */
 function FadingNote({ shown, children }: { shown: boolean; children: ReactNode }) {
   const [mounted, setMounted] = useState(shown);
+  // Shown again: mounted in this same render (state from a prop, not an effect).
+  if (shown && !mounted) setMounted(true);
   const opacity = useSharedValue(shown ? 1 : 0);
   useEffect(() => {
     if (shown) {
-      setMounted(true);
       opacity.set(1);
       return;
     }
@@ -49,7 +62,7 @@ export interface Size {
   height: number;
 }
 
-/** The viewfinder: the largest 3:4 box in `area`, centred. */
+/** The viewfinder: the largest box of the photo's frame in `area` (3:4 unless told), centred. */
 export function viewfinderLayout(area: Size, aspect: number = L.frameAspect): Box {
   return containBox(area, aspect);
 }
@@ -58,19 +71,18 @@ export interface ViewfinderProps {
   layout: Box;
   cameraRef: RefObject<CameraView | null>;
   flash: FlashMode;
-  /** iOS deviceType of the chosen lens; undefined for the default main lens. */
+  /** iOS deviceType of the chosen lens; undefined for the default back camera (1x). */
   selectedLens: string | undefined;
-  /** 0.5x: the frame is tall (9:16). */
-  tall?: boolean;
+  /** The feed's ratio for the lens's frame (frameFor). */
+  ratio: CameraRatio;
   /** The framing grid's toggle. */
   grid: boolean;
   /** The privacy note, shown until plate I and never in retake mode. */
   note: boolean;
-  /** The lens note (1x where the phone has 0.5), above the privacy note; null for none. */
-  lensNote?: string | null;
-  /** Drawn over the feed and the grid, before the note: the turn dial. */
+  /** Drawn over the feed and the grid, before the note: the turn guide and dial. */
   overlay?: ReactNode;
-  onCameraReady: () => void;
+  /** The camera for this lens (its cameraKey) is ready. */
+  onCameraReady: (key: string) => void;
   onMountError: (event: CameraMountError) => void;
   onAvailableLensesChanged: (event: AvailableLenses) => void;
 }
@@ -80,16 +92,16 @@ export function Viewfinder({
   cameraRef,
   flash,
   selectedLens,
-  tall = false,
+  ratio,
   grid,
   note,
-  lensNote = null,
   overlay,
   onCameraReady,
   onMountError,
   onAvailableLensesChanged,
 }: ViewfinderProps) {
   const palette = useCapturePalette();
+  const key = cameraKey(selectedLens);
   return (
     <View
       style={[styles.well, { backgroundColor: palette.well, left: layout.x, top: layout.y, width: layout.width, height: layout.height }]}
@@ -98,14 +110,16 @@ export function Viewfinder({
       {/* The feed is not a stop for screen readers: the viewfinder isn't tappable and the prompt says what to frame. */}
       <View style={StyleSheet.absoluteFill} accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <CameraView
+          // A fresh camera per lens: its session starts on that lens.
+          key={key}
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing="back"
           mode="picture"
-          ratio={tall ? L.feedRatioWide : L.feedRatio}
+          ratio={ratio}
           flash={flash}
           selectedLens={selectedLens}
-          onCameraReady={onCameraReady}
+          onCameraReady={() => onCameraReady(key)}
           onMountError={onMountError}
           onAvailableLensesChanged={onAvailableLensesChanged}
           testID="camera"
@@ -114,14 +128,6 @@ export function Viewfinder({
       <FramingGrid visible={grid} width={layout.width} height={layout.height} />
       {overlay}
       <View pointerEvents="none" style={styles.noteSlot}>
-        <FadingNote shown={!!lensNote}>
-          <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="lens-note">
-            <View style={styles.noteFill} testID="lens-note-fill" />
-            <Text style={styles.noteText} lineBreakStrategyIOS="standard" textBreakStrategy="balanced">
-              {lensNote}
-            </Text>
-          </View>
-        </FadingNote>
         <FadingNote shown={note}>
           <View style={[styles.note, { maxWidth: layout.width - L.note.inset * 2 }]} testID="privacy-note">
             <View pointerEvents="none" style={styles.noteFill} testID="privacy-note-fill" />
@@ -174,7 +180,7 @@ const styles = StyleSheet.create({
   },
   vertical: { position: "absolute", top: 0, bottom: 0, width: L.grid.line, backgroundColor: ref.color.textPrimary },
   horizontal: { position: "absolute", left: 0, right: 0, height: L.grid.line, backgroundColor: ref.color.textPrimary },
-  // Bottom-centred on the feed, the lens note stacked over the privacy note.
+  // Bottom-centred on the feed.
   noteSlot: { position: "absolute", left: 0, right: 0, bottom: L.note.inset, alignItems: "center", gap: ref.space.sm },
   // A black pill in Once's void (its wells: the track, the counter), see-through
   // so the feed still reads under it; white meta text.

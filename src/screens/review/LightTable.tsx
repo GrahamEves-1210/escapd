@@ -9,8 +9,8 @@
 // the top.
 //
 // Top to bottom: the camera's header (the square back button, the serif
-// title "Your photos" over the grey count "4 of 5 photos", counted against the
-// roll's plan: 5 on 0.5x, 6 on 1x); then a scrolling
+// title "Your photos" over the grey count "4 of 8 photos", counted against the
+// roll's plan: 8 on 1x, 6 on 0.5x); then a scrolling
 // column: the whole-set note (if any), the lead line, the photos (02's last
 // photo grown into 3:4 tiles, two to a row), the retake hint, "Add a photo"
 // (the guide's ghost pill; gone once the plan's count is in), and "Before you build" with

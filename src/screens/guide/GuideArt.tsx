@@ -83,7 +83,14 @@ export function GuideArt({ layers, clock }: { layers: readonly StepLayer[]; cloc
             {layers.map((layer) => (
               <FadeLayer key={layer.step} clock={clock} layer={layer} style={StyleSheet.absoluteFill}>
                 <StepArt step={layer.step} width={ART.width * box.scale} height={ART.height * box.scale} />
-                <Text style={[theme.hand, styles.note, { color: theme.sweet }]} testID={`guide-note-${layer.step + 1}`}>
+                <Text
+                  style={[theme.hand, styles.note, { color: theme.sweet }]}
+                  numberOfLines={NOTE.lines}
+                  adjustsFontSizeToFit
+                  minimumFontScale={NOTE.minScale}
+                  maxFontSizeMultiplier={NOTE.maxFontScale}
+                  testID={`guide-note-${layer.step + 1}`}
+                >
                   {NOTES[layer.step]}
                 </Text>
               </FadeLayer>
@@ -109,7 +116,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: NOTE.top,
     right: NOTE.right,
-    maxWidth: NOTE.maxWidth,
+    width: NOTE.width,
+    paddingRight: NOTE.pad,
     fontSize: NOTE.fontSize,
     lineHeight: NOTE.lineHeight,
     textAlign: "right",

@@ -6,13 +6,14 @@
 // slots, in order, clockwise from the first photo, and each photo's name and
 // turn prompt follow from its stop.
 //
-// Counts match private.app_config: at least 3, at most 6 (the storage trigger
-// refuses a 7th). The roll aims at its plan's count (src/capture/turn.ts:
-// 5 on 0.5x, 6 on 1x), the full turn; MAX_PLATES is only the server's cap.
+// Counts: at least 3; at most MAX_PLATES, 1x's full turn (src/capture/turn.ts:
+// 8 photos on 1x, 6 on 0.5x). The roll aims at its plan's count, the full
+// turn. The backend's cap (private.app_config max_photos_per_room, which the
+// storage trigger enforces; 8 since migration 20261103000100) matches it.
 // `numeral` is what the player sees for each photo: Arabic numerals, on the
 // camera's counter and everywhere else.
 export const MIN_PLATES = 3;
-export const MAX_PLATES = 6;
+export const MAX_PLATES = 8;
 
 export interface PlatePrompt {
   numeral: string;
@@ -24,7 +25,7 @@ export interface PlatePrompt {
   detail: string;
 }
 
-/** The turn prompts' detail where neighbours overlap (0.5x); the camera words 1x's turn edge to edge instead. */
+/** The turn prompts' detail where neighbours overlap (every plan within the photo limit); the camera words a turn edge to edge where they don't. */
 export const OVERLAP_DETAIL = "Keep part of the last photo in view.";
 const OVERLAP = OVERLAP_DETAIL;
 
