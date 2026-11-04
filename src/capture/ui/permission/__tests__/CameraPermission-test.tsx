@@ -405,7 +405,7 @@ describe("Denied, can't ask again", () => {
 });
 
 describe("roll and retake", () => {
-  it("with 3 to 7 photos adds 'Review your photos' last, which opens the review screen", async () => {
+  it("with 3 to 6 photos adds 'Review your photos' last, which opens the review screen", async () => {
     seedRoll(3);
     await renderScreen();
     expect(buttonLabels()).toEqual(["Allow the camera", "Choose photos instead", "Review your photos"]);
@@ -413,8 +413,8 @@ describe("roll and retake", () => {
     expect(push).toHaveBeenCalledWith("/capture/review");
   });
 
-  it("with 8 photos (1x's full turn) the one quiet button goes to the review screen", async () => {
-    seedRoll(8);
+  it("with 7 photos (1x's full turn) the one quiet button goes to the review screen", async () => {
+    seedRoll(7);
     await renderScreen();
     expect(screen.queryByRole("button", { name: "Choose photos instead" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "Review your photos" })).toHaveLength(1);
@@ -528,8 +528,8 @@ describe("Choose photos instead", () => {
     expect(buttonLabels()).toEqual(["Allow the camera", "Choose photos instead", "Review your photos"]);
   });
 
-  it("Library busy from a roll of six: the busy quiet button keeps its label and the light-table button stays as the roll fills", async () => {
-    seedRoll(6);
+  it("Library busy from a roll of five: the busy quiet button keeps its label and the light-table button stays as the roll fills", async () => {
+    seedRoll(5);
     launch.mockResolvedValue(picked("file://picked-a.jpg", "file://picked-b.jpg"));
     const pending = holdProcessing();
     await renderScreen();
@@ -538,13 +538,13 @@ describe("Choose photos instead", () => {
     await userEvent.setup().press(screen.getByRole("button", { name: "Choose photos instead" }));
 
     await act(async () => pending[0].finish());
-    expect(getPlates()).toHaveLength(7);
+    expect(getPlates()).toHaveLength(6);
     expect(screen.getByTestId("permission-busy")).toBeTruthy();
     expect(buttonLabels()).toEqual(ready);
 
     // The roll fills and the light table opens: still the same two quiet buttons.
     await act(async () => pending[1].finish());
-    expect(getPlates()).toHaveLength(8);
+    expect(getPlates()).toHaveLength(7);
     expect(push).toHaveBeenCalledWith("/capture/review");
     expect(buttonLabels()).toEqual(ready);
 

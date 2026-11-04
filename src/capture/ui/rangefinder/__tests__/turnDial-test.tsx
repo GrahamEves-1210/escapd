@@ -355,6 +355,61 @@ describe("turn guide: the last photo's edge, fixed to the room", () => {
   });
 });
 
+describe("turn dial: 1x's 7 photos, sharing a 1.6-degree edge", () => {
+  const W = 365;
+  const H = 486.7;
+  const ghost = { uri: "file://plate-1.jpg", width: W, height: H };
+  const stops = dialStops(7);
+  const STEP = 360 / 7;
+  const seven = (overrides: Partial<TurnDialProps> = {}) =>
+    props({ stops, taken: [true, ...Array(6).fill(false)], fov: LENS_FOV.main, ghost, line: "Photo 2 of 7", ...overrides });
+
+  it("ticks only once the edge is within half the shared view of the mark, not 5 % short", async () => {
+    const onReached = jest.fn();
+    await render(<TurnDial {...seven({ onReached })} />);
+    await flush();
+    // 49.5 of 51.4: 5 % short would have ticked; half the shared 1.6 (50.6) hasn't.
+    await turn(49.5, 1);
+    expect(onReached).not.toHaveBeenCalled();
+    // 1.5 more: 51.0.
+    await turn(45, 1 / 30);
+    expect(onReached).toHaveBeenCalledTimes(1);
+    // The mark sits 12.8 pt in on 1x's 365-pt feed, and the edge has reached within a few points of it.
+    expect(markX()).toBeCloseTo(targetX(STEP, LENS_FOV.main) * W, 6);
+    expect((1 + ghostShift(W)) * W - markX()).toBeLessThan(7);
+  });
+
+  it("makes up a short turn at the next photo, so the shortfall doesn't add up round the room", async () => {
+    const onReached = jest.fn();
+    const view = await render(<TurnDial {...seven({ onReached })} />);
+    await flush();
+    // Photo 2 taken 0.8 short (50.6 of 51.4, as the tick allows).
+    await turn(50.65, 1);
+    expect(onReached).toHaveBeenCalledTimes(1);
+    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2", line: "Photo 3 of 7" };
+    await view.rerender(<TurnDial {...seven({ onReached, ...next })} />);
+    await flush();
+    // The next turn aims 0.8 further: its mark moves left by as much, and a plain 51.4 is not yet far enough.
+    expect(markX()).toBeCloseTo(targetX(STEP + (STEP - 50.65), LENS_FOV.main) * W, 4);
+    expect(markX()).toBeLessThan(targetX(STEP, LENS_FOV.main) * W);
+    await turn(STEP - 0.6, 1);
+    expect(onReached).toHaveBeenCalledTimes(1);
+    await turn(30, 1 / 15);
+    expect(onReached).toHaveBeenCalledTimes(2);
+  });
+
+  it("carries nothing into the turn from a photo taken out of turn", async () => {
+    const onReached = jest.fn();
+    const view = await render(<TurnDial {...seven({ onReached })} />);
+    await flush();
+    await turn(50.65, 1);
+    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2", carry: false };
+    await view.rerender(<TurnDial {...seven({ onReached, ...next })} />);
+    await flush();
+    expect(markX()).toBeCloseTo(targetX(STEP, LENS_FOV.main) * W, 6);
+  });
+});
+
 describe("turn dial: no sensor", () => {
   it("stays static where the phone has no motion sensor", async () => {
     sensors.DeviceMotion.isAvailableAsync.mockResolvedValue(false);

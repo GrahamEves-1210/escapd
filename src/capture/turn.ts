@@ -236,10 +236,45 @@ export function turnProgress(turned: number, step: number): number {
   return Math.min(turned / step, 1);
 }
 
-/** Far enough: within 5 % of the turn (2.25 degrees at 1x's 45), well inside the overlap's margin. */
+/** Far enough, at most: within 5 % of the turn, where neighbours share plenty of view. */
 export const TURN_REACHED = 0.95;
 
-export const isTurnReached = (progress: number) => progress >= TURN_REACHED;
+/** The least slack allowed short of the turn (degrees): about the sensor's own noise over one turn. */
+export const MIN_TURN_SLACK = 0.5;
+
+/**
+ * How far into a turn of `step` degrees counts as far enough, 0 to 1, on a
+ * view `fov` across: short of the turn by 5 % (TURN_REACHED) or by half the
+ * view neighbours share, whichever is less, but never by under
+ * MIN_TURN_SLACK. With 7 photos on 1x (51.4 on 53.1) neighbours share only
+ * 1.6 degrees: 5 % (2.6) short at every photo would add up round the room
+ * to a gap of about 13 degrees between the last photo and the first. Half the
+ * share (0.8) keeps every pair overlapping, and the tick lands with the turn
+ * guide's edge within about 6 pt of its mark (on a 365-pt feed). Without a
+ * shared view (fov at or under the step) it is the least slack.
+ */
+export function turnReach(step: number, fov: number): number {
+  if (!(step > 0)) return TURN_REACHED;
+  const slack = Math.max(MIN_TURN_SLACK, Math.min(step * (1 - TURN_REACHED), (fov - step) / 2));
+  return Math.max(0, 1 - slack / step);
+}
+
+export const isTurnReached = (progress: number, reach = TURN_REACHED) => progress >= reach - 1e-9;
+
+/** What a turn carries into the next, at most this share of a step either way: past that it wasn't a turn toward the stop. */
+const MAX_CARRY = 0.5;
+
+/**
+ * The carry into the turn after `old`: what `old` fell short of its target
+ * (negative: went past), its target already holding what it carried itself;
+ * only after a turn that was shown and went far enough (the photo was taken
+ * on the guide), otherwise 0.
+ */
+export function turnCarry(old: { shown: boolean; reached: boolean; target: number; turned: number }, step: number): number {
+  if (!old.shown || !old.reached || !(step > 0)) return 0;
+  const limit = step * MAX_CARRY;
+  return Math.min(Math.max(old.target - old.turned, -limit), limit);
+}
 
 /**
  * Progress as drawn: in steps of 1 / steps so the dial redraws only when the

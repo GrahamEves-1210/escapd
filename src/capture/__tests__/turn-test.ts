@@ -7,7 +7,8 @@ import {
   LENS_FOV,
   MAX_SAMPLE_GAP,
   MIN_OVERLAP,
-  TARGET_OVERLAP,
+  LENS_SHOTS,
+  MIN_TURN_SLACK,
   TURN_DEADBAND,
   TURN_REACHED,
   LENS_ASPECT,
@@ -32,7 +33,9 @@ import {
   turnPlan,
   turnStep,
   turnProgress,
+  turnCarry,
   turnRate,
+  turnReach,
   viewX,
 } from "@/capture/turn";
 import { GUIDE } from "@/capture/ui/look";
@@ -75,31 +78,26 @@ describe("turnPlan: photos and turn per lens", () => {
     expect(LENS_FOV.wide).toBeCloseTo(73.66, 2);
   });
 
-  it("aims for neighbours sharing at least 15 % of the view", () => {
-    expect(TARGET_OVERLAP).toBe(0.15);
+  it("goes round in the user's own counts: 7 photos on 1x, 5 on 0.5x", () => {
+    expect(LENS_SHOTS).toEqual({ main: 7, wide: 5 });
     expect(MIN_OVERLAP).toBe(0);
+    expect(MAX_PLATES).toBe(7);
   });
 
-  it("takes 8 photos 45 degrees apart on 1x, the default, neighbours sharing 8 degrees (15 %)", () => {
+  it("takes 7 photos 51.4 degrees apart on 1x, the default, neighbours sharing a thin 1.6-degree edge", () => {
     const plan = turnPlan("main");
-    expect(plan.shots).toBe(8);
-    expect(plan.step).toBe(45);
-    expect(plan.overlap).toBeCloseTo((LENS_FOV.main - 45) / LENS_FOV.main, 12);
-    expect(plan.overlap).toBeCloseTo(0.152, 3);
-    expect(plan.overlap).toBeGreaterThanOrEqual(TARGET_OVERLAP);
+    expect(plan.shots).toBe(7);
+    expect(plan.step).toBeCloseTo(360 / 7, 12);
+    expect(plan.overlap).toBeCloseTo((LENS_FOV.main - 360 / 7) / LENS_FOV.main, 12);
+    expect(plan.overlap * LENS_FOV.main).toBeCloseTo(1.63, 2);
     expect(plan.overlaps).toBe(true);
-    // 7 (51.4 apart) would share under 4 %.
-    expect((LENS_FOV.main - 360 / 7) / LENS_FOV.main).toBeLessThan(TARGET_OVERLAP);
-    // The limit is 1x's full turn.
-    expect(MAX_PLATES).toBe(8);
   });
 
-  it("takes 6 photos 60 degrees apart on 0.5x, sharing 13.7 degrees (19 %)", () => {
+  it("takes 5 photos 72 degrees apart on 0.5x, sharing 1.7 degrees", () => {
     const plan = turnPlan("wide");
-    expect(plan.shots).toBe(6);
-    expect(plan.step).toBe(60);
-    expect(plan.overlap).toBeCloseTo((LENS_FOV.wide - 60) / LENS_FOV.wide, 12);
-    expect(plan.overlap).toBeCloseTo(0.185, 3);
+    expect(plan.shots).toBe(5);
+    expect(plan.step).toBe(72);
+    expect(plan.overlap * LENS_FOV.wide).toBeCloseTo(1.66, 2);
     expect(plan.overlaps).toBe(true);
   });
 
@@ -117,34 +115,40 @@ describe("turnPlan: photos and turn per lens", () => {
       expect(plan.shots).toBeGreaterThanOrEqual(MIN_PLATES);
       expect(plan.shots).toBeLessThanOrEqual(MAX_PLATES);
       expect(plan.shots * plan.step).toBeCloseTo(360, 5);
-      expect(plan.overlap).toBeGreaterThanOrEqual(TARGET_OVERLAP);
+      expect(plan.overlaps).toBe(true);
     }
     expect(turnPlan("wide", 6, 8).shots).toBe(6);
   });
 });
 
 describe("rollPlan: the stops, and a lens switch mid-roll", () => {
-  it("puts an even circle's stops a turn apart from photo 1 at 0: 8 at 45 on 1x, 6 at 60 on 0.5x", () => {
-    expect(rollPlan("main").stops).toEqual([0, 45, 90, 135, 180, 225, 270, 315]);
-    expect(rollPlan("wide").stops).toEqual([0, 60, 120, 180, 240, 300]);
+  const even = (n: number) => Array.from({ length: n }, (_, i) => (i * 360) / n);
+  const close = (got: readonly number[], want: readonly number[]) => {
+    expect(got).toHaveLength(want.length);
+    got.forEach((deg, i) => expect(deg).toBeCloseTo(want[i], 9));
+  };
+
+  it("puts an even circle's stops a turn apart from photo 1 at 0: 7 at 51.4 on 1x, 5 at 72 on 0.5x", () => {
+    close(rollPlan("main").stops, even(7));
+    expect(rollPlan("wide").stops).toEqual([0, 72, 144, 216, 288]);
     expect(rollPlan("wide")).toMatchObject(turnPlan("wide"));
     expect(rollPlan("main")).toMatchObject(turnPlan("main"));
   });
 
   it("keeps the stops of photos already placed and shares the rest of the circle evenly", () => {
-    // 3 taken on 0.5x, then 1x: 240 degrees left need 6 gaps of at most 45.1: 5 more, 40 apart.
-    const plan = rollPlan("main", [0, 60, 120]);
-    expect(plan.shots).toBe(8);
-    expect(plan.stops).toEqual([0, 60, 120, 160, 200, 240, 280, 320]);
-    expect(plan.step).toBe(40);
+    // 3 taken on 0.5x, then 1x: 216 degrees left need 5 turns of at most 51.4: 4 more, 43.2 apart.
+    const plan = rollPlan("main", [0, 72, 144]);
+    expect(plan.shots).toBe(7);
+    close(plan.stops, [0, 72, 144, 187.2, 230.4, 273.6, 316.8]);
     expect(plan.overlaps).toBe(true);
   });
 
   it("re-spaces for 0.5x after photos on 1x, at least as many as taken and never more than the limit", () => {
-    // 3 taken on 1x, then 0.5x: 270 degrees left need 5 gaps of at most 62.6: 4 more, 54 apart.
-    const plan = rollPlan("wide", [0, 45, 90]);
-    expect(plan.shots).toBe(7);
-    expect(plan.stops).toEqual([0, 45, 90, 144, 198, 252, 306]);
+    // 3 taken on 1x, then 0.5x: 257.1 degrees left need 4 turns of at most 72: 3 more, 64.3 apart.
+    const kept = rollPlan("main").stops.slice(0, 3);
+    const plan = rollPlan("wide", kept);
+    expect(plan.shots).toBe(6);
+    expect(plan.step).toBeCloseTo((360 - kept[2]) / 4, 9);
     expect(plan.overlaps).toBe(true);
     for (let n = 1; n <= MAX_PLATES; n += 1) {
       for (const lens of ["wide", "main"] as const) {
@@ -165,28 +169,30 @@ describe("rollPlan: the stops, and a lens switch mid-roll", () => {
 
   it("switchLens: never fewer stops than the slots in use, and back again on the first lens", () => {
     const main = switchLens(rollPlan("wide"), 3, "main");
-    expect(main.shots).toBe(8);
-    expect(switchLens(main, 3, "wide").stops).toEqual([0, 60, 120, 180, 240, 300]);
-    // 1 taken on 1x: 0.5x's own 6.
-    expect(switchLens(rollPlan("main"), 1, "wide").shots).toBe(6);
-    // 5 of 8 taken on 1x, then 0.5x: the last 180 degrees in 3 turns of 60, so 7 in all.
-    const late = switchLens(rollPlan("main"), 5, "wide");
-    expect(late.stops).toEqual([0, 45, 90, 135, 180, 240, 300]);
+    expect(main.shots).toBe(7);
+    expect(switchLens(main, 3, "wide").stops).toEqual([0, 72, 144, 216, 288]);
+    // 1 taken on 1x: 0.5x's own 5.
+    expect(switchLens(rollPlan("main"), 1, "wide").shots).toBe(5);
+    // 4 of 7 taken on 1x, then 0.5x: the last 205.7 degrees in 3 turns of 68.6, so 6 in all.
+    const late = switchLens(rollPlan("main"), 4, "wide");
+    expect(late.shots).toBe(6);
+    expect(late.step).toBeCloseTo((360 - (3 * 360) / 7) / 3, 9);
   });
 
   it("switchLens: once every stop is reached the stops stay, and only the overlap follows the lens", () => {
     const wide = rollPlan("wide");
-    const after = switchLens(wide, 6, "main");
+    const after = switchLens(wide, 5, "main");
     expect(after.stops).toBe(wide.stops);
-    expect(after.shots).toBe(6);
+    expect(after.shots).toBe(5);
+    // 72 apart on 1x's 53.1: a gap.
     expect(after.overlaps).toBe(false);
   });
 
   it("firstLens: photos in before the lens was known get its even circle when it holds them", () => {
-    expect(firstLens(rollPlan("main"), 3, "wide").stops).toEqual([0, 60, 120, 180, 240, 300]);
-    expect(firstLens(rollPlan("main"), 6, "wide").stops).toEqual([0, 60, 120, 180, 240, 300]);
-    // More than 0.5x's 6: they keep their stops.
-    expect(firstLens(rollPlan("main"), 7, "wide").stops.slice(0, 7)).toEqual(rollPlan("main").stops.slice(0, 7));
+    expect(firstLens(rollPlan("main"), 3, "wide").stops).toEqual([0, 72, 144, 216, 288]);
+    expect(firstLens(rollPlan("main"), 5, "wide").stops).toEqual([0, 72, 144, 216, 288]);
+    // More than 0.5x's 5: they keep their stops.
+    expect(firstLens(rollPlan("main"), 6, "wide").stops.slice(0, 6)).toEqual(rollPlan("main").stops.slice(0, 6));
     expect(firstLens(rollPlan("wide"), 3, "main").stops).toEqual(rollPlan("main").stops);
   });
 
@@ -243,10 +249,12 @@ describe("DeviceMotion's units (expo-sensors 58, as installed)", () => {
     }
     // Half a second: 30 degrees, to the right.
     expect(turned).toBeCloseTo(30, 3);
-    // Not yet 1x's 45 turn; 13 more degrees is (within 5 %: 42.75).
-    expect(isTurnReached(turnProgress(turned, turnPlan("main").step))).toBe(false);
-    expect(isTurnReached(turnProgress(turned + 12, turnPlan("main").step))).toBe(false);
-    expect(isTurnReached(turnProgress(turned + 13, turnPlan("main").step))).toBe(true);
+    // Not yet 1x's 51.4 turn: far enough is within half the shared 1.6 degrees (50.6).
+    const { step } = turnPlan("main");
+    const reach = turnReach(step, LENS_FOV.main);
+    expect(isTurnReached(turnProgress(turned, step), reach)).toBe(false);
+    expect(isTurnReached(turnProgress(turned + 20.5, step), reach)).toBe(false);
+    expect(isTurnReached(turnProgress(turned + 20.7, step), reach)).toBe(true);
     // The same turn misread as rad/s (1.047) would be under the deadband: no turn at all.
     expect(integrateTurn(0, (60 * Math.PI) / 180, 1 / 30)).toBe(0);
   });
@@ -311,6 +319,59 @@ describe("the turn from motion", () => {
     expect(isTurnReached(turnProgress(57, 60))).toBe(true);
   });
 
+  it("ties far enough to the view neighbours share, so a thin shared edge isn't turned short of at every photo", () => {
+    // A wide share keeps the 5 % (3 degrees of a 60 turn on a 73.7 view).
+    expect(turnReach(60, LENS_FOV.wide)).toBeCloseTo(TURN_REACHED, 12);
+    // 1x's 7: half the 1.63 shared, 0.82 short; 5 % (2.57) at each of 7 photos would open a gap of about 13 degrees between the last and the first.
+    const main = turnPlan("main");
+    const slack = (1 - turnReach(main.step, LENS_FOV.main)) * main.step;
+    expect(slack).toBeCloseTo((LENS_FOV.main - main.step) / 2, 9);
+    expect(slack).toBeCloseTo(0.82, 2);
+    expect(6 * main.step * (1 - TURN_REACHED)).toBeCloseTo(15.4, 1);
+    // Six turns stopped at the tick lose at most 4.9 degrees round the room, under a third of that.
+    expect(6 * slack).toBeLessThan((6 * main.step * (1 - TURN_REACHED)) / 3);
+    // 0.5x's 5: half its 1.66.
+    const wide = turnPlan("wide");
+    expect((1 - turnReach(wide.step, LENS_FOV.wide)) * wide.step).toBeCloseTo(0.83, 2);
+    // Never closer than the sensor can tell: with no shared view at all, MIN_TURN_SLACK.
+    expect((1 - turnReach(60, 55)) * 60).toBeCloseTo(MIN_TURN_SLACK, 12);
+    expect(turnReach(0, 50)).toBe(TURN_REACHED);
+  });
+
+  it("carries a turn's shortfall (or overshoot) into the next, only from a turn shown and far enough, at most half a step", () => {
+    const step = 360 / 7;
+    expect(turnCarry({ shown: true, reached: true, target: step, turned: step - 0.8 }, step)).toBeCloseTo(0.8, 12);
+    expect(turnCarry({ shown: true, reached: true, target: step, turned: step + 3 }, step)).toBeCloseTo(-3, 12);
+    // A target that already held a carry passes on only what is still owed.
+    expect(turnCarry({ shown: true, reached: true, target: step + 0.8, turned: step + 0.5 }, step)).toBeCloseTo(0.3, 12);
+    expect(turnCarry({ shown: true, reached: true, target: step, turned: step + 80 }, step)).toBeCloseTo(-step / 2, 12);
+    expect(turnCarry({ shown: false, reached: true, target: step, turned: 10 }, step)).toBe(0);
+    expect(turnCarry({ shown: true, reached: false, target: step, turned: 10 }, step)).toBe(0);
+    // Stopping at every tick then costs nothing round the room: each turn makes up the last.
+    let carried = 0;
+    let heading = 0;
+    for (let photo = 1; photo < 7; photo += 1) {
+      const target = step + carried;
+      const turned = target * turnReach(target, LENS_FOV.main);
+      heading += turned;
+      carried = turnCarry({ shown: true, reached: true, target, turned }, step);
+    }
+    // Photo 7 within a degree of its stop (308.6), however short each tick: photo 7 and photo 1 still overlap.
+    expect(heading).toBeGreaterThan(6 * step - 1);
+    expect(6 * step + LENS_FOV.main - 360 - (6 * step - heading)).toBeGreaterThan(0);
+  });
+
+  it("ticks with the turn guide's edge within a few points of its mark on 1x's 365-pt feed and 0.5x's 273.8", () => {
+    for (const [lens, width] of [["main", 365], ["wide", 273.8]] as const) {
+      const { step } = turnPlan(lens);
+      const fov = LENS_FOV[lens];
+      const atTick = edgeX(step * turnReach(step, fov), fov) * width;
+      const mark = targetX(step, fov) * width;
+      expect(atTick - mark).toBeGreaterThan(0);
+      expect(atTick - mark).toBeLessThan(7);
+    }
+  });
+
   it("draws progress in fine steps, or in quarters under Reduce Motion (no sweep)", () => {
     expect(quantizeProgress(0.513, false)).toBe(0.5);
     expect(quantizeProgress(0.527, false)).toBe(0.52);
@@ -353,15 +414,15 @@ describe("the turn guide's geometry: the last photo's edge on the feed", () => {
     expect(edgeX(-5, fov)).toBeGreaterThan(1);
   });
 
-  it("marks where the edge has to be for the plan's turn: 1x's 45 at 0.165 across, 0.5x's 60 at 0.214", () => {
+  it("marks where the edge has to be for the plan's turn: 1x's 51.4 at 0.035 across, 0.5x's 72 at 0.030, a thin strip on the left", () => {
     const main = turnPlan("main");
     const wide = turnPlan("wide");
-    expect(targetX(main.step, LENS_FOV.main)).toBeCloseTo(0.5 - (0.5 * Math.tan((45 - LENS_FOV.main / 2) * DEG)) / Math.tan((LENS_FOV.main / 2) * DEG), 12);
-    expect(targetX(main.step, LENS_FOV.main)).toBeCloseTo(0.1655, 3);
-    expect(targetX(wide.step, LENS_FOV.wide)).toBeCloseTo(0.2142, 3);
-    // On 393 x 852: 1x's 365-pt-wide 3:4 feed has the mark 60 pt in; 0.5x's 273.8-pt 9:16 one, 58.7.
-    expect(targetX(main.step, LENS_FOV.main) * 365).toBeCloseTo(60.4, 0);
-    expect(targetX(wide.step, LENS_FOV.wide) * 273.8).toBeCloseTo(58.7, 0);
+    expect(targetX(main.step, LENS_FOV.main)).toBeCloseTo(0.5 - (0.5 * Math.tan((main.step - LENS_FOV.main / 2) * DEG)) / Math.tan((LENS_FOV.main / 2) * DEG), 12);
+    expect(targetX(main.step, LENS_FOV.main)).toBeCloseTo(0.0352, 3);
+    expect(targetX(wide.step, LENS_FOV.wide)).toBeCloseTo(0.0295, 3);
+    // On 393 x 852: 1x's 365-pt-wide 3:4 feed has the mark 12.8 pt in; 0.5x's 273.8-pt 9:16 one, 8.1. Still on the feed, clear of its edge.
+    expect(targetX(main.step, LENS_FOV.main) * 365).toBeCloseTo(12.8, 0);
+    expect(targetX(wide.step, LENS_FOV.wide) * 273.8).toBeCloseTo(8.1, 0);
   });
 
   it("leaves exactly the plan's overlap left of the mark: the angle from the frame's left edge to it is fov - step", () => {

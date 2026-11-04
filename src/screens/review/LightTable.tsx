@@ -106,7 +106,8 @@ export function LightTable({ flag, issue: issueParam }: { flag?: string; issue?:
               ) : null}
             </View>
           ) : null}
-          {plates.length < plan.shots ? <AddPlateButton onPress={() => router.push("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
+          {/* Back to the camera the player came from (under this screen), not a second one pushed over it; replaces this screen when there is none. A retake is pushed: it returns here when done. */}
+          {plates.length < plan.shots ? <AddPlateButton onPress={() => router.dismissTo("/capture")} style={hasPlates ? styles.add : styles.addFirst} /> : null}
         </View>
         <PageFade color={palette.page} height={GAP.top} solidAt="top" style={styles.topFade} />
       </View>

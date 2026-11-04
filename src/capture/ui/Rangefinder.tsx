@@ -112,7 +112,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   // The last photo the player took here, from the moment its shutter fired:
   // where they stand, and what the turn is counted from (`key` restarts it).
   // `lens`: the lens it was taken on (the turn guide lays that photo over the feed only on the same lens).
-  const [anchor, setAnchor] = useState<{ slot: number; key: string; lens: LensChoice } | null>(null);
+  // `inTurn`: it was taken in turn (its turn makes up what the one into it fell short).
+  const [anchor, setAnchor] = useState<{ slot: number; key: string; lens: LensChoice; inTurn: boolean } | null>(null);
   const shutterCount = useRef(0);
   const [flash, setFlash] = useState(false);
   const [grid, setGrid] = useState(false);
@@ -241,6 +242,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
     // The lens (and frame) this photo is taken on, held through its processing.
     const lens = lenses.choice;
     const shotFrame = frame;
+    const shotInTurn = inTurn;
     inFlight.current = true;
     setShooting(true);
     setHeld({ index: nextIndex, taken: plates.length, inTurn });
@@ -253,7 +255,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       // from here, including while the photo is prepared.
       if (retakeIndex === null) {
         shutterCount.current += 1;
-        setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}`, lens });
+        setAnchor({ slot: nextIndex, key: `shot-${shutterCount.current}`, lens, inTurn: shotInTurn });
       }
       // Cropped to the frame the player saw (3:4 on 1x, 9:16 on 0.5x).
       const plate = await processPhoto(picture, shotFrame.aspect);
@@ -357,6 +359,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
                 listening={turnListening}
                 active={turnActive}
                 resetKey={anchor?.key ?? "none"}
+                carry={anchor?.inTurn ?? false}
                 // The last photo over the feed only on the lens it was taken on (the same view and frame).
                 ghost={turnActive && !switching && anchor && anchor.lens === lenses.choice && slots[anchor.slot]?.uri
                   ? { uri: slots[anchor.slot]!.uri, width: viewfinder.width, height: viewfinder.height }

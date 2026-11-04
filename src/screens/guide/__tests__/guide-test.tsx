@@ -567,7 +567,7 @@ describe("swipeStep", () => {
 describe("photo guide: the 360", () => {
   it("teaches standing in the middle and turning all the way round, then keeping the shots private and steady", () => {
     expect(STEPS.map((step) => step.title)).toEqual(["Stand in the middle", "Turn right, shoot again", "All the way round", "Just the room"]);
-    expect(STEPS[1].body).toBe("Turn a little. Keep part of the last photo in view.");
+    expect(STEPS[1].body).toBe("Turn a little. Keep a sliver of the last photo in view.");
     expect(STEPS[2].body).toBe("The camera shows each turn until you're back at the start.");
     expect(STEPS[3].body).toBe("Keep faces out of the shot. Lights on, hold steady.");
     // No spot-by-spot photos, no darkroom words.

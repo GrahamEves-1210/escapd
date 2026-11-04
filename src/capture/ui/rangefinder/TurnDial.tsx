@@ -62,11 +62,13 @@ export interface TurnDialProps {
   ghost?: { uri: string; width: number; height: number } | null;
   /** The lens's view across the frame, degrees (LENS_FOV): places the guide's lines. */
   fov: number;
+  /** The photo the turn is counted from was taken in turn: the turn makes up what the one into it fell short. Default true. */
+  carry?: boolean;
   /** The light tick. */
   onReached: () => void;
 }
 
-export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, fov, ghost = null }: TurnDialProps) {
+export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, fov, carry = true, ghost = null }: TurnDialProps) {
   const { reducedMotion } = useTheme();
   const reachedNow = useCallback(() => {
     onReached();
@@ -75,7 +77,10 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
   const shots = stops.length;
   // The turn to the target: from the stop before it.
   const step = target === null ? turnStep(stops, shots - 1) : turnStep(stops, target);
-  const turn = useTurnTracking({ listening, active, step, resetKey, reducedMotion, onReached: reachedNow });
+  // Far enough is tied to the view neighbours share (turnReach), and each turn
+  // makes up what the last fell short of (turn.target), so a thin shared edge
+  // isn't lost bit by bit round the room.
+  const turn = useTurnTracking({ listening, active, step, fov, resetKey, carry, reducedMotion, onReached: reachedNow });
   // The arc runs from the stop before the target, clockwise.
   const from = target === null ? 0 : stops[(target - 1 + shots) % shots];
   const arc = turn.tracking && target !== null ? arcPath(C, C, R, from, turn.progress * step) : "";
@@ -83,7 +88,7 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
   return (
     <>
     {ghost && active && target !== null ? (
-      <TurnGuide {...ghost} fov={fov} step={step} turned={turn.turned} tracking={turn.tracking} reached={turn.reached} />
+      <TurnGuide {...ghost} fov={fov} step={turn.target} turned={turn.turned} tracking={turn.tracking} reached={turn.reached} />
     ) : null}
     <View
       style={styles.slot}

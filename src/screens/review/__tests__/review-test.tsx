@@ -19,7 +19,7 @@ import LightTableScreen from "../../../../app/capture/review";
 import { COPY, plateLabelSpoken, plateName } from "../copy";
 
 jest.mock("expo-router", () => ({
-  router: { back: jest.fn(), replace: jest.fn(), push: jest.fn(), canGoBack: jest.fn(() => true) },
+  router: { back: jest.fn(), replace: jest.fn(), push: jest.fn(), dismissTo: jest.fn(), canGoBack: jest.fn(() => true) },
   useLocalSearchParams: jest.fn(() => ({})),
 }));
 
@@ -268,11 +268,13 @@ describe("photos", () => {
     expect(mockFeedback.thud).not.toHaveBeenCalled();
   });
 
-  it("adds a photo from the ghost pill, which is gone once 6 are taken", async () => {
+  it("adds a photo from the ghost pill, back on the camera it came from, and the pill is gone once the plan's count is in", async () => {
     fill(MAX_PLATES - 1);
     const { unmount } = await renderAt();
     await userEvent.setup().press(screen.getByRole("button", { name: COPY.add }));
-    expect(router.push).toHaveBeenCalledWith("/capture");
+    // The camera under this screen, not a second one pushed over it (two cameras mounted at once fought over the roll's lens).
+    expect(router.dismissTo).toHaveBeenCalledWith("/capture");
+    expect(router.push).not.toHaveBeenCalledWith("/capture");
     await unmount();
     fill(MAX_PLATES);
     await renderAt();

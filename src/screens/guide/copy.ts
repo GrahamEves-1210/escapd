@@ -13,7 +13,7 @@ export interface GuideStep {
 
 export const STEPS: readonly GuideStep[] = [
   { title: "Stand in the middle", body: "Face any wall and take the first photo." },
-  { title: "Turn right, shoot again", body: "Turn a little. Keep part of the last photo in view." },
+  { title: "Turn right, shoot again", body: "Turn a little. Keep a sliver of the last photo in view." },
   { title: "All the way round", body: "The camera shows each turn until you're back at the start." },
   { title: "Just the room", body: "Keep faces out of the shot. Lights on, hold steady." },
 ];

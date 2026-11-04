@@ -20,12 +20,12 @@ export const GLOW = {
  * is left to the text layout, whose measure of the handwriting can come up a
  * glyph short on a phone and cut the end off ("the cat waits outsi").
  */
-export const NOTES: readonly string[] = ["any wall is fine!", "a little overlap\nhelps", "nearly there...", "the cat waits\noutside"];
+export const NOTES: readonly string[] = ["any wall is fine!", "a sliver will do", "nearly there...", "the cat waits\noutside"];
 
 /**
  * The note: its size, where it sits on the art box (from its top right), its
  * lean, and its box: a fixed `width` with `pad` to spare at the right for the
- * hand's overhang, wider than its longest line ("a little overlap", about
- * 112 at 18), shrinking to `minScale` before anything is cut.
+ * hand's overhang, wider than its longest line ("any wall is fine!", about
+ * 100 at 18), shrinking to `minScale` before anything is cut.
  */
 export const NOTE = { fontSize: 18, lineHeight: 22, top: -6, right: -18, turn: "6deg", width: 136, pad: 6, lines: 2, minScale: 0.8, maxFontScale: 1.2 } as const;
