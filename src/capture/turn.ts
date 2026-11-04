@@ -48,13 +48,13 @@ export const LENS_FOV: Readonly<Record<LensChoice, number>> = {
 };
 
 /**
- * How much of their width neighbouring photos should share at least: enough
- * to line one up against the last (the turn guide's ghost shows exactly this
- * share). 1x (53.1) takes 8 photos 45 apart, sharing 8 degrees (15 %); 0.5x
- * (73.7) 6 photos 60 apart, sharing 14 degrees (18 %). The user's own full
- * turn with the Camera app at 1x took 7 to 8.
+ * Photos all the way round on each lens, as the user found by turning with
+ * the phone's own Camera app: 1x 7 (51.4 degrees apart, a thin shared edge on
+ * a 53-57 degree view), 0.5x 5 (72 apart on a 74 degree view). Few photos
+ * matter more than a wide overlap: the turn guide lines each photo up
+ * against the last.
  */
-export const TARGET_OVERLAP = 0.15;
+export const LENS_SHOTS: Readonly<Record<LensChoice, number>> = { wide: 5, main: 7 };
 
 /**
  * Neighbours that share any of the view overlap: "keep part of the last photo
@@ -85,8 +85,8 @@ export interface RollPlan extends TurnPlan {
   stops: readonly number[];
 }
 
-/** The widest turn that keeps TARGET_OVERLAP on this lens. */
-const idealStep = (lens: LensChoice) => LENS_FOV[lens] * (1 - TARGET_OVERLAP);
+/** The turn between photos on an even circle of LENS_SHOTS for this lens. */
+const idealStep = (lens: LensChoice) => 360 / LENS_SHOTS[lens];
 
 function overlapOf(lens: LensChoice, step: number): Pick<TurnPlan, "overlap" | "overlaps"> {
   const fov = LENS_FOV[lens];
@@ -98,9 +98,10 @@ function overlapOf(lens: LensChoice, step: number): Pick<TurnPlan, "overlap" | "
  * The roll's stops for `lens`. The photos already placed keep their stops
  * (`kept`, slots 0 on, in order; none for a new roll); the rest of the circle,
  * from the last kept stop back round to photo 1, is shared evenly between the
- * fewest more photos that keep TARGET_OVERLAP on this lens, held to the photo
- * limits (never fewer than the photos kept). With nothing kept it is an even
- * circle: 1x (53.1) 8 photos 45 apart, 0.5x (73.7) 6 photos 60 apart.
+ * fewest more photos that turn no wider than this lens's even circle
+ * (LENS_SHOTS), held to the photo limits (never fewer than the photos kept).
+ * With nothing kept it is an even circle: 1x 7 photos 51.4 apart, 0.5x 5
+ * photos 72 apart.
  * Held to the limit, the turn widens rather than stop
  * short of the start: the photos are shown as a loop round the room (the
  * build wait, the play screen), so the plan always closes the circle.

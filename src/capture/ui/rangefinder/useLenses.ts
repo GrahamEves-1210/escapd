@@ -61,30 +61,30 @@ export interface Lenses {
 }
 
 export function useLenses(camera: RefObject<CameraView | null>, initial: LensChoice | null = null): Lenses {
-  const [lenses, setLenses] = useState<readonly LensInfo[]>([]);
+  // The ultra-wide's deviceType, sticky once any list has reported it: a list
+  // read from the ultra-wide's own camera (or one mounting) can leave it out,
+  // and dropping it would flip the lens back to 1x, remount the camera, and
+  // round again.
+  const [ultraWide, setUltraWide] = useState<string | null>(null);
   const [listed, setListed] = useState(Platform.OS !== "ios");
   // Null until the player picks a lens (or the roll was on one): then the default follows the hardware.
   const [choice, setChoice] = useState<LensChoice | null>(initial);
+
+  const take = useCallback((list: readonly LensInfo[]) => {
+    const found = list.find((lens) => lens.deviceType === ULTRA_WIDE_LENS)?.deviceType ?? null;
+    if (found) setUltraWide(found);
+    setListed(true);
+  }, []);
 
   const read = useCallback(() => {
     if (Platform.OS !== "ios") return;
     const view = camera.current;
     if (!view) return;
-    view.getAvailableLensesAsync().then(
-      (list) => {
-        setLenses(list);
-        setListed(true);
-      },
-      () => setListed(true),
-    );
-  }, [camera]);
+    view.getAvailableLensesAsync().then(take, () => setListed(true));
+  }, [camera, take]);
 
-  const onChanged = useCallback((event: AvailableLenses) => {
-    setLenses(event.lenses);
-    setListed(true);
-  }, []);
+  const onChanged = useCallback((event: AvailableLenses) => take(event.lenses), [take]);
 
-  const ultraWide = lenses.find((lens) => lens.deviceType === ULTRA_WIDE_LENS)?.deviceType ?? null;
   const current = lensFor(ultraWide, choice);
 
   return {

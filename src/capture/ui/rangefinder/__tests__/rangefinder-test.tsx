@@ -6,7 +6,7 @@ import { act, fireEvent, render, screen, userEvent, waitFor } from "@testing-lib
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { processPhoto, type ProcessedPlate, type RawPhoto } from "@/capture/process-photo";
-import { addPlate, clearPlates, getPlates, getSlots, removePlate, setRollLens } from "@/capture/roll";
+import { addPlate, clearPlates, getPlates, getRollPlanState, getSlots, removePlate, setRollLens } from "@/capture/roll";
 import { platePrompts } from "@/capture/slots";
 import { LENS_FOV, dialPoint, rollPlan, targetX } from "@/capture/turn";
 import { setMode } from "@/game/mode";
@@ -51,8 +51,11 @@ jest.mock("expo-router", () => {
   return {
     router: { push: jest.fn(), back: jest.fn() },
     useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, [effect]),
+    // Every camera in a test is focused unless a test says otherwise (mockFocus).
+    useIsFocused: () => mockFocus.focused,
   };
 });
+const mockFocus = { focused: true };
 jest.mock("expo-image-picker", () => ({ launchImageLibraryAsync: jest.fn() }));
 // A DeviceMotion the test drives (as in turnDial-test): off unless a test turns it on.
 type MockMotionListener = (sample: unknown) => void;
@@ -178,6 +181,7 @@ beforeEach(() => {
   camera.takePictureAsync.mockResolvedValue(raw("shot"));
   camera.mounted.length = 0;
   camera.swapped.length = 0;
+  mockFocus.focused = true;
   // An iPhone with an ultra-wide, as most are: 0.5 is offered once the camera is ready; the 360 runs on 1x.
   camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
 });
@@ -307,6 +311,60 @@ describe("Rangefinder: ready", () => {
     await fireEvent.press(screen.getByTestId("shutter"));
     await flush();
     expect(develop).toHaveBeenLastCalledWith(raw("shot"), 9 / 16);
+  });
+
+  it("never loops with two cameras mounted at once on different lenses (one left under the review screen, one pushed for a retake)", async () => {
+    // The worst case: both say they're focused. Each commits its own lens once, on a change of its own.
+    await render(
+      <>
+        <Rangefinder retakeIndex={null} onClose={jest.fn()} />
+        <Rangefinder retakeIndex={null} onClose={jest.fn()} />
+      </>,
+    );
+    for (const area of screen.getAllByTestId("viewfinder")) await fireEvent(area, "layout", { nativeEvent: { layout: { x: 0, y: 0, ...AREA } } });
+    const cams = () => screen.getAllByTestId("camera", hidden);
+    for (let i = 0; i < 2; i += 1) {
+      await act(async () => cams()[i].props.onCameraReady());
+      await act(async () => cams()[i].props.onCameraReady());
+    }
+    // The first camera goes to 0.5; the second stays on 1.0 and doesn't pull the roll back.
+    await fireEvent.press(screen.getAllByRole("radio", { name: COPY.ultraWide })[0]);
+    await flush();
+    expect(getRollPlanState().lens).toBe("wide");
+    expect(stateOf(screen.getAllByRole("radio", { name: COPY.mainLens })[1])).toMatchObject({ selected: true });
+    // The second one changing its own lens commits once, and the first doesn't answer back.
+    await fireEvent.press(screen.getAllByRole("radio", { name: COPY.mainLens })[0]);
+    await fireEvent.press(screen.getAllByRole("radio", { name: COPY.ultraWide })[1]);
+    await flush();
+    expect(getRollPlanState().lens).toBe("wide");
+  });
+
+  it("only the focused camera tells the roll its lens", async () => {
+    setRollLens("wide");
+    mockFocus.focused = false;
+    await renderCamera();
+    await cameraReady();
+    await act(async () => cameraProps().onCameraReady());
+    await fireEvent.press(screen.getByRole("radio", { name: COPY.mainLens }));
+    await flush();
+    // Not focused: the roll keeps its lens.
+    expect(getRollPlanState().lens).toBe("wide");
+  });
+
+  it("keeps the ultra-wide once seen, when the ultra-wide's own camera reports a list without it", async () => {
+    await renderCamera();
+    await cameraReady();
+    await pickLens(COPY.ultraWide);
+    const mounts = camera.mounted.length;
+    // The ultra-wide's camera lists only the main lens (or nothing) as it starts.
+    await act(async () => cameraProps().onAvailableLensesChanged({ lenses: [{ deviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera", localizedName: "Back Camera" }] }));
+    await act(async () => cameraProps().onAvailableLensesChanged({ lenses: [] }));
+    await flush();
+    // Still 0.5: no flip back to 1.0, no new camera, the segment still there.
+    expect(cameraProps().selectedLens).toBe(ULTRA_WIDE_LENS);
+    expect(camera.mounted).toHaveLength(mounts);
+    expect(stateOf(screen.getByRole("radio", { name: COPY.ultraWide }))).toMatchObject({ selected: true });
+    expect(getRollPlanState().lens).toBe("wide");
   });
 
   it("frees the shutter if a new lens's camera never says it's ready", async () => {

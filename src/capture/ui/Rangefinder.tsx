@@ -43,7 +43,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import type { CameraView } from "expo-camera";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useIsFocused } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { processPhoto } from "@/capture/process-photo";
 import { addPlate, firstOpenSlot, getPlates, getRollPlan, getRollPlanState, replacePlate, usePlates, useRollPlan, useSlots } from "@/capture/roll";
@@ -133,7 +133,10 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
   // stops and its words at once. Until the phone's lenses are known (iOS
   // reads them once the camera is ready) the roll's lens stands, or on a new
   // roll 1x, the default, so the count doesn't change as the camera starts.
-  const plan = useRollPlan(lenses.settled ? lenses.choice : (getRollPlanState().lens ?? "main"));
+  // Only the focused camera tells the roll its lens (another can sit mounted
+  // under the review screen); its lens is committed once per change.
+  const focused = useIsFocused();
+  const plan = useRollPlan(lenses.settled ? lenses.choice : (getRollPlanState().lens ?? "main"), focused);
   const prompts = useMemo(() => platePrompts(plan.stops), [plan.stops]);
   // The slot this shot fills: the retake's, or the first open one (the plan's count once every photo is in).
   const nextIndex = retakeIndex ?? firstOpenSlot(slots, plan.shots) ?? plan.shots;

@@ -134,13 +134,23 @@ function replan(state: RollPlanState, inUse: number, lens: LensChoice): RollPlan
  * it). A lens the roll isn't on yet is shown as its switch will plan it, in
  * this same render, and committed to the roll (setRollLens) straight after,
  * so the dial, counter and prompts follow a lens switch at once.
+ *
+ * `commit` (default true): this screen may tell the roll its lens; a camera
+ * that isn't the focused screen passes false. The lens is committed once per
+ * change of this screen's own lens (or when it starts committing), never in
+ * answer to the roll's lens changing: two cameras mounted at once (one left
+ * under the review screen, another pushed for a retake) each answering the
+ * other's commit with its own looped forever ("Maximum update depth
+ * exceeded" opening the camera on an iPhone).
  */
-export function useRollPlan(lens: LensChoice | null = null): RollPlan {
+export function useRollPlan(lens: LensChoice | null = null, commit = true): RollPlan {
   const state = useSyncExternalStore(subscribePlates, getRollPlanState, getRollPlanState);
   const inUse = useSlots().length;
   useEffect(() => {
-    if (lens !== null && lens !== state.lens) setRollLens(lens);
-  }, [lens, state.lens]);
+    if (!commit || lens === null) return;
+    // Read, not a dependency: the roll's lens changing elsewhere is no reason to commit again.
+    if (getRollPlanState().lens !== lens) setRollLens(lens);
+  }, [lens, commit]);
   return lens === null || lens === state.lens ? state.plan : replan(state, inUse, lens);
 }
 

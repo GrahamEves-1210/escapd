@@ -22,6 +22,7 @@ jest.mock("expo-router", () => {
     useLocalSearchParams: jest.fn(() => ({})),
     // Focus effects run as effects: the screen is focused from mount until unmount.
     useFocusEffect: (effect: () => void | (() => void)) => useEffect(effect, [effect]),
+    useIsFocused: () => true,
     Stack: { Screen: jest.fn(() => null) },
   };
 });
