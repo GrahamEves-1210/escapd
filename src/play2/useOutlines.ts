@@ -1,10 +1,11 @@
-// The objects' real outlines on a photo: the glint hugs each object's shape.
+// The objects' real outlines on a photo: where each object's glint sparkles
+// sit (along its shape; the outline itself is never drawn).
 // A room generated with segmentation carries each object's outline (Gemini's
 // mask, traced on the server: supabase/functions/_shared/v2/segment.ts); for
 // an object without one (older rooms, or a mask that failed), it is traced on
 // the device (src/game/outline.ts) in idle moments once the photo is up. Kept
 // for the launch, keyed by the photo and the box. An object whose shape can't
-// be found (or any failure) keeps the faint oval.
+// be found (or any failure) has its sparkles round an oval in its box.
 import { useEffect, useState } from "react";
 import type { Rect as Box } from "@/engine/v2";
 import { traceOutline, type Point } from "@/game/outline";

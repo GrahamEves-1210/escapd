@@ -1,7 +1,8 @@
 // One photo of the room, in the dark (gameplay v2 §2 "Discover"). The room
 // sits in shadow; the player's finger sweeps a torch beam, and objects worth a
-// look catch the light: a faint line along each one's real outline glints as
-// the beam passes (or never, in the hard "no glints" setting). A tap looks at what is under the finger. A
+// look catch the light: a few small sparkles twinkle round each one where the
+// beam falls on it (violet under UV; never in the hard "no glints" setting). A
+// tap points the light. A
 // lit lamp throws its own pool of light; a UV mark glows; an opened panel and a
 // pinned card show where the room changed. A fast horizontal fling turns to the
 // next view.
@@ -12,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
-  BlurMask, Canvas, Circle, Group, Oval, Paint, Path, RadialGradient, Rect, RoundedRect, vec,
+  BlurMask, Canvas, Circle, Group, Paint, Path, RadialGradient, Rect, RoundedRect, Skia, vec, type SkPath,
 } from "@shopify/react-native-skia";
 import { GestureDetector, useCompetingGestures, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import Animated, {
@@ -23,7 +24,6 @@ import type { Overlay, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
-import { outlinePath } from "@/game/outline";
 import { useTheme } from "@/theme/ThemeProvider";
 import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
@@ -35,7 +35,7 @@ export interface StageObject {
   id: string;
   label: string;
   box: Box;
-  /** The object's outline from its definition (photo fractions), when the room has one; else traced here. */
+  /** The object's outline from its definition (photo fractions), when the room has one; else traced here. Its sparkles sit along it. */
   outline?: { x: number; y: number }[];
   seen: boolean;
 }
@@ -73,7 +73,7 @@ export interface StageProps {
    * place on screen (drops from the tray are hit-tested against it).
    */
   onFrame?: (frame: { x: number; y: number; width: number; height: number }) => void;
-  /** Show interactives (accessibility): a faint outline on every object, always. */
+  /** Show interactives (accessibility): every object's sparkles stay faintly lit, beam or not. */
   assist: boolean;
   onLook: (objectId: string | null) => void;
   onPage: (dir: 1 | -1) => void;
@@ -97,18 +97,18 @@ export function Stage({
 }: StageProps) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
-  // The glints' shimmer: one slow clock for every outline (still, with reduced motion or no glints).
-  const shimmer = useSharedValue(0);
+  // The sparkles' clock: one slow loop for every object (held still, below 0, with reduced motion or no glints).
+  const clock = useSharedValue(0);
   useEffect(() => {
     if (reducedMotion || !glints) {
-      cancelAnimation(shimmer);
-      shimmer.set(-1);
+      cancelAnimation(clock);
+      clock.set(-1);
       return;
     }
-    shimmer.set(0);
-    shimmer.set(withRepeat(withTiming(1, { duration: GLINT.shimmerMs, easing: Easing.linear }), -1, false));
-    return () => cancelAnimation(shimmer);
-  }, [reducedMotion, glints, shimmer]);
+    clock.set(0);
+    clock.set(withRepeat(withTiming(1, { duration: SPARKLE.loopMs, easing: Easing.linear }), -1, false));
+    return () => cancelAnimation(clock);
+  }, [reducedMotion, glints, clock]);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [aspect, setAspect] = useState<number | null>(null);
   // The room fills the whole view, edge to edge like a game's viewport (no
@@ -127,7 +127,7 @@ export function Stage({
   const ownX = useSharedValue<number>(V2.torch.rest.x);
   const ownY = useSharedValue<number>(V2.torch.rest.y);
   const tx = beam?.x ?? ownX;
-  // Each object's real outline: the room's own, or traced from the photo on the device.
+  // Each object's real outline (the room's own, or traced from the photo on the device): where its sparkles sit.
   const outlines = useOutlines(source, cacheKey, objects);
   const ty = beam?.y ?? ownY;
   const size = useSharedValue({ w: 0, h: 0 });
@@ -292,15 +292,10 @@ export function Stage({
               </Group>
               {/* The light itself: a faint warm cast in the torch's pool, or the UV flashlight's violet. */}
               <Beam tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} tint />
-              {/* Glints: an outline that catches the beam. */}
-              {glints
-                ? objects.map((o) => (
-                    <Glint
-                      key={o.id} box={o.box} seen={o.seen} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R}
-                      color={uv ? GLINT.uv : theme.ink} outline={outlines[o.id]} shimmer={shimmer} uv={uv}
-                    />
-                  ))
-                : null}
+              {/* Glints: sparkles round each object, catching the beam. */}
+              {glints ? (
+                <Sparkles objects={objects} outlines={outlines} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} clock={clock} still={reducedMotion} />
+              ) : null}
             </Canvas>
             {/* UV traces and invisible ink: seen where the UV beam falls (ink on objects also while a lamp is lit). */}
             <UvTrace traces={traces} marks={marks} genre={genre} w={W} h={H} tx={tx} ty={ty} r={R} uv={uv} lampLit={lamps.length > 0} onTrace={onTrace} onOpen={onLook} />
@@ -377,76 +372,224 @@ const BEAM = {
   uvTint: FALLOFF.map((a) => rgba("138,86,255", a * 0.4)),
 };
 
-/** The glints' look: a soft blurred glow on the outline and a fine crisp line, brighter under the beam. */
-const GLINT = {
-  line: 1.3,
-  /** The line under the beam's centre, hot white (violet under UV), fading out to the beam's edge. */
-  hot: "rgba(255,250,240,1)",
-  hotUv: "rgba(230,214,255,1)",
-  /** The glow under UV: the outlines light up violet. */
-  uv: "rgb(196,168,255)",
-  /** A spark of light that runs along the outline, this share of it long, once round in this long. */
-  spark: 0.07,
-  shimmerMs: 4200,
-};
+/**
+ * The glints' look: small four-point sparkles (✦) and soft round glints, scattered round each object's
+ * edge (its outline's points when it has one, never drawn as a line; else an oval in its box) and a
+ * glint or two on it, twinkling (each grows and fades on its own beat) and drifting a little. They are
+ * lit by the beam alone: painted with the beam's own falloff, so they show only where it falls, hot at
+ * its centre and gone at its edge.
+ */
+const SPARKLE = {
+  /** The clock's loop (ms); every twinkle and drift beats a whole number of times in it, so it loops unseen. */
+  loopMs: 12000,
+  /** Twinkles per loop (2 to 3 s each) and drifts per loop. */
+  twinkle: [4, 5, 6],
+  drift: 1,
+  /** About one sparkle per this much edge (points), and no fewer or more than these. */
+  spacing: 62,
+  min: 3,
+  max: 12,
+  /** Sparkle radii (points): most small, one larger per object. */
+  small: [5.6, 8.4],
+  large: 13,
+  /** How far they wander (points). */
+  wander: 2.2,
+  /** An object already looked at still sparkles, this faintly. */
+  seen: 0.5,
+  /** Lit out to this share of the beam's radius. */
+  reach: 1.02,
+  /** Reduced motion: still, each at this share of its size, the lot a little fainter. */
+  stillSize: 0.62,
+  stillOpacity: 0.7,
+  /** The sparkle's core and its glow: candle-warm white in the torch, violet under UV. */
+  core: "255,249,236",
+  glow: "255,214,160",
+  coreUv: "240,232,255",
+  glowUv: "168,128,255",
+} as const;
 
-function Glint({ box, seen, assist, tx, ty, w, h, r, color, outline, shimmer, uv }: {
-  box: Box; seen: boolean; assist: boolean; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; color: string;
-  /** The object's outline (photo fractions): the glint runs along its real edge. */
-  outline?: { x: number; y: number }[];
-  /** The shimmer's clock (0..1, round and round; below 0: still). */
-  shimmer: SharedValue<number>;
-  uv: boolean;
-}) {
-  const bx = box.x * w, by = box.y * h, bw = box.w * w, bh = box.h * h;
-  // Only where the beam is: nothing glints in the dark. Lit by how near the
-  // beam is to the object (anywhere on it, so a tall door glints all along).
-  const opacity = useDerivedValue(() => {
-    const px = tx.get() * w, py = ty.get() * h;
-    const d = Math.hypot(Math.max(bx - px, 0, px - bx - bw), Math.max(by - py, 0, py - by - bh));
-    const lit = Math.max(0, 1 - d / (r * 0.9));
-    const glint = (seen ? V2.glint.seen : 1) * V2.glint.peak * lit * lit;
-    return assist ? Math.max(glint, V2.glint.assist) : glint;
-  });
-  // The beam's centre, for the line's hot spot.
-  const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
-  // The spark's run along the outline (each object's starts somewhere else round it).
-  const offset = (Math.abs(Math.sin(bx * 12.9898 + by * 78.233)) * 43758.5453) % 1;
-  const sparkStart = useDerivedValue(() => (shimmer.get() < 0 ? 0 : (shimmer.get() + offset) % 1));
-  const sparkEnd = useDerivedValue(() => (shimmer.get() < 0 ? 0 : Math.min(1, ((shimmer.get() + offset) % 1) + GLINT.spark)));
-  // A smooth curve through the outline, spikes cleaned off, corners kept (src/game/outline.ts).
-  const path = useMemo(() => (outline && outline.length >= 3 ? outlinePath(outline, w, h) : null), [outline, w, h]);
-  if (path) {
-    const hot = uv ? GLINT.hotUv : GLINT.hot;
-    return (
-      <Group opacity={opacity}>
-        {/* A soft glow hugging the edge, */}
-        <Path path={path} color={color} style="stroke" strokeWidth={V2.glint.halo} strokeJoin="round" strokeCap="round" opacity={uv ? 0.6 : 0.4} antiAlias>
-          <BlurMask blur={V2.glint.blur} style="normal" />
-        </Path>
-        {/* a fine crisp line on the edge itself, */}
-        <Path path={path} color={color} style="stroke" strokeWidth={GLINT.line} strokeJoin="round" strokeCap="round" antiAlias opacity={0.85} />
-        {/* hot where the beam's centre falls on it, */}
-        <Path path={path} style="stroke" strokeWidth={GLINT.line + 0.4} strokeJoin="round" strokeCap="round" antiAlias>
-          <RadialGradient c={c} r={r * 0.75} colors={[hot, hot.replace(/,1\)$/, ",0.35)"), "rgba(255,255,255,0)"]} positions={[0, 0.45, 1]} />
-        </Path>
-        {/* and a spark of light running round it. */}
-        <Path path={path} color={hot} style="stroke" strokeWidth={2.4} strokeCap="round" strokeJoin="round" start={sparkStart} end={sparkEnd} antiAlias opacity={0.75}>
-          <BlurMask blur={1.6} style="solid" />
-        </Path>
-      </Group>
-    );
+/** One sparkle: where it sits (points), its size, its beat, its wander and whether it is a ✦ or a round glint. */
+interface Seed { x: number; y: number; r: number; phase: number; beat: number; dx: number; dy: number; turn: boolean; dot: boolean }
+
+/** A steady random number in [0, 1) from a string and an index: an object's sparkles sit in the same places every time. */
+function rand(key: string, i: number): number {
+  let h = 2166136261 ^ i;
+  for (let c = 0; c < key.length; c++) h = Math.imul(h ^ key.charCodeAt(c), 16777619);
+  h = Math.imul(h ^ (h >>> 15), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Points evenly round a closed outline (points), each a share `at` (0..1) of the way round. */
+function alongOutline(pts: { x: number; y: number }[], at: number[]): { x: number; y: number }[] {
+  const len: number[] = [0];
+  for (let i = 1; i <= pts.length; i++) {
+    const a = pts[i - 1], b = pts[i % pts.length];
+    len.push(len[i - 1] + Math.hypot(b.x - a.x, b.y - a.y));
   }
-  // No outline (yet): a faint thin oval inside the box, never a lit box.
-  const inset = V2.glint.inset;
+  const total = len[pts.length] || 1;
+  return at.map((t) => {
+    const d = (((t % 1) + 1) % 1) * total;
+    let i = 1;
+    while (i < len.length - 1 && len[i] < d) i++;
+    const a = pts[i - 1], b = pts[i % pts.length];
+    const k = (d - len[i - 1]) / Math.max(1e-6, len[i] - len[i - 1]);
+    return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+  });
+}
+
+/** An object's sparkles (points): round its edge, and a glint or two on it. */
+export function sparkleSeeds(o: { id: string; box: Box }, outline: { x: number; y: number }[] | undefined, w: number, h: number): Seed[] {
+  const bx = o.box.x * w, by = o.box.y * h, bw = o.box.w * w, bh = o.box.h * h;
+  if (bw <= 0 || bh <= 0) return [];
+  const cx = bx + bw / 2, cy = by + bh / 2;
+  const edge = Math.PI * (bw + bh) * 0.5;
+  const n = Math.max(SPARKLE.min, Math.min(SPARKLE.max, Math.round(edge / SPARKLE.spacing)));
+  const R = (i: number) => rand(o.id, i);
+  const start = R(0);
+  const at = Array.from({ length: n }, (_, i) => start + (i + 0.5 * (R(10 + i) - 0.5)) / n);
+  let ring: { x: number; y: number }[];
+  if (outline && outline.length >= 3) {
+    // On the object's real edge, nudged a little outward; kept near its box (a stray outline point never flies off).
+    const pts = outline.map((p) => ({ x: p.x * w, y: p.y * h }));
+    ring = alongOutline(pts, at).map((p, i) => {
+      const d = Math.hypot(p.x - cx, p.y - cy) || 1;
+      const push = 1 + 3 * R(30 + i);
+      return {
+        x: Math.min(bx + bw + 6, Math.max(bx - 6, p.x + ((p.x - cx) / d) * push)),
+        y: Math.min(by + bh + 6, Math.max(by - 6, p.y + ((p.y - cy) / d) * push)),
+      };
+    });
+  } else {
+    // No outline: round an oval a little inside the box.
+    const rx = bw * 0.44, ry = bh * 0.44;
+    ring = at.map((t, i) => {
+      const a = t * Math.PI * 2;
+      const k = 0.9 + 0.2 * R(30 + i);
+      return { x: cx + Math.cos(a) * rx * k, y: cy + Math.sin(a) * ry * k };
+    });
+  }
+  const big = Math.floor(R(1) * n);
+  const seeds: Seed[] = ring.map((p, i) => ({
+    ...p,
+    r: i === big ? SPARKLE.large : SPARKLE.small[0] + (SPARKLE.small[1] - SPARKLE.small[0]) * R(40 + i),
+    phase: R(50 + i),
+    beat: SPARKLE.twinkle[Math.floor(R(60 + i) * SPARKLE.twinkle.length)],
+    dx: SPARKLE.wander * (R(70 + i) - 0.5) * 2,
+    dy: SPARKLE.wander * (R(80 + i) - 0.5) * 2,
+    turn: i !== big && R(90 + i) < 0.3,
+    // A few are soft round glints rather than stars.
+    dot: i !== big && R(100 + i) < 0.25,
+  }));
+  // A glint or two on the object itself (a big one gets two).
+  const inner = bw * bh > 160 * 160 ? 2 : 1;
+  for (let j = 0; j < inner; j++) {
+    seeds.push({
+      x: bx + bw * (0.25 + 0.5 * R(200 + j)), y: by + bh * (0.25 + 0.5 * R(210 + j)), r: 2.8 + 1.4 * R(220 + j), phase: R(230 + j),
+      beat: SPARKLE.twinkle[j % SPARKLE.twinkle.length], dx: SPARKLE.wander * (R(240 + j) - 0.5), dy: SPARKLE.wander * (R(250 + j) - 0.5), turn: false, dot: true,
+    });
+  }
+  return seeds;
+}
+
+/** The sparkles at a moment of the clock (below 0: still): their stars, or the soft glows behind them. */
+function sparklePath(seeds: readonly Seed[], t: number, part: "stars" | "glows"): SkPath {
+  "worklet";
+  const b = Skia.PathBuilder.Make();
+  const TAU = Math.PI * 2;
+  for (const s of seeds) {
+    let size = SPARKLE.stillSize;
+    let x = s.x, y = s.y;
+    if (t >= 0) {
+      // Grows and fades on its own beat, mostly small, flaring now and then.
+      const wave = 0.5 + 0.5 * Math.sin(TAU * (t * s.beat + s.phase));
+      size = 0.32 + 0.68 * wave * wave;
+      x += s.dx * Math.sin(TAU * (t * SPARKLE.drift + s.phase));
+      y += s.dy * Math.cos(TAU * (t * SPARKLE.drift + s.phase * 0.7));
+    }
+    const r = s.r * size;
+    if (r < 0.35) continue;
+    if (part === "glows") {
+      b.addCircle(x, y, r * (s.dot ? 1.8 : 0.62));
+      continue;
+    }
+    if (s.dot) {
+      b.addCircle(x, y, r * 0.5);
+      continue;
+    }
+    // A ✦: four points joined by curves pulled in to its middle (turned 45°, a smaller cross).
+    const k = r * 0.14;
+    const a = s.turn ? Math.PI / 4 : 0;
+    const c = Math.cos(a), sn = Math.sin(a);
+    const P = (px: number, py: number) => [x + px * c - py * sn, y + px * sn + py * c] as const;
+    const tip = [P(0, -r), P(r, 0), P(0, r), P(-r, 0)];
+    const mid = [P(k, -k), P(k, k), P(-k, k), P(-k, -k)];
+    b.moveTo(tip[0][0], tip[0][1]);
+    for (let i = 0; i < 4; i++) {
+      const next = tip[(i + 1) % 4];
+      b.quadTo(mid[i][0], mid[i][1], next[0], next[1]);
+    }
+    b.close();
+  }
+  return b.build();
+}
+
+function Sparkles({ objects, outlines, assist, tx, ty, w, h, r, uv, clock, still }: {
+  objects: readonly StageObject[];
+  outlines: Record<string, { x: number; y: number }[]>;
+  /** Show interactives: every object's sparkles stay faintly lit, beam or not. */
+  assist: boolean;
+  tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number; uv: boolean;
+  /** The clock (0..1, round and round; below 0: still). */
+  clock: SharedValue<number>;
+  still: boolean;
+}) {
+  // Fresh objects sparkle in full; ones already looked at, faintly.
+  const signature = objects.map((o) => `${o.id}:${o.seen ? 1 : 0}:${o.box.x},${o.box.y},${o.box.w},${o.box.h}:${outlines[o.id]?.length ?? 0}`).join("|");
+  const { fresh, seen } = useMemo(() => {
+    const out = { fresh: [] as Seed[], seen: [] as Seed[] };
+    if (w <= 0 || h <= 0) return out;
+    for (const o of objects) out[o.seen ? "seen" : "fresh"].push(...sparkleSeeds(o, outlines[o.id], w, h));
+    return out;
+    // The signature holds every object's id, box, seen and outline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, w, h]);
+  const freshStars = useDerivedValue(() => sparklePath(fresh, clock.get(), "stars"));
+  const freshGlows = useDerivedValue(() => sparklePath(fresh, clock.get(), "glows"));
+  const seenStars = useDerivedValue(() => sparklePath(seen, clock.get(), "stars"));
+  const seenGlows = useDerivedValue(() => sparklePath(seen, clock.get(), "glows"));
+  const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
+  const reach = r * SPARKLE.reach;
+  const core = uv ? SPARKLE.coreUv : SPARKLE.core;
+  const glow = uv ? SPARKLE.glowUv : SPARKLE.glow;
+  const fade = still ? SPARKLE.stillOpacity : 1;
+  const coreColors = [rgba(core, 1), rgba(core, 0.95), rgba(core, 0.55), rgba(core, 0)];
+  const glowColors = [rgba(glow, 0.95), rgba(glow, 0.85), rgba(glow, 0.4), rgba(glow, 0)];
+  const stops = [0, 0.45, 0.78, 1];
+  const layer = (stars: SharedValue<SkPath>, glows: SharedValue<SkPath>, opacity: number) => (
+    <Group opacity={opacity * fade}>
+      <Path path={glows} antiAlias>
+        <RadialGradient c={c} r={reach} colors={glowColors} positions={stops} />
+        <BlurMask blur={5} style="normal" />
+      </Path>
+      <Path path={stars} antiAlias>
+        <RadialGradient c={c} r={reach} colors={coreColors} positions={stops} />
+      </Path>
+      {assist ? (
+        // Show interactives: faintly there in the dark too.
+        <Group opacity={V2.glint.assist}>
+          <Path path={glows} color={rgba(glow, 0.7)} antiAlias>
+            <BlurMask blur={2.6} style="normal" />
+          </Path>
+          <Path path={stars} color={rgba(core, 1)} antiAlias />
+        </Group>
+      ) : null}
+    </Group>
+  );
   return (
-    <Group opacity={opacity}>
-      <Oval
-        x={bx + bw * inset} y={by + bh * inset} width={bw * (1 - 2 * inset)} height={bh * (1 - 2 * inset)}
-        color={color} style="stroke" strokeWidth={V2.glint.stroke} opacity={V2.glint.oval} antiAlias
-      >
-        <BlurMask blur={2} style="normal" />
-      </Oval>
+    <Group>
+      {layer(seenStars, seenGlows, SPARKLE.seen)}
+      {layer(freshStars, freshGlows, 1)}
     </Group>
   );
 }

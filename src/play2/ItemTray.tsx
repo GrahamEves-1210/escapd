@@ -2,15 +2,12 @@
 // each sized to fit however many there are. Everything is done by dragging:
 // an item onto something in the room or the close-up uses it there, onto
 // another held item fits them together, the UV flashlight onto the flashlight
-// switches the light over. A tap says what it is; a hold examines it. Picked
+// switches the light over. A tap says what it is (on the UV flashlight while
+// it's on, a tap switches back to the normal light); a hold examines it. Picked
 // up, the item itself lifts out of its slot (drawn by the player, CarriedItem,
 // above everything) and its slot shows a faint ghost until it's back.
-import type { ComponentRef } from "react";
+import { createElement, type ComponentRef } from "react";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
-import {
-  CompassIcon, CubeIcon, EnvelopeIcon, FileTextIcon, FlashlightIcon, ImageIcon, KeyIcon, NoteIcon, PackageIcon, PuzzlePieceIcon,
-  ScrollIcon, TicketIcon, type Icon,
-} from "phosphor-react-native";
 import { GestureDetector, useCompetingGestures, useLongPressGesture, usePanGesture, useTapGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
@@ -18,23 +15,42 @@ import type { ItemDef } from "@/engine/v2";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
 import { CarryBody, type Carry } from "./Carry";
+import { ICON_FILL, ItemIcons, type ItemGlyph } from "./icons/ItemIcons";
 
-/** An icon for a held item, by what it is: a key, a note, the UV flashlight. Never specific, always recognisable. */
-export function itemIcon(item: Pick<ItemDef, "name" | "kind" | "archetype">): Icon {
+/**
+ * An icon for a held item, by what it is: a key, a note, the UV flashlight (the set in icons/art.ts). Never
+ * specific, always recognisable; anything else is a small wooden box.
+ */
+export function itemIcon(item: Pick<ItemDef, "name" | "kind" | "archetype"> & { variant?: string }): ItemGlyph {
   const n = item.name.toLowerCase();
-  if (item.archetype === "Light" || /flashlight|torch|lamp|uv/.test(n)) return FlashlightIcon;
-  if (item.archetype === "Decoder" || /wheel|cipher|dial/.test(n)) return CompassIcon;
-  if (item.kind === "key" || /\bkey\b/.test(n)) return KeyIcon;
-  if (item.kind === "half") return PuzzlePieceIcon;
-  // Something pieced together: a whole page, never the note icon its halves' paper might share.
-  if (item.kind === "assembled") return FileTextIcon;
-  if (/ticket|stub|pass/.test(n)) return TicketIcon;
-  if (/letter|envelope/.test(n)) return EnvelopeIcon;
-  if (/photo|picture|postcard/.test(n)) return ImageIcon;
-  if (/map|scroll|page|ledger/.test(n)) return ScrollIcon;
-  if (item.kind === "taken") return PackageIcon;
-  if (item.kind === "prop" || /note|card|slip|paper/.test(n)) return NoteIcon;
-  return CubeIcon;
+  const I = ItemIcons;
+  if (item.archetype === "Light" || /flashlight|torch|lamp|\buv\b/.test(n)) return item.variant === "torch" || /\buv\b|ultraviolet|black ?light/.test(n) ? I.uvLight : I.torch;
+  if (item.archetype === "Decoder" || item.kind === "decoder" || /wheel|cipher|decoder|dial/.test(n)) return I.wheel;
+  if (item.kind === "key" || /\bkey\b/.test(n)) return I.key;
+  // A torn half: the right one is the left one mirrored, so the two look as if they'd fit.
+  if (item.kind === "half" || /\((left|right)\)|\bhalf\b/.test(n)) return /right/.test(n) ? I.tornRight : I.tornLeft;
+  // Something pieced together: a whole page, taped across its tear, never the note its halves' paper might share.
+  if (item.kind === "assembled" || /^(taped|mended)\b/.test(n)) return I.taped;
+  if (/ticket|stub|\bpass\b/.test(n)) return I.ticket;
+  if (/letter|envelope|telegram|\bmail\b/.test(n)) return I.letter;
+  if (/photo|picture|postcard|polaroid|snapshot|portrait/.test(n)) return I.photo;
+  if (/\bmap\b|chart/.test(n)) return I.map;
+  if (/scroll|parchment/.test(n)) return I.scroll;
+  if (/\bring\b|necklace|locket|bracelet|earring|brooch|pendant|jewel|\bgem|diamond|pearl/.test(n)) return I.ring;
+  if (/match|lighter/.test(n)) return I.matchbook;
+  if (/book|diary|journal|ledger|novel|album|almanac|bible|volume/.test(n)) return I.book;
+  if (/coin|token|medal|penny|sovereign|doubloon|\bchip\b/.test(n)) return I.coin;
+  if (/bottle|vial|potion|perfume|flask|\bjar\b|tincture/.test(n)) return I.bottle;
+  if (/watch|clock/.test(n)) return I.watch;
+  if (/note|card|slip|paper|page|receipt|memo|statement|list/.test(n)) return I.note;
+  if (item.kind === "taken") return I.box;
+  if (item.kind === "prop") return I.note;
+  return I.box;
+}
+
+/** A held item's icon, drawn at a size (`lit`: the UV light in use). */
+export function ItemIcon({ item, size, lit = false }: { item: Parameters<typeof itemIcon>[0]; size: number; lit?: boolean }) {
+  return createElement(itemIcon(item), { size, lit });
 }
 
 /** A name as shown: its first letter capitalised ("torn half" → "Torn half"). */
@@ -167,7 +183,10 @@ function TrayIcon({ item, size, on, uv, carry, onTap, onExamine, onDragStart, on
         accessibilityRole="button"
         accessibilityLabel={capitalise(item.name)}
         accessibilityState={{ selected: on }}
-        accessibilityHint={isUvLight(item) ? "Drag onto your flashlight to switch it to UV. Hold to examine." : "Drag onto something to use it, or onto another item to fit them together. Hold to examine."}
+        accessibilityValue={isUvLight(item) ? { text: uv ? "On" : "Off" } : undefined}
+        accessibilityHint={isUvLight(item)
+          ? uv ? "In use. Tap to switch back to your normal light." : "Drag onto your flashlight to switch it to UV. Hold to examine."
+          : "Drag onto something to use it, or onto another item to fit them together. Hold to examine."}
         accessibilityActions={[{ name: "activate" }, { name: "longpress" }]}
         onAccessibilityAction={(e) => (e.nativeEvent.actionName === "longpress" ? onExamine(id) : onTap(id))}
         testID={`v2-item-${id}`}
@@ -181,23 +200,28 @@ function TrayIcon({ item, size, on, uv, carry, onTap, onExamine, onDragStart, on
   );
 }
 
-/** An item as the tray draws it: its icon on a raised tile. */
+/** The UV light in use: its slot lit violet, glowing, a lit pip in its corner. */
+const UV_ON = { tile: "rgba(126,84,255,0.38)", edge: "rgb(196,168,255)", glow: "rgb(150,110,255)", pip: "rgb(236,226,255)" };
+
+/** An item as the tray draws it: its icon on a raised tile (the UV light in use: lit violet, its beam out). */
 function ItemFace({ item, size, on, uv }: { item: ItemDef; size: number; on: boolean; uv: boolean }) {
   const theme = useModeTheme();
-  const Glyph = itemIcon(item);
   return (
     <View
+      testID={uv ? "v2-item-in-use" : undefined}
       style={[
         styles.icon,
         {
           width: size, height: size, borderRadius: size * 0.28,
-          backgroundColor: uv ? "rgba(140,90,255,0.35)" : theme.raised,
-          borderColor: on ? (uv ? "rgb(180,140,255)" : theme.ink) : theme.rim,
+          backgroundColor: uv ? UV_ON.tile : theme.raised,
+          borderColor: on ? (uv ? UV_ON.edge : theme.ink) : theme.rim,
           borderWidth: on ? 2 : StyleSheet.hairlineWidth,
         },
+        uv ? { shadowColor: UV_ON.glow, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 } : null,
       ]}
     >
-      <Glyph size={size * 0.56} weight={on ? "fill" : "regular"} color={uv ? "rgb(200,170,255)" : theme.ink} />
+      <ItemIcon item={item} size={size * ICON_FILL} lit={uv} />
+      {uv ? <View style={[styles.pip, { backgroundColor: UV_ON.pip, shadowColor: UV_ON.glow }]} /> : null}
     </View>
   );
 }
@@ -226,5 +250,9 @@ export function CarriedItem({ item, size, carry, origin, uv }: { item: ItemDef; 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "center", alignItems: "center", flexWrap: "nowrap" },
   icon: { alignItems: "center", justifyContent: "center" },
+  pip: {
+    position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: 3,
+    shadowOpacity: 1, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+  },
   carried: { position: "absolute", left: 0, top: 0, zIndex: 200 },
 });

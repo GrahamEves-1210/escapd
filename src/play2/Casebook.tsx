@@ -202,7 +202,7 @@ function Sticker({ item, index, palette: p, hand, onExamine }: { item: CasebookP
   const face = (
     <View style={[styles.stickerFace, { backgroundColor: p.photo, borderColor: p.polaroid, transform: [{ rotate: `${index % 2 ? 3 : -3}deg` }] }, softShadow(p.shadow)]}>
       <Sparkle color={p.sweet} size={10} style={styles.faceSparkle} />
-      {createElement(glyph, { size: 30, weight: "duotone", color: p.chalk })}
+      {createElement(glyph, { size: 36, weight: "duotone", color: p.chalk })}
       <Text style={[hand.small, styles.stickerName, { color: p.chalk }]} numberOfLines={2}>{item.name}</Text>
     </View>
   );

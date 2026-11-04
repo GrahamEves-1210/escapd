@@ -213,7 +213,7 @@ export function InspectView(props: InspectViewProps) {
 
 /** What a held item is for, when it has no card of its own to show: one short line. */
 function purpose(kind: ItemDef["kind"], item?: ItemDef): string {
-  if (item && isUvLight(item)) return "A UV light. Tap it in your hands to switch your light over.";
+  if (item && isUvLight(item)) return "A UV light. Drag it onto your flashlight to switch it on; tap it to switch back.";
   switch (kind) {
     case "key": return "A key. Drag it onto what it opens.";
     case "half": return "Half of something. Find what it fits, then fit them together.";
@@ -233,7 +233,7 @@ function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; co
   return (
     <View style={styles.detail} testID="v2-item-detail">
       <View style={[styles.detailGlyph, { backgroundColor: theme.raised, borderColor: theme.rim }]}>
-        {createElement(itemIcon(item ?? { name, kind }), { size: 56, weight: "fill", color: theme.ink })}
+        {createElement(itemIcon(item ?? { name, kind }), { size: 68, weight: "fill", color: theme.ink })}
       </View>
       {card ? (
         <View style={styles.detailPaper} testID={`v2-item-card-${card.id}`}>
@@ -286,7 +286,7 @@ function FoundSticker({ item, index }: { item: ItemDef; index: number }) {
   const p = journalPalette(theme);
   return (
     <View style={[styles.sticker, { backgroundColor: p.photo, borderColor: p.polaroid, transform: [{ rotate: `${index % 2 ? 4 : -4}deg` }] }, softShadow(theme.ground)]}>
-      {createElement(itemIcon(item), { size: 28, weight: "duotone", color: p.chalk })}
+      {createElement(itemIcon(item), { size: 34, weight: "duotone", color: p.chalk })}
     </View>
   );
 }

@@ -52,23 +52,54 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 
 const ART = require("../../assets/characters/cat_peek.png") as number;
-/** The art's size (px) and its eyes, as fractions of it. */
+/** The art's size (px). */
 const ART_W = 560;
 const ART_H = 585;
-const EYES = [{ x: 0.3329, y: 0.5336 }, { x: 0.7061, y: 0.5336 }] as const;
-const EYE_R = { x: 0.0949, y: 0.0833 };
+/**
+ * Its eyes (the art's irises, measured: art px): centre, half width and half
+ * height, and the tilt of the width (degrees, clockwise). Its lids close in
+ * each eye's own frame; its pupils stay inside them. The irises are nearly
+ * round and slant 32 and -38 degrees; the frame takes half that slant (a lid
+ * along all of it reads as a frown), and its lid, a little over the outline,
+ * still covers all of the iris.
+ */
+const EYES = [
+  { x: 186.6, y: 314.1, a: 56.2, b: 46.5, tilt: 16 },
+  { x: 396.5, y: 313.0, a: 57.4, b: 45.5, tilt: -19 },
+] as const;
 /**
  * Pupils: a slit `slitW` of the art's width across and `slitH` of its height
  * tall in ordinary light; fully open (`dilate` 1: surprised), a disc `round`
- * of its width across. In between, a tall oval. Centred `drop` (of its height)
- * below the eye's centre, the middle of the art's iris.
+ * of its width across. In between, a tall oval. Centred on the iris, and
+ * however they look or open, all of them inside `inside` of it (clear of its
+ * outline): `reach` of the room there is, toward where it's looking.
  */
-const PUPIL = { slitW: 0.02, slitH: 0.115, round: 0.15, minW: 1.2, drop: 0.006 };
-/** How open the pupils go (0 slit, 1 round): the light far off (the dark), thinking, glancing, perking up. */
-const DILATE = { dark: 0.6, darkFrom: 300, darkOver: 500, think: 0.45, glance: 0.3, warm: 0.65 };
+const PUPIL = { slitW: 0.02, slitH: 0.115, round: 0.15, minW: 1.2, inside: 0.9, reach: 0.85 };
+/**
+ * How open the pupils go (0 slit, 1 round): the light far off (the dark),
+ * thinking, glancing, perking up. Thinking and glancing only just open them
+ * (still slits, a touch fuller), so it's the same cat's eyes wherever it is.
+ */
+const DILATE = { dark: 0.6, darkFrom: 300, darkOver: 500, think: 0.18, glance: 0.12, warm: 0.65 };
 const FUR = "#0B0806";
-/** It sits this far (of its height) behind the ledge, so its bottom edge never shows when it turns. */
-const SINK = 0.05;
+/** The art's fur round its eyes (measured), for its lids. */
+const LID_FUR = "#130F0C";
+/**
+ * Lids: their clip reaches `over` of the eye's outline (over its inked edge);
+ * their edge is a circle `curve` times the eye's half width (a gentle curve);
+ * shut, the lashes are `meet` of its half height below its middle.
+ */
+const LID = { over: 1.22, curve: 1.8, meet: 0.25 };
+/**
+ * Its paws rest on the ledge (the art ends at their bottom, on the bottom of
+ * its box: where it's put, its paws show): it sits only `sink` of its height
+ * lower. As it turns (about the middle of its bottom edge) one end of that
+ * edge lifts; past `slack` points it sinks as much, so the edge never shows
+ * above the ledge. The art's bottom edge reaches `left` and `right` of its
+ * width either side of the middle. Breathing out lowers it `breath` points;
+ * dozing, it slumps `doze` of its height (its paws' tops still showing).
+ */
+const PAWS = { sink: 0.005, slack: 1, left: 0.36, right: 0.5, breath: 0.6, doze: 0.07 };
 /** Drawn at this many frames a second: stop motion. */
 const FPS = 12;
 /** It dozes off when the light has been still this long (ms): well after a stuck player's first glance (useCatCues). */
@@ -670,13 +701,16 @@ export function PeekingCat({ width, beamX, beamY, frame, reaction, mood = "idle"
     const p = pettingMotion(v[F.poke], v[F.lean], v[F.purr], v[F.clock], width, height);
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
+    const turn = lean * (1 - z) + v[F.tilt] + t * 4 - z * 3 + p.rotate;
+    // Turning lifts one end of its bottom edge: it sinks that much, so that paw stays on the ledge and the edge never shows.
+    const tilt = Math.sin((turn * Math.PI) / 180);
+    const lift = Math.max(0, width * (tilt > 0 ? PAWS.left * tilt : -PAWS.right * tilt) - PAWS.slack);
     return {
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
-        { translateY: Math.max(0, v[F.rise] + v[F.hop] + (1 - b) * 1.5 + z * height * 0.14 + p.y) + height * SINK },
+        { translateY: Math.max(0, v[F.rise] + v[F.hop] + (1 - b) * PAWS.breath + z * height * PAWS.doze + p.y) + height * PAWS.sink + lift },
         { translateX: shift * (1 - z) + p.x },
-        // Small turns only, so a tilt never lifts the art's cut-off bottom edge into view.
-        { rotate: `${lean * (1 - z) + v[F.tilt] + t * 4 - z * 3 + p.rotate}deg` },
+        { rotate: `${turn}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
         { scaleY: v[F.sy] * p.sy * (1 + b * 0.025 * deep) * (1 + t * 0.05) },
         { scaleX: v[F.sx] * p.sx * (1 - b * 0.012 * deep) },
@@ -928,67 +962,137 @@ function Spark({ t, angle, reach, size, color }: { t: SharedValue<number[]>; ang
   );
 }
 
+/** An eye's outline on screen (points): its centre, half width and half height (along and across its tilt), and its tilt (degrees, clockwise). */
+export type EyeShape = { cx: number; cy: number; a: number; b: number; tilt: number };
+
+/** Whether a point (from the eye's centre) is inside the eye's outline, shrunk to `k` of it. */
+function inEye(x: number, y: number, e: EyeShape, k: number) {
+  "worklet";
+  const t = (e.tilt * Math.PI) / 180;
+  const c = Math.cos(t), s = Math.sin(t);
+  const u = (x * c + y * s) / (e.a * k);
+  const v = (-x * s + y * c) / (e.b * k);
+  return u * u + v * v <= 1;
+}
+
+/**
+ * How far (points) a pupil `hw` by `hh` (half sizes, upright) can go from the
+ * eye's centre toward (`ux`, `uy`) with all of it inside `k` of the eye.
+ */
+export function pupilRoom(e: EyeShape, ux: number, uy: number, hw: number, hh: number, k: number) {
+  "worklet";
+  const fits = (d: number) => {
+    for (let i = 0; i < 12; i++) {
+      const q = (i / 12) * Math.PI * 2;
+      if (!inEye(ux * d + Math.cos(q) * hw, uy * d + Math.sin(q) * hh, e, k)) return false;
+    }
+    return true;
+  };
+  if (!fits(0)) return 0;
+  let lo = 0, hi = Math.max(e.a, e.b);
+  for (let i = 0; i < 10; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * A lid over an eye (both cats), drawn in the eye's own frame so it always
+ * sits on it, whatever the body does (it's drawn inside the body's transform):
+ * fur clipped to the eye's outline (a touch over it), its curved edge coming
+ * down across the eye from its top as `amount` of the frame `f` goes 0 to 1;
+ * shut, a curve of lashes along the eye where the lids meet.
+ */
+export function EyeLid({ eye, f, amount, fur, lash, lashWidth }: {
+  eye: EyeShape;
+  f: SharedValue<number[]>;
+  /** How shut (0..1), from the frame (a worklet). */
+  amount: (v: number[]) => number;
+  fur: string;
+  lash: string;
+  lashWidth: number;
+}) {
+  // The clip: a circle as wide as the eye (and a little), squashed to its height and turned to its tilt.
+  const r = eye.a * LID.over;
+  const squash = (eye.b * LID.over) / r;
+  // The lid: a big circle (its edge a gentle curve), from just above the clip down past its bottom.
+  const R = r * LID.curve;
+  const lid = useAnimatedStyle(() => {
+    const shut = Math.max(0, Math.min(1, amount(f.get())));
+    return { opacity: shut > 0.02 ? 1 : 0, transform: [{ translateY: shut * (2 * r + 1) }] };
+  });
+  const lw = eye.a * 1.7, lh = eye.b * 0.55;
+  const lashStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, (amount(f.get()) - 0.7) / 0.3) }));
+  return (
+    <>
+      <View
+        pointerEvents="none"
+        style={[styles.lidClip, {
+          left: eye.cx - r, top: eye.cy - r, width: 2 * r, height: 2 * r, borderRadius: r,
+          transform: [{ rotate: `${eye.tilt}deg` }, { scaleY: squash }],
+        }]}
+      >
+        <Animated.View style={[styles.lid, { left: r - R, top: -2 * R, width: 2 * R, height: 2 * R, borderRadius: R, backgroundColor: fur }, lid]} />
+      </View>
+      {/* Where the lids meet: a little below the eye's middle, along it. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.lash, {
+          left: eye.cx - lw / 2, top: eye.cy - lh / 2, width: lw, height: lh, borderColor: lash,
+          borderBottomWidth: lashWidth, borderBottomLeftRadius: lw * 0.45, borderBottomRightRadius: lw * 0.45,
+          transform: [{ rotate: `${eye.tilt}deg` }, { translateY: eye.b * LID.meet - lh / 2 }],
+        }, lashStyle]}
+      />
+    </>
+  );
+}
+
 function Eye({ eye, width, height, at, f }: {
-  eye: { x: number; y: number }; width: number; height: number; at: At;
+  eye: (typeof EYES)[number]; width: number; height: number; at: At;
   /** The cat's stop-motion frame (useStopMotion; indices F). */
   f: SharedValue<number[]>;
 }) {
-  const cx = eye.x * width;
-  const cy = eye.y * height;
-  const ew = EYE_R.x * width * 2.35;
-  const eh = EYE_R.y * height * 2.45;
-  const rangeX = width * EYE_R.x * 0.55;
-  const rangeY = height * EYE_R.y * 0.35;
+  const k = width / ART_W;
+  const shape: EyeShape = { cx: eye.x * k, cy: eye.y * k, a: eye.a * k, b: eye.b * k, tilt: eye.tilt };
+  const { cx, cy } = shape;
   const pupil = useAnimatedStyle(() => {
     const v = f.get();
     const t = v[F.think], g = v[F.gaze];
     const a = aim(v, cx, cy, width, height, at);
     // How open: a slit in ordinary light; the light far off (the room dark round it), rounder; thinking or
-    // glancing (interested), half open; a find throws it wide open, a flinch narrows it.
+    // glancing (interested), a touch fuller; a find throws it wide open, a flinch narrows it.
     let open = a.light ? DILATE.dark * Math.max(0, Math.min(1, (a.dark - DILATE.darkFrom) / DILATE.darkOver)) : 0;
     open = Math.max(open, DILATE.think * t, DILATE.glance * g);
     const ex = v[F.excite];
-    open = ex >= 0 ? Math.max(open, ex) : open * (1 + ex);
-    // A round pupil has less room to move across the eye than a slit; a slit, as tall as the eye, barely moves up or down.
-    const rx = rangeX * (1 - 0.55 * open);
-    const ry = rangeY * (0.35 + 0.25 * open);
-    let dx = 0, dy = 0;
-    if (a.has) {
-      const d = Math.hypot(a.dx, a.dy) || 1;
-      const pull = Math.min(1, d / 160) * a.weight;
-      dx = (a.dx / d) * rx * pull;
-      dy = (a.dy / d) * ry * pull;
-    } else {
-      // Thinking with nothing to look at: up and off to the side.
-      dx = rx * 0.7 * t;
-      dy = -ry * 1.1 * t;
-    }
+    open = Math.max(0, Math.min(1, ex >= 0 ? Math.max(open, ex) : open * (1 + ex)));
     const pw = Math.max(PUPIL.minW, width * (PUPIL.slitW + (PUPIL.round - PUPIL.slitW) * open));
     const ph = height * PUPIL.slitH + (width * PUPIL.round - height * PUPIL.slitH) * open;
+    // Toward where it's looking, as far as the iris lets it (a slit, as tall as the eye, barely moves up or
+    // down); thinking with nothing to look at: up and off to the side.
+    let ux = 0.6, uy = -0.8, pull = t;
+    if (a.has) {
+      const d = Math.hypot(a.dx, a.dy) || 1;
+      ux = a.dx / d;
+      uy = a.dy / d;
+      pull = Math.min(1, d / 160) * a.weight;
+    }
+    const room = pull > 0 ? pupilRoom(shape, ux, uy, pw / 2, ph / 2, PUPIL.inside) * PUPIL.reach * pull : 0;
     return {
-      width: pw, height: ph, borderRadius: Math.min(pw, ph) / 2, left: cx - pw / 2, top: cy + height * PUPIL.drop - ph / 2,
-      transform: [{ translateX: dx }, { translateY: dy }],
+      width: pw, height: ph, borderRadius: Math.min(pw, ph) / 2, left: cx - pw / 2, top: cy - ph / 2,
+      transform: [{ translateX: ux * room }, { translateY: uy * room }],
     };
   });
   // Dozing, the lids sit shut (a blink can't open them); sulking, half shut; a hand on it, shut, content.
   const shut = (v: number[]) => {
     "worklet";
-    return Math.max(v[F.lid], v[F.doze], v[F.touch]);
+    return Math.max(v[F.lid], v[F.doze], v[F.touch], v[F.droop] * 0.5);
   };
-  const lidStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: Math.max(shut(f.get()), f.get()[F.droop] * 0.5) }] }));
-  // Shut (asleep, petted, or mid-blink), a curved lash line where the eye was.
-  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (shut(f.get()) - 0.7) / 0.3) }));
   return (
     <>
       <Animated.View style={[styles.pupil, pupil]} />
-      {/* The eyelid closes from the top down over the eye. */}
-      <Animated.View style={[styles.lid, { left: cx - ew / 2, top: cy - eh / 2, width: ew, height: eh, borderRadius: ew / 2 }, lidStyle]} />
-      <Animated.View
-        style={[styles.lash, {
-          left: cx - ew * 0.38, top: cy - eh * 0.05, width: ew * 0.76, height: eh * 0.3,
-          borderBottomWidth: Math.max(1.5, width * 0.016), borderBottomLeftRadius: ew * 0.4, borderBottomRightRadius: ew * 0.4,
-        }, lash]}
-      />
+      <EyeLid eye={shape} f={f} amount={shut} fur={LID_FUR} lash="rgba(232, 170, 60, 0.75)" lashWidth={Math.max(1.5, width * 0.016)} />
     </>
   );
 }
@@ -1002,8 +1106,10 @@ const styles = StyleSheet.create({
     fontWeight: "900", textShadowColor: "rgba(0,0,0,0.85)", textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 },
   },
   pupil: { position: "absolute", backgroundColor: FUR },
-  lid: { position: "absolute", backgroundColor: FUR, transformOrigin: "50% 0%" },
-  lash: { position: "absolute", borderColor: "rgba(232, 170, 60, 0.75)" },
+  // An eye's outline: what its lid is clipped to.
+  lidClip: { position: "absolute", overflow: "hidden" },
+  lid: { position: "absolute" },
+  lash: { position: "absolute" },
   speechAt: { position: "absolute", alignItems: "flex-start" },
   speech: {
     maxWidth: "100%", borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 6,

@@ -33,7 +33,7 @@ import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatLine, type CatReaction } from "./PeekingCat";
 import { Flashlight, Magnifier, TOOL } from "./Tools";
 import { useCatCues } from "./useCatCues";
-import { itemIcon } from "./ItemTray";
+import { ItemIcon } from "./ItemTray";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import type { StageTrace } from "./UvTrace";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
@@ -59,6 +59,8 @@ const HOTBAR_SLOTS = 6;
 
 /** The cat's width on the ledge (points). */
 const CAT_W = 58;
+/** Its paws reach this far (points) down over the ledge's top edge: they rest on it, in front of its line. */
+const CAT_PAWS_OVER = 2;
 
 /** The item card's label: what a held thing is, in the mode's voice (short). */
 const HELD_LABEL: Record<Genre, string> = { noir: "Evidence", crime_scene: "Evidence", paranormal: "Found" };
@@ -494,7 +496,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} />;
 
   const shownItem = shown ? heldItems.find((i) => i.id === shown) : undefined;
-  const ShownGlyph = shownItem ? itemIcon(shownItem) : null;
   const unread = Math.max(0, casebookCards.length - cluesRead);
   const glass = { backgroundColor: theme.raised, borderColor: theme.rim };
   // The top HUD band's height: under the status bar, one row of controls.
@@ -521,6 +522,27 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     setSparkle({ x: x - root.x, y: y - root.y, at });
     // Gone once it has played.
     setTimeout(() => setSparkle((s) => (s?.at === at ? null : s)), 900);
+  };
+  /**
+   * The UV light switched back to the normal light: a tap on the UV flashlight in the hotbar while it's on, or on
+   * the flashlight in the corner. (Dragging the UV flashlight onto the flashlight switches it either way.)
+   */
+  const uvOff = () => {
+    if (!uvOn) return;
+    feedback.tick();
+    setUvOn(false);
+    for (const t of [hoverTimer, traceTimer]) if (t.current) clearTimeout(t.current);
+    if (toolsOut) sparkleAt(flashAt.left + root.x + TOOL / 2, flashAt.top + root.y + TOOL * 0.3);
+  };
+  /** A held item tapped: the UV light in use switches off; anything else says what it is. */
+  const tapItem = (id: string) => {
+    const item = itemById(id);
+    if (uvOn && item && isUvLight(item)) {
+      setShown(null);
+      uvOff();
+      return;
+    }
+    showItem(id);
   };
   /** A held item's slot centre (window points), measured now: where it goes home to. */
   const slotHome = (id: string) => async () => {
@@ -637,7 +659,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       shown={shown}
       equipped={uvOn}
       carry={carry}
-      onTap={showItem}
+      onTap={tapItem}
       onExamine={openItem}
       onDragStart={(id, size) => { feedback.tick(); setShown(null); setCarrying({ id, size }); }}
       onDrop={dropItem}
@@ -756,6 +778,17 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             onDrop={dropLens}
           />
           <Flashlight at={{ left: screenW - TOOL - ref.space.sm, top: toolTop }} beamX={beam.x} beamY={beam.y} frame={frameHere} uv={uvOn} />
+          {uvOn ? (
+            // With the UV light on, the flashlight is a switch: a tap turns it back to the normal light.
+            <Pressable
+              onPress={uvOff}
+              accessibilityRole="button"
+              accessibilityLabel="Flashlight, UV on"
+              accessibilityHint="Tap to switch back to your normal light."
+              testID="v2-flashlight-uv-off"
+              style={[styles.flashSwitch, { left: flashAt.left, top: flashAt.top }]}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -766,11 +799,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             <View style={styles.overTools} pointerEvents="box-none">
               {shownItem ? (
                 <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
-                  {ShownGlyph ? (
-                    <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
-                      <ShownGlyph size={24} weight="fill" color={theme.ink} />
-                    </View>
-                  ) : null}
+                  <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
+                    <ItemIcon item={shownItem} size={34} />
+                  </View>
                   <View style={styles.itemText}>
                     <Text style={[styles.caseLabel, styles.itemLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>{HELD_LABEL[def.mode]}</Text>
                     <Text style={[ref.type.headline, { color: theme.ink }]}>{capitalise(shownItem.name)}</Text>
@@ -791,12 +822,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           >
             <View style={styles.trayWrap}>{tray}</View>
           </View>
-          {/* The cat, peering over the ledge, eyes on your light (over the close-up's sheet while that's up). Drawn
-              after the ledge, at its measured height: a percentage inset on an absolute child of the auto-height
+          {/* The cat, peering over the ledge with its paws on its top edge, eyes on your light (over the close-up's
+              sheet while that's up). Drawn after the ledge, at its measured height: a percentage inset on an absolute child of the auto-height
               ledge is dropped on iOS (Yoga), which left it centred in the ledge, under the tray's slots. */}
           {open || casebook ? null : (
             <View
-              style={[styles.cat, { bottom: ledgeTop === null ? V2.tray.height + ref.space.sm * 2 + insets.bottom + 1 : windowHeight - ledgeTop }]}
+              style={[styles.cat, { bottom: (ledgeTop === null ? V2.tray.height + ref.space.sm * 2 + insets.bottom + 1 : windowHeight - ledgeTop) - CAT_PAWS_OVER }]}
               pointerEvents="box-none"
             >
               {cat}
@@ -928,6 +959,8 @@ const styles = StyleSheet.create({
   itemGlyph: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   itemText: { flexShrink: 1, gap: 1 },
   itemLabel: { textAlign: "left" },
+  // Over the flashlight while the UV light is on (the art itself takes no touches).
+  flashSwitch: { position: "absolute", width: TOOL, height: TOOL, zIndex: 9 },
   // The item card stands on the tools' row (the magnifier, the cat, the flashlight), never over it.
   overTools: { gap: ref.space.sm, paddingBottom: TOOL + ref.space.sm * 2 },
 });

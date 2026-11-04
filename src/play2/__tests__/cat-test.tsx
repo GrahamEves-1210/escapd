@@ -7,8 +7,8 @@ import { createGestureController } from "react-native-gesture-handler/jest-utils
 import { makeMutable } from "react-native-reanimated";
 import type { PlayState, RoomDefinitionV2 } from "@/engine/v2";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { PET, PeekingCat } from "../PeekingCat";
-import { SWISH, SittingCat, TAIL, bendTail, tailBends } from "../SittingCat";
+import { PET, PeekingCat, pupilRoom } from "../PeekingCat";
+import { SittingCat, TAIL, WHIP, bendTail, restTail, stepTail, tailBends, type TailMood, type TailState } from "../SittingCat";
 import { useCatCues } from "../useCatCues";
 
 /** A hand on the cat, step by step (the petting gesture). Under fake timers: what the gesture hands the JS thread runs on a timer. */
@@ -231,6 +231,29 @@ describe("PeekingCat", () => {
     }
   });
 
+  it("keeps its pupils inside its irises, whichever way they look and however open", () => {
+    // A tilted iris, 6 by 5 points (half sizes), as the art's.
+    const eye = { cx: 0, cy: 0, a: 6, b: 5, tilt: 32 };
+    const inside = (x: number, y: number) => {
+      const t = (eye.tilt * Math.PI) / 180;
+      const u = (x * Math.cos(t) + y * Math.sin(t)) / eye.a, v = (-x * Math.sin(t) + y * Math.cos(t)) / eye.b;
+      return u * u + v * v <= 1.0001;
+    };
+    for (const [hw, hh] of [[0.6, 3.5], [2.5, 4], [4.2, 4.2]]) {
+      for (let k = 0; k < 16; k++) {
+        const q = (k / 16) * Math.PI * 2;
+        const [ux, uy] = [Math.cos(q), Math.sin(q)];
+        const d = pupilRoom(eye, ux, uy, hw, hh, 0.9);
+        for (let i = 0; i < 24; i++) {
+          const p = (i / 24) * Math.PI * 2;
+          expect(inside(ux * d + Math.cos(p) * hw, uy * d + Math.sin(p) * hh)).toBe(true);
+        }
+      }
+    }
+    // A slit has room to look sideways, little up or down.
+    expect(pupilRoom(eye, 1, 0, 0.6, 3.5, 0.9)).toBeGreaterThan(2 * pupilRoom(eye, 0, 1, 0.6, 3.5, 0.9));
+  });
+
   it("thinks with its eyes on what it's told to look at, quietly (no mark)", async () => {
     const x = makeMutable(0.5), y = makeMutable(0.4);
     const view = await render(
@@ -287,12 +310,8 @@ describe("SittingCat", () => {
       const [a, b] = [TAIL.points[i], TAIL.points[i + 1]];
       expect(Math.hypot(b[0] - a[0], b[1] - a[1])).toBeCloseTo(TAIL.step, 0);
     }
-    const centre = (v: { x: number; y: number }[], i: number) => {
-      const [l, r] = [TAIL.left[i], TAIL.right[i]];
-      return { x: (v[2 * i].x * r + v[2 * i + 1].x * l) / (l + r), y: (v[2 * i].y * r + v[2 * i + 1].y * l) / (l + r) };
-    };
     const rest = bendTail(Array.from({ length: n }, () => 0));
-    const bent = bendTail(tailBends(1.3, 1, 0.5, 0.8));
+    const bent = bendTail(tailBends([0.05, 0.4, 0.7, 0.9, 1.2, 1.4]));
     for (let i = 0; i < n; i++) {
       const [a, b] = [centre(bent, i), centre(bent, i + 1)];
       expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(Math.hypot(TAIL.points[i + 1][0] - TAIL.points[i][0], TAIL.points[i + 1][1] - TAIL.points[i][1]), 3);
@@ -301,32 +320,85 @@ describe("SittingCat", () => {
     const moved = (i: number) => Math.hypot(centre(bent, i).x - centre(rest, i).x, centre(bent, i).y - centre(rest, i).y);
     expect(moved(0)).toBeCloseTo(0, 6);
     expect(moved(2)).toBeLessThan(1);
-    expect(moved(n)).toBeGreaterThan(20);
-    expect(moved(n / 4)).toBeLessThan(moved(n) / 3);
+    expect(moved(n)).toBeGreaterThan(50);
+    expect(moved(n / 4)).toBeLessThan(moved(n) / 5);
+    // The bends add up to the joints' turns, smoothly (no segment turns much more than its neighbours).
+    const bends = tailBends([0.05, 0.4, 0.7, 0.9, 1.2, 1.4]);
+    expect(bends.reduce((sum, v) => sum + v, 0)).toBeCloseTo(1.4, 1);
+    for (let i = 1; i < n; i++) expect(Math.abs(bends[i] - bends[i - 1])).toBeLessThan(0.05);
   });
 
-  it("swishes its tail as a cat does: a wave running up it, the tip bending most and trailing, curling more when content, and flicks", () => {
-    const n = TAIL.segments;
-    const RAD = Math.PI / 180;
-    const total = (b: number[], to = n) => b.slice(0, to).reduce((sum, v) => sum + v, 0) / RAD;
-    // The swing at the base's end and the tip over a sweep: the base barely, the tip most.
-    const sweep = Array.from({ length: 64 }, (_, k) => tailBends((k / 64) * Math.PI * 2, 1, 0, 0));
-    const swing = (to: number) => Math.max(...sweep.map((b) => Math.abs(total(b, to))));
-    expect(swing(3)).toBeLessThan(1);
-    expect(swing(n)).toBeGreaterThan(15);
-    expect(swing(n)).toBeLessThanOrEqual(SWISH.wave);
-    // It runs up the tail: the base's bend peaks before the tip's.
-    const peak = (i: number) => sweep.reduce((best, b, k) => (b[i] > sweep[best][i] ? k : best), 0);
-    expect(peak(n - 1)).toBeGreaterThan(peak(0));
-    // A content curl and a flick bend the tip, by their totals.
-    expect(total(tailBends(0, 0, 1, 0))).toBeCloseTo(SWISH.curl, 0);
-    expect(total(tailBends(0, 0, 0, 1))).toBeCloseTo(SWISH.flick, 0);
-    expect(total(tailBends(0, 0, 1, 0), n / 2)).toBeLessThan(SWISH.curl * 0.1);
-    // Cross, it thrashes much faster than its lazy sweep; content, slower.
-    expect(SWISH.cross.speed).toBeGreaterThan(SWISH.sweep.speed * 3);
-    expect(SWISH.content.speed).toBeLessThan(SWISH.sweep.speed);
+  it("whips like a cat's tail: a swish runs up it late, the tip swinging past where it's going and snapping back", () => {
+    // Pushed out once (a swish at its middling pace), and left: each joint's turn over 4 s.
+    let st: TailState = { ...restTail(), goal: 0.8, omega: WHIP.swish.omega + WHIP.swish.omegaSpread / 2, next: 1e9, twitchAt: 1e9, curlGoal: 0 };
+    const tip = WHIP.joints.length - 1;
+    const track: number[][] = [];
+    for (let k = 0; k < 240; k++) {
+      const r = stepTail(st, 0, 1 / 60, () => 0.5);
+      st = r.state;
+      track.push(r.joints);
+    }
+    const peakAt = (j: number) => track.reduce((best, v, k) => (v[j] > track[best][j] ? k : best), 0);
+    const settled = track[track.length - 1];
+    // It runs up the tail: the tip gets halfway there well after the joint near the base does.
+    const halfway = (j: number) => track.findIndex((v) => v[j] > settled[j] / 2);
+    expect(halfway(tip)).toBeGreaterThan(halfway(1) + 4);
+    // The tip overshoots (by a good deal) and comes back; low down it barely does.
+    const over = (j: number) => track[peakAt(j)][j] / settled[j];
+    expect(over(tip)).toBeGreaterThan(1.2);
+    expect(over(tip)).toBeGreaterThan(over(0));
+    expect(Math.abs(settled[tip] - 0.8 * WHIP.swing * (Math.PI / 180))).toBeLessThan(0.02);
+    // The floor part barely turns at all.
+    expect(Math.abs(settled[0])).toBeLessThan(0.05);
+  });
+
+  it("swishes, rests curled, flicks and twitches by itself; never past its canvas, whatever its mood", () => {
+    const pad = TAIL.pad;
+    const [w, h] = TAIL.size;
+    const box = { left: -pad.left * w, top: -pad.top * w, right: w * (1 + pad.right), bottom: h + pad.bottom * w };
+    for (const [mood, seed] of [[0, 1], [0, 2], [1, 3], [2, 4]] as [TailMood, number][]) {
+      let x = seed;
+      const rand = () => {
+        x = (x * 1103515245 + 12345) % 2147483648;
+        return x / 2147483648;
+      };
+      let st = restTail();
+      const tips: number[] = [];
+      let fastest = 0;
+      const seen = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+      for (let k = 0; k < 60 * (mood === 0 ? 120 : 30); k++) {
+        const r = stepTail(st, mood, 1 / 60, rand);
+        const prev = st.th[st.th.length - 1];
+        st = r.state;
+        fastest = Math.max(fastest, Math.abs(st.th[st.th.length - 1] - prev) * 60);
+        tips.push(r.joints[r.joints.length - 1]);
+        if (k % 3) continue;
+        for (const p of bendTail(tailBends(r.joints))) {
+          seen.left = Math.min(seen.left, p.x);
+          seen.right = Math.max(seen.right, p.x);
+          seen.top = Math.min(seen.top, p.y);
+          seen.bottom = Math.max(seen.bottom, p.y);
+        }
+      }
+      expect(seen.left).toBeGreaterThan(box.left);
+      expect(seen.right).toBeLessThan(box.right);
+      expect(seen.top).toBeGreaterThan(box.top);
+      expect(seen.bottom).toBeLessThan(box.bottom);
+      // It moves (out and in, calm), and a good way.
+      const range = (Math.max(...tips) - Math.min(...tips)) / (Math.PI / 180);
+      expect(range).toBeGreaterThan(mood === 2 ? 15 : 40);
+      // Cross, it thrashes much faster than when calm or content.
+      if (mood === 1) expect(fastest).toBeGreaterThan(6);
+      if (mood === 2) expect(fastest).toBeLessThan(6);
+    }
   });
 });
+
+/** The strip's centre line at point i (between its left and right edges). */
+function centre(v: { x: number; y: number }[], i: number) {
+  const [l, r] = [TAIL.left[i], TAIL.right[i]];
+  return { x: (v[2 * i].x * r + v[2 * i + 1].x * l) / (l + r), y: (v[2 * i].y * r + v[2 * i + 1].y * l) / (l + r) };
+}
 
 describe("useCatCues", () => {
   const box = { x: 0.2, y: 0.3, w: 0.2, h: 0.2 };

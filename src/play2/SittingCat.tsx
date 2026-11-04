@@ -4,15 +4,17 @@
 // sparkles in the mode's sweet colour (`cheer` changes for another),
 // breathes, and now and then gives a little happy hop. It likes being
 // stroked as the peeking cat does (usePetting): a hand on it and it shuts its
-// eyes (lids drawn over the art's) with a small flinch; rubbed, it leans into
-// the hand, sways and purrs (a fine shiver, a soft beat in the hand, "prr");
-// let go, its eyes open slowly with a content blink. Rough, quick taps and it
-// pulls away from the hand for a while. Its art never changes, but its tail
-// (cut out of the art, scripts/brand/cat_tail.py) bends and swishes almost
-// all the time, drawn as a textured mesh along a moving centre line: lazy
-// S-curve sweeps travelling up it, the base nearly still and the tip moving
-// most and trailing, now and then a pause or a quick flick of the tip; fast
-// and cross while it sulks, a slow content curl while it purrs. Under reduced
+// eyes (lids drawn over the art's, in each eye's own frame) with a small
+// flinch; rubbed, it leans into the hand, sways and purrs (a fine shiver, a
+// soft beat in the hand, "prr"); let go, its eyes open slowly with a content
+// blink. Rough, quick taps and it pulls away from the hand for a while. Its
+// art never changes, but its tail (cut out of the art,
+// scripts/brand/cat_tail.py) moves all the time, smoothly, drawn as a
+// textured mesh along a moving centre line bent by a chain of springs (WHIP):
+// lazy swishes that sweep out and back, each running up the tail so the tip
+// trails, swings past and snaps back; now and then a flick that whips up to
+// the tip, a twitch of just the tip, or a rest curled into a question mark;
+// fast and cross while it sulks, a slow curled sway while it purrs. Under reduced
 // motion it simply sits, its tail still (its eyes still shut for a hand, and
 // the "prr" shows).
 import { useEffect, useMemo, useState } from "react";
@@ -23,7 +25,7 @@ import Animated, {
 import { Canvas, FilterMode, Group, ImageShader, MipmapMode, Vertices, useImage, vec, type SkPoint } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { Burst, PetLayer, Purr, pettingMotion, usePetting, useStopMotion } from "./PeekingCat";
+import { Burst, EyeLid, PetLayer, Purr, pettingMotion, usePetting, useStopMotion } from "./PeekingCat";
 import LINE from "../../assets/characters/cat_sit_tail.json";
 
 /** The cat without its tail (cat_sit.png less its tail), and its tail alone, both the art's size. */
@@ -35,50 +37,67 @@ const ASPECT = 640 / 444;
  * line in the art's pixels, base (under the haunch) to just past the tip, as
  * points an equal arc apart, and the tail's reach to the left and right of the
  * line at each. The mesh is a strip of quads along it, the tail image mapped
- * on as it lies. `room`: the canvas it's drawn on reaches this far past the
- * art's right edge (shares of its width), for the tip's swing.
+ * on as it lies. `pad`: the canvas it's drawn on reaches this far past the
+ * art's box on each side (shares of its width), so the tip never clips at the
+ * far end of a swish or a whip (the tests run it a long while to check).
  */
-export const TAIL = { ...LINE, segments: LINE.points.length - 1, room: 0.2 } as const;
+export const TAIL = { ...LINE, segments: LINE.points.length - 1, pad: { left: 0.02, top: 0.04, right: 0.32, bottom: 0.04 } } as const;
 /**
- * The swish, as bends along the tail (degrees over its whole length; each
- * segment turns its share more than the one before, so the line bends
- * smoothly): a wave of `wave` degrees, thinning to `base` of it at the base
- * and growing as s^`grow` toward the tip (s 0 at the base, 1 at the tip),
- * `lag` radians later at the tip than the base (it runs up the tail); a
- * content `curl` and a `flick`, both at the tip. Its moods: `speed` radians a
- * second (a lazy sweep about every 3.5 s), at `size` of the full swing, for
- * `ms` (plus up to `spread`); after a sweep it pauses with chance `pauses`.
- * Speed, size and curl ease to a new mood at `ease` a second. Flicks every
- * `flicks` ms (plus up to `flicksSpread`), quicker when it's cross. Positive
- * bends clockwise.
+ * The tail moves as a real one does: a chain of `joints` along it (s 0 at the
+ * base, 1 at the tip), each a damped spring (`omega` rad/s, damping `zeta`)
+ * following the one below it, so whatever the base does runs up the tail late,
+ * and the tip, lightest and loosest, swings past where it's going and snaps
+ * back (a whip). Its muscles pull each joint to bend from the one below by a
+ * share of a `sweep` (`swing` degrees at full: most of it low, where the tail
+ * lifts off the floor; positive swings it out, away from the body) and of a
+ * `curl` (`hook` degrees, at the tip: the question mark). The sweep and the
+ * curl ease to their goals as critically damped springs, at a rate the mood
+ * sets; a `twitch` of the tip alone is a quick ringing spring of its own
+ * (`twitchOmega`, `twitchZeta`), kicked by `twitchKick` rad/s. Its moods
+ * (picked on the UI thread, `stepTail`):
+ *   - calm: lazy swishes from side to side (`swish`: out further than in), now
+ *     and then a slow question-mark curl while it rests (`rest`), and a quick
+ *     flick out and back that whips up to the tip (`flick`); a twitch of the
+ *     tip every `twitches` s,
+ *   - cross (rough handling): a fast thrash, flicking, the tip twitching,
+ *   - content (purring): a slow, small sway, the tip curled.
+ * The base, under the haunch, never moves (no seam); the floor part barely.
  */
-export const SWISH = {
-  wave: 45,
-  base: 0.06,
-  grow: 1.4,
-  lag: 2.6,
-  curl: 40,
-  flick: 45,
-  ease: 2.2,
-  sweep: { speed: 1.8, size: 1, ms: 3500, spread: 5000 },
-  pause: { speed: 0.12, size: 0.7, ms: 1100, spread: 1600 },
-  pauses: 0.4,
-  /** Rough handling: a quick, cross thrash. Purring: a slow, content curl. */
-  cross: { speed: 6.5, size: 1.3, curl: 0 },
-  content: { speed: 0.75, size: 0.5, curl: 1 },
-  flicks: 4500,
-  flicksSpread: 6000,
-  crossFlicks: 700,
-  /** On the body's 12 fps stop motion (true), or smooth. */
-  stepped: false,
+export const WHIP = {
+  joints: [0.22, 0.4, 0.58, 0.76, 0.9, 1],
+  omega: [15, 12.5, 10.5, 9, 8, 7.5],
+  zeta: [0.75, 0.5, 0.4, 0.33, 0.28, 0.25],
+  swing: 52,
+  sweep: [0.04, 0.42, 0.26, 0.14, 0.09, 0.05],
+  hook: 42,
+  curl: [0, 0, 0.04, 0.16, 0.34, 0.46],
+  twitch: [0, 0, 0, 0, 0.35, 1],
+  twitchOmega: 32,
+  twitchZeta: 0.2,
+  twitchKick: 14,
+  /** Calm: a swish out to `out` (plus up to `outSpread`) or in to `in` (less up to `inSpread`), easing at `omega` (plus up to `omegaSpread`), for `s` s (plus up to `sSpread`). */
+  swish: { out: 0.55, outSpread: 0.35, in: -0.35, inSpread: 0.3, omega: 4, omegaSpread: 2, s: 1.1, sSpread: 1.6, curl: 0.15 },
+  /** A rest, now and then (`chance` of each move): nearly still, curled into a question mark, eased in slowly. */
+  rest: { chance: 0.2, at: 0.12, atSpread: 0.18, omega: 2, s: 2.2, sSpread: 2.4, curl: 1 },
+  /** A flick (`chance` of each move): out to `to` fast and back, the whip running up the tail. */
+  flick: { chance: 0.16, to: 0.9, omega: 26, hold: 0.12, back: 9 },
+  twitches: { calm: [2.5, 4], cross: [0.5, 0.8], content: [3.5, 4] },
+  cross: { at: 0.4, atSpread: 0.2, omega: 13, omegaSpread: 5, s: 0.26, sSpread: 0.2, curl: -0.2 },
+  content: { at: 0.22, atSpread: 0.12, omega: 1.5, s: 2.4, sSpread: 1.2, curl: 1 },
+  /** How fast the curl eases to its goal (rad/s, critically damped). */
+  curlOmega: 2.6,
+  /** Integration step (s): small enough for the stiffest spring, whatever the frame rate. */
+  step: 1 / 240,
 } as const;
 const RADIANS = Math.PI / 180;
-/** Frames a second for the stop motion (as PeekingCat's). */
-const FPS = 12;
-/** The art's eyes (fractions of it: centre, half width, half height), and the tilt of its head (degrees) for the lashes. */
+/**
+ * The art's eyes (its irises, measured: art px): centre, half width and half
+ * height, and the tilt of the width (degrees, clockwise). The lids close in
+ * each eye's own frame (EyeLid).
+ */
 const EYES = [
-  { x: 0.3863, y: 0.3781, rx: 0.0698, ry: 0.0367, tilt: -24 },
-  { x: 0.5833, y: 0.3016, rx: 0.0462, ry: 0.0461, tilt: -24 },
+  { x: 170.1, y: 242.9, a: 30.5, b: 22.6, tilt: 9.2 },
+  { x: 258.9, y: 193.3, a: 20.1, b: 29.9, tilt: 12.1 },
 ] as const;
 /** The art's fur round its eyes. */
 const FUR = "#0E0C0B";
@@ -186,7 +205,17 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
       <Animated.View style={[styles.cat, { width, height }, style]}>
         <Tail width={width} height={height} bends={tail} />
         <Image source={ART} style={{ width, height }} resizeMode="contain" />
-        {EYES.map((eye, i) => <Lid key={i} eye={eye} width={width} height={height} f={f} />)}
+        {EYES.map((eye, i) => (
+          <EyeLid
+            key={i}
+            eye={{ cx: eye.x * (width / TAIL.size[0]), cy: eye.y * (width / TAIL.size[0]), a: eye.a * (width / TAIL.size[0]), b: eye.b * (width / TAIL.size[0]), tilt: eye.tilt }}
+            f={f}
+            amount={touched}
+            fur={FUR}
+            lash="rgba(232, 170, 60, 0.8)"
+            lashWidth={Math.max(1.5, width * 0.014)}
+          />
+        ))}
         {/* Over it all, the hand's layer: stroke it (it purrs), or give it a rub from a screen reader. */}
         <PetLayer petting={petting} label={`${label}. Pet the cat`} testID="sitting-cat" />
       </Animated.View>
@@ -222,18 +251,170 @@ const EDGES = TAIL.points.map((_, i) => {
 /** The strip's triangles: its vertices go left, right, left, right... from the base. */
 const INDICES = STEPS.flatMap((_, i) => [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2]);
 
-/** How much each segment of the tail turns from the last (radians, base to tip). See SWISH. */
-export function tailBends(phase: number, size: number, curl: number, flick: number): number[] {
+/**
+ * How much each segment of the tail turns from the last (radians, base to tip),
+ * given how far each joint (WHIP.joints) has turned from the tail as it lies:
+ * the turn along the tail is a smooth curve through the joints' (cubic, from 0
+ * at the base, flat there), each segment turned by its middle's share of it.
+ */
+export function tailBends(joints: number[]): number[] {
   "worklet";
+  const S = WHIP.joints;
+  const J = joints.length;
+  // The curve's slope at each joint (Catmull-Rom; at the first, as the base's curve arrives).
+  const slope: number[] = [];
+  for (let j = 0; j < J; j++) {
+    if (j === 0) slope.push((2 * joints[0]) / S[0]);
+    else if (j === J - 1) slope.push((joints[j] - joints[j - 1]) / (S[j] - S[j - 1]));
+    else slope.push((joints[j + 1] - joints[j - 1]) / (S[j + 1] - S[j - 1]));
+  }
   const out: number[] = [];
+  let before = 0;
+  let j = 0;
   for (let i = 0; i < N; i++) {
     const s = (i + 0.5) / N;
-    const wave = SWISH.wave * size * ((SWISH.base + s ** SWISH.grow) / (SWISH.base + 1 / (SWISH.grow + 1))) * Math.sin(phase - s * SWISH.lag);
-    // Curl and flick, at the tip: growing as s cubed (whole over the length: their totals).
-    const tip = 4 * s ** 3;
-    out.push(((wave + (SWISH.curl * curl + SWISH.flick * flick) * tip) / N) * RADIANS);
+    let turn: number;
+    if (s <= S[0]) {
+      turn = joints[0] * (s / S[0]) ** 2;
+    } else {
+      while (j < J - 2 && s > S[j + 1]) j++;
+      const h = S[j + 1] - S[j];
+      const u = Math.min(1, (s - S[j]) / h);
+      const u2 = u * u, u3 = u2 * u;
+      turn = (2 * u3 - 3 * u2 + 1) * joints[j] + (u3 - 2 * u2 + u) * h * slope[j] + (-2 * u3 + 3 * u2) * joints[j + 1] + (u3 - u2) * h * slope[j + 1];
+    }
+    out.push(turn - before);
+    before = turn;
   }
   return out;
+}
+
+/** The tail's motion (see WHIP): each joint's turn and spin, the sweep's and curl's, the twitch's, and its timetable (s). */
+export type TailState = {
+  t: number; th: number[]; v: number[];
+  sweep: number; sweepV: number; goal: number; omega: number;
+  curl: number; curlV: number; curlGoal: number;
+  tw: number; twV: number;
+  next: number; back: number; backGoal: number; backOmega: number; twitchAt: number;
+  /** The mood its moves were picked for (a new one starts a move at once). */
+  mood: TailMood;
+};
+/** Calm, cross (rough handling) or content (purring). */
+export type TailMood = 0 | 1 | 2;
+
+/** The tail as it lies, about to start a swish. */
+export function restTail(): TailState {
+  "worklet";
+  const n = WHIP.joints.length;
+  const th: number[] = [], v: number[] = [];
+  for (let j = 0; j < n; j++) {
+    th.push(0);
+    v.push(0);
+  }
+  return {
+    t: 0, th, v, sweep: 0, sweepV: 0, goal: 0, omega: WHIP.swish.omega,
+    curl: 0, curlV: 0, curlGoal: WHIP.swish.curl, tw: 0, twV: 0,
+    next: 0.4, back: -1, backGoal: 0, backOmega: 0, twitchAt: 3, mood: 0,
+  };
+}
+
+/** Its next move, when the last one's time is up (`rand` 0..1, as Math.random). */
+function nextMove(st: TailState, mood: TailMood, rand: () => number) {
+  "worklet";
+  if (mood === 1) {
+    const c = WHIP.cross;
+    st.goal = (st.goal > 0 ? -1 : 1) * (c.at + c.atSpread * rand());
+    st.omega = c.omega + c.omegaSpread * rand();
+    st.curlGoal = c.curl;
+    st.next = st.t + c.s + c.sSpread * rand();
+    return;
+  }
+  if (mood === 2) {
+    const c = WHIP.content;
+    st.goal = (st.goal > 0.05 ? -0.3 : 1) * (c.at + c.atSpread * rand());
+    st.omega = c.omega;
+    st.curlGoal = c.curl;
+    st.next = st.t + c.s + c.sSpread * rand();
+    return;
+  }
+  const r = rand();
+  if (r < WHIP.flick.chance) {
+    // A flick out, then back to where it was going.
+    const f = WHIP.flick;
+    st.back = st.t + f.hold;
+    st.backGoal = st.goal;
+    st.backOmega = f.back;
+    st.goal = f.to;
+    st.omega = f.omega;
+    st.next = st.t + 0.9 + rand() * 1.2;
+  } else if (r < WHIP.flick.chance + WHIP.rest.chance) {
+    const w = WHIP.rest;
+    st.goal = w.at + w.atSpread * rand();
+    st.omega = w.omega;
+    st.curlGoal = w.curl;
+    st.next = st.t + w.s + w.sSpread * rand();
+  } else {
+    // A swish the other way: out (away from the body) further than in.
+    const w = WHIP.swish;
+    st.goal = st.goal > 0.2 ? w.in - w.inSpread * rand() : w.out + w.outSpread * rand();
+    st.omega = w.omega + w.omegaSpread * rand();
+    st.curlGoal = w.curl;
+    st.next = st.t + w.s + w.sSpread * rand();
+  }
+}
+
+/**
+ * The tail `dt` seconds on (on the UI thread, each frame): its moves picked as
+ * they fall due, then its springs run in small steps. A new state; and the
+ * joints' turns (radians) for tailBends.
+ */
+export function stepTail(from: TailState, mood: TailMood, dt: number, rand: () => number): { state: TailState; joints: number[] } {
+  "worklet";
+  const st: TailState = { ...from, th: from.th.slice(), v: from.v.slice() };
+  const n = WHIP.joints.length;
+  const steps = Math.max(1, Math.ceil(Math.min(0.1, dt) / WHIP.step));
+  const h = Math.min(0.1, dt) / steps;
+  const swing = WHIP.swing * RADIANS, hook = WHIP.hook * RADIANS;
+  if (st.mood !== mood) {
+    st.mood = mood;
+    st.next = st.t;
+    st.back = -1;
+  }
+  for (let k = 0; k < steps; k++) {
+    st.t += h;
+    if (st.back >= 0 && st.t >= st.back) {
+      st.goal = st.backGoal;
+      st.omega = st.backOmega;
+      st.back = -1;
+    }
+    if (st.t >= st.next) nextMove(st, mood, rand);
+    if (st.t >= st.twitchAt) {
+      const [every, spread] = mood === 1 ? WHIP.twitches.cross : mood === 2 ? WHIP.twitches.content : WHIP.twitches.calm;
+      st.twV += (rand() < 0.5 ? -1 : 1) * WHIP.twitchKick * (mood === 2 ? 0.5 : 1);
+      st.twitchAt = st.t + every + spread * rand();
+    }
+    // The sweep and the curl ease to their goals (critically damped); the twitch rings and dies away.
+    st.sweepV += (st.omega * st.omega * (st.goal - st.sweep) - 2 * st.omega * st.sweepV) * h;
+    st.sweep += st.sweepV * h;
+    const co = WHIP.curlOmega;
+    st.curlV += (co * co * (st.curlGoal - st.curl) - 2 * co * st.curlV) * h;
+    st.curl += st.curlV * h;
+    const to = WHIP.twitchOmega;
+    st.twV += (-to * to * st.tw - 2 * WHIP.twitchZeta * to * st.twV) * h;
+    st.tw += st.twV * h;
+    // Each joint follows the one below it, bent by its muscles' share (semi-implicit Euler).
+    let below = 0;
+    for (let j = 0; j < n; j++) {
+      const w = WHIP.omega[j];
+      const target = below + st.sweep * WHIP.sweep[j] * swing + st.curl * WHIP.curl[j] * hook;
+      st.v[j] += (w * w * (target - st.th[j]) - 2 * WHIP.zeta[j] * w * st.v[j]) * h;
+      st.th[j] += st.v[j] * h;
+      below = st.th[j];
+    }
+  }
+  const joints: number[] = [];
+  for (let j = 0; j < n; j++) joints.push(st.th[j] + st.tw * WHIP.twitch[j]);
+  return { state: st, joints };
 }
 
 /**
@@ -267,101 +448,60 @@ export function bendTail(bends: number[]): SkPoint[] {
   return out;
 }
 
-type Mood = { speed: number; size: number; curl: number };
-
 /**
- * The tail's swish: its segments' bends, on the UI thread. A wave runs up the
- * tail at the mood's speed (sweeps and pauses, picked here on a timer, or cross
- * or content for a hand), the speed, size and curl easing to each new mood so
- * it never jumps; flicks on top. Still (all 0) under reduced motion.
+ * The tail's motion on the UI thread (stepTail, every frame): its segments'
+ * bends. Its mood follows the hand: cross while it sulks, content while it
+ * purrs. Still (all 0) under reduced motion.
  */
 function useTailSwish({ still, sulking, purring }: { still: boolean; sulking: boolean; purring: boolean }): SharedValue<number[]> {
   const angles = useSharedValue<number[]>(STEPS.map(() => 0));
-  const phase = useSharedValue(0);
-  const now = useSharedValue<Mood>({ ...SWISH.sweep, curl: 0 });
-  const goal = useSharedValue<Mood>({ ...SWISH.sweep, curl: 0 });
-  const flick = useSharedValue(0);
-  const last = useSharedValue(-1);
+  const state = useSharedValue<TailState>(restTail());
+  const mood = useSharedValue<TailMood>(0);
+  useEffect(() => {
+    mood.set(sulking ? 1 : purring ? 2 : 0);
+  }, [sulking, purring, mood]);
   const frames = useFrameCallback((frame) => {
     "worklet";
-    const dt = Math.min(0.1, (frame.timeSincePreviousFrame ?? 0) / 1000);
-    const k = 1 - Math.exp(-dt * SWISH.ease);
-    const m = now.get();
-    const g = goal.get();
-    const eased = { speed: m.speed + (g.speed - m.speed) * k, size: m.size + (g.size - m.size) * k, curl: m.curl + (g.curl - m.curl) * k };
-    now.set(eased);
-    phase.set(phase.get() + eased.speed * dt);
-    if (SWISH.stepped) {
-      const step = Math.floor(frame.timeSinceFirstFrame / (1000 / FPS));
-      if (step === last.get()) return;
-      last.set(step);
-    }
-    angles.set(tailBends(phase.get(), eased.size, eased.curl, flick.get()));
+    const dt = (frame.timeSincePreviousFrame ?? 0) / 1000;
+    const { state: next, joints } = stepTail(state.get(), mood.get(), dt, Math.random);
+    state.set(next);
+    angles.set(tailBends(joints));
   }, false);
 
   useEffect(() => {
     frames.setActive(!still);
-    if (still) angles.set(STEPS.map(() => 0));
-    // frames and angles are stable.
+    if (still) {
+      angles.set(STEPS.map(() => 0));
+      state.set(restTail());
+    }
+    // frames, angles and state are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [still]);
-
-  useEffect(() => {
-    if (still) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const later = (fn: () => void, ms: number) => timers.push(setTimeout(fn, ms));
-    // A flick of the tip: out, back past rest, settle.
-    const flickOnce = () => {
-      const way = Math.random() < 0.5 ? -1 : 1;
-      flick.set(withSequence(
-        withTiming(way, { duration: 110, easing: Easing.out(Easing.quad) }),
-        withTiming(-way * 0.35, { duration: 200, easing: Easing.inOut(Easing.quad) }),
-        withTiming(0, { duration: 380, easing: Easing.inOut(Easing.quad) }),
-      ));
-    };
-    const flicking = (every: number, spread: number) => {
-      const again = () => {
-        flickOnce();
-        later(again, every + Math.random() * spread);
-      };
-      later(again, every + Math.random() * spread);
-    };
-    if (sulking) {
-      goal.set({ ...SWISH.cross });
-      flicking(SWISH.crossFlicks, SWISH.crossFlicks);
-    } else if (purring) {
-      goal.set({ ...SWISH.content });
-    } else {
-      // Sweeps, a little faster or slower each time, now and then a pause.
-      const next = (pause: boolean) => {
-        const m = pause ? SWISH.pause : SWISH.sweep;
-        goal.set({ speed: m.speed * (0.75 + Math.random() * 0.5), size: m.size * (0.8 + Math.random() * 0.3), curl: 0 });
-        later(() => next(!pause && Math.random() < SWISH.pauses), m.ms + Math.random() * m.spread);
-      };
-      next(false);
-      flicking(SWISH.flicks, SWISH.flicksSpread);
-    }
-    return () => timers.forEach(clearTimeout);
-    // goal and flick are stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [still, sulking, purring]);
   return angles;
 }
 
 /**
  * The tail: its image laid on a strip of triangles along its centre line
- * (bent by `bends`), on a canvas over the art's box and a little past its right
- * edge, under the body (which covers its base).
+ * (bent by `bends`), on a canvas over the art's box and past it on every side
+ * (TAIL.pad) for the swing, under the body (which covers its base).
  */
 function Tail({ width, height, bends }: { width: number; height: number; bends: SharedValue<number[]> }) {
   const image = useImage(TAIL_ART);
   const textures = useMemo(() => bendTail(STEPS.map(() => 0)), []);
   const vertices = useDerivedValue(() => bendTail(bends.get()));
+  const pad = TAIL.pad;
   return (
-    <View style={[styles.tail, { width: width * (1 + TAIL.room), height }]} pointerEvents="none" testID="sitting-cat-tail">
+    <View
+      style={[styles.tail, {
+        left: -pad.left * width, top: -pad.top * width,
+        width: width * (1 + pad.left + pad.right), height: height + width * (pad.top + pad.bottom),
+      }]}
+      pointerEvents="none"
+      testID="sitting-cat-tail"
+    >
       <Canvas style={StyleSheet.absoluteFill}>
         {image ? (
-          <Group transform={[{ scale: width / TAIL.size[0] }]}>
+          <Group transform={[{ translateX: pad.left * width }, { translateY: pad.top * width }, { scale: width / TAIL.size[0] }]}>
             <Vertices vertices={vertices} textures={textures} indices={INDICES} mode="triangles">
               <ImageShader image={image} tx="decal" ty="decal" sampling={{ filter: FilterMode.Linear, mipmap: MipmapMode.Linear }} />
             </Vertices>
@@ -372,37 +512,14 @@ function Tail({ width, height, bends }: { width: number; height: number; bends: 
   );
 }
 
-/**
- * A lid over one of the art's eyes, shown only while they're shut for a hand:
- * fur closing from the top down over the eye, and a content curve of lashes
- * where the eye was.
- */
-function Lid({ eye, width, height, f }: { eye: (typeof EYES)[number]; width: number; height: number; f: SharedValue<number[]> }) {
-  const w = eye.rx * 2 * width * 1.3;
-  const h = eye.ry * 2 * height * 1.45;
-  const lid = useAnimatedStyle(() => {
-    const shut = f.get()[8];
-    return { opacity: shut > 0.02 ? 1 : 0, transform: [{ scaleY: shut }] };
-  });
-  const lash = useAnimatedStyle(() => ({ opacity: Math.max(0, (f.get()[8] - 0.7) / 0.3), transform: [{ rotate: `${eye.tilt}deg` }] }));
-  return (
-    <>
-      <Animated.View style={[styles.lid, { left: eye.x * width - w / 2, top: eye.y * height - h / 2, width: w, height: h, borderRadius: Math.max(w, h) / 2 }, lid]} />
-      <Animated.View
-        style={[styles.lash, {
-          left: eye.x * width - w * 0.36, top: eye.y * height - h * 0.12, width: w * 0.72, height: h * 0.34,
-          borderBottomWidth: Math.max(1.5, width * 0.014), borderBottomLeftRadius: w * 0.4, borderBottomRightRadius: w * 0.4,
-        }, lash]}
-      />
-    </>
-  );
-}
+/** The lids are shut while a hand is on it (the frame's touch). */
+const touched = (v: number[]) => {
+  "worklet";
+  return v[8];
+};
 
 const styles = StyleSheet.create({
   cat: { transformOrigin: "50% 100%" },
-  tail: { position: "absolute", left: 0, top: 0 },
+  tail: { position: "absolute" },
   burst: { position: "absolute", width: 0, height: 0, alignItems: "center" },
-  // Scaled from its top edge, as a lid closes (over the eye's whole box, so it never needs the head's tilt).
-  lid: { position: "absolute", backgroundColor: FUR, transformOrigin: "50% 0%" },
-  lash: { position: "absolute", borderColor: "rgba(232, 170, 60, 0.8)" },
 });
