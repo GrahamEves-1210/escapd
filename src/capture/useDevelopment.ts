@@ -40,11 +40,16 @@ export function errorStage(error: unknown): DevStage {
     return /subscription/i.test(error.message) ? { kind: "access", reason: "entitlement" } : { kind: "account" };
   }
   if (error instanceof ApiError && error.code === "54000") return { kind: "access", reason: "cap" };
+  // The room has more photos than the server takes (private.app_config max_photos_per_room).
+  if (error instanceof ApiError && error.code === "23514") {
+    return { kind: "error", message: "This case has more photos than ESCAPD can take right now. Your photos are safe. Try again later." };
+  }
+  if (isNetworkError(error)) return { kind: "error", message: "You're offline. Your photos are safe. Connect and try again." };
+  // Name what went wrong (the code, or the error's first words), so a failure can be told apart.
+  const detail = error instanceof ApiError && error.code ? error.code : error instanceof Error ? error.message.slice(0, 60) : "";
   return {
     kind: "error",
-    message: isNetworkError(error)
-      ? "You're offline. Your photos are safe. Connect and try again."
-      : "Couldn't connect to ESCAPD. Your photos are safe. Try again.",
+    message: `Couldn't connect to ESCAPD. Your photos are safe. Try again.${detail ? ` (${detail})` : ""}`,
   };
 }
 
