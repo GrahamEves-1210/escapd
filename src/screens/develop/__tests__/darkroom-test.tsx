@@ -16,7 +16,7 @@ import type { GenerationJob } from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import DarkroomScreen from "../../../../app/capture/develop";
-import { CHAPTER, HOME_LABEL, LEAVE_LABEL, TYPEWRITER_GAP } from "../BuildWait";
+import { HOME_LABEL, LEAVE_LABEL, TYPEWRITER_GAP } from "../BuildWait";
 import {
   BUILDING_LABEL,
   BUILDING_LINES,
@@ -287,9 +287,9 @@ describe("the wait: one visual, one title, one line", () => {
     expect(useRoomTone).not.toHaveBeenCalled();
   });
 
-  it("is the case's first chapter: the kicker over the title, and the status line handwritten", async () => {
+  it("has no chapter kicker (there are no chapters), and the status line is handwritten", async () => {
     await renderScreen(running, true);
-    expect(screen.getByText(CHAPTER, hidden)).toBeTruthy();
+    expect(screen.queryByText(/chapter/i, hidden)).toBeNull();
     expect(styleOf(screen.getAllByText("Finding the objects", hidden)[0])).toMatchObject({ fontFamily: ref.font.hand });
   });
 });

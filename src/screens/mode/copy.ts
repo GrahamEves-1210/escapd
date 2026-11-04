@@ -95,8 +95,6 @@ export const RESUME_ACTIONS = {
  * core): the series line on its cover (home's card) and over its first page
  * (the intro).
  */
-/** Over a mode's first page, before its chapter's title. */
-export const CHAPTER_ONE = "Chapter One";
 
 export const SERIES: Record<Genre, string> = {
   noir: "A Detective Noir Mystery",

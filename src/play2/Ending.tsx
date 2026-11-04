@@ -184,7 +184,6 @@ export function Ending({ text, door, genre, roomId, onDone }: {
             <Twinkle size={12} color={theme.foil} delay={1100} reduced={reducedMotion} style={styles.twinkleC} />
           </View>
           <View style={styles.heading}>
-            <Text style={[styles.chapter, { color: look.accent }]}>Chapter the last</Text>
             <Text style={[styles.headline, { fontFamily: theme.display.fontFamily }, ink]} accessibilityRole="header" testID="v2-ending-headline">{headline}</Text>
           </View>
           {text ? <Text style={[styles.text, ink]} testID="v2-ending-text">{text}</Text> : null}

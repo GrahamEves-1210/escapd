@@ -296,7 +296,8 @@ const styles = StyleSheet.create({
     position: "absolute", left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     borderTopWidth: StyleSheet.hairlineWidth, paddingTop: ref.space.sm, zIndex: 50,
   },
-  cat: { position: "absolute", left: ref.space.xl, bottom: "100%" },
+  // On the sheet's top edge: pinned to the top and lifted by its own height (not a percentage bottom inset, which iOS drops).
+  cat: { position: "absolute", left: ref.space.xl, top: 0, transform: [{ translateY: "-100%" }] },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, marginBottom: ref.space.sm },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: ref.space.lg, gap: ref.space.sm, minHeight: 44 },
   headerText: { flex: 1, gap: 2 },

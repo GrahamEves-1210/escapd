@@ -219,7 +219,6 @@ function OpeningPage({ genre, label, words }: PageProps) {
           <FleuronRule color={PAGE_INK[genre]} width={170} />
         </View>
         <View style={styles.heading}>
-          <Text style={[PAYOFF_TYPE.chapter, styles.centre, { color: ink }]}>Chapter One</Text>
           <Text style={[styles.caseNo, { color: P.ink }]} accessibilityRole="header" testID="brief-case">{label}</Text>
         </View>
         <Text style={[styles.book, { color: P.ink }]} testID="brief-context">

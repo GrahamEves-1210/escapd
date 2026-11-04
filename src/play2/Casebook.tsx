@@ -189,7 +189,6 @@ function Chapter({ number, title, palette: p, theme, tab }: { number: string; ti
   return (
     <View style={styles.chapterHead}>
       <StickyTab color={tab} top={4} style={styles.tab} />
-      <Text style={[styles.chapterNo, { color: p.foilInk }]}>{`Chapter ${number}`}</Text>
       <Text style={[styles.chapterTitle, { fontFamily: theme.display.fontFamily, fontStyle: theme.display.fontStyle, color: p.ink }]} accessibilityRole="header">{title}</Text>
     </View>
   );

@@ -47,8 +47,6 @@ export const TYPEWRITER_GAP = 4000;
 export const LEAVE_LABEL = "Leave. Your case keeps building.";
 export const HOME_LABEL = "Back to home";
 
-/** The kicker over the title: the case's first chapter. */
-export const CHAPTER = "Chapter One";
 /** The ready seal across, and the status line's handwriting. */
 const SEAL = 132;
 const STATUS_SIZE = 22;
@@ -233,9 +231,6 @@ export function BuildWait({ stage, photos, onLeave, open }: {
             </View>
           ) : null}
         </Animated.View>
-        <Text style={[styles.chapter, { color: palette.genre ? theme.sweet : palette.inkMuted }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="build-chapter">
-          {CHAPTER}
-        </Text>
         <Animated.Text
           key={title}
           entering={ready ? TITLE_IN : undefined}
@@ -272,7 +267,9 @@ const styles = StyleSheet.create({
   column: { flex: 1, justifyContent: "center", paddingHorizontal: ref.space.edge, paddingTop: D.header.below },
   stage: { flexShrink: 1, flexGrow: 1, maxHeight: D.frame.maxHeight, minHeight: D.frame.minHeight, justifyContent: "center" },
   room: { flex: 1 },
-  cat: { position: "absolute", right: ref.space.lg, bottom: "100%" },
+  // Sat on the room's top edge: pinned to the top and lifted by its own height
+  // (a percentage bottom inset is dropped on iOS here, and the cat sank into the photos).
+  cat: { position: "absolute", right: ref.space.lg, top: 0, transform: [{ translateY: "-100%" }] },
   stampSlot: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
   chapter: { ...PAYOFF_TYPE.chapter, textAlign: "center", marginTop: D.gap.title - 6 },
   title: { textAlign: "center", marginTop: 2 },

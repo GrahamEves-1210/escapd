@@ -90,7 +90,7 @@ describe("the last page", () => {
     await render(<ThemeProvider reducedMotion><Ending text="The lock gives." genre="crime_scene" onDone={() => {}} /></ThemeProvider>);
     expect(flat(screen.getByTestId("v2-ending-text"))).toMatchObject(PAYOFF_TYPE.lastLarge);
     expect(screen.getByLabelText("The End")).toBeTruthy();
-    expect(screen.getByText("Chapter the last")).toBeTruthy();
+    expect(screen.queryByText(/chapter/i)).toBeNull();
     expect(screen.getByText(`· ${pageNumber("The lock gives.")} ·`, { includeHiddenElements: true })).toBeTruthy();
     expect(pageNumber("The lock gives.")).toBe(pageNumber("The lock gives."));
   });

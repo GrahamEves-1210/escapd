@@ -24,7 +24,7 @@ import { useModeOnFocus } from "@/game/useModeOnFocus";
 import type { Genre } from "@/lib/puzzle-types";
 import { ctaBottomPad, modeThemes, ref } from "@/theme/tokens";
 import { COVER_ASPECT, PAGE } from "@/screens/hub/art/nook";
-import { CHAPTER_ONE, MODE_INTRO, SERIES } from "./copy";
+import { MODE_INTRO, SERIES } from "./copy";
 import { markIntroSeen } from "./introSeen";
 import { Fleuron, FootShade, ModeBanner, ModeHeader, useModeScroll } from "./parts";
 
@@ -110,7 +110,6 @@ export function ModeIntro({ genre }: { genre: Genre }) {
             </Text>
             <Text style={[L.type.tagline, styles.tagline, { color: theme.inkMuted }]}>{theme.tagline}</Text>
             <Fleuron theme={theme} />
-            <Text style={[L.type.kicker, PAGE.chapter, { color: theme.foil }]}>{CHAPTER_ONE}</Text>
             <Text style={[styles.chapterTitle, { color: theme.ink }]}>{intro.kicker}</Text>
             <View style={styles.steps}>
               {steps.map((step, i) => (
