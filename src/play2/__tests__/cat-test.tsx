@@ -8,7 +8,7 @@ import { makeMutable } from "react-native-reanimated";
 import type { PlayState, RoomDefinitionV2 } from "@/engine/v2";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { PET, PeekingCat } from "../PeekingCat";
-import { SittingCat } from "../SittingCat";
+import { SWISH, SittingCat, TAIL, bendTail, tailBends } from "../SittingCat";
 import { useCatCues } from "../useCatCues";
 
 /** A hand on the cat, step by step (the petting gesture). Under fake timers: what the gesture hands the JS thread runs on a timer. */
@@ -260,6 +260,71 @@ describe("SittingCat", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it("draws its tail as one image on a strip of triangles along its centre line, behind the body; still under reduced motion", async () => {
+    const view = await render(<ThemeProvider reducedMotion><SittingCat width={100} /></ThemeProvider>);
+    // Behind the body: drawn before the body's image (the art less its tail).
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf("sitting-cat-tail")).toBeGreaterThan(-1);
+    expect(tree.indexOf("sitting-cat-tail")).toBeLessThan(tree.indexOf("cat_sit_body"));
+    const mesh = screen.container.queryAll((node) => (node.type as unknown) === "SkiaVertices")[0];
+    const n = TAIL.segments;
+    expect(n).toBeGreaterThanOrEqual(24);
+    expect(mesh.props.textures).toHaveLength(2 * (n + 1));
+    expect(mesh.props.indices).toHaveLength(6 * n);
+    expect(mesh.props.mode).toBe("triangles");
+    expect(screen.container.queryAll((node) => (node.type as unknown) === "SkiaImageShader")[0].props.image).toBeTruthy();
+    // Still: the strip lies as the art does (the image maps onto itself).
+    expect(mesh.props.vertices.value).toEqual(mesh.props.textures);
+    await view.unmount();
+  });
+
+  it("bends its tail smoothly from the base: every segment keeps its length (the fur never stretches) and the base stays put under the body", () => {
+    const n = TAIL.segments;
+    // The centre line's points an equal arc apart, as the art's tail lies.
+    for (let i = 0; i < n; i++) {
+      const [a, b] = [TAIL.points[i], TAIL.points[i + 1]];
+      expect(Math.hypot(b[0] - a[0], b[1] - a[1])).toBeCloseTo(TAIL.step, 0);
+    }
+    const centre = (v: { x: number; y: number }[], i: number) => {
+      const [l, r] = [TAIL.left[i], TAIL.right[i]];
+      return { x: (v[2 * i].x * r + v[2 * i + 1].x * l) / (l + r), y: (v[2 * i].y * r + v[2 * i + 1].y * l) / (l + r) };
+    };
+    const rest = bendTail(Array.from({ length: n }, () => 0));
+    const bent = bendTail(tailBends(1.3, 1, 0.5, 0.8));
+    for (let i = 0; i < n; i++) {
+      const [a, b] = [centre(bent, i), centre(bent, i + 1)];
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeCloseTo(Math.hypot(TAIL.points[i + 1][0] - TAIL.points[i][0], TAIL.points[i + 1][1] - TAIL.points[i][1]), 3);
+    }
+    // The base (under the haunch) barely moves; the tip moves most.
+    const moved = (i: number) => Math.hypot(centre(bent, i).x - centre(rest, i).x, centre(bent, i).y - centre(rest, i).y);
+    expect(moved(0)).toBeCloseTo(0, 6);
+    expect(moved(2)).toBeLessThan(1);
+    expect(moved(n)).toBeGreaterThan(20);
+    expect(moved(n / 4)).toBeLessThan(moved(n) / 3);
+  });
+
+  it("swishes its tail as a cat does: a wave running up it, the tip bending most and trailing, curling more when content, and flicks", () => {
+    const n = TAIL.segments;
+    const RAD = Math.PI / 180;
+    const total = (b: number[], to = n) => b.slice(0, to).reduce((sum, v) => sum + v, 0) / RAD;
+    // The swing at the base's end and the tip over a sweep: the base barely, the tip most.
+    const sweep = Array.from({ length: 64 }, (_, k) => tailBends((k / 64) * Math.PI * 2, 1, 0, 0));
+    const swing = (to: number) => Math.max(...sweep.map((b) => Math.abs(total(b, to))));
+    expect(swing(3)).toBeLessThan(1);
+    expect(swing(n)).toBeGreaterThan(15);
+    expect(swing(n)).toBeLessThanOrEqual(SWISH.wave);
+    // It runs up the tail: the base's bend peaks before the tip's.
+    const peak = (i: number) => sweep.reduce((best, b, k) => (b[i] > sweep[best][i] ? k : best), 0);
+    expect(peak(n - 1)).toBeGreaterThan(peak(0));
+    // A content curl and a flick bend the tip, by their totals.
+    expect(total(tailBends(0, 0, 1, 0))).toBeCloseTo(SWISH.curl, 0);
+    expect(total(tailBends(0, 0, 0, 1))).toBeCloseTo(SWISH.flick, 0);
+    expect(total(tailBends(0, 0, 1, 0), n / 2)).toBeLessThan(SWISH.curl * 0.1);
+    // Cross, it thrashes much faster than its lazy sweep; content, slower.
+    expect(SWISH.cross.speed).toBeGreaterThan(SWISH.sweep.speed * 3);
+    expect(SWISH.content.speed).toBeLessThan(SWISH.sweep.speed);
   });
 });
 

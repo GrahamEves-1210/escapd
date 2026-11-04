@@ -118,7 +118,8 @@ async function loadData(source, factory) {
   return factory(await Skia.Data.fromURI(uri));
 }
 
-// <Canvas> and <Image> as host views that keep their props, so a test can see what a canvas draws.
+// <Canvas>, <Image>, <Group>, <Vertices> and <ImageShader> as host views that keep their props, so a test
+// can see what a canvas draws. useImage hands back a 1 x 1 stand-in for any source at once.
 function element(name) {
   const { createElement } = require("react");
   const Component = (props) => createElement(name, props, props.children);
@@ -130,6 +131,11 @@ module.exports = {
   __esModule: true,
   Canvas: element("SkiaCanvas"),
   Image: element("SkiaImage"),
+  Group: element("SkiaGroup"),
+  Vertices: element("SkiaVertices"),
+  ImageShader: element("SkiaImageShader"),
+  useImage: (source) => (source == null ? null : makeImage(1, 1, source)),
+  vec: (x = 0, y) => ({ x, y: y ?? x }),
   __skia: state,
   Skia,
   loadData,

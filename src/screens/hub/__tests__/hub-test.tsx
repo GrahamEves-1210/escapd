@@ -15,7 +15,8 @@ import { introHref } from "@/screens/mode/routes";
 import { RESUME_COPY, SERIES } from "@/screens/mode/copy";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref, shellTheme } from "@/theme/tokens";
-import { CAT, COVER, DECK, SETTINGS } from "../art/nook";
+import * as nook from "../art/nook";
+import { CAT, COVER, DECK, PROPS, SETTINGS, WINDOW_ART } from "../art/nook";
 import { deckLayout, deckTilt, homeDeck, tiltOverhang } from "../deck";
 import { HubScreen } from "../HubScreen";
 import { windowGeometry } from "../WindowBackdrop";
@@ -942,5 +943,33 @@ describe("01 · Home and the mode intros: tokens only", () => {
     for (const key of ["tape", "count"]) expect(M.type).not.toHaveProperty(key);
     // The mode screen's case files, stamps and bar are gone from the mode's tokens.
     for (const key of ["artEdge", "file", "stamp", "bar", "empty"]) expect(ref.layout.mode).not.toHaveProperty(key);
+  });
+});
+
+describe("01 · Home: the window", () => {
+  it("keeps the rain on the glass: round the books, the candle and the mug on the sill, which stand in front of it", () => {
+    const art = { w: WINDOW_ART.width, h: WINDOW_ART.height };
+    const sillTop = art.h * (1 - WINDOW_ART.sill);
+    // Every shape is on the lower left pane (inside the frame, left of the mullion), down to the sill.
+    for (const p of PROPS) {
+      expect(p.x0).toBeGreaterThan(art.w * WINDOW_ART.frameX - 1);
+      expect(p.x1).toBeLessThan(art.w * (0.5 - WINDOW_ART.mullion / 2) + 10);
+      expect(p.y0).toBeGreaterThan(art.h * WINDOW_ART.cross);
+      expect(p.y1).toBeLessThanOrEqual(sillTop + 12);
+    }
+    // They cover the candle's flame and the mug's mouth (the steam rises from it, over the glass).
+    const covers = (x: number, y: number) => PROPS.some((p) => x >= p.x0 && x <= p.x1 && y >= p.y0 && y <= p.y1);
+    expect(covers(WINDOW_ART.flame.x * art.w, WINDOW_ART.flame.y * art.h)).toBe(true);
+    expect(covers(WINDOW_ART.mug.x * art.w, WINDOW_ART.mug.y * art.h + 4)).toBe(true);
+    // The rain and the clouds are drawn inside that clip; the cat, on the sill, is drawn over the whole canvas.
+    const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
+    expect(source).toMatch(/<Group clip=\{props\} invertClip>/);
+    expect(source.match(/<Glass /g)).toHaveLength(2);
+  });
+
+  it("has no lightning: no flashes in the window, just the rain, the clouds, the moon, the candle, the lights and the steam", () => {
+    const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
+    expect(source).not.toMatch(/function (Lightning|Flash)\b|LIGHTNING/);
+    expect(nook).not.toHaveProperty("LIGHTNING");
   });
 });

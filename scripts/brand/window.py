@@ -9,8 +9,8 @@
 # stars in the gaps, all seen through wet glass, beaded with rain. On the sill at the left, a
 # little stack of books with a lit candle on top; its light pools on the sill
 # and the frame; beside them a mug of tea. The app animates the flame's glow,
-# the rain, clouds drifting over the moon, lightning far off inside the
-# clouds, steam off the tea and the fairy lights over it
+# the rain on the glass (round the things on the sill), clouds drifting over
+# the moon, steam off the tea and the fairy lights over it
 # (src/screens/hub/WindowBackdrop.tsx).
 #
 # Usage: python3 scripts/brand/window.py assets/backdrop/window.jpg

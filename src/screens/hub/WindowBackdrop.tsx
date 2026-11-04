@@ -9,24 +9,25 @@
 // - thin cloud keeps drifting across the glass, over the moon, lit silver as
 //   it passes in front of it, the moon's soft corona through it;
 // - rain keeps hitting the glass, softly: drops land, bead, then some run
-//   down leaving a trail, and now and then lightning flickers far off inside
-//   the clouds, lighting a patch of them (never the whole sky). All of it
-//   stays inside the four panes (clipped), so the frame stays solid;
+//   down leaving a trail. All of it stays on the glass: inside the four panes
+//   (clipped), so the frame and the sill stay solid, and round the books, the
+//   candle and the mug on the sill (PROPS), which stand in front of it (the
+//   cat, drawn over this canvas, too);
 // - steam curls up off the tea;
 // - the candle's flame breathes and flickers, a warm halo in the theme's glow;
 // - fairy lights strung across the top, in the theme's glow, sweet and foil,
 //   twinkling slowly.
 // Under reduced motion it is all still: the clouds hold their places (one
-// across the moon), the steam holds its curl, no drops landing, no flashes,
-// the flame and the lights steady.
-import { useEffect, useMemo } from "react";
+// across the moon), the steam holds its curl, no drops landing, the flame
+// and the lights steady. No lightning: the storm is a quiet one.
+import { useMemo, type ReactNode } from "react";
 import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
-import { useDerivedValue, useSharedValue, withSequence, withTiming, type SharedValue } from "react-native-reanimated";
+import { useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurMask, Canvas, Circle, Group, LinearGradient, Oval, Path, RadialGradient, Skia, useClock, vec, type SkPath } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, LIGHTNING, MS_TO_S, RAIN, SHOWER, STEAM, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
+import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, MS_TO_S, PROPS, RAIN, SHOWER, STEAM, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
 
 const WINDOW = require("../../../assets/backdrop/window.jpg") as number;
 /** A clock in ms to seconds. */
@@ -79,6 +80,18 @@ export function WindowBackdrop() {
     b.addRect(Skia.XYWHRect(midX + half, crossY + half, left + w - midX - half, top + h - crossY - half));
     return b.build();
   }, [left, top, w, h, mullion, crossY, midX]);
+  // The things on the sill, in front of the glass: the glass's layers go round them.
+  const props = useMemo(() => {
+    const b = Skia.PathBuilder.Make();
+    const sx = art.width / ART.width;
+    const sy = art.height / ART.height;
+    for (const p of PROPS) {
+      const rect = Skia.XYWHRect(art.left + p.x0 * sx, art.top + p.y0 * sy, (p.x1 - p.x0) * sx, (p.y1 - p.y0) * sy);
+      if (p.oval) b.addOval(rect);
+      else b.addRRect(Skia.RRectXY(rect, p.r * sx, p.r * sy));
+    }
+    return b.build();
+  }, [art.left, art.top, art.width, art.height]);
   const flame = vec(art.left + art.width * ART.flame.x, art.top + art.height * ART.flame.y);
   const sky: Sky = {
     art,
@@ -86,7 +99,7 @@ export function WindowBackdrop() {
     moon: { x: art.left + art.width * ART.moon.x, y: art.top + art.height * ART.moon.y, r: art.width * ART.moon.r },
   };
   const mug = { x: art.left + art.width * ART.mug.x, y: art.top + art.height * ART.mug.y, size: art.width * ART.mug.w };
-  const nook: NookProps = { panes, sky, mug, flame, glow: theme.glow, width, top: insets.top, colors: [theme.glow, theme.sweet, theme.foil] };
+  const nook: NookProps = { panes, props, sky, mug, flame, glow: theme.glow, width, top: insets.top, colors: [theme.glow, theme.sweet, theme.foil] };
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window">
@@ -111,6 +124,8 @@ interface Sky {
 interface NookProps {
   /** The four panes, the clip for everything behind the glass. */
   panes: SkPath;
+  /** What stands on the sill in front of the glass: cut out of that clip. */
+  props: SkPath;
   sky: Sky;
   /** The mug's mouth, and its width (points). */
   mug: { x: number; y: number; size: number };
@@ -122,17 +137,28 @@ interface NookProps {
   colors: readonly string[];
 }
 
-/** Reduced motion: the clouds, the steam, the candle and the lights, all still; no rain or flashes. */
-function StillNook({ panes, sky, mug, flame, glow, width, top, colors }: NookProps) {
+/** On the glass only: inside the panes, and never over what stands on the sill in front of it. */
+function Glass({ panes, props, children }: { panes: SkPath; props: SkPath; children: ReactNode }) {
+  return (
+    <Group clip={panes}>
+      <Group clip={props} invertClip>
+        {children}
+      </Group>
+    </Group>
+  );
+}
+
+/** Reduced motion: the clouds, the steam, the candle and the lights, all still; no rain. */
+function StillNook({ panes, props, sky, mug, flame, glow, width, top, colors }: NookProps) {
   const halo = useSharedValue<number>(CANDLE.rest);
   const lit = useSharedValue<number>(FAIRY.rest);
   const clouds = useSharedValue(0);
   const steam = useSharedValue(STEAM.still / MS_TO_S);
   return (
     <>
-      <Group clip={panes}>
+      <Glass panes={panes} props={props}>
         <Clouds sky={sky} clock={clouds} />
-      </Group>
+      </Glass>
       <Steam mug={mug} clock={steam} />
       <Flame at={flame} glow={glow} opacity={halo} />
       <FairyLights width={width} top={top} colors={colors} clock={lit} />
@@ -140,7 +166,7 @@ function StillNook({ panes, sky, mug, flame, glow, width, top, colors }: NookPro
   );
 }
 
-function LiveNook({ panes, sky, mug, flame, glow, width, top, colors }: NookProps) {
+function LiveNook({ panes, props, sky, mug, flame, glow, width, top, colors }: NookProps) {
   const clock = useClock();
   const halo = useDerivedValue(() => {
     return CANDLE.rest + CANDLE.flicker * flicker(clock.value * PER_SECOND);
@@ -148,15 +174,14 @@ function LiveNook({ panes, sky, mug, flame, glow, width, top, colors }: NookProp
   const { glass } = sky;
   return (
     <>
-      <Group clip={panes}>
+      <Glass panes={panes} props={props}>
         <Clouds sky={sky} clock={clock} />
-        <Lightning art={sky.art} />
         <Group transform={[{ translateX: glass.left }, { translateY: glass.top }]}>
           {SHOWER.map((d, i) => (
             <Drop key={i} spec={d} clock={clock} width={glass.width} height={glass.height} />
           ))}
         </Group>
-      </Group>
+      </Glass>
       <Steam mug={mug} clock={clock} />
       <Flame at={flame} glow={glow} opacity={halo} />
       <FairyLights width={width} top={top} colors={colors} clock={clock} />
@@ -364,44 +389,6 @@ function Drop({ spec, clock, width, height }: { spec: DropSpec; clock: SharedVal
       <Circle cx={x0} cy={cy} r={r} color={RAIN.body} />
       <Circle cx={x0} cy={cy} r={r} style="stroke" strokeWidth={1} color={RAIN.edge} />
       <Circle cx={x0} cy={highlightY} r={highlightR} color={RAIN.highlight} />
-    </Group>
-  );
-}
-
-/**
- * Far-off lightning inside the clouds: every so often a soft glow flickers
- * twice and fades in one of LIGHTNING.spots, lighting the cloud round it
- * (inside the panes; never the whole sky).
- */
-function Lightning({ art }: { art: WindowGeometry }) {
-  const flash = useSharedValue(0);
-  const spot = useSharedValue(0);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const strike = () => {
-      spot.set(Math.floor(Math.random() * LIGHTNING.spots.length));
-      flash.set(withSequence(...LIGHTNING.steps.map((s) => withTiming(s.to, { duration: s.ms }))));
-      timer = setTimeout(strike, LIGHTNING.every + Math.random() * LIGHTNING.spread);
-    };
-    timer = setTimeout(strike, LIGHTNING.first + Math.random() * LIGHTNING.firstSpread);
-    return () => clearTimeout(timer);
-  }, [flash, spot]);
-  return (
-    <Group blendMode="screen">
-      {LIGHTNING.spots.map((at, i) => (
-        <Flash key={i} index={i} x={art.left + at.x * art.width} y={art.top + at.y * art.height} r={LIGHTNING.radius * art.width} flash={flash} spot={spot} />
-      ))}
-    </Group>
-  );
-}
-
-function Flash({ index, x, y, r, flash, spot }: { index: number; x: number; y: number; r: number; flash: SharedValue<number>; spot: SharedValue<number> }) {
-  const opacity = useDerivedValue(() => (spot.value === index ? flash.value : 0));
-  return (
-    <Group opacity={opacity}>
-      <Circle cx={x} cy={y} r={r}>
-        <RadialGradient c={vec(x, y)} r={r} colors={[LIGHTNING.color, LIGHTNING.clear]} />
-      </Circle>
     </Group>
   );
 }

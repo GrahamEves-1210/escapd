@@ -3,8 +3,7 @@
 // rain, the candle and the fairy lights are drawn with. Colours that belong
 // to the palette come from the shell's theme (useModeTheme() on home: glow,
 // sweet, foil); these are only the window's own lights (rain on the glass,
-// the clouds, the moon's light through them, a far-off flash, the tea's
-// steam), which no theme names. Kept here, beside the art, so the
+// the clouds, the moon's light through them, the tea's steam), which no theme names. Kept here, beside the art, so the
 // screens' source stays tokens-only (hub-test).
 
 /** The window art's geometry as fractions (scripts/brand/window.py): frame, sill, mullion, the cross's height. */
@@ -24,6 +23,27 @@ export const WINDOW_ART = {
   /** The mug's mouth (window.py's mug): its centre as shares of the art, its width as a share of the art's width. */
   mug: { x: 0.4155, y: 0.9063, w: 0.0775 },
 } as const;
+
+/**
+ * What stands on the sill in front of the glass (window.py's books, dish,
+ * candle, flame and mug, a few pixels outside each), in the art's pixels
+ * (WINDOW_ART.width x height): boxes with corner radius `r` (`oval`: an
+ * ellipse in the box). The rain and the clouds on the glass are drawn round
+ * them, never over them.
+ */
+export const PROPS: readonly { x0: number; y0: number; x1: number; y1: number; r: number; oval?: boolean }[] = [
+  // The two books, their page edges on top.
+  { x0: 126, y0: 2584, x1: 454, y1: 2656, r: 12 },
+  { x0: 154, y0: 2532, x1: 432, y1: 2594, r: 12 },
+  // The brass dish, the candle and its top, the flame.
+  { x0: 224, y0: 2518, x1: 356, y1: 2550, r: 0, oval: true },
+  { x0: 252, y0: 2389, x1: 328, y1: 2536, r: 12 },
+  { x0: 284, y0: 2380, x1: 296, y1: 2400, r: 0 },
+  { x0: 268, y0: 2322, x1: 312, y1: 2402, r: 0, oval: true },
+  // The mug, its rim and its handle.
+  { x0: 482, y0: 2520, x1: 590, y1: 2656, r: 18 },
+  { x0: 566, y0: 2550, x1: 630, y1: 2628, r: 24 },
+];
 
 /**
  * Thin rain cloud drifting across the glass, left to right, most of it in a
@@ -119,36 +139,6 @@ export const RAIN = {
   from: 0.4,
   running: 0.85,
   trailWidth: 1.5,
-} as const;
-
-/**
- * Far-off lightning, inside the clouds: every `every` + up to `spread` ms a
- * soft lavender glow flickers up in one of `spots` (shares of the art, low
- * over the treeline or high in the overcast), `radius` art-widths across,
- * lighting the cloud round it: never the whole sky (the moon stays veiled).
- */
-export const LIGHTNING = {
-  color: "rgb(214, 204, 255)",
-  clear: "rgba(214, 204, 255, 0)",
-  spots: [
-    { x: 0.2, y: 0.8 },
-    { x: 0.88, y: 0.79 },
-    { x: 0.45, y: 0.84 },
-    { x: 0.25, y: 0.1 },
-    { x: 0.8, y: 0.14 },
-  ],
-  radius: 0.42,
-  first: 3500,
-  firstSpread: 4000,
-  every: 9000,
-  spread: 10000,
-  // Two flickers and a fade: peak, dip, peak, out.
-  steps: [
-    { to: 0.55, ms: 70 },
-    { to: 0.12, ms: 90 },
-    { to: 0.4, ms: 80 },
-    { to: 0, ms: 420 },
-  ],
 } as const;
 
 /** The candle's flame light over the art: a warm halo that breathes and flickers. */
