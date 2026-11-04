@@ -36,7 +36,8 @@ import { introHref } from "@/screens/mode/routes";
 import { useTheme } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import { continueHref, type CaseToContinue } from "./caseStatus";
-import { Chip, GearGlyph } from "./Chip";
+import { CharmGlyph, Chip, GearGlyph } from "./Chip";
+import { useCharmChip } from "./useCharmChip";
 import { deckTilt, homeDeck } from "./deck";
 import { SittingCat } from "@/play2/SittingCat";
 import { HubNotice } from "./HubNotice";
@@ -81,6 +82,7 @@ export function HubScreen() {
   // Home is the shell: its velvet plum, glow and foil (useModeOnFocus(null) below).
   const shell = useModeTheme();
   const hub = useHubData();
+  const charms = useCharmChip();
   const [busy, setBusy] = useState<Genre | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -348,8 +350,17 @@ export function HubScreen() {
       >
         {/* Chip row: the 36 discs at safe top + 12, 16 from the edges, each in its 48 hit box. */}
         <View style={[styles.header, { paddingTop: insets.top + H.header.top - CHIP_PAD }]}>
-          {/* Opal's dismiss chevron: left out (home is the root). Its place keeps the wordmark centred. */}
-          <View style={styles.chipSlot} />
+          {/* Her charm board (home is the root, so the left slot is free): a dot while there's a charm she hasn't seen. */}
+          <View style={[styles.lift, { shadowColor: shell.ground }]}>
+            <Chip
+              accessibilityLabel={charms.label}
+              icon={<CharmGlyph />}
+              onPress={() => router.push("/collection")}
+              disabled={busy !== null}
+              testID="hub-charms"
+            />
+            {charms.unseen ? <View style={[styles.newDot, { backgroundColor: shell.sweet, borderColor: ref.color.void }]} pointerEvents="none" testID="hub-charms-new" /> : null}
+          </View>
           {/* The ESCAPD logo, large and centred: the brand art's cream letters with the lit keyhole, keyed onto the black. */}
           <Animated.View style={[styles.titleGroup, logoIn]}>
             <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={[styles.lift, { shadowColor: shell.ground }]}>
@@ -482,7 +493,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: ref.space.lg - CHIP_PAD,
   },
-  chipSlot: { width: ref.button.chip.hit, height: ref.button.chip.hit },
+  // The charm chip's dot: the sweet colour, ringed in the ground, on the disc's top right.
+  newDot: { position: "absolute", top: CHIP_PAD - 1, right: CHIP_PAD - 1, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
   // Centred between the two 48 slots, so on the screen's axis.
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
   logo: { height: H.header.logo, width: H.header.logo * H.header.logoAspect },

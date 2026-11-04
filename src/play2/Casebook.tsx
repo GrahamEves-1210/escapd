@@ -7,19 +7,29 @@
 // board as library cards to strike off; what she's holding as stickers; and
 // the hints as margin notes from the cat ("psst —"), with a sticker to ask for
 // another. A bookmark ribbon, sticky tabs at each chapter, a page number.
+// It's a scrapbook too: the cards are taped and pinned, with red string
+// between the ones that belong together (journal/Board, journal/threads), new
+// ones drop in with a "new!" star, and her margin keeps score: a question
+// mark per lead, crossed out and ticked as she follows it, and a scribble that
+// knows when she's close (journal/Margin). A coffee ring where the cup sat.
 // Below the page, on the sheet: the glints switch and restart.
-import { createElement, useEffect, useState, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { DarkSheet } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
+import type { ObjectDef } from "@/engine/v2";
+import { useTheme } from "@/theme/ThemeProvider";
 import { font, ref, type ModeTheme } from "@/theme/tokens";
 import type { FoundCard } from "./InspectView";
 import { itemIcon } from "./ItemTray";
-import { Heart, Moon, Paw, PressedFlower, Sparkle, Star, Underline } from "./journal/Doodles";
-import { JournalCard, Polaroid } from "./journal/JournalCard";
+import { Board } from "./journal/Board";
+import { Arrow, CoffeeRing, Heart, Moon, Paw, PressedFlower, Sparkle, Star, Underline } from "./journal/Doodles";
+import { Polaroid } from "./journal/JournalCard";
+import { LeadTracker, MarginNote } from "./journal/Margin";
 import { EvidenceBoard } from "./journal/LibraryCard";
 import { handType, journalPalette, type HandType, type JournalPalette } from "./journal/palette";
 import { Fleuron, Ribbon, Rules, softShadow, StickyTab, TornEdge } from "./journal/Paper";
+import { stringsOf, type ThreadLog } from "./journal/threads";
 
 const GRAIN = require("../../assets/grain.png");
 
@@ -44,16 +54,38 @@ export interface CasebookProps {
   onClose: () => void;
   /** The cat, peering over the casebook's top edge (thinking along when you ask for a hint). */
   cat?: ReactNode;
+  /** Steps solved, of all of them: the margin's leads and notes. */
+  progress?: { solved: number; total: number };
+  /** How many of the last cards are new since the casebook was last opened (they drop in). */
+  fresh?: number;
+  /** Where and when each card turned up (journal/useCaseThreads): the red string. */
+  log?: ThreadLog | null;
+  /** The room's objects (a UV trace's card belongs with the thing it marks). */
+  objects?: readonly Pick<ObjectDef, "id" | "trace">[];
+  /** As it closes: the strings it showed taut and the steps it showed ticked. */
+  onSeen?: (taut: string[], ticked: number) => void;
 }
 
 const CHAPTERS = ["One", "Two", "Three", "Four", "Five", "Six"];
 /** What the cat says before each margin note, in turn. */
 const PSST = ["psst —", "ooh, and —", "also —", "and —"];
 
-export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat }: CasebookProps) {
+export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat, progress, fresh = 0, log, objects, onSeen }: CasebookProps) {
   const theme = useModeTheme();
+  const { reducedMotion } = useTheme();
   const p = journalPalette(theme);
   const hand = handType(theme);
+  const solved = progress?.solved ?? 0;
+  // What the log said as the casebook opened: the strings, which twang, which ticks are new (fixed while it's open).
+  const [opened] = useState(() => ({ log, fresh }));
+  const strings = useMemo(() => (opened.log ? stringsOf(cards, opened.log, solved, objects) : []), [opened.log, cards, solved, objects]);
+  const ticked = opened.log ? Math.min(opened.log.ticked, solved) : solved;
+  // As it closes, the log learns what it has shown.
+  const seenRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    seenRef.current = () => onSeen?.(strings.filter((x) => x.taut).map((x) => x.key), solved);
+  });
+  useEffect(() => () => seenRef.current(), []);
   // Restarting wipes the case: the first tap asks, a second within a few seconds does it.
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
@@ -84,18 +116,25 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
           {head("The case", 0)}
           <Text style={[hand.lead, { color: p.ink }]} testID="v2-casebook-objective">{objective}</Text>
           <Underline color={p.pen} width={150} seed={objective} />
+          {progress && progress.total > 0 ? (
+            <>
+              <LeadTracker solved={solved} total={progress.total} ticked={ticked} genre={theme.genre} palette={p} hand={hand} reduced={reducedMotion} />
+              <MarginNote solved={solved} total={progress.total} genre={theme.genre} palette={p} hand={hand} />
+            </>
+          ) : null}
         </View>
 
         <View style={styles.chapter}>
+          <CoffeeRing color={p.ring} size={116} rotate={18} style={styles.ring} />
           {head("What I found", 1)}
-          {cards.length ? (
-            <View style={styles.cards}>
-              {cards.map((c, i) => (
-                <View key={c.id} testID={`v2-casebook-card-${c.id}`}>
-                  <JournalCard card={c} palette={p} hand={hand} index={i} />
-                </View>
-              ))}
+          {opened.fresh > 0 && cards.length > 2 ? (
+            <View style={styles.freshNote} testID="v2-casebook-fresh">
+              <Text style={[hand.small, { color: p.pen }]}>{`${Math.min(opened.fresh, cards.length)} new`}</Text>
+              <Arrow color={p.pen} size={30} rotate={70} />
             </View>
+          ) : null}
+          {cards.length ? (
+            <Board cards={cards} strings={strings} fresh={opened.fresh} palette={p} hand={hand} reduced={reducedMotion} />
           ) : (
             <View style={styles.empty}>
               <Polaroid subject="photo" palette={p} hand={hand} rotate={-4} tape={p.tape[0]} pattern="dots" small />
@@ -268,7 +307,8 @@ const styles = StyleSheet.create({
   tab: { right: -32 },
   chapterNo: { fontFamily: font.narrative, fontSize: 12, lineHeight: 16, letterSpacing: 2.2, textTransform: "uppercase" },
   chapterTitle: { fontSize: 23, lineHeight: 29 },
-  cards: { gap: 24, paddingTop: 6 },
+  ring: { position: "absolute", top: -34, right: -44 },
+  freshNote: { position: "absolute", top: 2, right: 8, flexDirection: "row", alignItems: "center", gap: 2, transform: [{ rotate: "-4deg" }] },
   empty: { flexDirection: "row", alignItems: "center", gap: 18, paddingVertical: 6 },
   stickers: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingTop: 4 },
   stickerSlot: { width: 92 },

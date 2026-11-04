@@ -241,7 +241,8 @@ const styles = StyleSheet.create({
   clip: { position: "absolute", top: -12, left: 22 },
   flower: { position: "absolute", right: 6, bottom: 22 },
   folio: { position: "absolute", bottom: 6, right: 14, fontSize: 11, fontStyle: "italic" },
-  polaroidRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 4, paddingVertical: 4 },
+  // Room either side for the casebook's red string, which runs down a card's edge to its pin.
+  polaroidRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 14, paddingVertical: 4 },
   rowFlip: { flexDirection: "row-reverse" },
   beside: { flex: 1, paddingTop: 6, gap: 2 },
   arrow: { marginLeft: -8, transform: [{ scaleX: -1 }] },

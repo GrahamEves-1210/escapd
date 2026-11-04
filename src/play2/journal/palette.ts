@@ -40,6 +40,12 @@ export interface JournalPalette {
   ribbon: string;
   /** The book's series line ("A Moonlit Mystery"). */
   series: string;
+  /** The corkboard's red string between cards that belong together. */
+  string: string;
+  /** Push pins, one colour per lead. */
+  pins: readonly [string, string, string];
+  /** A coffee (or tea) ring left on the page. */
+  ring: string;
   /** Soft light and delight (stars, hearts, the hint sticker). */
   glow: string;
   sweet: string;
@@ -66,6 +72,9 @@ const PALETTES: Record<Genre, Omit<JournalPalette, "glow" | "sweet" | "shadow" |
     chalk: "#F3D9DE",
     ribbon: "#7E2F4F",
     series: "A Detective Noir Mystery",
+    string: "#B42F45",
+    pins: ["#E07A98", "#C9973C", "#7E2F4F"],
+    ring: "rgba(120, 70, 50, 0.2)",
   },
   crime_scene: {
     paper: "#EBDAB5",
@@ -82,6 +91,9 @@ const PALETTES: Record<Genre, Omit<JournalPalette, "glow" | "sweet" | "shadow" |
     chalk: "#FBE3DA",
     ribbon: "#B3182F",
     series: "A True Crime Club Mystery",
+    string: "#C0172F",
+    pins: ["#D23A50", "#E2B43C", "#3A6EA5"],
+    ring: "rgba(100, 60, 25, 0.24)",
   },
   paranormal: {
     paper: "#E9E5F8",
@@ -98,6 +110,9 @@ const PALETTES: Record<Genre, Omit<JournalPalette, "glow" | "sweet" | "shadow" |
     chalk: "#DCD6FF",
     ribbon: "#4B3A9E",
     series: "A Moonlit Mystery",
+    string: "#B5305C",
+    pins: ["#8B6FE6", "#3FB592", "#D477C2"],
+    ring: "rgba(150, 110, 60, 0.22)",
   },
 };
 

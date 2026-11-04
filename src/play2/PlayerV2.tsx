@@ -33,10 +33,14 @@ import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatLine, type CatReaction } from "./PeekingCat";
 import { Flashlight, Magnifier, TOOL } from "./Tools";
 import { useCatCues } from "./useCatCues";
+import { HintTrail } from "./PawTrail";
 import { ItemIcon } from "./ItemTray";
+import { Burst } from "./fx/Burst";
+import { useCelebrate, type Anchor } from "./fx/useCelebrate";
 import { hitTest, Stage, type StageObject } from "./Stage";
 import type { StageTrace } from "./UvTrace";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
+import { useCaseThreads } from "./journal/useCaseThreads";
 
 export interface PlayerV2Props {
   roomId: string;
@@ -89,7 +93,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const theme = useModeTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
-  const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, act, hint, restart, cooldown, ui, keepUi, finish } = v2;
+  const { phase, def, scene, state, cards: casebookCards, hints, canHint, progress, completed, ending, busy, error, hint, restart, cooldown, ui, keepUi, finish } = v2;
+  // The casebook's red string: where each card turned up (every action goes through it).
+  const threads = useCaseThreads(roomId, v2);
+  const { act } = threads;
   const sources = useSceneSources(roomId, scene);
   // The brief over the room when the case is first opened (remembered per room); the clock waits for it.
   const brief = useBrief(roomId, {
@@ -148,10 +155,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // The held item whose card is up (tapped).
   const [shown, setShown] = useState<string | null>(null);
   const [casebook, setCasebook] = useState(false);
+  // Cards new since the casebook was last opened (they drop in).
+  const [casebookFresh, setCasebookFresh] = useState(0);
   const [revision, setRevision] = useState(0);
   const [bandH, setBandH] = useState<number | null>(null);
   // What the cat last reacted to (a find, a wrong answer).
   const [catReaction, setCatReaction] = useState<CatReaction>(null);
+  // The last hint taken (its paw prints lead to what it names), and where the cat's head is (window points).
+  const [hintTrail, setHintTrail] = useState<{ text: string; at: number } | null>(null);
+  const [catHead, setCatHead] = useState<{ x: number; y: number } | null>(null);
   // Clues read in the casebook (the badge counts the ones since), and where the ledge starts (the hand sits above it).
   const [cluesRead, setCluesRead] = useState(0);
   const [ledgeTop, setLedgeTop] = useState<number | null>(null);
@@ -256,6 +268,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const itemById = useCallback((id: string) => def?.items.find((i) => i.id === id), [def]);
   const objectById = useCallback((id: string) => def?.objects.find((o) => o.id === id), [def]);
+  // Finds and solved steps, celebrated where they happened (on the photo in view, or on screen).
+  const celebrate = useCelebrate(def?.mode ?? null, useCallback((id: string) => {
+    const o = def?.objects.find((x) => x.id === id);
+    return o && o.photo_index === view ? o.box : null;
+  }, [def, view]));
   // Found items lying where they were found (a drawer, under a cloth) aren't in hand until picked up.
   const lying = useMemo(() => new Set(Object.values(contents).flat().flatMap((c) => (c.kind === "item" ? [c.item.id] : []))), [contents]);
   const heldItems = useMemo(
@@ -272,11 +289,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     });
   const pickUp = (objectId: string, itemId: string) => {
     setContents((all) => ({ ...all, [objectId]: (all[objectId] ?? []).filter((x) => !(x.kind === "item" && x.item.id === itemId)) }));
+    celebrate.find(objectId.startsWith("item:") ? null : { object: objectId });
     toast(`${capitalise(itemById(itemId)?.name ?? "it")}: in your hands.`);
   };
-  const take = (result: ActionResult | null, where: "inspect" | "room", quiet = false): { title: string; text: string; id: string }[] => {
+  const take = (result: ActionResult | null, where: "inspect" | "room", quiet = false, anchor?: Anchor | null): { title: string; text: string; id: string }[] => {
     const cards: { title: string; text: string; id: string }[] = [];
     if (!result) return cards;
+    if (anchor !== undefined) celebrate.result(result, anchor);
     const lines: string[] = [];
     setRevision((r) => r + 1);
     switch (result.outcome) {
@@ -365,6 +384,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const takeAt = (objectId: string, result: ActionResult | null) => {
     if (!result) return;
     setRevision((r) => r + 1);
+    // An item turning up in a close-up is celebrated when it's picked up.
+    celebrate.result(result, { object: objectId }, { grants: false });
     for (const e of result.effects) {
       if (e.do === "show_card") addContent(objectId, { kind: "card", card: { id: e.card, title: e.title, text: e.text } });
       if (e.do === "grant") {
@@ -401,7 +422,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (!uvOn || !uvItem || !objectId || uvChecked.includes(objectId)) return;
     hoverTimer.current = setTimeout(async () => {
       setUvChecked((list) => [...list, objectId]);
-      take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true);
+      take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true, { object: objectId });
     }, 400);
   };
   // A UV trace on the photo (prints, a stain, footprints): the light kept on it a moment reveals it.
@@ -411,12 +432,14 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (!uvOn || !uvItem || !traceId || uvChecked.includes(traceId)) return;
     traceTimer.current = setTimeout(async () => {
       setUvChecked((list) => [...list, traceId]);
-      take(await act({ type: "use_item", item: uvItem.id, object: traceId }), "room", true);
+      take(await act({ type: "use_item", item: uvItem.id, object: traceId }), "room", true, { object: traceId });
     }, 300);
   };
 
   const askHint = async () => {
-    if (await hint()) {
+    const taken = await hint();
+    if (taken) {
+      setHintTrail({ text: taken.text, at: Date.now() });
       feedback.tick();
       // The cat's had an idea.
       setCatReaction({ kind: "found", at: Date.now() });
@@ -493,7 +516,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const exitObject = def.objects.find((o) => o.exit);
   // Keyed by where it is: a new close-up gets a cat with nothing left in its speech bubble.
   const cat = <PeekingCat key={place} width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
-      say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} />;
+      say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} playful={place === "room"} onSeat={place === "room" ? setCatHead : undefined} />;
 
   const shownItem = shown ? heldItems.find((i) => i.id === shown) : undefined;
   const unread = Math.max(0, casebookCards.length - cluesRead);
@@ -608,6 +631,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       const made = result?.effects.find((e) => e.do === "grant");
       const at = made && made.do === "grant" ? await new Promise<{ x: number; y: number } | null>((done) => setTimeout(() => slotHome(made.item)().then(done), 32)) : null;
       settle(itemId, result, at ?? onto);
+      // What they made, celebrated in its slot (root points).
+      celebrate.result(result, { x: (at ?? onto).x - root.x, y: (at ?? onto).y - root.y });
       return;
     }
     const item = itemById(itemId);
@@ -629,7 +654,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     const result = await act({ type: "use_item", item: itemId, object: target.id });
     settle(itemId, result, target);
     if (open?.kind === "object") takeAt(target.id, result);
-    else take(result, "room");
+    else take(result, "room", false, { object: target.id });
   };
   /** A UV trace the light has found, under a point (window points): the magnifier reads it before what it's on. */
   const traceUnder = (x: number, y: number) => {
@@ -699,6 +724,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             onLook={look}
             onPage={(dir) => { setTurnDir(dir); setView((v) => (v + dir + photos) % photos); }}
             enter={turnDir}
+            burst={celebrate.stage}
             accessibilityLabel={`View ${view + 1} of ${photos}`}
           />
         ) : null}
@@ -722,7 +748,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           ) : null}
         </View>
         <Pressable
-          onPress={() => { setCasebook(true); setCluesRead(casebookCards.length); }}
+          onPress={() => { setCasebookFresh(unread); setCasebook(true); setCluesRead(casebookCards.length); }}
           accessibilityRole="button"
           accessibilityLabel={unread ? `Casebook, ${unread} new` : "Casebook"}
           hitSlop={8}
@@ -858,7 +884,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           }}
           onChange={() => setNote(null)}
           onSubmit={async (value) => takeAt(target!.id, await act({ type: "submit", object: target!.id, value }))}
-          onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "room") : undefined}
+          onTake={takeable ? async () => take(await act({ type: "set_control", target: target!.id, control: "taken", value: true }), "room", false, { object: target!.id }) : undefined}
           onClose={() => setOpen(null)}
           revision={revision}
         />
@@ -878,6 +904,11 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           struck={struck}
           onStrike={strike}
           cards={casebookCards}
+          progress={progress}
+          fresh={casebookFresh}
+          log={threads.log}
+          objects={def.objects}
+          onSeen={threads.seen}
           items={heldItems.map((i) => ({ id: i.id, name: capitalise(i.name), examinable: true }))}
           hints={hints}
           canHint={canHint}
@@ -919,6 +950,12 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         <CarriedItem item={itemById(carrying.id)!} size={carrying.size} carry={carry} origin={root} uv={uvOn && isUvLight(itemById(carrying.id)!)} />
       ) : null}
       {sparkle ? <Sparkle key={sparkle.at} x={sparkle.x} y={sparkle.y} /> : null}
+      <HintTrail hint={hintTrail} objects={def.objects.filter((o) => visible(o) && !o.trace)} seen={state.seen} view={view} frame={frame} head={catHead}
+        watching={!open && !casebook && !completed} origin={root} />
+      {celebrate.screen?.point ? (
+        <Burst key={celebrate.screen.id} x={celebrate.screen.point.x} y={celebrate.screen.point.y} genre={celebrate.screen.genre} strength={celebrate.screen.strength}
+          word={celebrate.screen.word} level={celebrate.screen.level} count={celebrate.screen.count} seed={celebrate.screen.seed} />
+      ) : null}
 
     </View>
   );

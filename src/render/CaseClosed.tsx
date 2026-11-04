@@ -56,9 +56,10 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { LIGHT, PAGE, PAYOFF_TYPE, alpha, handType } from "@/theme/payoff";
 import { motion, ref } from "@/theme/tokens";
 import {
-  ClockMark, Confetti, CrossMark, FleuronRule, FoilSeal, LibraryStamp, POLAROID, Polaroid, TipMark, Twinkle, captionSize, look,
+  ClockMark, Confetti, CrossMark, FleuronRule, FoilSeal, LibraryStamp, POLAROID, Polaroid, SparkleGlyph, TipMark, Twinkle, captionSize, look,
 } from "./keepsake";
 import { MagnifierRating } from "./MagnifierRating";
+import { PIN, PinnedCharm, type ShownCharm } from "@/screens/collection/PinnedCharm";
 import type { SceneSource } from "./SceneView";
 import { suspectA11yLabel, type SuspectFace } from "./SuspectFile";
 import {
@@ -115,6 +116,8 @@ export const CLOSED_LAYOUT = {
   slack: 12,
   /** The actions never sit closer than this to the bottom edge. */
   bottomMin: ref.space.lg,
+  /** The line over the actions when the case lifts her title. */
+  news: 20,
   /** The pinned band: its top pad, the pill, the gap, the quiet pill. */
   actions: C.actions.pad + ref.button.ghost.height + ref.space.sm + ref.button.quiet.height,
 } as const;
@@ -168,6 +171,10 @@ export interface CaseClosedProps {
   photo?: SceneSource | null;
   /** A closing line over the actions. */
   next?: string;
+  /** The charm this case earned (round 7), pinned to the page's corner after the rating; null or undefined: none (yet). */
+  charm?: ShownCharm | null;
+  /** The title this case lifted her to, as a line over the actions ("Now a Velvet Sleuth · a bell for the cat"). */
+  news?: string | null;
   /** The pinned band, as the photo guide's foot: its pill (ModePill "ghost", the mode's accent), then quiet pills (ModePill "quiet"). */
   actions: ReactNode;
   /**
@@ -191,11 +198,14 @@ export function stampDate(d = new Date()): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** When the charm comes up (ms after mount): a beat after the `solved` cue. */
+const pinAt = (plan: Plan) => plan.timeline.solved + C.beat.solved * 2;
+
 /** About how many lines `text` takes at `size` pt across `width` (the budget's estimate, not layout). */
 const linesFor = (text: string | undefined, size: number, width: number, max: number) =>
   text ? Math.min(max, Math.max(1, Math.ceil((text.length * size * 0.5) / Math.max(1, width)))) : 0;
 
-export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, summary, accused, charge, recap, photo, next, actions }: CaseClosedProps) {
+export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, summary, accused, charge, recap, photo, next, charm, news, actions }: CaseClosedProps) {
   const theme = themeFor(genre);
   const payoff = look(theme, genre);
   const { reducedMotion: reduced } = useTheme();
@@ -267,6 +277,15 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
 
   // The plan's haptics: a tick per entry and per earned mark, then `solved`; and the actions come in.
   const ctaOpacity = useSharedValue(0);
+  // The actions' fade, on a timer (so a charm still to land can put it back).
+  const ctaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showCta = (wait: number, duration: number) => {
+    if (ctaTimer.current) clearTimeout(ctaTimer.current);
+    ctaTimer.current = setTimeout(() => ctaOpacity.set(withTiming(1, { duration })), Math.max(0, wait));
+  };
+  useEffect(() => () => {
+    if (ctaTimer.current) clearTimeout(ctaTimer.current);
+  }, []);
   useEffect(() => {
     if (!plan) return;
     const now = elapsed();
@@ -274,11 +293,21 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
     const { stats, magnifiers, solved, cta } = plan.timeline;
     const timers = [...stats, ...magnifiers].map((t) => at(t, feedback.tick));
     timers.push(at(solved, feedback.solved));
-    ctaOpacity.set(withDelay(Math.max(0, cta - now), withTiming(1, { duration: reduced ? motion.reducedFade : C.beat.enter })));
+    showCta(cta - now, reduced ? motion.reducedFade : C.beat.enter);
     return () => timers.forEach(clearTimeout);
     // Once per plan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan]);
+  // With a charm to pin on, the actions wait for it to land (unless they're already in).
+  const hasCharm = !!charm;
+  useEffect(() => {
+    if (!plan || !hasCharm || reduced) return;
+    const now = elapsed();
+    if (plan.timeline.cta <= now) return;
+    showCta(pinAt(plan) + PIN.appear + PIN.hold + PIN.swoop + PIN.press[0] - now, C.beat.enter);
+    // Once, when both are in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, hasCharm]);
   const ctaStyle = useAnimatedStyle(() => ({ opacity: ctaOpacity.get() }));
 
   // A late answer (after the plan gave up on it) shows without its beats.
@@ -300,7 +329,7 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
 
   // The polaroid takes the height left over, up to its share of the page's width.
   const inner = width - 2 * (L.edge + L.pad);
-  const actionsHeight = L.actions + (next ? ref.layout.play.type.hint.lineHeight + ref.space.sm : 0) + Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin);
+  const actionsHeight = L.actions + (next ? ref.layout.play.type.hint.lineHeight + ref.space.sm : 0) + (news ? L.news + ref.space.sm : 0) + Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin);
   const lastHeight = lastWords ? linesFor(message, L.last.fontSize, inner, 3) * L.last.lineHeight + linesFor(exit, 15, inner, 2) * 20 : 0;
   const storyText = story ? story.story.map((p) => p.text).join("") : "";
   const storyHeight = story
@@ -337,6 +366,20 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
               testID="case-card"
             >
               <Ribbon color={payoff.sweet} />
+              {/* The case's charm, pinned to the page's corner once the rating is in. */}
+              {charm && plan ? (
+                <PinnedCharm
+                  charm={charm}
+                  delay={Math.max(0, pinAt(plan) - elapsed())}
+                  from={{ x: (width - 2 * L.edge) / 2 - PIN.size / 2 + 12, y: L.pad + L.head + L.gap + heroH / 2 - PIN.size / 2 + 14 }}
+                  reduced={reduced}
+                  colors={[payoff.glow, payoff.sweet, payoff.foil]}
+                  tagInk={PAGE.ink}
+                  tagPaper={payoff.sweet}
+                  style={styles.pin}
+                  testID="closed-charm"
+                />
+              ) : null}
 
               <View style={styles.head}>
                 <Text style={[ref.type.series, styles.centre, { color: payoff.pageInk }]} testID="closed-series">{SERIES_LINE[genre]}</Text>
@@ -491,6 +534,13 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
       </ScrollView>
       <Animated.View style={[styles.actions, { paddingBottom: Math.max(insets.bottom + ref.space.ctaBottom, L.bottomMin) }, ctaStyle]} testID="closed-actions">
         {next ? <Text style={[ref.layout.play.type.hint, styles.centre, { color: theme.inkMuted }]}>{next}</Text> : null}
+        {news ? (
+          <View style={styles.news} testID="closed-news">
+            <SparkleGlyph size={12} color={payoff.foil} />
+            <Text style={[handType(16, L.news), { color: payoff.sweet }]} numberOfLines={1} adjustsFontSizeToFit>{news}</Text>
+            <SparkleGlyph size={12} color={payoff.foil} />
+          </View>
+        ) : null}
         {actions}
       </Animated.View>
     </View>
@@ -606,6 +656,8 @@ const styles = StyleSheet.create({
   leaf: { ...StyleSheet.absoluteFill, borderRadius: L.radius, transform: [{ rotate: "1.2deg" }, { translateY: 5 }], ...ref.curve },
   card: { padding: L.pad, gap: L.gap, borderRadius: L.radius, ...ref.curve },
   ribbon: { position: "absolute", top: 0, right: 26 },
+  pin: { left: -12, top: -14 },
+  news: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: L.news },
   head: { alignItems: "center", gap: 2, height: L.head },
   hero: { alignSelf: "stretch" },
   polaroid: { position: "absolute", left: 4 },

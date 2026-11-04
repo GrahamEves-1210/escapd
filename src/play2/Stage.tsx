@@ -9,7 +9,7 @@
 //
 // Touch is one pan (the beam) racing one tap (look); both are hit-tested here.
 // Screen readers get one button per visible object instead (accessibilityTap).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { StyleSheet, View, useWindowDimensions, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import {
@@ -30,6 +30,9 @@ import type { SceneSource } from "@/render/SceneView";
 import { V2 } from "./layout";
 import { useOutlines } from "./useOutlines";
 import { UvTrace, type StageTrace } from "./UvTrace";
+import { Ambient, CarLight } from "./fx/Ambient";
+import { Burst } from "./fx/Burst";
+import type { BurstEvent } from "./fx/useCelebrate";
 
 export interface StageObject {
   id: string;
@@ -75,6 +78,8 @@ export interface StageProps {
   onFrame?: (frame: { x: number; y: number; width: number; height: number }) => void;
   /** Show interactives (accessibility): every object's sparkles stay faintly lit, beam or not. */
   assist: boolean;
+  /** A moment celebrated at something on this photo (fx/useCelebrate): drawn on it, the same size zoomed or not. */
+  burst?: BurstEvent | null;
   onLook: (objectId: string | null) => void;
   onPage: (dir: 1 | -1) => void;
   accessibilityLabel: string;
@@ -93,7 +98,7 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], traces = [], onTrace, onHover, onFrame, focus = null, beam, enter = 0,
+  uv = false, marks = [], traces = [], onTrace, onHover, onFrame, focus = null, beam, enter = 0, burst = null,
 }: StageProps) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
@@ -279,6 +284,8 @@ export function Stage({
               <Group layer={<Paint />}>
                 <Rect x={0} y={0} width={W} height={H} color={`rgba(0,0,0,${uv ? Math.min(0.95, darkness + 0.04) : darkness})`} />
                 <Beam tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} />
+                {/* Crime scene: now and then a passing car's light slides across the room. */}
+                {!reducedMotion && genre === "crime_scene" ? <CarLight w={W} h={H} /> : null}
                 {lamps.map((l) => {
                   const cx = (l.box.x + l.box.w / 2) * W;
                   const cy = (l.box.y + l.box.h / 2) * H;
@@ -292,6 +299,8 @@ export function Stage({
               </Group>
               {/* The light itself: a faint warm cast in the torch's pool, or the UV flashlight's violet. */}
               <Beam tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} tint />
+              {/* The room's own life: dust in the beam, a moth (noir), a wisp (paranormal). */}
+              {reducedMotion ? null : <Ambient genre={genre} tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} />}
               {/* Glints: sparkles round each object, catching the beam. */}
               {glints ? (
                 <Sparkles objects={objects} outlines={outlines} assist={assist} tx={tx} ty={ty} w={W} h={H} r={R} uv={uv} clock={clock} still={reducedMotion} />
@@ -299,6 +308,18 @@ export function Stage({
             </Canvas>
             {/* UV traces and invisible ink: seen where the UV beam falls (ink on objects also while a lamp is lit). */}
             <UvTrace traces={traces} marks={marks} genre={genre} w={W} h={H} tx={tx} ty={ty} r={R} uv={uv} lampLit={lamps.length > 0} onTrace={onTrace} onOpen={onLook} />
+            {/* A find or a solved step, celebrated on the thing itself: pinned to it, never scaled by the zoom. */}
+            {burst?.box ? (
+              <Pinned
+                key={burst.id}
+                x={(burst.box.x + burst.box.w / 2) * W}
+                // Kept clear of the view's top and bottom edges while the room isn't zoomed in on something.
+                y={focus ? (burst.box.y + burst.box.h / 2) * H : Math.max(-frame.y + 84, Math.min(-frame.y + viewport.height - 48, (burst.box.y + burst.box.h / 2) * H))}
+                zoom={zoom}
+              >
+                <Burst x={0} y={0} genre={genre} strength={burst.strength} word={burst.word} level={burst.level} count={burst.count} seed={burst.seed} />
+              </Pinned>
+            ) : null}
             {/* One button per object for screen readers; no touch handlers, so the gestures above get every touch. */}
             {objects.map((o) => (
               <View
@@ -328,6 +349,12 @@ export function Stage({
       )}
     </Animated.View>
   );
+}
+
+/** A point on the photo whose contents keep their size as the view zooms (scaled back by the zoom). */
+function Pinned({ x, y, zoom, children }: { x: number; y: number; zoom: SharedValue<number>; children: ReactNode }) {
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: 1 / Math.max(0.01, zoom.get()) }] }));
+  return <Animated.View pointerEvents="none" style={[styles.pinned, { left: x, top: y }, style]}>{children}</Animated.View>;
 }
 
 /**
@@ -621,5 +648,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, overflow: "hidden" },
   frame: { position: "absolute", overflow: "hidden" },
   a11y: { position: "absolute" },
+  pinned: { position: "absolute", width: 0, height: 0, overflow: "visible" },
   probe: { ...StyleSheet.absoluteFill, opacity: 0 },
 });

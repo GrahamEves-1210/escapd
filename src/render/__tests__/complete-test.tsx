@@ -10,6 +10,8 @@
 // the room's photo again.
 import { Dimensions, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { MODE_CHARMS } from "@/game/collection/charms";
+import { loadCollection, resetAwardMemory } from "@/game/collection/store";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as api from "@/lib/escapd-api";
@@ -36,7 +38,7 @@ jest.mock("@/capture/openCapture", () => ({ openCapture: jest.fn() }));
 
 const mockFeedback = {
   tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn(),
-  paper: jest.fn(), pickup: jest.fn(), wrongCode: jest.fn(), unlock: jest.fn(), stamp: jest.fn(), solved: jest.fn(),
+  paper: jest.fn(), pickup: jest.fn(), wrongCode: jest.fn(), unlock: jest.fn(), stamp: jest.fn(), solved: jest.fn(), snap: jest.fn(),
 };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
@@ -54,6 +56,7 @@ const hidden = { includeHiddenElements: true };
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  resetAwardMemory();
   await AsyncStorage.clear();
   stashClosedCase({ roomId: "nobody", genre: "noir" });
   await AsyncStorage.clear();
@@ -182,7 +185,47 @@ describe("Case closed: noir", () => {
       expect(tick).toBeLessThan(solved);
     }
     expect(screen.getByLabelText("Rating: 3 of 3 magnifiers")).toBeTruthy();
+    // The case's charm comes up after solved and is pinned on; the actions wait for it.
+    expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 0 });
+    await act(() => jest.advanceTimersByTime(2500));
+    expect(mockFeedback.snap).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.snap.mock.invocationCallOrder[0]).toBeGreaterThan(solved);
     expect(screen.getByTestId("closed-actions")).toHaveAnimatedStyle({ opacity: 1 });
+  });
+
+  it("pins the case's charm on: gold for a clean case, kept on her board once, the title it brings over the actions", async () => {
+    jest.useFakeTimers();
+    noirParams({ hints: "0", wrong: "0", ms: "300000" });
+    await render(<NoirCompleteScreen />);
+    await act(() => jest.advanceTimersByTime(8000));
+    const charm = screen.getByTestId("closed-charm");
+    expect(charm.props.accessibilityLabel).toMatch(/^New charm: .+, gold pin\. Pinned to your charm board\.$/);
+    expect(screen.getByTestId("closed-charm-tag")).toHaveTextContent("New!");
+    expect(screen.getByTestId("closed-news")).toHaveTextContent(/Now a Candlelit Snoop · a bow for the cat/);
+    const board = await loadCollection();
+    expect(Object.keys(board.cases)).toEqual([NOIR_ROOM.roomId]);
+    expect(board.cases[NOIR_ROOM.roomId].finish).toBe("gold");
+    expect(MODE_CHARMS.noir).toContain(board.cases[NOIR_ROOM.roomId].kind);
+    screen.unmount();
+
+    // Closed again (a later run of the app): no second charm, no tag, no title.
+    resetAwardMemory();
+    await render(<NoirCompleteScreen />);
+    await act(() => jest.advanceTimersByTime(8000));
+    expect(screen.getByTestId("closed-charm").props.accessibilityLabel).toMatch(/Already on your charm board\.$/);
+    expect(screen.queryByTestId("closed-charm-tag")).toBeNull();
+    expect(screen.queryByTestId("closed-news")).toBeNull();
+    expect(Object.keys((await loadCollection()).cases)).toHaveLength(1);
+  });
+
+  it("a sticker for a case with tips, smoothed down with the paper sound", async () => {
+    jest.useFakeTimers();
+    noirParams({ hints: "4", wrong: "3", ms: "300000" });
+    await render(<NoirCompleteScreen />);
+    await act(() => jest.advanceTimersByTime(8000));
+    expect(screen.getByTestId("closed-charm").props.accessibilityLabel).toMatch(/, sticker\. Pinned/);
+    expect(mockFeedback.paper).toHaveBeenCalled();
+    expect(mockFeedback.snap).not.toHaveBeenCalled();
   });
 
   it("the seal lands with confetti and the cat cheering; none under reduced motion", async () => {

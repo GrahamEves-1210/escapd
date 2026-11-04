@@ -177,6 +177,52 @@ export const Paperclip = memo(function Paperclip({ color, size = 34, rotate, sty
   );
 });
 
+/** A question mark in her hand; `struck`: crossed out (the lead's been followed). */
+export const Question = memo(function Question({ color, size = 20, rotate, style, struck }: DoodleProps & { struck?: boolean }) {
+  return (
+    <View style={box(size, rotate, style)} {...hidden}>
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Ink d="M7.6 8.2 C7.4 4.6 10.2 2.8 12.9 3 C16 3.2 17.8 5.6 17 8.3 C16.3 10.6 13.8 11.2 12.6 12.9 C12 13.8 12 15 12.1 16" color={color} width={2} />
+        <Circle cx={12.2} cy={20} r={1.5} fill={color} />
+        {struck ? <Path d="M3.5 17.5 C8 12.5 14 8.5 20.8 5.4" stroke={color} strokeWidth={1.7} strokeLinecap="round" fill="none" /> : null}
+      </Svg>
+    </View>
+  );
+});
+
+/** A quick tick, its tail flicked up. */
+export const Tick = memo(function Tick({ color, size = 22, rotate, style }: DoodleProps) {
+  return (
+    <View style={box(size, rotate, style)} {...hidden}>
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Ink d="M3.6 12.8 C5.6 13.6 7.4 15.6 9 18.6 C11.6 12 15.6 6.8 21.2 3.4" color={color} width={2.4} />
+      </Svg>
+    </View>
+  );
+});
+
+/** A coffee ring left on the page: an uneven ring, darker where the cup sat heaviest, a drip beside. */
+export const CoffeeRing = memo(function CoffeeRing({ color, size = 96, rotate, style }: DoodleProps) {
+  const r = 40;
+  const pts = Array.from({ length: 25 }, (_, i) => {
+    const a = (i / 24) * Math.PI * 2;
+    const k = r + Math.sin(a * 3 + 1) * 1.2 + Math.cos(a * 5) * 0.8;
+    return `${(48 + Math.cos(a) * k).toFixed(1)} ${(48 + Math.sin(a) * k).toFixed(1)}`;
+  });
+  const d = `M${pts.join(" L")} Z`;
+  return (
+    <View style={box(size, rotate, style)} {...hidden}>
+      <Svg width={size} height={size} viewBox="0 0 96 96">
+        <Path d={d} stroke={color} strokeWidth={3.2} fill="none" />
+        <Path d="M20 30 C14 42 15 60 26 72" stroke={color} strokeWidth={5} strokeLinecap="round" fill="none" opacity={0.7} />
+        <Circle cx={48} cy={48} r={36} fill="none" stroke={color} strokeWidth={1} opacity={0.6} />
+        <Circle cx={88} cy={74} r={3} fill={color} opacity={0.8} />
+        <Circle cx={92.5} cy={82} r={1.6} fill={color} opacity={0.7} />
+      </Svg>
+    </View>
+  );
+});
+
 // ---------------------------------------------------------------------------
 // What a polaroid shows: the thing a card was found on, drawn small.
 // ---------------------------------------------------------------------------

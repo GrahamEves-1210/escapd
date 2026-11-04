@@ -94,6 +94,23 @@ export function GearGlyph() {
   return <GearSixIcon size={GLYPH} weight="bold" color={ref.color.textPrimary} />;
 }
 
+/** The charm board's glyph: a little heart charm on its jump ring, drawn in the cat's pen. */
+export function CharmGlyph() {
+  return (
+    <Svg width={GLYPH} height={GLYPH} viewBox="0 0 18 18" pointerEvents="none">
+      <Circle cx={9} cy={3.4} r={1.7} fill="none" stroke={ref.color.textPrimary} strokeWidth={1.4} />
+      <Path
+        d="M9 16 C5.2 13.3 2.6 11.1 2.6 8.3 C2.6 6.6 3.9 5.3 5.5 5.3 C6.9 5.3 8.2 6.1 9 7.4 C9.8 6.1 11.1 5.3 12.5 5.3 C14.1 5.3 15.4 6.6 15.4 8.3 C15.4 11.1 12.8 13.3 9 16 Z"
+        fill="none"
+        stroke={ref.color.textPrimary}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+      <Path d="M5.4 8.4 Q5.6 7.2 6.8 7" fill="none" stroke={ref.color.textPrimary} strokeWidth={1.2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   handle: { position: "absolute", left: (C.size - C.hit) / 2, top: (C.size - C.hit) / 2, overflow: "visible" },
   hit: { width: C.hit, height: C.hit, alignItems: "center", justifyContent: "center" },

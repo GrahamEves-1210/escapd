@@ -36,6 +36,8 @@ import type { SceneSource } from "@/render/SceneView";
 import { PLAY_COPY } from "@/render/voice";
 import { caseLabel, caseSummary, caseSummaryFromStats, type CaseRecap, type CaseSummary } from "@/render/victory";
 import { loadRecap, recapFor } from "@/play2/caseRecord";
+import { titleNews } from "@/game/collection/charms";
+import { awardCharm, titleIfClosed, type Award } from "@/game/collection/store";
 
 /** How long a reload waits for the room's photo before it shows the case without it (ms). */
 const PHOTO_WAIT = 1500;
@@ -130,13 +132,43 @@ export default function PlayCompleteScreen() {
   const accused = stash?.accused ?? fetched?.accused;
   const summary = ownStats ? caseSummaryFromStats(ownStats) : session;
 
+  // The case's charm (src/game/collection): what closing it does to her
+  // title is read first (the line over the actions; undefined while it
+  // loads), then the charm is awarded once how it went is known. Once per
+  // room: a replay keeps the charm it earned (a better run lifts its finish).
+  const [news, setNews] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    titleIfClosed(roomId).then(
+      (t) => !cancelled && setNews(t ? titleNews(t) : null),
+      () => !cancelled && setNews(null),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+  const [award, setAward] = useState<Award | null>(null);
+  const statsKnown = loaded && summary !== undefined;
+  useEffect(() => {
+    if (!statsKnown) return;
+    let cancelled = false;
+    awardCharm(roomId, genre, summary).then((a) => {
+      if (!cancelled) setAward(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Once the stats are in (a later answer doesn't award it again).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, statsKnown]);
+
   const newCase = () => {
     // Offline or a server error: the camera's own backstop still shows the guide first.
     openCapture({ genre, replace: true }).catch(() => router.replace("/capture"));
   };
 
   // A reload: the moment starts once the case (and its room's photo, or a moment's wait for it) is in hand.
-  if (!loaded || photo === undefined) {
+  if (!loaded || photo === undefined || news === undefined) {
     return <View style={{ flex: 1, backgroundColor: themeFor(genre).ground }} testID="case-closed-loading" />;
   }
 
@@ -151,6 +183,8 @@ export default function PlayCompleteScreen() {
       charge={stash?.motive || stash?.method ? { why: stash.motive, how: stash.method } : undefined}
       recap={recap}
       photo={photo}
+      charm={award ? { kind: award.charm.kind, finish: award.charm.finish, status: award.status } : null}
+      news={news}
       actions={(
         <>
           <ModePill variant="ghost" label={PLAY_COPY.newCase} onPress={newCase} testID="complete-new-case" />
