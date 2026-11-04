@@ -373,7 +373,8 @@ const styles = StyleSheet.create({
   caseNo: { fontFamily: ref.font.cover, fontSize: 26, lineHeight: 32, textAlign: "center" },
   book: { fontFamily: font.narrative, fontSize: 17, lineHeight: 26 },
   bookItalic: { fontFamily: font.narrativeItalic, fontSize: 17, lineHeight: 25 },
-  initial: { fontSize: 38, lineHeight: 26 },
+  // The raised initial: its line as tall as the letter, or iOS clips its top (the big "T" was cut off).
+  initial: { fontSize: 34, lineHeight: 40 },
   objective: { borderTopWidth: 1, paddingTop: 12, gap: 4 },
   // The dossier.
   tab: { alignSelf: "flex-start", marginLeft: 18, paddingHorizontal: 16, paddingTop: 7, paddingBottom: 5, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
