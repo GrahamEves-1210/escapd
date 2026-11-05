@@ -11,7 +11,7 @@
 import { Dimensions, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { MODE_CHARMS } from "@/game/collection/charms";
-import { loadCollection, resetAwardMemory } from "@/game/collection/store";
+import { awardCharm, loadCollection, resetAwardMemory } from "@/game/collection/store";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as api from "@/lib/escapd-api";
@@ -206,10 +206,13 @@ describe("Case closed: noir", () => {
     expect(Object.keys(board.cases)).toEqual([NOIR_ROOM.roomId]);
     expect(board.cases[NOIR_ROOM.roomId].finish).toBe("gold");
     expect(MODE_CHARMS.noir).toContain(board.cases[NOIR_ROOM.roomId].kind);
-    screen.unmount();
+  });
 
-    // Closed again (a later run of the app): no second charm, no tag, no title.
+  it("a case closed before keeps its charm: no second award, no tag, no new title", async () => {
+    await awardCharm(NOIR_ROOM.roomId, "noir", { hints: 0, wrong: 0 });
     resetAwardMemory();
+    jest.useFakeTimers();
+    noirParams({ hints: "0", wrong: "0", ms: "300000" });
     await render(<NoirCompleteScreen />);
     await act(() => jest.advanceTimersByTime(8000));
     expect(screen.getByTestId("closed-charm").props.accessibilityLabel).toMatch(/Already on your charm board\.$/);

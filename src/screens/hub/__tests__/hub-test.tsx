@@ -179,11 +179,11 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(screen.getByRole("header", { name: "ESCAPD" }).props.testID).toBe("hub-logo");
     expect(screen.queryByText("Choose a case")).toBeNull();
     expect(screen.queryByText(/THE STUDY|YOUR ROOM|YOUR CASE/, hidden)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Tea-Stained Novice, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
 
     // No stored session: no tags, never a guest just to label the cards, and no count anywhere.
     await act(async () => resolveSession(null));
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Tea-Stained Novice, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
     expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
     expect(screen.queryByText(/\d+ cases?|No cases yet/i, hidden)).toBeNull();
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
