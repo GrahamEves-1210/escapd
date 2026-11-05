@@ -14,6 +14,8 @@ import { rng } from "./paper";
 /** An id for an SVG def from a seed (letters and digits only: a space or a dot breaks url(#id)). */
 const svgId = (prefix: string, seed: string) => `${prefix}${seed.replace(/[^A-Za-z0-9]/g, "")}`;
 
+const LIGHT_SHEEN = "#FFFFFF";
+
 const hidden = { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" as const };
 
 /** A mark laid at `style`'s place, never in the way of a touch, never read. */
@@ -165,16 +167,22 @@ export function WaxSeal({ wax, light, deep, size = 64, broken = false, rotate = 
   const right = `M${V + 2} -2 L${crack} L${V + 2} ${V + 2} Z`;
   const body = (
     <G>
-      <Path d={rim} transform="translate(1.5 2.5)" fill={alpha("#000000", 0.25)} />
+      <Path d={rim} transform="translate(1.5 2.5)" fill={alpha("#000000", 0.28)} />
       <Path d={rim} fill={wax} />
-      {/* The pressed disc and its raised rim. */}
-      <Circle cx={c} cy={c} r={19} fill={deep} fillOpacity={0.35} />
-      <Circle cx={c} cy={c} r={19} stroke={light} strokeOpacity={0.55} strokeWidth={1.4} fill="none" strokeDasharray="30 8 18 6" />
-      <Path d={crescent(c - 2, 10)} fill={deep} />
-      <Path d={crescent(c - 2.6, 10)} fill="none" stroke={light} strokeOpacity={0.6} strokeWidth={0.8} />
-      <Path d={`M${c + 10} ${c - 9} l1 2.4 2.4 1 -2.4 1 -1 2.4 -1 -2.4 -2.4 -1 2.4 -1 Z`} fill={light} fillOpacity={0.85} />
+      {/* The wax's pooled lip, darker where it thickened at the edge. */}
+      <Path d={rim} fill="none" stroke={deep} strokeOpacity={0.55} strokeWidth={2.2} />
+      {/* The seal's pressed face: a sunk disc, its raised ring lit on the upper left and shaded on the lower right. */}
+      <Circle cx={c} cy={c} r={20} fill={deep} fillOpacity={0.4} />
+      <Path d={`M${c - 20} ${c} A20 20 0 0 1 ${c} ${c - 20}`} stroke={light} strokeOpacity={0.85} strokeWidth={1.8} fill="none" strokeLinecap="round" />
+      <Path d={`M${c + 20} ${c} A20 20 0 0 1 ${c} ${c + 20}`} stroke={deep} strokeOpacity={0.9} strokeWidth={1.8} fill="none" strokeLinecap="round" />
+      <Circle cx={c} cy={c} r={16} stroke={light} strokeOpacity={0.4} strokeWidth={0.8} fill="none" />
+      {/* The moon in relief: its shadow, its face, its lit edge. */}
+      <Path d={crescent(c - 1, 11)} fill={deep} transform="translate(1 1.2)" />
+      <Path d={crescent(c - 2, 11)} fill={wax} />
+      <Path d={crescent(c - 2, 11)} fill="none" stroke={light} strokeOpacity={0.9} strokeWidth={1.1} />
+      <Path d={`M${c + 10} ${c - 10} l1.2 2.8 2.8 1.2 -2.8 1.2 -1.2 2.8 -1.2 -2.8 -2.8 -1.2 2.8 -1.2 Z`} fill={light} />
       {/* Wax's sheen on its upper left. */}
-      <Path d={`M${c - 22} ${c - 6} A23 23 0 0 1 ${c - 4} ${c - 24}`} stroke={light} strokeOpacity={0.6} strokeWidth={2.4} strokeLinecap="round" fill="none" />
+      <Path d={`M${c - 25} ${c - 8} A26 26 0 0 1 ${c - 6} ${c - 27}`} stroke={LIGHT_SHEEN} strokeOpacity={0.55} strokeWidth={2.2} strokeLinecap="round" fill="none" />
     </G>
   );
   return (
