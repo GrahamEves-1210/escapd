@@ -24,7 +24,8 @@ import { CLOSED_LAYOUT, RECAP_KICKER, stampDate, withoutCaseClosed } from "../Ca
 import { PAGE, PAGE_INK, POLAROID, SEAL } from "../keepsake";
 import { stashClosedCase } from "../closedCase";
 import { caseLabel, type CaseRecap } from "../victory";
-import { PAYOFF_TYPE } from "@/theme/payoff";
+import { LETTER_TEXT, PAYOFF_TYPE } from "@/theme/payoff";
+import { LETTERHEAD_INK, LETTERHEAD_TYPE } from "@/play2/letters/Letterhead";
 import { keepRecap } from "@/play2/caseRecord";
 import { crimeCase } from "../__fixtures__/modeCases";
 
@@ -92,10 +93,10 @@ describe("Case closed: noir", () => {
     expect(getMode()).toBe("noir");
     expect(mocked.getLatestSession).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000001", "completed");
     expect(flat(screen.getByTestId("case-closed-noir"))).toMatchObject({ backgroundColor: NOIR.ground });
-    // The page is warm cream book paper: the card a share button will capture.
+    // The page is the last of the case's correspondence: the card a share button will capture, its series line the letterhead.
     const card = screen.getByTestId("case-card");
-    expect(flat(card)).toMatchObject({ backgroundColor: PAGE.paper, borderRadius: L.radius });
-    expect(flat(screen.getByText("A Detective Noir Mystery"))).toMatchObject({ ...ref.type.series, color: PAGE_INK.noir });
+    expect(flat(card)).toMatchObject({ padding: L.pad });
+    expect(flat(screen.getByText("A Detective Noir Mystery"))).toMatchObject({ ...LETTERHEAD_TYPE.noir, color: LETTERHEAD_INK.noir });
     // The seal is pressed onto the page, its word in dark ink on gold foil.
     expect(within(card).getByTestId("closed-stamp")).toBeTruthy();
     expect(flat(screen.getByText("Case closed"))).toMatchObject({ color: SEAL.ink, fontFamily: ref.font.cover, textTransform: "uppercase" });
@@ -107,8 +108,8 @@ describe("Case closed: noir", () => {
     expect(title.props.accessibilityRole).toBe("header");
     expect(flat(title)).toMatchObject({ fontFamily: NOIR.hand.fontFamily, color: PAGE.ink });
     expect(screen.getByLabelText("The room")).toBeTruthy();
-    // The ending's lines, as the book's last line.
-    expect(flat(screen.getByText("You turn the key..."))).toMatchObject({ ...L.last, color: PAGE.ink });
+    // The ending's lines, in the letter's own face.
+    expect(flat(screen.getByText("You turn the key..."))).toMatchObject({ ...LETTER_TEXT.noir.body, color: PAGE.ink });
     expect(flat(screen.getByText("The door swings open. You escaped!"))).toMatchObject({ color: PAGE.muted });
     // The record: one cell per stat, the value handwritten with lining figures.
     expect(await screen.findByLabelText("Time: 8 min")).toBeTruthy();
@@ -493,7 +494,7 @@ describe("Case closed: the recap", () => {
     await render(<PlayCompleteScreen />);
     expect(screen.getByText(RECAP_KICKER.noir)).toBeTruthy();
     const story = screen.getByTestId("closed-story-text");
-    expect(flat(story)).toMatchObject({ ...PAYOFF_TYPE.story, color: PAGE.ink });
+    expect(flat(story)).toMatchObject({ ...LETTER_TEXT.noir.body, color: PAGE.ink });
     // The answer, in the bold cut and the mode's page ink.
     expect(flat(screen.getByText("5 3 5"))).toMatchObject({ ...PAYOFF_TYPE.storyStrong, color: PAGE_INK.noir });
     expect(screen.getByTestId("closed-evidence")).toBeTruthy();

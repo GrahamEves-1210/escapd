@@ -1,12 +1,13 @@
 // The casebook (gameplay v2 §2 "Learn"): her annotated reading journal for
 // the case (docs/ART_DIRECTION.md, mystery-book core). A warm paper page in
-// the mode's dark sheet, set like a mystery paperback she's been writing in:
-// the series line in foil, a fleuron, then chapters. Chapter One is the case
+// the mode's dark sheet, in the same world as the case's letters
+// (src/play2/letters): the series line as its letterhead, left over its rule,
+// clipped like her brief, then chapters titled in the letters' faces. Chapter One is the case
 // (the objective, written in her hand); then what she found, taped in (notes,
 // polaroids, violet UV scraps; journal/JournalCard); crime scene's evidence
 // board as library cards to strike off; what she's holding as stickers; and
 // the hints as margin notes from the cat ("psst —"), with a sticker to ask for
-// another. A bookmark ribbon, sticky tabs at each chapter, a page number.
+// another. Sticky tabs at each chapter, a page number.
 // It's a scrapbook too: the cards are taped and pinned, with red string
 // between the ones that belong together (journal/Board, journal/threads), new
 // ones drop in with a "new!" star, and her margin keeps score: a question
@@ -19,7 +20,8 @@ import { DarkSheet } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import type { ObjectDef } from "@/engine/v2";
 import { useTheme } from "@/theme/ThemeProvider";
-import { font, ref, type ModeTheme } from "@/theme/tokens";
+import { LETTER, LETTER_FONT, LETTER_TEXT } from "@/theme/payoff";
+import { ref, type ModeTheme } from "@/theme/tokens";
 import type { FoundCard } from "./InspectView";
 import { itemIcon } from "./ItemTray";
 import { Board } from "./journal/Board";
@@ -28,7 +30,9 @@ import { Polaroid } from "./journal/JournalCard";
 import { LeadTracker, MarginNote } from "./journal/Margin";
 import { EvidenceBoard } from "./journal/LibraryCard";
 import { handType, journalPalette, type HandType, type JournalPalette } from "./journal/palette";
-import { Fleuron, Ribbon, Rules, softShadow, StickyTab, TornEdge } from "./journal/Paper";
+import { Rules, softShadow, StickyTab, TornEdge } from "./journal/Paper";
+import { Letterhead } from "./letters/Letterhead";
+import { PaperClip, Sprig } from "./letters/Marks";
 import { stringsOf, type ThreadLog } from "./journal/threads";
 
 const GRAIN = require("../../assets/grain.png");
@@ -67,6 +71,12 @@ export interface CasebookProps {
 }
 
 const CHAPTERS = ["One", "Two", "Three", "Four", "Five", "Six"];
+/** Chapter titles in the correspondence's faces (theme/payoff LETTER_FONT): typed, printed on the form, set in IM Fell. */
+const CHAPTER_TYPE = {
+  noir: { fontFamily: LETTER_FONT.typewriter, fontSize: 24, lineHeight: 30 },
+  crime_scene: { fontFamily: LETTER_FONT.formHeavy, fontSize: 23, lineHeight: 28, letterSpacing: -0.2 },
+  paranormal: { fontFamily: LETTER_FONT.fellItalic, fontSize: 27, lineHeight: 32 },
+} as const;
 /** What the cat says before each margin note, in turn. */
 const PSST = ["psst —", "ooh, and —", "also —", "and —"];
 
@@ -74,6 +84,7 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const p = journalPalette(theme);
+  const genre = theme.genre ?? "noir";
   const hand = handType(theme);
   const solved = progress?.solved ?? 0;
   // What the log said as the casebook opened: the strings, which twang, which ticks are new (fixed while it's open).
@@ -106,11 +117,14 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
           <View style={[styles.margin, { backgroundColor: p.margin }]} />
           <Image source={GRAIN} resizeMode="repeat" style={[StyleSheet.absoluteFill, styles.grain]} />
         </View>
-        <Ribbon color={p.ribbon} style={styles.ribbon} />
         <CornerDoodles genre={theme.genre} palette={p} />
+        {/* Clipped to the page as her brief was (src/play2/letters): noir's and the file's paper clip, the moonlit letter's pressed sprig. */}
+        {genre === "paranormal"
+          ? <Sprig flower={LETTER.paranormal.sprig} stem={LETTER.paranormal.stem} seed="casebook" width={38} rotate={28} style={styles.clip} />
+          : <PaperClip color={genre === "noir" ? LETTER.noir.clip : LETTER.crime_scene.clip} size={54} rotate={8} style={styles.clip} />}
 
-        <Text style={[styles.series, { color: p.foilInk }]}>{p.series}</Text>
-        <Fleuron foil={p.foil} ink={p.inkSoft} width={180} style={styles.fleuron} />
+        {/* The series line as the correspondence's letterhead, left, over its rule. */}
+        <Letterhead genre={genre} text={p.series} style={styles.letterhead} testID="v2-casebook-series" />
 
         <View style={styles.chapter}>
           {head("The case", 0)}
@@ -189,7 +203,7 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
           ) : null}
         </View>
 
-        <Text style={[styles.folio, { color: p.inkSoft }]} accessibilityElementsHidden importantForAccessibility="no">{`— ${cards.length + 1} —`}</Text>
+        <Text style={[styles.folio, LETTER_TEXT[genre].body, styles.folioSize, { color: p.inkSoft }]} accessibilityElementsHidden importantForAccessibility="no">{`— ${cards.length + 1} —`}</Text>
         {/* The page's deckled foot. */}
         <View style={styles.deckle}><TornEdge color={p.paper} side="bottom" seed="page" height={5} teeth={60} /></View>
       </View>
@@ -228,7 +242,7 @@ function Chapter({ number, title, palette: p, theme, tab }: { number: string; ti
   return (
     <View style={styles.chapterHead}>
       <StickyTab color={tab} top={4} style={styles.tab} />
-      <Text style={[styles.chapterTitle, { fontFamily: theme.display.fontFamily, fontStyle: theme.display.fontStyle, color: p.ink }]} accessibilityRole="header">{title}</Text>
+      <Text style={[CHAPTER_TYPE[theme.genre ?? "noir"], { color: p.ink }]} accessibilityRole="header">{title}</Text>
     </View>
   );
 }
@@ -299,14 +313,11 @@ const styles = StyleSheet.create({
   pageClip: { borderTopLeftRadius: 6, borderTopRightRadius: 6, overflow: "hidden" },
   margin: { position: "absolute", left: 20, top: 0, bottom: 0, width: 1.5 },
   grain: { opacity: 0.05 },
-  ribbon: { position: "absolute", top: -4, right: 26 },
-  series: { fontFamily: font.narrativeItalic, fontSize: 14, lineHeight: 18, letterSpacing: 0.6, textAlign: "center", marginBottom: -18 },
-  fleuron: { marginBottom: -8 },
+  clip: { position: "absolute", top: -12, right: 28, zIndex: 3 },
+  letterhead: { marginLeft: 26, marginRight: 52, marginBottom: -8 },
   chapter: { gap: 8 },
   chapterHead: { marginBottom: 2 },
   tab: { right: -32 },
-  chapterNo: { fontFamily: font.narrative, fontSize: 12, lineHeight: 16, letterSpacing: 2.2, textTransform: "uppercase" },
-  chapterTitle: { fontSize: 23, lineHeight: 29 },
   ring: { position: "absolute", top: -34, right: -44 },
   freshNote: { position: "absolute", top: 2, right: 8, flexDirection: "row", alignItems: "center", gap: 2, transform: [{ rotate: "-4deg" }] },
   empty: { flexDirection: "row", alignItems: "center", gap: 18, paddingVertical: 6 },
@@ -323,7 +334,8 @@ const styles = StyleSheet.create({
   },
   stickerSparkle: { position: "absolute", top: 4, right: 10 },
   stickerPressed: { transform: [{ scale: 0.96 }, { rotate: "-2deg" }] },
-  folio: { fontFamily: font.narrativeItalic, fontSize: 13, lineHeight: 18, textAlign: "center", marginTop: -6 },
+  folio: { textAlign: "right", marginTop: -6 },
+  folioSize: { fontSize: 15, lineHeight: 20 },
   cornerA: { position: "absolute", top: 12, left: 10 },
   cornerB: { position: "absolute", top: 40, left: 36 },
   cornerC: { position: "absolute", top: 46, left: 12 },

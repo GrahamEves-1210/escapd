@@ -1,14 +1,26 @@
-// The brief (Brief.tsx): a page of context before the case, styled per mode
-// (a book's opening page, a case dossier, a moonlit note), from the room's own
+// The brief (Brief.tsx): a letter of context before the case, per mode (a
+// typed letter on hotel onion-skin, a case intake sheet, an old sealed
+// letter; src/play2/letters), from the room's own
 // brief or the mode's opening and its objective; never the case's invented
 // title, only its series line and number; Begin dismisses it, and it is
 // remembered per room (useBrief): a case already under way opens on the room.
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { StyleSheet } from "react-native";
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "@/theme/ThemeProvider";
-import { BRIEF_PAPER, PAGE_INK } from "@/theme/payoff";
+import { LETTER, LETTER_FONT } from "@/theme/payoff";
 import { caseLabel } from "@/render/victory";
-import { BEGIN, BRIEF_OPENING, Brief, OBJECTIVE_LABEL, briefWords, ownBrief, useBrief, withoutObjective } from "../Brief";
+import { BEGIN, BRIEF_CAT_LINE, BRIEF_OPENING, Brief, OBJECTIVE_LABEL, briefWords, ownBrief, useBrief, withoutObjective } from "../Brief";
+
+jest.mock("@shopify/react-native-skia", () => {
+  const base = jest.requireActual("../../../jest/skia-mock");
+  const { createElement } = jest.requireActual("react");
+  const host = (name: string) => (props: Record<string, unknown>) => createElement(name, props, props.children);
+  const names = ["Path", "Rect", "Circle", "Line", "Shadow", "FractalNoise", "ColorMatrix", "BlurMask", "LinearGradient"];
+  return { ...base, ...Object.fromEntries(names.map((n) => [n, host(`Skia${n}`)])), vec: (x: number, y: number) => ({ x, y }) };
+});
+
+const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
 
 const OBJECTIVE = "Somebody locked you in and left the combination scattered in pieces. Find every piece and walk out through the door.";
 const def = (mode: "noir" | "crime_scene" | "paranormal", brief?: unknown) => ({ mode, objective: OBJECTIVE, title: "The Long Night", ...(brief === undefined ? {} : { brief }) });
@@ -45,10 +57,28 @@ describe("Brief", () => {
     expect(screen.queryByText("The Long Night")).toBeNull();
     expect(screen.getByTestId("brief-objective").props.accessibilityLabel).toBe(`${OBJECTIVE_LABEL[mode]}: ${OBJECTIVE}`);
     expect(screen.getByLabelText(/^The black cat/)).toBeTruthy();
+    expect(screen.getByTestId("brief-cat-line").props.children.replace(/\u00a0/g, " ")).toBe(BRIEF_CAT_LINE);
+    // The context reads as the text itself (a typed slip is struck through, never read).
+    expect(screen.getByTestId("brief-context").props.accessibilityLabel ?? screen.getByTestId("brief-context").props.children).toBe(BRIEF_OPENING[mode]);
     await fireEvent.press(screen.getByText(BEGIN));
     await act(() => jest.advanceTimersByTime(400));
     expect(onBegin).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
+  });
+});
+
+describe("Brief: the letters' type", () => {
+  it("sets each mode's letter in its own faces, never Playfair, at 16pt or more with room for its line", async () => {
+    const faces = { noir: LETTER_FONT.typewriter, crime_scene: LETTER_FONT.report, paranormal: LETTER_FONT.fell } as const;
+    for (const mode of ["noir", "crime_scene", "paranormal"] as const) {
+      const view = await render(<ThemeProvider reducedMotion><Brief def={def(mode)} roomId="room-1" onBegin={() => {}} /></ThemeProvider>);
+      const body = flat(screen.getByTestId("brief-context"));
+      expect(body.fontFamily).toBe(faces[mode]);
+      expect(body.fontSize).toBeGreaterThanOrEqual(16);
+      expect(body.lineHeight).toBeGreaterThanOrEqual(body.fontSize as number);
+      expect(JSON.stringify(view.toJSON())).not.toMatch(/Playfair/);
+      await view.unmount();
+    }
   });
 });
 
@@ -102,11 +132,11 @@ describe("Brief: contrast", () => {
     return (hi + 0.05) / (lo + 0.05);
   };
 
-  it("the paper's inks and the mode's page ink on each mode's paper; the folder's tab label", () => {
-    for (const mode of ["noir", "crime_scene", "paranormal"] as const) {
-      const P = BRIEF_PAPER[mode];
-      for (const ink of [P.ink, P.muted, PAGE_INK[mode]]) expect(contrast(ink, P.paper)).toBeGreaterThanOrEqual(4.5);
-      if (P.tab) expect(contrast(P.ink, P.tab)).toBeGreaterThanOrEqual(4.5);
-    }
+  it("every ink on each mode's paper, the sticky note's", () => {
+    const { noir: N, crime_scene: C, paranormal: M } = LETTER;
+    for (const ink of [N.ink, N.muted, N.ribbon, N.head, N.pen]) expect(contrast(ink, N.paper)).toBeGreaterThanOrEqual(4.5);
+    for (const ink of [C.ink, C.muted, C.form, C.pen, C.stamp]) expect(contrast(ink, C.paper)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(C.noteInk, C.note)).toBeGreaterThanOrEqual(4.5);
+    for (const ink of [M.ink, M.muted, M.faded]) expect(contrast(ink, M.paper)).toBeGreaterThanOrEqual(4.5);
   });
 });

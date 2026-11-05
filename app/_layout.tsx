@@ -25,6 +25,10 @@ import { Fraunces_500Medium_Italic } from "@expo-google-fonts/fraunces/500Medium
 import { PatrickHand_400Regular } from "@expo-google-fonts/patrick-hand/400Regular";
 import { CourierPrime_400Regular } from "@expo-google-fonts/courier-prime/400Regular";
 import { CourierPrime_700Bold } from "@expo-google-fonts/courier-prime/700Bold";
+import { SpecialElite_400Regular } from "@expo-google-fonts/special-elite/400Regular";
+import { IMFellEnglish_400Regular } from "@expo-google-fonts/im-fell-english/400Regular";
+import { IMFellEnglish_400Regular_Italic } from "@expo-google-fonts/im-fell-english/400Regular_Italic";
+import { Archivo_700Bold } from "@expo-google-fonts/archivo/700Bold";
 import { PreferencesProvider, usePreferences } from "@/game/preferences";
 import { Music } from "@/game/useMusic";
 import { useSkiaReady } from "@/lib/skiaReady";
@@ -62,6 +66,12 @@ export default function RootLayout() {
     // The play screen's typewriter face for game moments (ref.layout.play.type: notes, tags, the informant).
     CourierPrime_400Regular,
     CourierPrime_700Bold,
+    // The letters (src/play2/letters, theme/payoff LETTER_FONT): noir's typewriter, the
+    // paranormal letter's old letterpress face, the crime scene form's printed labels.
+    SpecialElite_400Regular,
+    IMFellEnglish_400Regular,
+    IMFellEnglish_400Regular_Italic,
+    Archivo_700Bold,
   });
   // Web only: mode photos are baked with Skia, whose CanvasKit loads first.
   // Native Skia is in the binary, so this is true at once and never waits.

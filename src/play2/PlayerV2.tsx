@@ -933,7 +933,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
-      {brief.open && !completed ? <Brief def={def} roomId={roomId} onBegin={brief.dismiss} /> : null}
+      {brief.open && !completed ? (
+        <Brief def={def} roomId={roomId} onBegin={brief.dismiss} photo={sources.kind === "ready" && sources.sources[0] !== undefined ? { source: sources.sources[0], cacheKey: photoKey(0) } : undefined} />
+      ) : null}
 
       {completed ? (
         <Ending

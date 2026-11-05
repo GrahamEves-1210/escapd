@@ -1,9 +1,12 @@
 // Case closed, per mode: the victory moment, made a collectible
 // (docs/ART_DIRECTION.md: pillar 4, "worth sharing", and the mystery-book
 // core: "case closed is the last page, or a library card stamped Solved").
-// One card she'd screenshot: a page of warm cream book paper, its bookmark
-// ribbon in the mode's sweet colour, the series line ("A Moonlit Mystery")
-// over a fleuron rule; the room's photo tucked into photo corners as a
+// One card she'd screenshot: the last page of the case's correspondence, on
+// the paper its brief was written on (src/play2/letters: noir's onion-skin
+// with a paper clip, the crime file's bond sheet on its kraft envelope, the
+// old foxed letter with a pressed sprig), the series line as that paper's
+// letterhead, left, over its rule; what happened in the letter's own face;
+// the room's photo tucked into photo corners as a
 // polaroid with the case's number handwritten in its foot (never an invented
 // title: "Case no. 0427", victory.ts caseLabel); a gold-foil seal
 // pressed on with the mode's word (noir: CASE CLOSED; crime scene: GUILTY;
@@ -53,10 +56,13 @@ import { useFeedback } from "@/game/feedback";
 import { setMode, themeFor } from "@/game/mode";
 import { SittingCat } from "@/play2/SittingCat";
 import { useTheme } from "@/theme/ThemeProvider";
-import { LIGHT, PAGE, PAYOFF_TYPE, alpha, handType } from "@/theme/payoff";
+import { LETTER, LETTER_SHEET, LETTER_TEXT, PAGE, PAYOFF_TYPE, alpha, handType } from "@/theme/payoff";
+import { Letterhead } from "@/play2/letters/Letterhead";
+import { PaperClip, Sprig } from "@/play2/letters/Marks";
+import { Paper } from "@/play2/letters/Paper";
 import { motion, ref } from "@/theme/tokens";
 import {
-  ClockMark, Confetti, CrossMark, FleuronRule, FoilSeal, LibraryStamp, POLAROID, Polaroid, SparkleGlyph, TipMark, Twinkle, captionSize, look,
+  ClockMark, Confetti, CrossMark, FoilSeal, LibraryStamp, POLAROID, Polaroid, SparkleGlyph, TipMark, Twinkle, captionSize, look,
 } from "./keepsake";
 import { MagnifierRating } from "./MagnifierRating";
 import { PIN, PinnedCharm, type ShownCharm } from "@/screens/collection/PinnedCharm";
@@ -208,6 +214,7 @@ const linesFor = (text: string | undefined, size: number, width: number, max: nu
 export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, summary, accused, charge, recap, photo, next, charm, news, actions }: CaseClosedProps) {
   const theme = themeFor(genre);
   const payoff = look(theme, genre);
+  const sheet = { under: LETTER_SHEET[genre].under, paper: { ...LETTER_SHEET[genre].paper, seed: caseNo } };
   const { reducedMotion: reduced } = useTheme();
   const feedback = useFeedback();
   const insets = useSafeAreaInsets();
@@ -358,14 +365,18 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
         <Beat delay={0} reduced={reduced} rise={16}>
           <Animated.View style={nudgeStyle}>
             {/* The page under it: the book's next leaf, a shade deeper. */}
-            <View style={[styles.leaf, { backgroundColor: PAGE.deep }]} />
+            <Paper color={sheet.under} seed={`${caseNo}:leaf`} grain={0.45} shade={alpha(theme.ground, 0.9)} style={styles.leaf} />
             <View
               ref={card}
               collapsable={false}
-              style={[styles.card, { backgroundColor: PAGE.paper, boxShadow: `0px 18px 44px ${alpha(theme.ground, 0.9)}, 0px 0px 60px ${alpha(payoff.glow, 0.14)}` }]}
+              style={styles.card}
               testID="case-card"
             >
-              <Ribbon color={payoff.sweet} />
+              {/* The card is a page of the case's correspondence: the brief's paper, its letterhead (src/play2/letters). */}
+              <Paper {...sheet.paper} shade={alpha(theme.ground, 0.9)} lift={1.6} style={StyleSheet.absoluteFill} />
+              {genre === "paranormal"
+                ? <Sprig flower={LETTER.paranormal.sprig} stem={LETTER.paranormal.stem} seed={caseNo} width={40} rotate={24} style={styles.clip} />
+                : <PaperClip color={genre === "noir" ? LETTER.noir.clip : LETTER.crime_scene.clip} size={56} rotate={6} style={styles.clip} />}
               {/* The case's charm, pinned to the page's corner once the rating is in. */}
               {charm && plan ? (
                 <PinnedCharm
@@ -381,10 +392,7 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
                 />
               ) : null}
 
-              <View style={styles.head}>
-                <Text style={[ref.type.series, styles.centre, { color: payoff.pageInk }]} testID="closed-series">{SERIES_LINE[genre]}</Text>
-                <FleuronRule color={PAGE.foilOnPaper} width={Math.min(200, inner * 0.62)} />
-              </View>
+              <Letterhead genre={genre} text={SERIES_LINE[genre]} style={[styles.head, charm ? { paddingLeft: PIN.size - 14 } : null]} testID="closed-series" />
 
               {/* The polaroid tucked into its corners, the seal on it, the cat beside it. */}
               <View style={[styles.hero, { height: heroH }]} testID="closed-room">
@@ -437,12 +445,12 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
 
               {story ? (
                 <Beat delay={head.impact} reduced={reduced} style={styles.recap} testID="closed-story">
-                  <Text style={[PAYOFF_TYPE.chapter, styles.centre, { color: payoff.pageInk }]}>{RECAP_KICKER[genre]}</Text>
-                  <Text style={[styles.story, styles.centre, { color: PAGE.ink }]} testID="closed-story-text">
+                  <Text style={[LETTER_TEXT[genre].label, { color: payoff.pageInk }]}>{RECAP_KICKER[genre]}</Text>
+                  <Text style={[LETTER_TEXT[genre].body, { color: PAGE.ink }]} testID="closed-story-text">
                     {story.story.map((part, i) => (part.strong ? <Text key={i} style={[styles.strong, { color: payoff.pageInk }]}>{part.text}</Text> : part.text))}
                   </Text>
                   {story.evidence.length ? (
-                    <Text style={[styles.evidence, styles.centre, { color: PAGE.muted }]} testID="closed-evidence">
+                    <Text style={[styles.evidence, { color: PAGE.muted }]} testID="closed-evidence">
                       {"From your casebook: "}
                       <Text style={[handType(16, L.evidence), { color: PAGE.ink }]}>{story.evidence.join(", ")}</Text>
                     </Text>
@@ -452,8 +460,8 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
 
               {lastWords ? (
                 <Beat delay={head.impact} reduced={reduced} style={styles.words}>
-                  {message ? <Text style={[L.last, styles.centre, { color: PAGE.ink }]} testID="closed-message">{message}</Text> : null}
-                  {exit ? <Text style={[styles.exit, styles.centre, { color: PAGE.muted }]}>{exit}</Text> : null}
+                  {message ? <Text style={[LETTER_TEXT[genre].body, { color: PAGE.ink }]} testID="closed-message">{message}</Text> : null}
+                  {exit ? <Text style={[LETTER_TEXT[genre].body, styles.exit, { color: PAGE.muted }]}>{exit}</Text> : null}
                 </Beat>
               ) : null}
 
@@ -613,20 +621,6 @@ function Figure({ value }: { value: string }) {
   );
 }
 
-/** A bookmark ribbon hanging from the page's top edge, its tail notched. */
-function Ribbon({ color }: { color: string }) {
-  const w = 16;
-  const h = 46;
-  return (
-    <View style={styles.ribbon} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <Svg width={w} height={h}>
-        <Path d={`M0 0 H${w} V${h} L${w / 2} ${h - 7} L0 ${h} Z`} fill={color} />
-        <Path d={`M3 0 V${h - 4}`} stroke={LIGHT.white} strokeOpacity={0.25} strokeWidth={1} />
-      </Svg>
-    </View>
-  );
-}
-
 /** The mode's soft glow on the ground behind the page (a candle, a desk lamp, the moon), and a blush of its sweet colour low down. */
 function Backdrop({ glow, sweet }: { glow: string; sweet: string }) {
   return (
@@ -653,17 +647,17 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flex: 1 },
   content: { flexGrow: 1, justifyContent: "center", paddingHorizontal: L.edge, paddingVertical: C.pad },
-  leaf: { ...StyleSheet.absoluteFill, borderRadius: L.radius, transform: [{ rotate: "1.2deg" }, { translateY: 5 }], ...ref.curve },
-  card: { padding: L.pad, gap: L.gap, borderRadius: L.radius, ...ref.curve },
-  ribbon: { position: "absolute", top: 0, right: 26 },
+  leaf: { ...StyleSheet.absoluteFill, transform: [{ rotate: "1.6deg" }, { translateY: 6 }] },
+  card: { padding: L.pad, gap: L.gap },
+  clip: { position: "absolute", top: -14, right: 30, zIndex: 3 },
   pin: { left: -12, top: -14 },
   news: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: L.news },
-  head: { alignItems: "center", gap: 2, height: L.head },
+  head: { height: L.head, paddingRight: 52 },
   hero: { alignSelf: "stretch" },
   polaroid: { position: "absolute", left: 4 },
   seal: { position: "absolute", top: 0 },
   cat: { position: "absolute", right: 2, bottom: 0 },
-  words: { alignItems: "center", alignSelf: "stretch", gap: 2, paddingHorizontal: 4 },
+  words: { alignSelf: "stretch", gap: 2, paddingHorizontal: 4 },
   exit: { fontSize: 15, lineHeight: 20 },
   centre: { textAlign: "center" },
   entry: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: L.row, borderBottomWidth: 1, gap: 12 },
@@ -677,7 +671,7 @@ const styles = StyleSheet.create({
   cellLabel: { letterSpacing: 0.5 },
   rating: { paddingTop: 0, gap: 2 },
   reason: { ...L.reason, paddingHorizontal: 6 },
-  recap: { alignItems: "center", alignSelf: "stretch", gap: 4, paddingHorizontal: 4 },
+  recap: { alignSelf: "stretch", gap: 4, paddingHorizontal: 4 },
   story: L.story,
   strong: PAYOFF_TYPE.storyStrong,
   evidence: { fontSize: 13, lineHeight: L.evidence },
