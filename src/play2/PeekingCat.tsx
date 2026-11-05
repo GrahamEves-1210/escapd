@@ -157,7 +157,7 @@ const ACT = {
 /** Its outfit on its art (catAccessory): a bow by its right ear, a collar under its chin, a beret or flowers on its head. */
 const OUTFIT: Placements = {
   bow: { x: 440, y: 186, w: 230, rotate: 18 },
-  bell: { x: 290, y: 517, w: 230, rotate: 0 },
+  bell: { x: 290, y: 494, w: 210, rotate: 0 },
   beret: { x: 292, y: 170, w: 270, rotate: -10 },
   flowers: { x: 290, y: 192, w: 300, rotate: 0 },
 };
