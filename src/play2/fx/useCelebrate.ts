@@ -82,7 +82,6 @@ export function useCelebrate(genre: Genre | null, locate: (objectId: string) => 
     }
     if (roll.level > 0) later(SOUND_AT.roll, feedback.solved);
     else if (strength === "solve") later(SOUND_AT.stamp, feedback.stamp);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `later` only touches refs.
   }, [genre, feedback]);
 
   const result = useCallback((r: ActionResult | null, anchor: Anchor | null, opts?: { grants?: boolean }) => {

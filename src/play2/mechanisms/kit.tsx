@@ -4,8 +4,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, Text, View, type AccessibilityActionEvent, type StyleProp, type ViewStyle } from "react-native";
 import { usePanGesture } from "react-native-gesture-handler";
-import {
-  Easing, ReduceMotion, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSequence, withTiming,
+import Animated, {
+  Easing, ReduceMotion, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
@@ -161,6 +161,56 @@ export function useRattle() {
 
 export type PullAxis = "down" | "up" | "x";
 
+// The moment a thing gives (a drawer pulled past its catch, a lock's code tried), kept across the close-up's
+// remount (it mounts its mechanism afresh after every action): mounted again open just after, the
+// mechanism plays its final click, once.
+const tried = new Map<string, number>();
+/** How long after the try a mount still counts as the moment it gave (ms). */
+export const JUST_GAVE_MS = 1500;
+/** Marks a try on the thing keyed `key` (its kind and id). */
+export function markTry(key: string | undefined) {
+  if (key) tried.set(key, Date.now());
+}
+/** Whether the thing keyed `key` was tried just now; asking forgets it, so the click plays once. */
+export function justGave(key: string | undefined, now = Date.now()): boolean {
+  if (!key) return false;
+  const at = tried.get(key);
+  tried.delete(key);
+  return at !== undefined && now - at < JUST_GAVE_MS;
+}
+/** The key a target's tries are kept under. */
+export const tryKey = (target: MechanismTarget | undefined) => (target ? `${target.kind}:${target.id}` : undefined);
+
+/**
+ * A glint: light catching varnish or brass once, a soft bright streak sweeping across whatever it fills
+ * (its parent clips it). For a final click. Nothing under reduced motion.
+ */
+export function Glint({ delay = 0, duration = 560, radius = 0 }: { delay?: number; duration?: number; radius?: number }) {
+  const { reducedMotion } = useTheme();
+  const [w, setW] = useState(0);
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (reducedMotion || w <= 0) return;
+    t.set(withDelay(delay, withTiming(1, { duration, easing: Easing.inOut(Easing.quad), reduceMotion: ReduceMotion.Never })));
+  }, [reducedMotion, w, delay, duration, t]);
+  const style = useAnimatedStyle(() => {
+    const p = t.get();
+    return { opacity: p <= 0 || p >= 1 ? 0 : Math.sin(Math.PI * p), transform: [{ translateX: -40 + p * (w + 80) }, { rotate: "22deg" }] };
+  });
+  if (reducedMotion) return null;
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.glintClip, { borderRadius: radius }]} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      <Animated.View style={[styles.glint, style]}>
+        <View style={styles.glintWide} />
+        <View style={styles.glintThin} />
+      </Animated.View>
+    </View>
+  );
+}
+
+/** A pull's landing at its stop: past it a hair, back on a stiff little spring. Beats with the drawer's thud. */
+export const LANDING = { over: 0.05, inMs: 110, delayMs: 60, spring: { mass: 0.6, damping: 9, stiffness: 420 } } as const;
+
 /**
  * The pull-to-commit drag: `progress` follows the finger from 0 to 1 along
  * `axis` over `range` pt (signed -1..1 for "x"). Released past COMMIT_AT it
@@ -168,12 +218,18 @@ export type PullAxis = "down" | "up" | "x";
  * Locked, it gives a few points and rattles (`onLocked`). A tick when the
  * pull crosses the catch. `done` holds it at the end; while `busy` it holds still.
  */
-export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked, onUncommit }: {
+export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked, onUncommit, land }: {
   axis: PullAxis; range: number; done: boolean; locked?: boolean; busy: boolean;
   onCommit: () => void; onLocked?: () => void;
+  /** The target's tryKey: mounted open just after it was pulled, it lands at its stop with a little bounce. */
+  land?: string;
   /** Given: once done it can be pushed back (a drawer shut, a cushion put back), committing this on release. */
   onUncommit?: () => void;
-}): { progress: SharedValue<number>; gesture: ReturnType<typeof usePanGesture>; commitNow: () => void } {
+}): {
+  progress: SharedValue<number>; gesture: ReturnType<typeof usePanGesture>; commitNow: () => void;
+  /** Mounted just after it was pulled open: it is landing at its stop now. */
+  landed: boolean;
+} {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
   const progress = useSharedValue(done ? 1 : 0);
@@ -202,6 +258,19 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
     progress.set(withTiming(to, settle(reducedMotion)));
   }, [done, busy, reducedMotion, progress]);
 
+  // Just pulled open (and mounted afresh by the close-up): the final click, a hair past the stop and back.
+  const [landed] = useState(() => done && justGave(land));
+  useEffect(() => {
+    if (!landed || reducedMotion) return;
+    const end = progress.get() < 0 ? -1 : 1;
+    progress.set(withDelay(LANDING.delayMs, withSequence(
+      withTiming(end * (1 + LANDING.over), { duration: LANDING.inMs, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never }),
+      withSpring(end, { ...LANDING.spring, reduceMotion: ReduceMotion.Never }),
+    )));
+    // Once, on the mount just after the pull.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const tick = useCallback(() => feedback.tick(), [feedback]);
   useAnimatedReaction(
     () => Math.abs(progress.get()) >= COMMIT_AT,
@@ -210,7 +279,10 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
     },
   );
 
-  const commit = useCallback(() => onCommit(), [onCommit]);
+  const commit = useCallback(() => {
+    markTry(land);
+    onCommit();
+  }, [onCommit, land]);
   const refuse = useCallback(() => onLocked?.(), [onLocked]);
   const uncommit = useCallback(() => onUncommit?.(), [onUncommit]);
 
@@ -275,10 +347,11 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
       return;
     }
     progress.set(withTiming(1, settle(reducedMotion, 320)));
+    markTry(land);
     onCommit();
-  }, [busy, done, locked, onLocked, onCommit, progress, reducedMotion]);
+  }, [busy, done, locked, onLocked, onCommit, progress, reducedMotion, land]);
 
-  return { progress, gesture, commitNow };
+  return { progress, gesture, commitNow, landed };
 }
 
 // What the player has dialled or picked, kept across the close-up's remounts
@@ -316,6 +389,10 @@ export function useLockedLine(locked: boolean) {
 }
 
 const styles = StyleSheet.create({
+  glintClip: { overflow: "hidden" },
+  glint: { position: "absolute", top: -40, bottom: -40, left: 0, width: 30, flexDirection: "row", gap: 5 },
+  glintWide: { width: 16, backgroundColor: "rgba(255,250,236,0.32)" },
+  glintThin: { width: 5, backgroundColor: "rgba(255,250,236,0.5)" },
   stage: { alignSelf: "center", alignItems: "center", gap: ref.space.sm, paddingVertical: ref.space.sm },
   line: { ...ref.type.meta, textAlign: "center", minHeight: ref.type.meta.lineHeight },
   stampLine: { ...ref.type.tag, textAlign: "center", minHeight: ref.type.tag.lineHeight },

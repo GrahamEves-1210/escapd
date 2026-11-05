@@ -7,7 +7,7 @@ import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
-import { Line, STAGE, Stage, activatable, usePull } from "./kit";
+import { Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import type { MechanismProps } from "./types";
 
 const MAX_DEG = 17;
@@ -26,7 +26,7 @@ export function FrameTilt({ target, state, onSet, busy, width }: MechanismProps)
     feedback.tick();
     onSet("tilted", false);
   }, [feedback, onSet]);
-  const { progress, gesture, commitNow } = usePull({ axis: "x", range: 110, done: tilted, busy, onCommit, onUncommit });
+  const { progress, gesture, commitNow } = usePull({ axis: "x", range: 110, done: tilted, busy, onCommit, onUncommit, land: tryKey(target) });
 
   const w = Math.min(width - 2 * ref.space.xxl, 180);
   // Turn about the nail: the frame hangs from its top centre.

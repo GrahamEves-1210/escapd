@@ -8,7 +8,7 @@ import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
-import { Line, STAGE, Stage, activatable, useLockedLine, usePull, useRattle } from "./kit";
+import { Glint, LANDING, Line, STAGE, Stage, activatable, tryKey, useLockedLine, usePull, useRattle } from "./kit";
 import type { MechanismProps } from "./types";
 
 const TRAVEL = 72;
@@ -39,8 +39,8 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
     markTried();
   }, [feedback, rattle, markTried]);
 
-  const { progress, gesture, commitNow } = usePull({
-    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked, onUncommit,
+  const { progress, gesture, commitNow, landed } = usePull({
+    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked, onUncommit, land: tryKey(target),
   });
 
   const w = Math.min(width - 2 * ref.space.lg, 280);
@@ -108,6 +108,8 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
                 <View style={[styles.handle, { backgroundColor: theme.accent }]} />
               )}
               {locked ? <View style={[styles.keyhole, { backgroundColor: theme.ground }]} /> : null}
+              {/* Just pulled open: the light catches its front as it lands at the stop. */}
+              {landed ? <Glint delay={LANDING.delayMs + LANDING.inMs} radius={ref.radius.tag / 2} /> : null}
             </Animated.View>
           </Animated.View>
         </GestureDetector>

@@ -3,10 +3,12 @@
 // seats on a symbol with a tick per symbol passed; tapping above or below
 // steps one. CodeWheel (src/render) is digits-only and sized for the v1 pad,
 // so this is its general sibling.
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
-import Animated, { cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  Easing, ReduceMotion, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming,
+} from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CheckIcon } from "@/components/icons";
 import { SYMBOLS, type WheelAlphabet } from "@/engine/v2";
@@ -14,7 +16,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { Line, MechButton, adjustable, cooldownText, mod, settle, useKept } from "./kit";
+import { Glint, Line, MechButton, adjustable, cooldownText, justGave, markTry, mod, settle, tryKey, useKept } from "./kit";
 import type { MechanismTarget } from "./types";
 
 export const ALPHABET: Record<WheelAlphabet, readonly string[]> = {
@@ -170,6 +172,18 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
     setValues((v) => v.map((x, k) => (k === i ? s : x)));
     onChange?.();
   }, [setValues, onChange]);
+  // Just opened (the close-up mounts it afresh with the answer): the final click. The wheels seat one after
+  // another, left to right, each with a detent, and the Open stamp comes down on the last.
+  const [gave] = useState(() => done && justGave(tryKey(keep)));
+  const feedback = useFeedback();
+  const { reducedMotion } = useTheme();
+  useEffect(() => {
+    if (!gave) return;
+    const timers = Array.from({ length: count }, (_, i) => setTimeout(feedback.detent, CLICK.firstMs + i * CLICK.staggerMs));
+    return () => timers.forEach(clearTimeout);
+    // Once, on the mount just after the code was tried.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const wheelW = Math.min(60, Math.floor((width - (count - 1) * GAP - 2 * ref.space.lg) / count));
   const waiting = cooldownText(cooldown);
   const blocked = busy || cooldown > 0;
@@ -179,28 +193,65 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
         {values.map((v, i) => (
           <View key={i} style={styles.marked}>
             {marks ? <Text style={styles.mark} accessibilityLabel={`Wheel marked ${marks[i]}`}>{marks[i]}</Text> : null}
-            <SymbolWheel index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} done={done} />
+            <Seat at={gave && !reducedMotion ? CLICK.firstMs + i * CLICK.staggerMs : null}>
+              <SymbolWheel index={i} symbols={symbols} value={v} onChange={(s) => setAt(i, s)} width={wheelW} disabled={busy || done} done={done} />
+            </Seat>
           </View>
         ))}
       </View>
       {done ? (
-        <Solved label={doneLabel} />
+        <Solved label={doneLabel} stampAt={gave && !reducedMotion ? CLICK.firstMs + count * CLICK.staggerMs : null} />
       ) : (
-        <MechButton label={submitLabel} disabled={blocked} onPress={() => onSubmit(values.map((v) => symbols[v]))} testID="mech-submit" />
+        <MechButton
+          label={submitLabel}
+          disabled={blocked}
+          onPress={() => {
+            markTry(tryKey(keep));
+            onSubmit(values.map((v) => symbols[v]));
+          }}
+          testID="mech-submit"
+        />
       )}
       <Line text={waiting && !done ? waiting : " "} tone={waiting ? "stamp" : "muted"} testID="mech-status" />
     </View>
   );
 }
 
-/** In the submit's place once it's done: a stamp with a tick, the same size, so nothing below moves. */
-function Solved({ label }: { label: string }) {
+/** A lock's final click: when the first wheel seats, and how far apart the rest follow (ms). */
+export const CLICK = { firstMs: 60, staggerMs: 75, drop: 4 } as const;
+
+/** A wheel seating: down a few points into its bed at `at` ms, and back up on a stiff spring. Still: nothing. */
+function Seat({ at, children }: { at: number | null; children: ReactNode }) {
+  const y = useSharedValue(0);
+  useEffect(() => {
+    if (at === null) return;
+    y.set(withDelay(at, withSequence(
+      withTiming(CLICK.drop, { duration: 60, easing: Easing.in(Easing.quad), reduceMotion: ReduceMotion.Never }),
+      withSpring(0, { mass: 0.5, damping: 8, stiffness: 520, reduceMotion: ReduceMotion.Never }),
+    )));
+  }, [at, y]);
+  const style = useAnimatedStyle(() => ({ transform: [{ translateY: y.get() }] }));
+  return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+/** In the submit's place once it's done: a stamp with a tick, the same size, so nothing below moves. Just opened, it stamps down (`stampAt` ms) and catches the light. */
+function Solved({ label, stampAt = null }: { label: string; stampAt?: number | null }) {
   const theme = useModeTheme();
+  const k = useSharedValue(stampAt === null ? 1 : 0);
+  useEffect(() => {
+    if (stampAt === null) return;
+    k.set(withDelay(stampAt, withTiming(1, { duration: 150, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never })));
+  }, [stampAt, k]);
+  const style = useAnimatedStyle(() => {
+    const p = k.get();
+    return { opacity: Math.min(1, p * 2), transform: [{ scale: 1.45 - 0.45 * p }, { rotate: `${(1 - p) * -6}deg` }] };
+  });
   return (
-    <View style={[styles.solved, { borderColor: theme.stamp }]} accessible accessibilityRole="text" accessibilityLabel={label} testID="mech-solved">
+    <Animated.View style={[styles.solved, { borderColor: theme.stamp }, style]} accessible accessibilityRole="text" accessibilityLabel={label} testID="mech-solved">
       <CheckIcon size={18} weight="bold" color={theme.stamp} />
       <Text style={[styles.solvedLabel, { color: theme.stamp }]}>{label}</Text>
-    </View>
+      {stampAt === null ? null : <Glint delay={stampAt + 160} radius={ref.radius.round} />}
+    </Animated.View>
   );
 }
 

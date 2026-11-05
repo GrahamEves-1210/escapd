@@ -4,7 +4,7 @@
 // flutters round it and goes; in paranormal a faint wisp crossing the room; in
 // crime scene a passing car's light sliding slowly across the walls. Nothing
 // under reduced motion (the Stage leaves it out).
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BlurMask, Group, LinearGradient, Path, RadialGradient, Rect, Skia, vec, type SkPath } from "@shopify/react-native-skia";
 import { Easing, cancelAnimation, useDerivedValue, useSharedValue, withRepeat, withTiming, type SharedValue } from "react-native-reanimated";
 import type { Genre } from "@/lib/puzzle-types";
@@ -13,10 +13,10 @@ export const AMBIENT = {
   /** One loop of the room's life (ms); every drift beats a whole number of times in it. */
   loopMs: 48_000,
   /** Dust: how many motes, their radii (points), how far they wander (points), how bright at most. */
-  motes: 16,
-  moteR: [0.7, 1.7] as const,
+  motes: 28,
+  moteR: [0.9, 2.2] as const,
   wander: [14, 34] as const,
-  moteAlpha: 0.55,
+  moteAlpha: 0.7,
   /** The once-a-loop visitor's slot in the loop (start, end; shares of it). */
   moth: [0.1, 0.24] as const,
   wisp: [0.42, 0.53] as const,
@@ -24,6 +24,15 @@ export const AMBIENT = {
   /** A second car, the other way, later. */
   car2: [0.9, 0.97] as const,
 } as const;
+
+/**
+ * Where in the loop a view starts: anywhere (so a turn never brings the moth straight in). In development a
+ * playtest can pin it (globalThis.__escapdAmbientStart, 0..1) to see a visitor on cue.
+ */
+function startPhase(): number {
+  const pinned = (globalThis as { __escapdAmbientStart?: unknown }).__escapdAmbientStart;
+  return __DEV__ && typeof pinned === "number" ? pinned : Math.random();
+}
 
 /** How far through an event (0..1) a moment of the loop is, or -1 outside it. */
 export function eventAt(phase: number, [from, to]: readonly [number, number]): number {
@@ -53,7 +62,7 @@ export function Ambient({ genre, tx, ty, w, h, r, uv }: {
 }) {
   const clock = useSharedValue(0);
   // Each view starts somewhere in the loop: a turn never brings the moth straight in.
-  const offset = useMemo(() => Math.random(), []);
+  const [offset] = useState(startPhase);
   useEffect(() => {
     clock.set(0);
     clock.set(withRepeat(withTiming(1, { duration: AMBIENT.loopMs, easing: Easing.linear }), -1, false));
@@ -77,7 +86,7 @@ export function Ambient({ genre, tx, ty, w, h, r, uv }: {
  */
 export function CarLight({ w, h }: { w: number; h: number }) {
   const clock = useSharedValue(0);
-  const offset = useMemo(() => Math.random(), []);
+  const [offset] = useState(startPhase);
   useEffect(() => {
     clock.set(withRepeat(withTiming(1, { duration: AMBIENT.loopMs, easing: Easing.linear }), -1, false));
     return () => cancelAnimation(clock);
@@ -154,8 +163,10 @@ function Dust({ phase, tx, ty, w, h, r, uv }: {
 function Moth({ phase, tx, ty, w, h, r }: {
   phase: SharedValue<number>; tx: SharedValue<number>; ty: SharedValue<number>; w: number; h: number; r: number;
 }) {
-  const from = useMemo(() => ({ x: Math.random() < 0.5 ? -20 : w + 20, y: h * (0.15 + Math.random() * 0.4) }), [w, h]);
-  const to = useMemo(() => ({ x: from.x < 0 ? w + 30 : -30, y: h * (0.05 + Math.random() * 0.3) }), [from, w, h]);
+  // Which side it comes in from and how high, and where it leaves: its own each visit to the view.
+  const [dice] = useState(() => [Math.random(), Math.random(), Math.random()]);
+  const from = { x: dice[0] < 0.5 ? -20 : w + 20, y: h * (0.15 + dice[1] * 0.4) };
+  const to = { x: from.x < 0 ? w + 30 : -30, y: h * (0.05 + dice[2] * 0.3) };
   const shape = useDerivedValue<SkPath>(() => {
     const e = eventAt(phase.get(), AMBIENT.moth);
     const b = Skia.PathBuilder.Make();
@@ -171,34 +182,35 @@ function Moth({ phase, tx, ty, w, h, r }: {
     const y = from.y + (oy - from.y) * into + (to.y - oy) * out + 5 * Math.cos(t * 6);
     // Wings: a quick, uneven flap.
     const flap = 0.35 + 0.65 * Math.abs(Math.sin(t * 22 + Math.sin(t * 3)));
-    const span = 7.5, lift = 5.5 * flap;
+    const span = 10.5, lift = 7.5 * flap;
     const heading = Math.atan2(y - by, x - bx) * 0.15;
     const c = Math.cos(heading), s = Math.sin(heading);
     const P = (px: number, py: number) => [x + px * c - py * s, y + px * s + py * c] as const;
     for (const side of [-1, 1]) {
       const tip = P(side * span * flap, -lift);
       const back = P(side * span * 0.8 * flap, lift * 0.5);
-      const root = P(side * 0.8, 0);
+      const root = P(side * 1.1, 0);
       b.moveTo(...P(0, -1.2));
       b.quadTo(tip[0], tip[1], back[0], back[1]);
       b.quadTo(root[0], root[1] + 1.4, ...P(0, 1.6));
       b.close();
     }
-    b.addOval(Skia.XYWHRect(x - 1.1, y - 3, 2.2, 6.2));
+    b.addOval(Skia.XYWHRect(x - 1.5, y - 4, 3, 8.4));
     return b.build();
   });
   const c = useDerivedValue(() => vec(tx.get() * w, ty.get() * h));
   return (
     <Path path={shape} antiAlias>
-      {/* Pale dusty wings in the light; just a faint shape out of it. */}
-      <RadialGradient c={c} r={r * 1.1} colors={["rgba(236,220,196,0.92)", "rgba(220,200,176,0.7)", "rgba(190,170,150,0.2)", "rgba(150,130,120,0.1)"]} positions={[0, 0.45, 0.85, 1]} />
+      {/* Dusky wings against the lit wall; just a faint pale shape out of the light. */}
+      <RadialGradient c={c} r={r * 1.1} colors={["rgba(84,64,58,0.88)", "rgba(96,76,68,0.8)", "rgba(150,130,118,0.3)", "rgba(170,150,136,0.12)"]} positions={[0, 0.5, 0.85, 1]} />
     </Path>
   );
 }
 
 /** A wisp (paranormal): a faint glowing trail drifting across the room, rising and falling as it goes. */
 function Wisp({ phase, w, h }: { phase: SharedValue<number>; w: number; h: number }) {
-  const lane = useMemo(() => ({ y: h * (0.25 + Math.random() * 0.35), dir: Math.random() < 0.5 ? 1 : -1 }), [h]);
+  const [dice] = useState(() => [Math.random(), Math.random()]);
+  const lane = { y: h * (0.25 + dice[0] * 0.35), dir: dice[1] < 0.5 ? 1 : -1 };
   const trail = useDerivedValue<SkPath>(() => {
     const e = eventAt(phase.get(), AMBIENT.wisp);
     const b = Skia.PathBuilder.Make();

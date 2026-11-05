@@ -9,7 +9,7 @@
 import { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Canvas, Circle, Group, Path, RadialGradient, Skia, vec, type SkPath } from "@shopify/react-native-skia";
-import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { SparkleIcon } from "phosphor-react-native";
 import type { Genre } from "@/lib/puzzle-types";
 import { useModeTheme } from "@/game/mode";
@@ -39,7 +39,7 @@ export const BURST = {
   stampMs: 130,
   stampFrom: 1.55,
   /** The word sits this far above the burst's centre (points). */
-  wordLift: 30,
+  wordLift: 40,
 } as const;
 
 type Kind = "star" | "star5" | "heart" | "smoke" | "marker" | "glint" | "wisp" | "moon";
@@ -112,7 +112,9 @@ export function bitsFor(genre: Genre, strength: Strength, level: number, seed: n
     const kind = mix[Math.floor(R(0) * mix.length)];
     // Smoke and wisps rise rather than fly: a short way, mostly up.
     const rises = kind === "smoke" || kind === "wisp";
-    const angle = rises ? -Math.PI / 2 + (R(1) - 0.5) * 1.4 : start + (i / n) * Math.PI * 2 + (R(1) - 0.5) * 0.7;
+    // (Off to one side of straight up, so they curl past the word rather than through it.)
+    const side = R(7) < 0.5 ? -1 : 1;
+    const angle = rises ? -Math.PI / 2 + side * (0.55 + 0.45 * R(1)) : start + (i / n) * Math.PI * 2 + (R(1) - 0.5) * 0.7;
     out.push({
       kind,
       angle,

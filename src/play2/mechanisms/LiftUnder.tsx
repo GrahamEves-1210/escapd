@@ -7,7 +7,7 @@ import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
-import { Line, STAGE, Stage, activatable, usePull } from "./kit";
+import { Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import type { MechanismProps } from "./types";
 
 const RISE = 84;
@@ -25,7 +25,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
     feedback.tick();
     onSet("lifted", false);
   }, [feedback, onSet]);
-  const { progress, gesture, commitNow } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit, onUncommit });
+  const { progress, gesture, commitNow } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit, onUncommit, land: tryKey(target) });
 
   const w = Math.min(width - 2 * ref.space.xl, 240);
   const clothStyle = useAnimatedStyle(() => {

@@ -1,7 +1,8 @@
 // The little celebrations (fx/): how big a moment is, the stamped word (never
 // twice in a row), the roll, where a burst's bits fly, the room's ambient
 // timing, and the hook that ties them to the player's results and sounds.
-import { act, render, renderHook, screen } from "@testing-library/react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
 import type { ActionResult } from "@/engine/v2";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { ModeScope } from "@/game/mode";
@@ -9,6 +10,8 @@ import { AMBIENT, eventAt } from "../fx/Ambient";
 import { BURST, Burst, bitsFor } from "../fx/Burst";
 import { ROLL_WORD, STREAK, WORDS, pickWord, streakAfter, strengthOf } from "../fx/celebrate";
 import { useCelebrate } from "../fx/useCelebrate";
+import { Mechanism } from "../mechanisms";
+import { JUST_GAVE_MS, justGave, markTry } from "../mechanisms/kit";
 
 jest.mock("@shopify/react-native-skia", () => {
   const base = jest.requireActual("../../../jest/skia-mock");
@@ -21,7 +24,7 @@ jest.mock("@shopify/react-native-skia", () => {
   };
 });
 
-const mockFeedback = { solved: jest.fn(), stamp: jest.fn() };
+const mockFeedback = { solved: jest.fn(), stamp: jest.fn(), detent: jest.fn(), press: jest.fn(), tick: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 type Node = { type: string; children?: (Node | string)[] | null };
@@ -180,5 +183,29 @@ describe("useCelebrate", () => {
     const none = await renderHook(() => useCelebrate(null, locate));
     await act(async () => none.result.current.find({ object: "drawer" }));
     expect(none.result.current.stage).toBeNull();
+  });
+});
+
+describe("a mechanism's final click", () => {
+  it("counts a mount as the moment it gave only just after the try, and only once", () => {
+    markTry("object:drawer");
+    expect(justGave("object:drawer")).toBe(true);
+    expect(justGave("object:drawer")).toBe(false);
+    markTry("object:lock");
+    expect(justGave("object:lock", Date.now() + JUST_GAVE_MS + 1)).toBe(false);
+    expect(justGave(undefined)).toBe(false);
+  });
+
+  it("seats a lock's wheels one by one, each with a detent, when it mounts open just after its code was tried", async () => {
+    jest.useFakeTimers();
+    const target = { kind: "object" as const, id: "lock", label: "Lock", archetype: "CombinationLock" as const, controls: [], submit: { kind: "wheels" as const, alphabet: "digits" as const, count: 3 } };
+    const base = { target, onSet: jest.fn(), onSubmit: jest.fn(), busy: false, cooldown: 0, width: 360 };
+    const first = await render(<GestureHandlerRootView><Mechanism {...base} state={{ locked: true }} /></GestureHandlerRootView>);
+    await act(async () => fireEvent.press(screen.getByTestId("mech-submit")));
+    first.unmount();
+    await render(<GestureHandlerRootView><Mechanism {...base} state={{ open: true, locked: false }} /></GestureHandlerRootView>);
+    expect(screen.getByTestId("mech-solved")).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(1000));
+    expect(mockFeedback.detent).toHaveBeenCalledTimes(3);
   });
 });
