@@ -17,6 +17,8 @@ export const ART_W = 560;
 export const ART_H = 585;
 /** The fur (the art's, measured). */
 const FUR = "#0B0806";
+/** Its toe beans. */
+const BEAN = "#E7A1B5";
 
 /**
  * The paws as cut out of the art (art px): the box, and the wrist (where it
@@ -33,7 +35,7 @@ export const PAWS_CUT = {
   chest: { x0: 188, x1: 454, y0: 532 },
 } as const;
 /** Its mouth (under its nose) and its cheeks (under its eyes), art px. */
-const MOUTH = { x: 289, y: 396, w: 84, h: 72 };
+const MOUTH = { x: 289, y: 394, w: 98, h: 84 };
 const CHEEKS = [{ x: 176, y: 394 }, { x: 404, y: 392 }] as const;
 
 /** A piece of the art: its box (art px) cut out, in place. */
@@ -58,11 +60,23 @@ function Paw({ art, side, width, height, f }: { art: number; side: "left" | "rig
     return { transform: [{ translateX: v[ix] * k }, { translateY: -v[iy] * k }, { rotate: `${v[ir]}deg` }] };
   });
   const arm = PAWS_CUT.arm * k;
+  // Lifted, its pink pads show (so a paw up reads as a paw, even on its black face).
+  const beans = useAnimatedStyle(() => ({ opacity: Math.max(0, Math.min(1, (f.get()[iy] - 40) / 60)) }));
+  const bw = 96 * k, bh = 80 * k;
   return (
     <Animated.View style={[styles.piece, { left: cut.x0 * k, top: y0 * k, width: w, height: h, overflow: "visible", transformOrigin: `${ox}% ${oy}%` }, style]}>
       {/* The forearm, down from under the paw to behind the ledge. */}
       <View style={[styles.arm, { left: (cut.wrist.x - cut.x0) * k - arm / 2, top: h * 0.45, width: arm, height: height * 1.2, borderRadius: arm / 2 }]} />
       <Piece art={art} k={k} x0={cut.x0} y0={y0} x1={cut.x1} y1={ART_H} width={width} height={height} />
+      <Animated.View pointerEvents="none" style={[styles.piece, { left: (cut.wrist.x - cut.x0) * k - bw / 2, top: h * 0.5 - bh * 0.62, width: bw, height: bh, overflow: "visible" }, beans]}>
+        <Svg width={bw} height={bh} viewBox="0 0 24 20">
+          <Path d="M12 9 C8.6 9 6 11.8 6.3 14.4 C6.6 16.6 8.8 17 10.4 16.3 C11.4 15.9 12.6 15.9 13.6 16.3 C15.2 17 17.4 16.6 17.7 14.4 C18 11.8 15.4 9 12 9 Z" fill={BEAN} stroke={FUR} strokeWidth={1.2} />
+          <Ellipse cx={5.6} cy={8} rx={2} ry={2.4} fill={BEAN} stroke={FUR} strokeWidth={1} />
+          <Ellipse cx={9.6} cy={4.6} rx={2.1} ry={2.6} fill={BEAN} stroke={FUR} strokeWidth={1} />
+          <Ellipse cx={14.4} cy={4.6} rx={2.1} ry={2.6} fill={BEAN} stroke={FUR} strokeWidth={1} />
+          <Ellipse cx={18.4} cy={8} rx={2} ry={2.4} fill={BEAN} stroke={FUR} strokeWidth={1} />
+        </Svg>
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -140,6 +154,36 @@ export function Face({ width, f, sweet }: { width: number; f: SharedValue<number
         </Svg>
       </Animated.View>
     </>
+  );
+}
+
+/**
+ * A swat's swipe: three quick inky arcs where the paw slaps down, on its side
+ * (the frame's `swipe` 0..1 as they play: drawn on, then gone).
+ */
+export function Swipe({ width, f, color }: { width: number; f: SharedValue<number[]>; color: string }) {
+  const k = width / ART_W;
+  const w = 210 * k, h = 230 * k;
+  const style = useAnimatedStyle(() => {
+    const v = f.get();
+    const p = v[F.swipe];
+    const side = v[F.swipeSide] < 0 ? -1 : 1;
+    const on = p > 0.02 && p < 0.98;
+    // Out beside its paw, mirrored for the left.
+    const cx = side > 0 ? 610 * k : -20 * k;
+    return {
+      opacity: on ? (p < 0.6 ? 1 : (1 - p) / 0.4) : 0,
+      transform: [{ translateX: cx - w / 2 }, { translateY: p * 18 * k }, { scaleX: side }, { scale: 0.85 + p * 0.3 }],
+    };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.piece, { left: 0, top: 230 * k, width: w, height: h, overflow: "visible" }, style]} testID="cat-swipe">
+      <Svg width={w} height={h} viewBox="0 0 210 230">
+        <Path d="M40 30 C120 40 170 90 180 170" stroke={color} strokeWidth={13} strokeLinecap="round" fill="none" />
+        <Path d="M20 80 C85 92 125 128 136 196" stroke={color} strokeWidth={11} strokeLinecap="round" fill="none" />
+        <Path d="M8 132 C50 142 78 168 86 218" stroke={color} strokeWidth={9} strokeLinecap="round" fill="none" />
+      </Svg>
+    </Animated.View>
   );
 }
 

@@ -17,6 +17,7 @@ import {
   FINISH_RANK, finishFor, isAccessoryChoice, isCharmKind, isFinish, pickCharm, titleFor,
   type AccessoryChoice, type CharmKind, type Finish, type Title,
 } from "./charms";
+import { setCatAccessory } from "@/play2/catAccessory";
 
 export const COLLECTION_KEY = "escapd.collection.v1";
 export const ACCESSORY_KEY = "escapd.cat.accessory";
@@ -195,11 +196,8 @@ export async function loadAccessory(): Promise<AccessoryChoice> {
 export async function saveAccessory(a: AccessoryChoice): Promise<void> {
   if (!isAccessoryChoice(a)) return;
   listeners.forEach((l) => l(a));
-  try {
-    await AsyncStorage.setItem(ACCESSORY_KEY, a);
-  } catch {
-    // Not kept; this run still shows it.
-  }
+  // The cat's own setter: it keeps the key and changes every cat on screen at once.
+  await setCatAccessory(a);
 }
 
 /** Hear the cat's outfit change (returns the unsubscribe). */

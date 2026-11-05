@@ -29,6 +29,19 @@
 //     fine shiver through it, a soft beat in the hand, "prr"); let go, its eyes
 //     open slowly and it gives a content blink. Rough, quick taps, and it has
 //     had enough for a while ("Enough."),
+//   - on the ledge over the room (`playful`), the light held still near it (or
+//     drawn slowly past) is a laser pointer (cat/laser.ts): its eyes lock on,
+//     pupils round, it crouches, its tail comes up behind the ledge, the butt
+//     wiggle, then it springs up and swats at it, pink beans showing, swipe
+//     lines; caught, it shuts its eyes, pleased, with sparkles ("Got it."); the
+//     light whisked away, a miss: a blush, a look away and a lick of its paw
+//     ("Meant to do that."). Rare (a long cooldown), cut short by anything
+//     that happens, and never in the way: it's all drawn, nothing to tap,
+//   - now and then it washes: licks a paw, or rubs behind an ear (its paws cut
+//     out of the art for it, cat/rig.tsx),
+//   - the player back after a long while (the light untouched a minute, or the
+//     app away), a big stretch and a yawn; a gentle rub, a happy slow blink,
+//   - it wears its outfit (catAccessory.ts, cat/Accessory.tsx),
 //   - and it says a short line now and then in a speech bubble (`say`).
 // It all moves at 12 frames a second, like stop motion: the animations run
 // smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
@@ -37,7 +50,7 @@
 // still apart from its eyes; its marks (a purr's "prr", a glance's "!") show
 // without moving.
 import { useEffect, useRef, useState, type ComponentRef } from "react";
-import { AppState, Image, StyleSheet, Text, View, type AccessibilityActionEvent } from "react-native";
+import { AppState, StyleSheet, Text, View, type AccessibilityActionEvent } from "react-native";
 import { SparkleIcon } from "phosphor-react-native";
 import { GestureDetector, GestureHandlerRootView, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
@@ -51,8 +64,10 @@ import { measureInWindow } from "@/render/PickupFlight";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { F } from "./cat/frame";
-import { LASER, caught, initialLaser, laserTick } from "./cat/laser";
-import { Face, HuntTail, PeekArt, PeekPaws } from "./cat/rig";
+import { caught, initialLaser, laserTick } from "./cat/laser";
+import { Face, HuntTail, PeekArt, PeekPaws, Swipe } from "./cat/rig";
+import { CatOutfit, type Placements } from "./cat/Accessory";
+import { useCatAccessory, type CatAccessory } from "./catAccessory";
 
 const ART = require("../../assets/characters/cat_peek.png") as number;
 /** The art's size (px). */
@@ -139,6 +154,17 @@ const ACT = {
   crouch: 380, wiggle: 720, wigglePeriod: 333, pounce: 1780, talk: 0.4, lickBeat: 170, rubBeat: 190,
   groom: 0.14, groomGap: 35000, afterReaction: 1500, away: 60000,
 } as const;
+/** Its outfit on its art (catAccessory): a bow by its right ear, a collar under its chin, a beret or flowers on its head. */
+const OUTFIT: Placements = {
+  bow: { x: 440, y: 186, w: 230, rotate: 18 },
+  bell: { x: 290, y: 517, w: 230, rotate: 0 },
+  beret: { x: 292, y: 170, w: 270, rotate: -10 },
+  flowers: { x: 290, y: 192, w: 300, rotate: 0 },
+};
+/** How a screen reader hears what it's wearing. */
+export const OUTFIT_WORDS: Record<CatAccessory, string> = { none: "", bow: " in a bow", bell: " with a bell collar", beret: " in a beret", flowers: " in a flower crown" };
+/** The time (ms), for its handlers. */
+const msNow = () => Date.now();
 /** What it says after a pounce, now and then. */
 const LASER_LINES = { hit: "Got it.", miss: "Meant to do that." } as const;
 
@@ -348,7 +374,7 @@ export function usePetting({ width, reducedMotion, sulking, onRough, onTouch }: 
     onUpdate: (e) => {
       "worklet";
       const sp = speed.get();
-      speed.set({ sum: sp.sum + Math.hypot(e.velocityX, e.velocityY), n: sp.n + 1 });
+      speed.set({ sum: sp.sum + Math.hypot(e.velocityX || 0, e.velocityY || 0), n: sp.n + 1 });
       if (cross.get() || still.get()) return;
       // It leans into the hand, toward where it is and the way it's going.
       const at = (e.x - half) / half + e.velocityX / 2500;
@@ -477,6 +503,7 @@ export function PeekingCat({
 }) {
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
+  const outfit = useCatAccessory();
   const height = (width * ART_H) / ART_W;
   const viewRef = useRef<ComponentRef<typeof View>>(null);
   // Where it sits at rest (its box's top-left, window points): from its own untransformed box, so never mid-rise.
@@ -578,6 +605,9 @@ export function PeekingCat({
   const tailUp = useSharedValue(0);
   const smug = useSharedValue(0);
   const away = useSharedValue(0);
+  // A swat's swipe lines (0..1 as they play), on its side (-1 left, 1 right).
+  const swipe = useSharedValue(0);
+  const swipeSide = useSharedValue(1);
   // Its paws cut out of the art (cat/rig.tsx) while it uses one.
   const [rigged, setRigged] = useState(false);
   // A catch's sparkles (a new time each).
@@ -585,10 +615,11 @@ export function PeekingCat({
   const feedback = useFeedback();
   const act = useRef<{ kind: "play" | "groom" | "yawn"; timers: ReturnType<typeof setTimeout>[] } | null>(null);
   const unrig = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lastGroom = useRef(Date.now());
+  // Set as it mounts: no wash in its first moments.
+  const lastGroom = useRef(Infinity);
   const reactedAt = useRef(0);
   const paws = { left: [pawLY, pawLX, pawLR], right: [pawRY, pawRX, pawRR] } as const;
-  const acting = [hunt, crouch, wiggle, wclock, pawLY, pawLX, pawLR, pawRY, pawRX, pawRR, mouth, tongue, blush, tailUp, smug, away];
+  const acting = [hunt, crouch, wiggle, wclock, pawLY, pawLX, pawLR, pawRY, pawRX, pawRR, mouth, tongue, blush, tailUp, smug, away, swipe, swipeSide];
 
   /** Later in the act (ms), unless the act is cut short. */
   const later = (ms: number, fn: () => void) => {
@@ -635,7 +666,7 @@ export function PeekingCat({
   };
   /** Free for an act: awake, idle, no hand on it, not glancing or sulking. */
   const free = () => !act.current && doze.get() < 0.5 && think.get() < 0.5 && petting.touch.get() < 0.05 && gaze.get() < 0.1 && droop.get() < 0.1
-    && Date.now() - reactedAt.current > ACT.afterReaction;
+    && msNow() - reactedAt.current > ACT.afterReaction;
 
   /** A lick of a paw: up to its mouth, eyes shut, head toward it, the tongue out `licks` times. */
   const lick = (side: "left" | "right", licks: number) => {
@@ -713,14 +744,17 @@ export function PeekingCat({
       const now = spotNow();
       const hit = !!now && caught(spot, now, Math.random());
       wiggle.set(withTiming(0, { duration: 60 }));
+      // The tail drops out of sight as it springs (the swat is the thing to see).
+      tailUp.set(withTiming(0, { duration: 220, easing: Easing.in(Easing.quad) }));
       // Up tall, the paw nearest the spot cocked back and swatting down at it.
       crouch.set(withSequence(withTiming(-1, { duration: 90, easing: Easing.out(Easing.quad) }), withDelay(280, withTiming(0.3, { duration: 110 })), withTiming(0, { duration: 180 })));
-      pose(paw, [[205, -12, -28, 90], [95, 72, 42, 90, 70], [0, 0, 0, 180, 220]]);
+      pose(paw, [[300, -16, -30, 90], [170, 96, 48, 80, 80], [0, 0, 0, 200, 240]]);
+      swipe.set(withSequence(withTiming(0, { duration: 0 }), withDelay(170, withTiming(1, { duration: 330, easing: Easing.linear })), withTiming(0, { duration: 0 })));
+      swipeSide.set(side);
       feedback.press();
       later(700, () => {
         cancelAnimation(wclock);
         wclock.set(0);
-        tailUp.set(withDelay(500, withTiming(0, { duration: 500, easing: Easing.in(Easing.quad) })));
         hunt.set(withTiming(0, { duration: 300 }));
         if (hit) {
           // Got it: a pleased half-lid, chin up, sparkles.
@@ -930,24 +964,37 @@ export function PeekingCat({
   }, [asleep, mood, reducedMotion, doze, lastMove]);
 
   // Laser play: the light sampled ten times a second against its head (cat/laser.ts).
-  const latest = useRef({ frame, ready: false, head: null as { x: number; y: number } | null });
+  const latest = useRef({ frame, ready: false, calm: false, head: null as { x: number; y: number } | null });
   useEffect(() => {
     latest.current = {
       frame,
       ready: playful && !asleep && mood === "idle" && !lookAt && !annoyed && !waiting,
+      // Free for a stretch (a glance may run on over it).
+      calm: playful && !asleep && mood === "idle" && !annoyed && !waiting,
       head: headX !== null && headY !== null ? { x: headX, y: headY } : null,
     };
   });
   const laser = useRef(initialLaser());
+  // When the light last moved (ms), for the player coming back.
+  const stillSince = useRef(0);
   useEffect(() => {
     if (!playful) return;
+    stillSince.current = Date.now();
     const timer = setInterval(() => {
       const spot = spotNow();
-      const { head, ready } = latest.current;
+      const { head, ready, calm } = latest.current;
       if (!spot || !head) return;
-      const { state, start } = laserTick(laser.current, spot.x, spot.y, Date.now(), head, ready && free());
+      const now = Date.now();
+      const before = laser.current.last;
+      const { state, start } = laserTick(laser.current, spot.x, spot.y, now, head, ready && free());
       laser.current = state;
       if (start) play(spot, spot.x < head.x ? -1 : 1);
+      // The player back after a long while (the light untouched, awake or not): a big stretch and a yawn.
+      if (before && Math.hypot(spot.x - before.x, spot.y - before.y) > 2) {
+        const idle = now - stillSince.current;
+        stillSince.current = now;
+        if (!start && idle > ACT.away && !act.current && doze.get() < 0.5 && petting.touch.get() < 0.05 && !reducedMotion && calm) yawn();
+      }
     }, 100);
     return () => clearInterval(timer);
     // play, free and spotNow read refs and shared values only.
@@ -973,10 +1020,13 @@ export function PeekingCat({
     // yawn and free read refs and shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reducedMotion]);
-  // Nothing it was up to outlives it.
-  useEffect(() => () => {
-    act.current?.timers.forEach(clearTimeout);
-    clearTimeout(unrig.current);
+  // No wash in its first moments; and nothing it was up to outlives it.
+  useEffect(() => {
+    lastGroom.current = Date.now();
+    return () => {
+      act.current?.timers.forEach(clearTimeout);
+      clearTimeout(unrig.current);
+    };
   }, []);
 
   // The light's position against the cat (window points), for the lean and the pupils.
@@ -1006,14 +1056,14 @@ export function PeekingCat({
     }
     // Laser play: down low (crouch > 0) or up tall for the pounce (< 0); the butt wiggle a shimmy of its shoulders.
     const c = v[F.crouch], low = Math.max(0, c), tall = Math.max(0, -c);
-    const shimmy = Math.sin(v[F.wclock] * Math.PI * 2) * v[F.wiggle];
+    const shimmy = Math.sin(v[F.wclock] * Math.PI * 2) * v[F.wiggle] * 1.6;
     // Embarrassed, it turns its head away.
     lean += v[F.away] * 5;
     // A hand on it: the flinch, the lean into the hand, the purr.
     const p = pettingMotion(v[F.poke], v[F.lean], v[F.purr], v[F.clock], width, height);
     // Asleep it slumps lower and breathes deeper; thinking it sits up with its head cocked.
     const deep = 1 + z * 1.6;
-    const turn = lean * (1 - z) + v[F.tilt] + t * 4 - z * 3 + p.rotate + shimmy * 3;
+    const turn = lean * (1 - z) + v[F.tilt] + t * 4 - z * 3 + p.rotate + shimmy * 3.5;
     // Turning lifts one end of its bottom edge: it sinks that much, so that paw stays on the ledge and the edge never shows.
     const tilt = Math.sin((turn * Math.PI) / 180);
     const lift = Math.max(0, width * (tilt > 0 ? PAWS.left * tilt : -PAWS.right * tilt) - PAWS.slack);
@@ -1021,7 +1071,7 @@ export function PeekingCat({
       transform: [
         // Its paws stay on the ledge (the art ends there): a pop is a stretch up, never a lift off.
         { translateY: Math.max(0, v[F.rise] + v[F.hop] + (1 - b) * PAWS.breath + z * height * PAWS.doze + p.y + low * height * 0.13) + height * PAWS.sink + lift },
-        { translateX: shift * (1 - z) + p.x + shimmy * width * 0.03 },
+        { translateX: shift * (1 - z) + p.x + shimmy * width * 0.035 },
         { rotate: `${turn}deg` },
         // Breathing: a little taller as it breathes in, a touch narrower; with the squash and stretch on top.
         { scaleY: v[F.sy] * p.sy * (1 + b * 0.025 * deep) * (1 + t * 0.05) * (1 - low * 0.07 + tall * 0.15) },
@@ -1038,7 +1088,7 @@ export function PeekingCat({
   // Which side a glance is toward (-1 left, 1 right), for its mark.
   const side = lookAt && origin ? (lookAt.x < origin.x + width / 2 ? -1 : 1) : 1;
   return (
-    <View ref={viewRef} onLayout={seat} pointerEvents="box-none" style={{ width: width * 1.6, height: height * 1.25 }}>
+    <View ref={viewRef} onLayout={seat} pointerEvents="box-none" style={{ width: width * 1.75, height: height * 1.25 }}>
     {/* Its marks float above its head, outside the ledge's clip. */}
     <View pointerEvents="none" style={[styles.marks, { left: width * 0.55, bottom: height * 0.8, width: width, height: height }]}>
       {mood === "thinking" && !reducedMotion ? (
@@ -1093,10 +1143,10 @@ export function PeekingCat({
     {/* The ledge hides what's below it: the cat rises from behind it. */}
     <View style={[styles.clip, StyleSheet.absoluteFill]} pointerEvents="box-none">
       {/* Its tail, behind it, up from behind the ledge for the butt wiggle. */}
-      {reducedMotion ? null : <HuntTail width={width} height={height} f={f} left={width * 1.02} />}
+      {reducedMotion ? null : <HuntTail width={width} height={height} f={f} left={width * 1.22} />}
       <Animated.View
         style={[styles.cat, { width, height, left: width * 0.15 }, body]}
-        accessibilityLabel="A black cat watches your light"
+        accessibilityLabel={`A black cat${OUTFIT_WORDS[outfit]} watches your light`}
         testID="v2-cat"
       >
         <PeekArt art={ART} width={width} height={height} f={f} rigged={rigged} />
@@ -1104,7 +1154,9 @@ export function PeekingCat({
           <Eye key={i} eye={eye} width={width} height={height} at={at} f={f} />
         ))}
         <Face width={width} f={f} sweet={theme.sweet} />
+        <CatOutfit kind={outfit} width={width} artWidth={ART_W} at={OUTFIT} sweet={theme.sweet} foil={theme.foil} />
         {rigged ? <PeekPaws art={ART} width={width} height={height} f={f} /> : null}
+        {rigged ? <Swipe width={width} f={f} color={theme.ink} /> : null}
         {/* Over it all, the hand's layer: stroke it (it purrs), or give it a rub from a screen reader. */}
         <PetLayer petting={petting} label="Pet the cat" testID="v2-cat-pet" />
       </Animated.View>
@@ -1424,7 +1476,7 @@ function Eye({ eye, width, height, at, f }: {
   // Dozing, the lids sit shut (a blink can't open them); sulking, half shut; a hand on it, shut, content.
   const shut = (v: number[]) => {
     "worklet";
-    return Math.max(v[F.lid], v[F.doze], v[F.touch], v[F.droop] * 0.5, v[F.smug] * 0.55);
+    return Math.max(v[F.lid], v[F.doze], v[F.touch], v[F.droop] * 0.5, v[F.smug]);
   };
   return (
     <>

@@ -11,4 +11,6 @@ export const F = {
   mouth: 33, tongue: 34, blush: 35, tail: 36,
   /** Pleased with itself (0..1: a smug half-lid); looking away, embarrassed (-1..1: which way). */
   smug: 37, away: 38,
+  /** A swat's swipe lines playing (0..1), and which side (-1 left, 1 right). */
+  swipe: 39, swipeSide: 40,
 } as const;

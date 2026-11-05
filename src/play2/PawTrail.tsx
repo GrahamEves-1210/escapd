@@ -22,7 +22,7 @@ import { useStopMotion } from "./PeekingCat";
  * motion all of them show `still` ms, then fade. A hint's trail waits for the
  * room (the hint is taken in the casebook) at most `wait` ms.
  */
-export const TRAIL = { step: 24, min: 4, max: 14, size: 14, sway: 5, clear: 34, short: 10, bow: 0.16, every: 167, stay: 1500, fade: 700, still: 2600, wait: 60000 } as const;
+export const TRAIL = { step: 26, min: 4, max: 14, size: 16, sway: 5, clear: 34, short: 10, bow: 0.16, every: 167, stay: 1500, fade: 700, still: 2600, wait: 60000 } as const;
 
 /** Window points. */
 type Point = { x: number; y: number };
@@ -151,8 +151,16 @@ export function HintTrail({ hint, objects, seen, view, frame, head, watching, or
   // The hint waiting to be walked to, and the one walked (once each).
   const [shown, setShown] = useState<number | null>(null);
   const [done, setDone] = useState<number | null>(null);
+  // A hint not walked to within TRAIL.wait is let go.
+  const [stale, setStale] = useState<number | null>(null);
+  const hintAt = hint?.at;
+  useEffect(() => {
+    if (hintAt === undefined) return;
+    const timer = setTimeout(() => setStale(hintAt), Math.max(0, hintAt + TRAIL.wait - Date.now()));
+    return () => clearTimeout(timer);
+  }, [hintAt]);
   const target = hint ? objects.find((o) => o.id === hintTarget(hint.text, objects, seen)) : undefined;
-  const fresh = !!hint && done !== hint.at && (shown === hint.at || Date.now() - hint.at < TRAIL.wait);
+  const fresh = !!hint && done !== hint.at && (shown === hint.at || stale !== hint.at);
   const ready = fresh && !!target && target.photo_index === view && watching && !!frame && !!head;
   // A beat after the room comes back into view, so the eye is there to see it.
   useEffect(() => {

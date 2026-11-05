@@ -18,6 +18,8 @@ export const LASER = {
   catchWithin: 36,
   /** How often a still spot is caught anyway (the rest: a near miss, for charm). */
   catchOdds: 0.75,
+  /** The most one sample counts for (ms). */
+  gap: 200,
 } as const;
 
 /** The laser's read of the light, sample to sample. */
@@ -41,7 +43,8 @@ export const initialLaser = (): LaserState => ({ last: null, dwell: 0, moved: fa
  */
 export function laserTick(s: LaserState, x: number, y: number, t: number, cat: { x: number; y: number }, ready: boolean): { state: LaserState; start: boolean } {
   const last = s.last;
-  const dt = last ? Math.max(0, t - last.t) : 0;
+  // A long gap between samples (the app paused) counts as one sample's worth, never as a long dwell.
+  const dt = last ? Math.min(LASER.gap, Math.max(0, t - last.t)) : 0;
   const step = last ? Math.hypot(x - last.x, y - last.y) : 0;
   const speed = dt > 0 ? (step / dt) * 1000 : 0;
   const moved = s.moved || step > LASER.moved;

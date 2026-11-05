@@ -7,7 +7,9 @@
 // eyes (lids drawn over the art's, in each eye's own frame) with a small
 // flinch; rubbed, it leans into the hand, sways and purrs (a fine shiver, a
 // soft beat in the hand, "prr"); let go, its eyes open slowly with a content
-// blink. Rough, quick taps and it pulls away from the hand for a while. Its
+// blink (a gentle rub: a happy slow blink, and a few sparkles). Rough, quick
+// taps and it pulls away from the hand for a while. It wears its outfit
+// (catAccessory.ts: a bow, a bell collar, a beret, flowers). Its
 // art never changes, but its tail (cut out of the art,
 // scripts/brand/cat_tail.py) moves all the time, smoothly, drawn as a
 // textured mesh along a moving centre line bent by a chain of springs (WHIP):
@@ -25,7 +27,9 @@ import Animated, {
 import { Canvas, FilterMode, Group, ImageShader, MipmapMode, Vertices, useImage, vec, type SkPoint } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { Burst, EyeLid, PetLayer, Purr, pettingMotion, usePetting, useStopMotion } from "./PeekingCat";
+import { Burst, EyeLid, OUTFIT_WORDS, PetLayer, Purr, pettingMotion, usePetting, useStopMotion } from "./PeekingCat";
+import { CatOutfit, type Placements } from "./cat/Accessory";
+import { useCatAccessory } from "./catAccessory";
 import LINE from "../../assets/characters/cat_sit_tail.json";
 
 /** The cat without its tail (cat_sit.png less its tail), and its tail alone, both the art's size. */
@@ -101,6 +105,13 @@ const EYES = [
 ] as const;
 /** The art's fur round its eyes. */
 const FUR = "#0E0C0B";
+/** Its outfit on its art (catAccessory), on its tipped head: a bow by its right ear, a collar, a beret or flowers between its ears. */
+const OUTFIT: Placements = {
+  bow: { x: 276, y: 112, w: 150, rotate: 22 },
+  bell: { x: 206, y: 341, w: 170, rotate: -8 },
+  beret: { x: 176, y: 150, w: 150, rotate: -22 },
+  flowers: { x: 170, y: 160, w: 190, rotate: -22 },
+};
 /** Rough handling: it pulls away from a hand this long (ms). */
 const ENOUGH_MS = 3000;
 
@@ -115,6 +126,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
 }) {
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
+  const outfit = useCatAccessory();
   const height = width * ASPECT;
   const pop = useSharedValue(reducedMotion ? 1 : 0);
   const sx = useSharedValue(1);
@@ -216,12 +228,18 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
             lashWidth={Math.max(1.5, width * 0.014)}
           />
         ))}
+        <CatOutfit kind={outfit} width={width} artWidth={TAIL.size[0]} at={OUTFIT} sweet={theme.sweet} foil={theme.foil} />
         {/* Over it all, the hand's layer: stroke it (it purrs), or give it a rub from a screen reader. */}
-        <PetLayer petting={petting} label={`${label}. Pet the cat`} testID="sitting-cat" />
+        <PetLayer petting={petting} label={`${label}${OUTFIT_WORDS[outfit] ? `,${OUTFIT_WORDS[outfit]}` : ""}. Pet the cat`} testID="sitting-cat" />
       </Animated.View>
       {petting.purring ? (
         <View style={[styles.burst, { left: width * 0.62, top: height * 0.12 }]} pointerEvents="none">
           <Purr size={width * 0.9} style={mark} still={reducedMotion} />
+        </View>
+      ) : null}
+      {petting.happy !== null && !reducedMotion ? (
+        <View style={[styles.burst, { left: width * 0.5, top: height * 0.1 }]} pointerEvents="none" testID="cat-happy">
+          <Burst key={petting.happy} text="" size={width * 0.5} color={theme.sweet} glyph={mark} />
         </View>
       ) : null}
       {burst !== null && !reducedMotion ? (
