@@ -1,8 +1,17 @@
 // The casebook: found cards, held items, hints, and crime scene's evidence board.
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { ThemeProvider } from "@/theme/ThemeProvider";
 import { Casebook } from "../Casebook";
+import { emptyLog, type ThreadLog } from "../journal/threads";
 
-jest.mock("@/game/feedback", () => ({ useFeedback: () => ({ tick: jest.fn(), tap: jest.fn(), press: jest.fn() }) }));
+const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), paper: jest.fn(), detent: jest.fn() };
+jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
+jest.mock("@shopify/react-native-skia", () => {
+  const base = jest.requireActual("../../../jest/skia-mock");
+  const { createElement } = jest.requireActual("react");
+  const host = (name: string) => (props: Record<string, unknown>) => createElement(name, props, props.children);
+  return { ...base, Path: host("SkiaPath"), BlurMask: host("SkiaBlurMask"), DashPathEffect: host("SkiaDash") };
+});
 
 const base = {
   objective: "Name who did it at the door.",
@@ -85,3 +94,85 @@ describe("Casebook", () => {
     expect(onStrike).toHaveBeenCalledWith("s_a");
   });
 });
+
+describe("Casebook: the scrapbook", () => {
+  const cards = [
+    { id: "c1", title: "Margin note", text: "Between the lines: 4." },
+    { id: "c2", title: "Lab slip", text: "Ink on the wall: 7." },
+    { id: "c3", title: "Taped note", text: "Edge to edge: 9." },
+    { id: "c4", title: "Lab slip", text: "Footprints by the window." },
+  ];
+  const log: ThreadLog = {
+    ...emptyLog(),
+    ticked: 2,
+    cards: {
+      c1: { at: 1, place: "bookshelf", batch: 1 },
+      c2: { at: 2, place: "rug", batch: 2 },
+      c3: { at: 3, place: null, batch: 3 },
+      c4: { at: 4, place: "rug", batch: 4 },
+    },
+  };
+  /** Lays each card out down the page, as a device would. */
+  const layOut = async () => {
+    for (const [i, c] of cards.entries()) {
+      await act(async () => {
+        fireEvent(screen.getByTestId(`v2-casebook-card-${c.id}`), "layout", { nativeEvent: { layout: { x: 0, y: i * 200, width: 300, height: 170 } } });
+      });
+    }
+  };
+
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it("ties cards that belong together with red string; new ones get a star and a rustle of paper", async () => {
+    await render(<Casebook {...base} cards={cards} log={log} progress={{ solved: 5, total: 8 }} fresh={2} />);
+    await layOut();
+    // c2 and c4: the same place and the same kind; the others stand alone.
+    expect(screen.getByTestId("v2-casebook-string-c2>c4", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByTestId("v2-casebook-string-c1>c2", { includeHiddenElements: true })).toBeNull();
+    expect(screen.getAllByText("new!", { includeHiddenElements: true })).toHaveLength(2);
+    expect(screen.getByTestId("v2-casebook-fresh")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(mockFeedback.paper).toHaveBeenCalledTimes(2);
+    // Solved since both were found: it pulls taut with a twang.
+    expect(mockFeedback.detent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps score in the margin: leads ticked off, a note that knows she's close", async () => {
+    await render(<Casebook {...base} cards={cards} log={log} progress={{ solved: 5, total: 8 }} />);
+    expect(screen.getByTestId("v2-casebook-leads").props.accessibilityLabel).toBe("5 of 8 leads followed");
+    expect(screen.getByTestId("v2-casebook-margin-close")).toBeTruthy();
+    expect(screen.getByText(/you're close/)).toBeTruthy();
+  });
+
+  it("tells the log what it showed as it closes", async () => {
+    const onSeen = jest.fn();
+    const view = await render(<Casebook {...base} cards={cards} log={log} progress={{ solved: 5, total: 8 }} onSeen={onSeen} />);
+    await view.unmount();
+    expect(onSeen).toHaveBeenCalledWith(["c2>c4"], 5);
+  });
+
+  it("reduced motion: cards and strings are simply there, nothing twangs", async () => {
+    mockFeedback.detent.mockClear();
+    await render(
+      <ThemeProvider reducedMotion>
+        <Casebook {...base} cards={cards} log={log} progress={{ solved: 5, total: 8 }} fresh={1} />
+      </ThemeProvider>,
+    );
+    await layOut();
+    expect(screen.getByTestId("v2-casebook-string-c2>c4", { includeHiddenElements: true })).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(mockFeedback.detent).not.toHaveBeenCalled();
+  });
+
+  it("with many cards, every one is on the page and readable", async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ id: `m${i}`, title: i % 2 ? "Lab slip" : `Note ${i}`, text: `Clue number ${i}.` }));
+    await render(<Casebook {...base} cards={many} log={emptyLog()} progress={{ solved: 1, total: 8 }} fresh={10} />);
+    for (const c of many) expect(screen.getByText(c.text)).toBeTruthy();
+  });
+});
+
