@@ -40,6 +40,7 @@ jest.mock("../../../assets/audio/typewriter.m4a", () => "typewriter.m4a");
 jest.mock("../../../assets/audio/drawer.m4a", () => "drawer.m4a");
 jest.mock("../../../assets/audio/detent.m4a", () => "detent.m4a");
 jest.mock("../../../assets/audio/purr.m4a", () => "purr.m4a");
+jest.mock("../../../assets/audio/mug-break.m4a", () => "mug-break.m4a");
 jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
 jest.mock("../../../assets/audio/room-paranormal.m4a", () => "room-paranormal.m4a");
 const SOURCE = {
@@ -49,6 +50,7 @@ const SOURCE = {
   drawer: "drawer.m4a",
   detent: "detent.m4a",
   purr: "purr.m4a",
+  mugBreak: "mug-break.m4a",
   noir: "room-noir.m4a",
   paranormal: "room-paranormal.m4a",
 };
@@ -56,7 +58,7 @@ const SOURCE = {
 // Every cue with a sound (tick, tap and the outcomes are silent).
 const INTERACTION_CUES = [
   "press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter",
-  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr",
+  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak",
 ] as const;
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
@@ -112,7 +114,7 @@ describe("cues with sound", () => {
     jest.runAllTimers();
     expect(audio.createAudioPlayer).not.toHaveBeenCalled();
     expect(played()).toEqual([]);
-    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 2);
+    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 3);
   });
 
   it("every interaction cue plays one sound of its own", async () => {
@@ -147,6 +149,24 @@ describe("cues with sound", () => {
     result.current.purr();
     expect(playerFor(SOURCE.purr)!.play).toHaveBeenCalledTimes(1);
     expect(played()).toHaveLength(2);
+  });
+
+  it("the mug breaking off-screen is sound only, from its own file, quieter than the room's big moments", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    result.current.mugBreak();
+    jest.runAllTimers();
+    const mug = playerFor(SOURCE.mugBreak)!;
+    expect(mug.play).toHaveBeenCalledTimes(1);
+    expect(played()).toEqual([mug]);
+    expect(haptics()).toBe(0);
+    expect(mug.volume).toBeGreaterThan(0);
+    expect(mug.volume).toBeLessThan(0.65);
+  });
+
+  it("the purr sits low in the mix, under the other cues", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    result.current.purr();
+    expect(playerFor(SOURCE.purr)!.volume).toBeLessThanOrEqual(0.25);
   });
 
   it("haptics off leaves the sound on", async () => {

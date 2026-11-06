@@ -519,25 +519,119 @@ def lens_down(rng):
 
 
 def purr(rng):
-    """The cat, rubbed: a short, low, soft purr. One breath out, one in, faded at both ends."""
-    total = 1.6
+    """The cat, rubbed: a small, soft, breathy purr. Breathing out, in, and out again as it fades.
+
+    A house cat's purr is mostly air: the larynx closes and opens ~25 times a second (21 to 27 Hz
+    breathing out, a touch faster breathing in; Eklund, Peters & Duthie 2010, Schoetz & Eklund 2011)
+    and each opening lets a puff of breath through. So the source here is breath noise, pulsed at that
+    rate with a little per-pulse jitter (the flutter), shaped by a small head's light, high resonances.
+    No buzzing oscillator, no strong low chest modes: those are what made the first one a lion.
+    """
+    total = 2.0
     n = n_of(total)
     t = times(n)
-    # The breath: out (louder, ~25 Hz) for 0.85 s, a short catch, then in (softer, a touch faster).
-    out_breath = (t < 0.85).astype(float)
-    in_breath = ((t > 0.92) & (t < 1.6)).astype(float)
-    rate = np.where(t < 0.88, 25.0, 27.5) * (1 + 0.08 * rng.standard_normal(n).cumsum() / np.sqrt(n))
+
+    def window(a, b, rise, fall):
+        """1 between a and b, raised-cosine edges of `rise` and `fall` s."""
+        up = np.sin(0.5 * np.pi * np.clip((t - a) / rise, 0, 1)) ** 2
+        down = np.cos(0.5 * np.pi * np.clip((t - (b - fall)) / fall, 0, 1)) ** 2
+        return up * down * (t >= a) * (t <= b)
+
+    # The breaths: out (0 to 0.86 s), a short turn, in (softer, quicker: 0.9 to 1.42 s), out again, fading.
+    ex1 = window(0.0, 0.86, 0.08, 0.1) * (0.85 + 0.15 * np.sin(np.pi * np.clip(t / 0.86, 0, 1)))
+    inh = window(0.9, 1.42, 0.06, 0.08)
+    ex2 = window(1.46, total, 0.08, 0.45)
+    breathing_in = inh > 0
+    # The pulse rate: ~25 Hz out, ~27.5 Hz in, wandering slowly; every pulse a little different.
+    drift = 1 + 0.05 * lp(rng.standard_normal(n), 3, 1) * 30
+    rate = np.where(breathing_in, 27.5, 25.0) * drift
     phase = np.cumsum(rate) / SR
-    pulse = (0.5 + 0.5 * np.cos(TAU * phase)) ** 4
-    breath = lp(out_breath, 25, 1) + 0.6 * lp(in_breath, 25, 1)
-    src = rng.standard_normal(n) * 0.35 + signal.sawtooth(TAU * phase * 2) * 0.4
-    src = src * pulse * breath
-    # The voice through the cat: chest and nose resonances, kept well under 1.2 kHz.
-    body = modes(src * 0.004, [(180, 0.02, 0.55), (330, 0.016, 1.0), (620, 0.012, 0.75), (980, 0.007, 0.35)], total)
-    air = bp(src, 250, 1100) * 0.4
-    x = (body + air) * bell_env(n, 0.25) ** 0.6
-    x = lp(x, 1200, 2)
-    return room(x, rng, rt60=0.18, wet=0.05)
+    k = np.floor(phase).astype(int)
+    per_pulse = np.clip(np.exp(0.28 * rng.standard_normal(k.max() + 2)), 0.6, 1.5)  # the flutter: uneven puffs
+    shape = (0.5 + 0.5 * np.cos(TAU * phase)) ** 3
+    pulse = 0.12 + 0.88 * per_pulse[k] * shape  # air never fully stops: breathy, not a buzz
+    # Breath noise, a little pink, through a small head: soft, broad resonances.
+    air = lp(rng.standard_normal(n), 1600, 1) + 0.12 * rng.standard_normal(n)
+    puffs = air * pulse
+    # The rumble a phone can play: the pulsed air between 220 and 700 Hz; then the head's light,
+    # higher resonances (a small cat: nothing like a big cat's low, open-throated formants).
+    voice = (bp(puffs, 220, 700, 1) * 1.0
+             + bp(puffs, 700, 1400, 1) * 0.5
+             + bp(puffs, 1400, 3000, 1) * 0.1)
+    # The tiny flap of each opening: a soft tick of the larynx, quiet, gives the purr its grain.
+    flap = modes(np.diff(np.floor(phase), prepend=0) * per_pulse[k] * 0.035,
+                 [(310, 0.008, 0.8), (620, 0.006, 1.0), (1180, 0.004, 0.45), (2100, 0.0025, 0.15)], total)
+    # A light chest: a little warmth around 160 Hz, nothing carrying weight below it.
+    chest = bp(puffs, 120, 240, 1) * 0.18
+    src = voice + flap + chest
+    # Breathing in is softer and airier (a touch brighter); out is fuller.
+    bright = hp(src, 900, 1)
+    x = src * (ex1 + 0.9 * ex2) + (0.55 * src + 0.15 * bright) * inh
+    x = hp(x, 100, 2)
+    x = lp(x, 3800, 2)
+    return room(x, rng, rt60=0.16, wet=0.05)
+
+
+def mug_break(rng):
+    """A ceramic mug knocked off the window sill, breaking on a hard floor just off-screen.
+
+    The crack: a hard contact into a glazed mug's short, bright modes (cracked ceramic stops ringing
+    almost at once) with a dry snap of noise; the pieces parting a few ms apart and the biggest one
+    landing again; then three shards skittering away, their ticks coming closer together, two
+    sliding to a stop, and one last crumb (about 0.85 s in all, then the room). Heard from a few metres off: rolled off on top, a little
+    more of the room in it.
+    """
+    out = silence(1.1)
+    # The mug: a glazed stoneware body, its modes damped short by the break.
+    mug = [(1180, 0.012, 0.7), (2050, 0.011, 1.0), (3120, 0.009, 0.8), (4380, 0.007, 0.6),
+           (5870, 0.005, 0.45), (7550, 0.0035, 0.25)]
+    floor_ = [(190, 0.012, 0.6), (430, 0.009, 1.0), (870, 0.006, 0.5)]
+    place(out, hit(mug, 0.1, 0.0003, rng, 0.3), 0.0, 1.0)
+    place(out, hit(floor_, 0.06, 0.0009), 0.0, 0.6)
+    # The crack itself: a dry snap of broadband noise, a few crackles inside it.
+    n = n_of(0.012)
+    place(out, bp(rng.standard_normal(n), 900, 9000, 2) * env(n, 0.0002, 0.0025), 0.0, 0.6)
+    for _ in range(12):
+        d = rng.uniform(0.0004, 0.0016)
+        grain = hp(rng.standard_normal(n_of(d)), 2200) * np.hanning(n_of(d))
+        place(out, grain, 0.001 + 0.045 * rng.random() ** 1.5, rng.uniform(0.08, 0.25))
+    # The pieces parting: a handful of smaller, higher hits in the first 60 ms.
+    for at, fk, g in ((0.007, 1.32, 0.55), (0.016, 1.7, 0.45), (0.029, 1.18, 0.4), (0.043, 2.15, 0.3), (0.061, 1.55, 0.22)):
+        piece = scale_bank(mug, fk * rng.uniform(0.97, 1.03), 1.0, 0.7)
+        place(out, hit(piece, 0.06, rng.uniform(0.0002, 0.0004), rng, 0.3), at, g)
+    # The biggest piece (the handle side) lands again, lower and heavier.
+    place(out, hit(scale_bank(mug, 0.78, 1.0, 0.8), 0.08, 0.0004, rng, 0.3), 0.092, 0.42)
+    place(out, hit(floor_, 0.05, 0.0008), 0.092, 0.25)
+
+    # Shards: small, high pieces of glaze ticking across the floor. Each tick lands on a different
+    # edge, so its pitch shifts a little; a click of grit rides on each.
+    shard_bank = [(3200, 0.005, 1.0), (4900, 0.0035, 0.6), (7100, 0.0025, 0.3), (2300, 0.004, 0.35)]
+
+    def tick(at, fk, g):
+        place(out, hit(scale_bank(shard_bank, fk * rng.uniform(0.94, 1.06)), 0.025, 0.00022, rng, 0.25), at, g)
+        m = n_of(0.0012)
+        place(out, hp(rng.standard_normal(m), 3000) * np.hanning(m), at, g * 0.25)
+
+    def shard(start, fk, gain, gaps, slide=0.0):
+        at, g = start, gain
+        for gap in gaps:
+            tick(at, fk, g)
+            at += gap
+            g *= rng.uniform(0.76, 0.88)
+        if slide:
+            # It slides the last few centimetres: a short, fine scrape of grit, fading.
+            m = n_of(slide)
+            grit = (rng.random(m) < 0.05) * rng.standard_normal(m) + 0.15 * rng.standard_normal(m)
+            scrape = bp(grit, 2500, 7000) * np.linspace(1, 0, m) ** 1.5 * bell_env(m, 0.015)
+            place(out, scrape, at, g * 0.6)
+
+    shard(0.12, 1.0, 0.3, [0.11, 0.09, 0.072, 0.06, 0.05, 0.043], slide=0.16)
+    shard(0.2, 1.28, 0.22, [0.13, 0.1, 0.078, 0.06, 0.048])
+    shard(0.33, 0.86, 0.18, [0.14, 0.11, 0.084, 0.06], slide=0.12)
+    tick(0.8, 1.45, 0.07)  # a last crumb settling
+    # Heard from across the room: the top rolled off, the room a little larger in it.
+    out = lp(out, 7000, 2)
+    return room(out, rng, rt60=0.4, wet=0.2, tone=5000)
 
 
 # name: (builder, seed, output file)
@@ -558,6 +652,7 @@ CUES = {
     "lens-up": (lens_up, 24, "lens-up.m4a"),
     "lens-down": (lens_down, 25, "lens-down.m4a"),
     "purr": (purr, 26, "purr.m4a"),
+    "mug-break": (mug_break, 27, "mug-break.m4a"),
 }
 
 

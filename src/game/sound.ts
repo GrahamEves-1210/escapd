@@ -35,7 +35,8 @@ export type SoundName =
   | "uvSwitch"
   | "lensUp"
   | "lensDown"
-  | "purr";
+  | "purr"
+  | "mugBreak";
 
 // The interaction foley (scripts/audio/foley.py) is levelled to one loudness
 // (-18 LUFS momentary, peaks capped at -1.5 dBTP), so these volumes are the
@@ -73,8 +74,13 @@ const EFFECTS: Record<SoundName, { source: number; volume: number }> = {
   // The magnifier lifted (a soft whoosh) and set down (a glass-on-wood tick).
   lensUp: { source: require("../../assets/audio/lens-up.m4a"), volume: 0.35 },
   lensDown: { source: require("../../assets/audio/lens-down.m4a"), volume: 0.4 },
-  // The cat, rubbed: a short, low, soft purr (1.6 s, faded at both ends; replays restart it).
-  purr: { source: require("../../assets/audio/purr.m4a"), volume: 0.5 },
+  // The cat, rubbed: a small, breathy purr, out, in, out (2 s, faded at both ends; replays restart it).
+  // Kept under the music (about -36 LUFS here against the theme's -38 median at MUSIC.level): a
+  // contented little cat, not a lion.
+  purr: { source: require("../../assets/audio/purr.m4a"), volume: 0.18 },
+  // The mug the cat knocked off home's window sill, breaking on the floor just off-screen: a ceramic
+  // crack, the pieces parting, a few shards skittering (0.9 s). Distant, so no louder than a click.
+  mugBreak: { source: require("../../assets/audio/mug-break.m4a"), volume: 0.55 },
 };
 
 // Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).

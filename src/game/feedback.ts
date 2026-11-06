@@ -35,7 +35,10 @@
 // - uvSwitch: the UV light turned on. Light; a rocker click and a soft hum.
 // - lensUp / lensDown: the magnifier lifted (the tick haptic, a soft whoosh)
 //   and set down (light; a glass-on-wood tick).
-// - purr: the cat, rubbed. Light; a short, low, soft purr.
+// - purr: the cat, rubbed. Light; a small, soft, breathy purr.
+// - mugBreak: the mug the cat knocks off home's window sill hitting the floor
+//   off-screen. Sound only (it isn't the player's touch): a distant ceramic
+//   crack and a few shards skittering.
 // - shutter: the camera taking a photo. A thud and a mechanical shutter.
 // - typewriter: text typing itself out in a game moment. Sound only, no
 //   haptic: a short run of keys.
@@ -151,6 +154,7 @@ export function useFeedback() {
         impact(Haptics.ImpactFeedbackStyle.Light);
         sound("purr");
       },
+      mugBreak: () => sound("mugBreak"),
     };
   }, [haptics_enabled, sound_enabled]);
 }
