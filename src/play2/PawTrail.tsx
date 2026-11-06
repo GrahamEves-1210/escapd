@@ -1,13 +1,13 @@
 // A hint's paw prints: when the player takes a hint that names something in the
-// room, the cat walks it there. Small inky prints in the cat's sweet colour
-// step out one by one from the cat on the ledge, in a gentle arc across the
+// room, the cat walks it there. Small inky prints (the cat's own black ink,
+// edged in the mode's ink so they read on a dark photo) step out one by one from the cat on the ledge, in a gentle arc across the
 // photo, left, right, left, toward the thing, and fade behind it (at 12 fps,
 // like the cat). A hint that names nothing here, nothing. Under reduced motion
 // the whole trail is simply there, and fades.
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
-import Svg, { Ellipse, Path } from "react-native-svg";
+import Svg, { Ellipse, G, Path } from "react-native-svg";
 import type { ObjectDef } from "@/engine/v2";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -78,8 +78,11 @@ export function trailPrints(from: Point, to: Point): { x: number; y: number; ang
   return out;
 }
 
-/** One paw print: a pad and four toes, in ink. */
-function Print({ x, y, angle, i, clock, still, color }: { x: number; y: number; angle: number; i: number; clock: SharedValue<number[]>; still: boolean; color: string }) {
+/** The prints' ink: the cat's black. */
+export const PAW_INK = "#1A0F16";
+
+/** One paw print: a pad and four toes, in ink (`color`), a fine `edge` round them. */
+function Print({ x, y, angle, i, clock, still, color, edge }: { x: number; y: number; angle: number; i: number; clock: SharedValue<number[]>; still: boolean; color: string; edge: string }) {
   const size = TRAIL.size;
   const style = useAnimatedStyle(() => {
     const ms = clock.get()[0];
@@ -96,11 +99,13 @@ function Print({ x, y, angle, i, clock, still, color }: { x: number; y: number; 
   return (
     <Animated.View style={[styles.print, { left: x - size / 2, top: y - size / 2, width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
-        <Path d="M12 11.6 C8.4 11.6 5.6 14.8 6 17.6 C6.3 20 8.7 20.4 10.4 19.6 C11.4 19.2 12.6 19.2 13.6 19.6 C15.3 20.4 17.7 20 18 17.6 C18.4 14.8 15.6 11.6 12 11.6 Z" fill={color} />
-        <Ellipse cx={5.3} cy={10.2} rx={2} ry={2.6} fill={color} transform="rotate(-24 5.3 10.2)" />
-        <Ellipse cx={9.3} cy={6.2} rx={2.1} ry={2.8} fill={color} transform="rotate(-8 9.3 6.2)" />
-        <Ellipse cx={14.7} cy={6.2} rx={2.1} ry={2.8} fill={color} transform="rotate(8 14.7 6.2)" />
-        <Ellipse cx={18.7} cy={10.2} rx={2} ry={2.6} fill={color} transform="rotate(24 18.7 10.2)" />
+        <G stroke={edge} strokeWidth={1.3} strokeOpacity={0.75}>
+          <Path d="M12 11.6 C8.4 11.6 5.6 14.8 6 17.6 C6.3 20 8.7 20.4 10.4 19.6 C11.4 19.2 12.6 19.2 13.6 19.6 C15.3 20.4 17.7 20 18 17.6 C18.4 14.8 15.6 11.6 12 11.6 Z" fill={color} />
+          <Ellipse cx={5.3} cy={10.2} rx={2} ry={2.6} fill={color} transform="rotate(-24 5.3 10.2)" />
+          <Ellipse cx={9.3} cy={6.2} rx={2.1} ry={2.8} fill={color} transform="rotate(-8 9.3 6.2)" />
+          <Ellipse cx={14.7} cy={6.2} rx={2.1} ry={2.8} fill={color} transform="rotate(8 14.7 6.2)" />
+          <Ellipse cx={18.7} cy={10.2} rx={2} ry={2.6} fill={color} transform="rotate(24 18.7 10.2)" />
+        </G>
       </Svg>
     </Animated.View>
   );
@@ -124,7 +129,7 @@ export function PawTrail({ from, to, onDone }: { from: Point; to: Point; onDone?
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="v2-paw-trail">
       {prints.map((p, i) => (
-        <Print key={i} {...p} i={i} clock={clock} still={reducedMotion} color={theme.sweet} />
+        <Print key={i} {...p} i={i} clock={clock} still={reducedMotion} color={PAW_INK} edge={theme.ink} />
       ))}
     </View>
   );

@@ -8,7 +8,7 @@ import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from "react-native-reanimated";
 import type { ModeTheme } from "@/theme/tokens";
-import { Arrow, Heart, Moon, Question, Sparkle, Star, Tick } from "./Doodles";
+import { Arrow, Moon, Question, Sparkle, Star, Tick } from "./Doodles";
 import type { HandType, JournalPalette } from "./palette";
 import { stageOf, type Stage } from "./threads";
 
@@ -96,7 +96,7 @@ export function MarginNote({ solved, total, genre, palette: p, hand }: { solved:
     ? <Moon color={p.pen} fill={near ? p.sweet : undefined} size={22} rotate={-14} />
     : g === "crime_scene"
       ? <Star color={p.pen} fill={near ? p.sweet : undefined} size={20} rotate={-8} />
-      : <Heart color={p.pen} fill={near ? p.sweet : undefined} size={20} rotate={-10} />;
+      : near ? <Tick color={p.pen} size={20} rotate={-6} /> : <Question color={p.pen} size={20} rotate={-10} />;
   return (
     <View style={styles.note} testID={`v2-casebook-margin-${stage}`}>
       <Arrow color={p.pen} size={34} style={styles.noteArrow} />

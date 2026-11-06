@@ -8,16 +8,19 @@
 // - Awards are queued, so two at once (a screen mounted twice) can't race.
 // - Within one run of the app, the same case's award is answered as it was
 //   the first time (case closed mounted again still says "New charm").
-// - The cat's outfit: "escapd.cat.accessory", exactly "none" | "bow" |
-//   "bell" | "beret" | "flowers" (the cats read it to dress up).
+// - The cat's outfit: "escapd.cat.accessory", exactly "none" | "collar" |
+//   "scarf" | "specs" | "deerstalker" (the cats read it to dress up; an
+//   older build's "bell" reads as "collar", its other outfits as none).
+// - A charm an older build gave under another name (the "glass") is read
+//   as its new one (the matchbook).
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Genre } from "@/lib/puzzle-types";
 import { isGenre } from "@/game/mode";
 import {
-  FINISH_RANK, finishFor, isAccessoryChoice, isCharmKind, isFinish, pickCharm, titleFor,
+  FINISH_RANK, charmKindOf, finishFor, isAccessoryChoice, isFinish, pickCharm, titleFor,
   type AccessoryChoice, type CharmKind, type Finish, type Title,
 } from "./charms";
-import { setCatAccessory } from "@/play2/catAccessory";
+import { parseCatAccessory, setCatAccessory } from "@/play2/catAccessory";
 
 export const COLLECTION_KEY = "escapd.collection.v1";
 export const ACCESSORY_KEY = "escapd.cat.accessory";
@@ -69,8 +72,9 @@ export function parseCollection(raw: string | null | undefined): Collection {
     for (const [roomId, value] of Object.entries(d.cases as Record<string, unknown>)) {
       const c = value as Partial<CaseCharm> | null;
       if (!roomId || !c || typeof c !== "object") continue;
-      if (!isGenre(c.genre) || !isCharmKind(c.kind) || !isFinish(c.finish)) continue;
-      out.cases[roomId] = { genre: c.genre, kind: c.kind, finish: c.finish, at: typeof c.at === "number" && Number.isFinite(c.at) ? c.at : 0 };
+      const kind = charmKindOf(c.kind);
+      if (!isGenre(c.genre) || !kind || !isFinish(c.finish)) continue;
+      out.cases[roomId] = { genre: c.genre, kind, finish: c.finish, at: typeof c.at === "number" && Number.isFinite(c.at) ? c.at : 0 };
     }
   }
   return out;
@@ -185,8 +189,9 @@ const listeners = new Set<(a: AccessoryChoice) => void>();
 /** The cat's outfit: "none" when none is chosen or the kept value isn't one. */
 export async function loadAccessory(): Promise<AccessoryChoice> {
   try {
-    const raw = await AsyncStorage.getItem(ACCESSORY_KEY);
-    return isAccessoryChoice(raw) ? raw : "none";
+    // The cats' own reading of the key (an older build's names mapped on).
+    const a = parseCatAccessory(await AsyncStorage.getItem(ACCESSORY_KEY));
+    return isAccessoryChoice(a) ? a : "none";
   } catch {
     return "none";
   }

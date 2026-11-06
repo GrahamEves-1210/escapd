@@ -20,8 +20,6 @@ export const WINDOW_ART = {
   flame: { x: 0.2248, y: 0.8498 },
   /** The moon (window.py's MOON): its centre as shares of the art, its radius as a share of the art's width. */
   moon: { x: 0.6729, y: 0.8062, r: 0.0651 },
-  /** The mug's mouth (window.py's mug): its centre as shares of the art, its width as a share of the art's width. */
-  mug: { x: 0.4155, y: 0.9063, w: 0.0775 },
 } as const;
 
 /**
@@ -40,9 +38,6 @@ export const PROPS: readonly { x0: number; y0: number; x1: number; y1: number; r
   { x0: 252, y0: 2389, x1: 328, y1: 2536, r: 12 },
   { x0: 284, y0: 2380, x1: 296, y1: 2400, r: 0 },
   { x0: 268, y0: 2322, x1: 312, y1: 2402, r: 0, oval: true },
-  // The mug, its rim and its handle.
-  { x0: 482, y0: 2520, x1: 590, y1: 2656, r: 18 },
-  { x0: 566, y0: 2550, x1: 630, y1: 2628, r: 24 },
 ];
 
 /**
@@ -80,7 +75,8 @@ export const CLOUDS = {
 } as const;
 
 /**
- * Steam off the tea: `wisps` thin curls rising `rise` mug-widths from the
+ * Steam off the tea in the mug by the cat (src/play2/cat/Mug.tsx draws the
+ * mug and its steam): `wisps` thin curls rising `rise` mug-widths from the
  * mug's mouth, swaying `amp` mug-widths as waves travel up them (`waves`
  * along each, `speed` radians a second), fading in just over the rim and out
  * at the top. Points: `width` and `blur`. Under reduced motion they hold

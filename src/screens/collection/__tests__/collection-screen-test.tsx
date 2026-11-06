@@ -31,7 +31,7 @@ describe("the charm board", () => {
       c: { genre: "paranormal", kind: "moon", finish: "silver", at: 3 },
     });
     await render(<ThemeProvider><CollectionScreen /></ThemeProvider>);
-    await waitFor(() => expect(screen.getByTestId("collection-title")).toHaveTextContent("Velvet Sleuth"));
+    await waitFor(() => expect(screen.getByTestId("collection-title")).toHaveTextContent("Night-Owl Sleuth"));
     expect(screen.getByTestId("collection-progress")).toHaveTextContent("3 cases closed · 3 more to Inkwell Inspector");
     expect(screen.getByLabelText("Skeleton Key, gold pin. From 2 cases.")).toBeTruthy();
     expect(screen.getByLabelText("Sleepy Moon, silver pin. From 1 case.")).toBeTruthy();
@@ -47,23 +47,24 @@ describe("the charm board", () => {
     await AsyncStorage.setItem(COLLECTION_KEY, "{oops");
     await render(<ThemeProvider><CollectionScreen /></ThemeProvider>);
     await waitFor(() => expect(screen.getByTestId("collection-count")).toHaveTextContent("0 of 9 charms"));
-    expect(screen.getByTestId("collection-title")).toHaveTextContent("Tea-Stained Novice");
+    expect(screen.getByTestId("collection-title")).toHaveTextContent("Armchair Amateur");
     expect(screen.getAllByLabelText(/not found yet/)).toHaveLength(9);
   });
 
   it("dresses the cat in an unlocked outfit, keeps the pick, and locks the rest", async () => {
     await seed({ a: { genre: "noir", kind: "key", finish: "gold", at: 1 } });
-    await AsyncStorage.setItem(ACCESSORY_KEY, "flowers");
+    await AsyncStorage.setItem(ACCESSORY_KEY, "specs");
     await render(<ThemeProvider><CollectionScreen /></ThemeProvider>);
-    await waitFor(() => expect(screen.getByTestId("collection-title")).toHaveTextContent("Candlelit Snoop"));
+    await waitFor(() => expect(screen.getByTestId("collection-title")).toHaveTextContent("Keyhole Snoop"));
     // A kept pick she no longer has unlocked still reads as chosen; the others stay locked.
-    expect(screen.getByTestId("collection-accessory-bell").props.accessibilityState).toMatchObject({ disabled: true });
-    expect(screen.getByLabelText("Bell, locked")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("collection-accessory-bell"));
-    expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("flowers");
-    await fireEvent.press(screen.getByTestId("collection-accessory-bow"));
-    await waitFor(async () => expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("bow"));
-    expect(screen.getByTestId("collection-accessory-bow").props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId("collection-accessory-specs").props.accessibilityState).toMatchObject({ disabled: true, selected: true });
+    expect(screen.getByLabelText("Scarf, locked")).toBeTruthy();
+    expect(screen.getByLabelText("The black cat, in round spectacles. Pet the cat")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("collection-accessory-scarf"));
+    expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("specs");
+    await fireEvent.press(screen.getByTestId("collection-accessory-collar"));
+    await waitFor(async () => expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("collar"));
+    expect(screen.getByTestId("collection-accessory-collar").props.accessibilityState).toMatchObject({ selected: true });
     await fireEvent.press(screen.getByTestId("collection-accessory-none"));
     await waitFor(async () => expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("none"));
   });
@@ -77,10 +78,10 @@ describe("the charm board", () => {
 
 describe("home's charm chip", () => {
   it("names her title and charms, shows a dot for a charm she hasn't seen, and opens the board", async () => {
-    expect(charmChipLabel(0, 0)).toBe("Charm board. Tea-Stained Novice, no charms yet");
+    expect(charmChipLabel(0, 0)).toBe("Charm board. Armchair Amateur, no charms yet");
     await seed({ a: { genre: "noir", kind: "key", finish: "gold", at: 5 } });
     await render(<CharmChip />);
-    await waitFor(() => expect(screen.getByTestId("hub-charms").props.accessibilityLabel).toBe("Charm board. Candlelit Snoop, 1 of 9 charms"));
+    await waitFor(() => expect(screen.getByTestId("hub-charms").props.accessibilityLabel).toBe("Charm board. Keyhole Snoop, 1 of 9 charms"));
     expect(screen.getByTestId("hub-charms-new")).toBeTruthy();
     await fireEvent.press(screen.getByTestId("hub-charms"));
     expect(router.push).toHaveBeenCalledWith("/collection");

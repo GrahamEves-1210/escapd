@@ -97,7 +97,7 @@ describe("pickWord", () => {
 });
 
 describe("bitsFor", () => {
-  const colors = { star: "a", star5: "b", heart: "c", smoke: "d", marker: "e", glint: "f", wisp: "g", moon: "h" };
+  const colors = { star: "a", star5: "b", spark: "c", smoke: "d", marker: "e", glint: "f", wisp: "g", moon: "h" };
   it("throws more, further, for a solved step and on a roll", () => {
     const find = bitsFor("noir", "find", 0, 1, colors);
     const solve = bitsFor("noir", "solve", 0, 1, colors);
@@ -110,7 +110,8 @@ describe("bitsFor", () => {
   it("throws each mode's own things", () => {
     const kinds = (g: "noir" | "crime_scene" | "paranormal") => new Set(Array.from({ length: 12 }, (_, s) => bitsFor(g, "solve", 0, s, colors)).flat().map((b) => b.kind));
     expect(kinds("crime_scene")).toContain("marker");
-    expect(kinds("crime_scene")).not.toContain("heart");
+    expect(kinds("crime_scene")).not.toContain("spark");
+    expect(kinds("noir")).toContain("spark");
     expect(kinds("paranormal")).toContain("moon");
     expect(kinds("paranormal")).toContain("wisp");
     expect(kinds("noir")).toContain("smoke");

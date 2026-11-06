@@ -118,7 +118,7 @@ function FoilGradient({ id, foil }: { id: string; foil: readonly [string, string
   );
 }
 
-/** An ornamental rule: two hairlines and a foil fleuron (a heart-leaf between curls) in the middle. */
+/** An ornamental rule: two hairlines and a foil fleuron (a lozenge between curls) in the middle. */
 export const Fleuron = memo(function Fleuron({ foil, ink, width = 200, style }: { foil: readonly [string, string, string]; ink: string; width?: number; style?: StyleProp<ViewStyle> }) {
   const id = `foil${useId().replace(/[^A-Za-z0-9]/g, "")}`;
   const mid = width / 2;
@@ -130,7 +130,7 @@ export const Fleuron = memo(function Fleuron({ foil, ink, width = 200, style }: 
         <Path d={`M${mid - 26} 11 C${mid - 22} 4 ${mid - 14} 5 ${mid - 15} 10 C${mid - 16} 13 ${mid - 20} 12 ${mid - 19} 9`} stroke={`url(#${id})`} strokeWidth={1.5} fill="none" strokeLinecap="round" />
         <Path d={`M${mid + 26} 11 C${mid + 22} 4 ${mid + 14} 5 ${mid + 15} 10 C${mid + 16} 13 ${mid + 20} 12 ${mid + 19} 9`} stroke={`url(#${id})`} strokeWidth={1.5} fill="none" strokeLinecap="round" />
         <Path
-          d={`M${mid} 18.5 C${mid - 7} 14 ${mid - 9} 9 ${mid - 6} 5.5 C${mid - 3.5} 3 ${mid - 0.8} 4.5 ${mid} 7 C${mid + 0.8} 4.5 ${mid + 3.5} 3 ${mid + 6} 5.5 C${mid + 9} 9 ${mid + 7} 14 ${mid} 18.5 Z`}
+          d={`M${mid} 3.5 Q${mid + 2.6} 8.4 ${mid + 6.5} 11 Q${mid + 2.6} 13.6 ${mid} 18.5 Q${mid - 2.6} 13.6 ${mid - 6.5} 11 Q${mid - 2.6} 8.4 ${mid} 3.5 Z`}
           fill={`url(#${id})`}
           stroke={foil[2]}
           strokeWidth={0.6}

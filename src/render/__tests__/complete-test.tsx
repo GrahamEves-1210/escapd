@@ -124,7 +124,7 @@ describe("Case closed: noir", () => {
     expect(screen.queryByTestId("closed-rating-filled-2")).toBeNull();
     // What earned it, and the cat's word on it.
     expect(screen.getByTestId("closed-reason").props.children).toBe("2 magnifiers for 1 tip and 2 wrong codes. No tips and no wrong codes earns 3.");
-    expect(screen.getByTestId("closed-cat-line").props.children).toBe("I only helped a little \u2665");
+    expect(screen.getByTestId("closed-cat-line").props.children).toBe("I helped. A little. You're welcome.");
     // Where a screenshot is from: the library's stamp, SOLVED and the day.
     expect(screen.getByText(`Solved · ${stampDate()}`)).toBeTruthy();
     // The cat, sitting beside the polaroid.
@@ -202,7 +202,7 @@ describe("Case closed: noir", () => {
     const charm = screen.getByTestId("closed-charm");
     expect(charm.props.accessibilityLabel).toMatch(/^New charm: .+, gold pin\. Pinned to your charm board\.$/);
     expect(screen.getByTestId("closed-charm-tag")).toHaveTextContent("New!");
-    expect(screen.getByTestId("closed-news")).toHaveTextContent(/Now a Candlelit Snoop · a bow for the cat/);
+    expect(screen.getByTestId("closed-news")).toHaveTextContent(/Now a Keyhole Snoop · a bell collar for the cat/);
     const board = await loadCollection();
     expect(Object.keys(board.cases)).toEqual([NOIR_ROOM.roomId]);
     expect(board.cases[NOIR_ROOM.roomId].finish).toBe("gold");
@@ -505,7 +505,7 @@ describe("Case closed: the recap", () => {
     expect(await screen.findByLabelText("Clues found: 3 of 4")).toBeTruthy();
     expect(screen.getByLabelText("Rating: 3 of 3 magnifiers")).toBeTruthy();
     expect(screen.getByTestId("closed-reason").props.children).toBe("3 magnifiers: solved with no tips and no wrong codes.");
-    expect(screen.getByTestId("closed-cat-line").props.children).toBe("Not one tip. I'm impressed \u2665");
+    expect(screen.getByTestId("closed-cat-line").props.children).toBe("Not one tip. Show-off.");
   });
 
   it("crime scene: the story tells who, why and how, so the ruled culprit lines give way to it", async () => {

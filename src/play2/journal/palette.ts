@@ -46,7 +46,7 @@ export interface JournalPalette {
   pins: readonly [string, string, string];
   /** A coffee (or tea) ring left on the page. */
   ring: string;
-  /** Soft light and delight (stars, hearts, the hint sticker). */
+  /** Soft light and delight (stars, sparkles, the hint sticker). */
   glow: string;
   sweet: string;
   /** Soft shadow under paper, tinted by the mode's ground. */

@@ -163,9 +163,11 @@ describe("ratingReason: what earned the rating", () => {
 describe("catVerdict", () => {
   it("is the cat's word on how it went", () => {
     expect(catVerdict({ hints: 0, wrong: 0 })).toMatch(/^Not one tip/);
-    expect(catVerdict({ hints: 1, wrong: 0 })).toMatch(/helped a little/);
+    expect(catVerdict({ hints: 1, wrong: 0 })).toMatch(/helped\. A little/);
     expect(catVerdict({ hints: 0, wrong: 2 })).toMatch(/wrong turn/);
-    expect(catVerdict({ hints: 4, wrong: 4 })).toMatch(/together/);
+    expect(catVerdict({ hints: 4, wrong: 4 })).toMatch(/Mostly me/);
     expect(catVerdict(null)).toMatch(/shelf/);
+    // Dry, not sweet: no hearts.
+    for (const s of [{ hints: 0, wrong: 0 }, { hints: 1, wrong: 0 }, { hints: 0, wrong: 2 }, { hints: 4, wrong: 4 }, null]) expect(catVerdict(s)).not.toMatch(/\u2665|♥/);
   });
 });

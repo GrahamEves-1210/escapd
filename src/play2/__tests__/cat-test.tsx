@@ -328,28 +328,74 @@ describe("SittingCat", () => {
     for (let i = 1; i < n; i++) expect(Math.abs(bends[i] - bends[i - 1])).toBeLessThan(0.05);
   });
 
-  it("whips like a cat's tail: a swish runs up it late, the tip swinging past where it's going and snapping back", () => {
-    // Pushed out once (a swish at its middling pace), and left: each joint's turn over 4 s.
-    let st: TailState = { ...restTail(), goal: 0.8, omega: WHIP.swish.omega + WHIP.swish.omegaSpread / 2, next: 1e9, twitchAt: 1e9, curlGoal: 0 };
+  it("whips like a cat's tail: a flick is out and back in well under half a second, running up it late, the tip cracking past and snapping back", () => {
+    // A flick from rest (no wave, no twitch, nothing else due): each joint's turn at 120 frames a second.
+    const f = WHIP.flick;
+    let st: TailState = {
+      ...restTail(), wa: 0, waGoal: 0, curlGoal: 0, next: 1e9, twitchAt: 1e9,
+      goal: f.to, omega: f.omega, back: f.hold, backGoal: 0, backOmega: f.back,
+    };
     const tip = WHIP.joints.length - 1;
     const track: number[][] = [];
     for (let k = 0; k < 240; k++) {
-      const r = stepTail(st, 0, 1 / 60, () => 0.5);
+      const r = stepTail(st, 0, 1 / 120, () => 0.5);
       st = r.state;
       track.push(r.joints);
     }
     const peakAt = (j: number) => track.reduce((best, v, k) => (v[j] > track[best][j] ? k : best), 0);
-    const settled = track[track.length - 1];
-    // It runs up the tail: the tip gets halfway there well after the joint near the base does.
-    const halfway = (j: number) => track.findIndex((v) => v[j] > settled[j] / 2);
-    expect(halfway(tip)).toBeGreaterThan(halfway(1) + 4);
-    // The tip overshoots (by a good deal) and comes back; low down it barely does.
-    const over = (j: number) => track[peakAt(j)][j] / settled[j];
-    expect(over(tip)).toBeGreaterThan(1.2);
-    expect(over(tip)).toBeGreaterThan(over(0));
-    expect(Math.abs(settled[tip] - 0.8 * WHIP.swing * (Math.PI / 180))).toBeLessThan(0.02);
+    // Out fast at the base (its peak inside a quarter second), running up the tail late: the tip turns furthest
+    // after it, then cracks back past rest, all inside 0.7 s.
+    expect(peakAt(1) / 120).toBeLessThan(0.25);
+    expect(peakAt(tip)).toBeGreaterThan(peakAt(1) + 12);
+    expect(peakAt(tip) / 120).toBeLessThan(0.55);
+    const back = track.findIndex((v, k) => k > peakAt(tip) && v[tip] < 0);
+    expect(back).toBeGreaterThan(0);
+    expect(back / 120).toBeLessThan(0.7);
+    // The crack: the tip swings past rest the other way, by a good deal (the base barely does), and settles.
+    const under = (j: number) => Math.min(...track.map((v) => v[j]));
+    expect(-under(tip)).toBeGreaterThan(0.25 * track[peakAt(tip)][tip]);
+    expect(-under(tip)).toBeGreaterThan(-under(0) * 3);
+    expect(Math.abs(track[track.length - 1][tip])).toBeLessThan(0.05);
+    // Fast: the tip turns well over 10 radians a second at its quickest.
+    const fastest = Math.max(...track.slice(1).map((v, k) => Math.abs(v[tip] - track[k][tip]) * 120));
+    expect(fastest).toBeGreaterThan(10);
     // The floor part barely turns at all.
-    expect(Math.abs(settled[0])).toBeLessThan(0.05);
+    expect(Math.max(...track.map((v) => Math.abs(v[0])))).toBeLessThan(0.12);
+  });
+
+  it("snakes: at rest a wave runs up it from base to tip (the tip lagging), in an S, never quite repeating", () => {
+    let st: TailState = { ...restTail(), wa: WHIP.wave.amp.calm, next: 1e9, twitchAt: 1e9, goal: 0.2, sweep: 0.2 };
+    const track: number[][] = [];
+    for (let k = 0; k < 60 * 20; k++) {
+      const r = stepTail(st, 0, 1 / 60, () => 0.5);
+      st = r.state;
+      track.push(r.joints.map((v, j) => v - (j ? r.joints[j - 1] : 0)));
+    }
+    // Each joint's own bend, after the first seconds: the ones above follow the ones below late (a travelling wave):
+    // the lag that best lines a higher joint's bend up with a lower one's is later the higher it is.
+    const from = 60 * 4;
+    const lag = (a: number, b: number) => {
+      let best = 0, bestK = 0;
+      for (let d = 0; d < 90; d++) {
+        let c = 0;
+        for (let k = from; k < track.length - 90; k++) c += track[k][a] * track[k + d][b];
+        if (c > best) {
+          best = c;
+          bestK = d;
+        }
+      }
+      return bestK;
+    };
+    expect(lag(1, 3)).toBeGreaterThan(3);
+    expect(lag(1, 5)).toBeGreaterThan(lag(1, 3));
+    // An S: somewhere its middle bends one way while the top bends the other.
+    expect(track.some((v) => Math.sign(v[2]) !== Math.sign(v[4]) && Math.abs(v[2]) > 0.05 && Math.abs(v[4]) > 0.05)).toBe(true);
+    // Never quite periodic: the gaps between the tip's peaks differ.
+    const peaks: number[] = [];
+    for (let k = from + 1; k < track.length - 1; k++) if (track[k][5] > track[k - 1][5] && track[k][5] >= track[k + 1][5] && track[k][5] > 0) peaks.push(k);
+    const gaps = peaks.slice(1).map((p, i) => p - peaks[i]);
+    expect(gaps.length).toBeGreaterThan(2);
+    expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(6);
   });
 
   it("swishes, rests curled, flicks and twitches by itself; never past its canvas, whatever its mood", () => {

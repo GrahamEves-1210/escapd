@@ -8,8 +8,9 @@
 // with a lipstick blot beside it. The cat sits on the desk at its corner.
 //
 // The reply, at the way out: a hotel notecard from the same stationery, the
-// headline typed large, the ending under it, "The End" by hand with a kiss;
-// the cat sitting on the card, and its inky paw prints walked across it.
+// headline typed large, the ending under it, "The End" by hand (no second
+// lipstick blot: the brief's one is the trope, once); the cat sitting on the
+// card, and its inky paw prints walked across it.
 import { StyleSheet, Text, View } from "react-native";
 import { LETTER, LETTER_FONT, handType } from "@/theme/payoff";
 import { keepTogether, splitHead } from "./paper";
@@ -92,7 +93,6 @@ export function NoirReply({ head, headline, text, seed, catLabel, catDelay }: Re
         <View style={styles.spacer} />
         <View style={styles.endRow} accessible accessibilityLabel="The End" testID="v2-ending-end">
           <Text style={[handType(38, 42), styles.theEnd, { color: P.pen }]}>The End</Text>
-          <Kiss color={P.lipstick} paper={P.paper} seed={seed} width={66} rotate={10} style={styles.replyKiss} />
         </View>
         <PawPrints color={P.ink} seed={seed} width={250} height={130} size={17} path={[[20, 118], [58, 112], [96, 104], [134, 96], [172, 86], [208, 74]]} style={styles.paws} />
       </Paper>
@@ -127,7 +127,6 @@ const styles = StyleSheet.create({
   theEnd: { transform: [{ rotate: "-3deg" }] },
   replyText: { marginTop: -4 },
   endRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
-  replyKiss: { marginLeft: 8, marginTop: 6 },
   paws: { position: "absolute", left: 0, bottom: 4 },
   replyCat: { position: "absolute", right: 6, bottom: 12 },
   replyHead: { gap: 10 },

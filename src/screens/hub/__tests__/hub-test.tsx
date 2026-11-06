@@ -179,11 +179,11 @@ describe("01 · Home: the deck of mode cards", () => {
     expect(screen.getByRole("header", { name: "ESCAPD" }).props.testID).toBe("hub-logo");
     expect(screen.queryByText("Choose a case")).toBeNull();
     expect(screen.queryByText(/THE STUDY|YOUR ROOM|YOUR CASE/, hidden)).toBeNull();
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Tea-Stained Novice, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Armchair Amateur, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
 
     // No stored session: no tags, never a guest just to label the cards, and no count anywhere.
     await act(async () => resolveSession(null));
-    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Tea-Stained Novice, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
+    expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Charm board. Armchair Amateur, no charms yet", "Settings", GHOST, CRIME, NOIR, "The black cat, on the window sill. Pet the cat"]);
     expect(screen.queryAllByTestId(/-tag$/, hidden)).toHaveLength(0);
     expect(screen.queryByText(/\d+ cases?|No cases yet/i, hidden)).toBeNull();
     expect(mocked.listMyRooms).not.toHaveBeenCalled();
@@ -947,7 +947,7 @@ describe("01 · Home and the mode intros: tokens only", () => {
 });
 
 describe("01 · Home: the window", () => {
-  it("keeps the rain on the glass: round the books, the candle and the mug on the sill, which stand in front of it", () => {
+  it("keeps the rain on the glass: round the books and the candle on the sill, which stand in front of it (the mug is the cat's, drawn over it)", () => {
     const art = { w: WINDOW_ART.width, h: WINDOW_ART.height };
     const sillTop = art.h * (1 - WINDOW_ART.sill);
     // Every shape is on the lower left pane (inside the frame, left of the mullion), down to the sill.
@@ -957,17 +957,17 @@ describe("01 · Home: the window", () => {
       expect(p.y0).toBeGreaterThan(art.h * WINDOW_ART.cross);
       expect(p.y1).toBeLessThanOrEqual(sillTop + 12);
     }
-    // They cover the candle's flame and the mug's mouth (the steam rises from it, over the glass).
+    // They cover the candle's flame; no mug is painted in the art any more (the cat's mug is drawn by it, so it can fall).
     const covers = (x: number, y: number) => PROPS.some((p) => x >= p.x0 && x <= p.x1 && y >= p.y0 && y <= p.y1);
     expect(covers(WINDOW_ART.flame.x * art.w, WINDOW_ART.flame.y * art.h)).toBe(true);
-    expect(covers(WINDOW_ART.mug.x * art.w, WINDOW_ART.mug.y * art.h + 4)).toBe(true);
+    expect(WINDOW_ART).not.toHaveProperty("mug");
     // The rain and the clouds are drawn inside that clip; the cat, on the sill, is drawn over the whole canvas.
     const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
     expect(source).toMatch(/<Group clip=\{props\} invertClip>/);
     expect(source.match(/<Glass /g)).toHaveLength(2);
   });
 
-  it("has no lightning: no flashes in the window, just the rain, the clouds, the moon, the candle, the lights and the steam", () => {
+  it("has no lightning: no flashes in the window, just the rain, the clouds, the moon, the candle and the lights", () => {
     const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
     expect(source).not.toMatch(/function (Lightning|Flash)\b|LIGHTNING/);
     expect(nook).not.toHaveProperty("LIGHTNING");

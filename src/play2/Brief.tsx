@@ -47,7 +47,7 @@ export const BRIEF_OPENING: Record<Genre, string> = {
 export const OBJECTIVE_LABEL: Record<Genre, string> = { noir: "Your case", crime_scene: "Assignment", paranormal: "What it wants" };
 
 /** The cat's line over Begin. */
-export const BRIEF_CAT_LINE = "I'll be right here if you need a tip ♥";
+export const BRIEF_CAT_LINE = "I'll be right here if you need a tip. Probably.";
 
 /** Begin, in every mode. */
 export const BEGIN = "Begin";

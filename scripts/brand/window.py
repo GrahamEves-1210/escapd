@@ -8,13 +8,14 @@
 # sits on the sill beside it, its head over the moon's edge), only a few
 # stars in the gaps, all seen through wet glass, beaded with rain. On the sill at the left, a
 # little stack of books with a lit candle on top; its light pools on the sill
-# and the frame; beside them a mug of tea. The app animates the flame's glow,
+# and the frame. The app draws the mug of tea by the cat (it can knock it off),
+# and animates the flame's glow,
 # the rain on the glass (round the things on the sill), clouds drifting over
 # the moon, steam off the tea and the fairy lights over it
 # (src/screens/hub/WindowBackdrop.tsx).
 #
 # Usage: python3 scripts/brand/window.py assets/backdrop/window.jpg
-# The geometry (F, SILL, M, MY, the candle's flame, the moon, the mug's mouth) is mirrored as fractions in
+# The geometry (F, SILL, M, MY, the candle's flame, the moon) is mirrored as fractions in
 # src/screens/hub/art/nook.ts: change both together.
 import sys, numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -204,7 +205,7 @@ for (x0, y0, x1, y1) in [(F, F, CX - M // 2, MY - M // 2), (CX + M // 2, F, W - 
     sh.rectangle([x0, y0, x1, y0 + 26], fill=(10, 4, 16, 120)); sh.rectangle([x0, y0, x0 + 20, y1], fill=(10, 4, 16, 90))
 img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(14)))
 
-# 6. On the sill, at the left: two books, the candle on top in a little brass dish, and a mug of tea.
+# 6. On the sill, at the left: two books, the candle on top in a little brass dish (the mug is the app's: src/play2/cat/Mug.tsx).
 props = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 p = ImageDraw.Draw(props)
 fx, fy = FLAME
@@ -242,14 +243,6 @@ p.ellipse([fx - cw, ctop - 9, fx + cw, ctop + 9], fill=(246, 228, 204))
 for (dx, L) in [(-20, 40), (14, 24), (26, 54)]:
     p.rounded_rectangle([fx + dx - 5, ctop, fx + dx + 5, ctop + L], 5, fill=(246, 228, 204))
 p.line([(fx, ctop - 2), (fx + 1, ctop - 18)], fill=(40, 26, 30), width=4)
-# A mug of tea beside them: blush pink, plain, its handle to the right (the app adds its steam).
-mx0, mx1 = fx + 196, fx + 296
-mtop = base - 118
-p.rounded_rectangle([mx1 - 14, mtop + 26, mx1 + 34, mtop + 84], 22, outline=(190, 114, 140), width=12)
-p.rounded_rectangle([mx0, mtop, mx1, base - 2], 16, fill=(208, 128, 156))
-p.rounded_rectangle([mx0 + 60, mtop + 4, mx1, base - 2], 16, fill=(180, 104, 132))
-p.ellipse([mx0, mtop - 10, mx1, mtop + 12], fill=(186, 110, 138))
-p.ellipse([mx0 + 8, mtop - 5, mx1 - 8, mtop + 8], fill=(120, 66, 44))
 # Shading on the candle: dark on the right, away from the room's light.
 cs = Image.new("L", (W, H), 0)
 ImageDraw.Draw(cs).rectangle([fx + 8, ctop, fx + cw, dish_y - 6], fill=90)
@@ -289,5 +282,4 @@ img = Image.alpha_composite(img, flame.filter(ImageFilter.GaussianBlur(2.2)))
 
 img.convert("RGB").save(sys.argv[1], quality=88)
 img.convert("RGB").resize((W // 4, H // 4)).save(sys.argv[2] if len(sys.argv) > 2 else "preview.png")
-print("panes", F / W, F / H, SILL / H, M / W, MY / H, "flame", fx / W, fy / H, "moon", MOON[0] / W, MOON[1] / H, MOON[2] / W,
-      "mug", (mx0 + mx1) / 2 / W, mtop / H, (mx1 - mx0) / W)
+print("panes", F / W, F / H, SILL / H, M / W, MY / H, "flame", fx / W, fy / H, "moon", MOON[0] / W, MOON[1] / H, MOON[2] / W)

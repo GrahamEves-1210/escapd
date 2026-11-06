@@ -36,7 +36,7 @@ paperback with sticky tabs.
    is a scrapbook journal: polaroids, washi tape, handwritten notes, pressed
    flowers, red string, stickers.
 3. **Spooky-cute.** The cat is a companion with feelings. Small delights
-   everywhere: sparkles, little hearts, a sticker earned, a wobble when
+   everywhere: sparkles, an inked star, a sticker earned, a wobble when
    something's wrong. Never gore, never cruelty, never a jump scare.
 4. **Worth sharing.** Case closed is a collectible: a polaroid / sticker card
    with the case's name and her stats that looks good as a screenshot.
@@ -45,7 +45,7 @@ paperback with sticky tabs.
 
 Each mode keeps the game's dark rooms but moves off grey into its own jewel
 tone, with one soft "glow" colour for light and one "sweet" colour for delight
-(hearts, stickers, the cat's marks).
+(stickers, the cat's marks, a little spark).
 
 | token        | Detective Noir: "Velvet Noir" | Crime Scene: "True Crime Club" | Paranormal: "Moonlit" |
 |--------------|-------------------------------|--------------------------------|-----------------------|
@@ -115,6 +115,18 @@ flashlight art stays: it reads as an heirloom against every palette.
 - Shadows are soft and coloured by the ground, not black.
 - Motion has weight: things lift, lean as they move, settle on a spring
   (see the drag feel), and the cat moves at 12 fps like stop motion.
+
+## Tone: clever, not saccharine
+
+Cute, inky and a bit wry: a cozy mystery, never a candy shop. No hearts as
+decoration (one lipstick blot on the noir brief is the trope, once); the
+mode's `sweet` is a small accent, never the colour a screen is made of: lean
+on the inks, plums, brass, cream and candle glow. The cat's wardrobe is a
+detective's cat's (a bell collar, a cable-knit scarf, round brass spectacles,
+a tweed deerstalker), the charms are mystery things (a skeleton key, a
+fedora, a struck matchbook, a magnifier, a fingerprint, an evidence tag, a
+moon, a planchette, a candle), and the cat's lines are dry ("Not one tip.
+Show-off.").
 
 ## Don'ts
 

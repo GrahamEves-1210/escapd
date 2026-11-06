@@ -1,7 +1,7 @@
 // The cat, sitting (assets/characters/cat_sit.png): on home's window sill,
 // for the way out and case closed. It moves as the peeking cat does, at 12
 // frames a second: it pops up with a squash and stretch and a burst of
-// sparkles in the mode's sweet colour (`cheer` changes for another),
+// sparkles in the mode's candle glow (`cheer` changes for another),
 // breathes, and now and then gives a little happy hop. It likes being
 // stroked as the peeking cat does (usePetting): a hand on it and it shuts its
 // eyes (lids drawn over the art's, in each eye's own frame) with a small
@@ -9,7 +9,7 @@
 // soft beat in the hand, "prr"); let go, its eyes open slowly with a content
 // blink (a gentle rub: a happy slow blink, and a few sparkles). Rough, quick
 // taps and it pulls away from the hand for a while. It wears its outfit
-// (catAccessory.ts: a bow, a bell collar, a beret, flowers). Its
+// (catAccessory.ts: a bell collar, a scarf, spectacles, a deerstalker). Its
 // art never changes, but its tail (cut out of the art,
 // scripts/brand/cat_tail.py) moves all the time, smoothly, drawn as a
 // textured mesh along a moving centre line bent by a chain of springs (WHIP):
@@ -19,18 +19,21 @@
 // fast and cross while it sulks, a slow curled sway while it purrs. Under reduced
 // motion it simply sits, its tail still (its eyes still shut for a hand, and
 // the "prr" shows).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import Animated, {
-  Easing, useAnimatedStyle, useDerivedValue, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming, type SharedValue,
+  Easing, cancelAnimation, useAnimatedStyle, useDerivedValue, useFrameCallback, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming, type SharedValue,
 } from "react-native-reanimated";
 import { Canvas, FilterMode, Group, ImageShader, MipmapMode, Vertices, useImage, vec, type SkPoint } from "@shopify/react-native-skia";
+import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { Burst, EyeLid, OUTFIT_WORDS, PetLayer, Purr, pettingMotion, usePetting, useStopMotion } from "./PeekingCat";
 import { CatOutfit, type Placements } from "./cat/Accessory";
 import { useCatAccessory } from "./catAccessory";
+import { SillMug } from "./cat/Mug";
 import LINE from "../../assets/characters/cat_sit_tail.json";
+import { WHIP, restTail, stepTail, type TailMood, type TailState } from "./cat/tail";
 
 /** The cat without its tail (cat_sit.png less its tail), and its tail alone, both the art's size. */
 const ART = require("../../assets/characters/cat_sit_body.png") as number;
@@ -45,55 +48,9 @@ const ASPECT = 640 / 444;
  * art's box on each side (shares of its width), so the tip never clips at the
  * far end of a swish or a whip (the tests run it a long while to check).
  */
-export const TAIL = { ...LINE, segments: LINE.points.length - 1, pad: { left: 0.02, top: 0.04, right: 0.32, bottom: 0.04 } } as const;
-/**
- * The tail moves as a real one does: a chain of `joints` along it (s 0 at the
- * base, 1 at the tip), each a damped spring (`omega` rad/s, damping `zeta`)
- * following the one below it, so whatever the base does runs up the tail late,
- * and the tip, lightest and loosest, swings past where it's going and snaps
- * back (a whip). Its muscles pull each joint to bend from the one below by a
- * share of a `sweep` (`swing` degrees at full: most of it low, where the tail
- * lifts off the floor; positive swings it out, away from the body) and of a
- * `curl` (`hook` degrees, at the tip: the question mark). The sweep and the
- * curl ease to their goals as critically damped springs, at a rate the mood
- * sets; a `twitch` of the tip alone is a quick ringing spring of its own
- * (`twitchOmega`, `twitchZeta`), kicked by `twitchKick` rad/s. Its moods
- * (picked on the UI thread, `stepTail`):
- *   - calm: lazy swishes from side to side (`swish`: out further than in), now
- *     and then a slow question-mark curl while it rests (`rest`), and a quick
- *     flick out and back that whips up to the tip (`flick`); a twitch of the
- *     tip every `twitches` s,
- *   - cross (rough handling): a fast thrash, flicking, the tip twitching,
- *   - content (purring): a slow, small sway, the tip curled.
- * The base, under the haunch, never moves (no seam); the floor part barely.
- */
-export const WHIP = {
-  joints: [0.22, 0.4, 0.58, 0.76, 0.9, 1],
-  omega: [15, 12.5, 10.5, 9, 8, 7.5],
-  zeta: [0.75, 0.5, 0.4, 0.33, 0.28, 0.25],
-  swing: 52,
-  sweep: [0.04, 0.42, 0.26, 0.14, 0.09, 0.05],
-  hook: 42,
-  curl: [0, 0, 0.04, 0.16, 0.34, 0.46],
-  twitch: [0, 0, 0, 0, 0.35, 1],
-  twitchOmega: 32,
-  twitchZeta: 0.2,
-  twitchKick: 14,
-  /** Calm: a swish out to `out` (plus up to `outSpread`) or in to `in` (less up to `inSpread`), easing at `omega` (plus up to `omegaSpread`), for `s` s (plus up to `sSpread`). */
-  swish: { out: 0.55, outSpread: 0.35, in: -0.35, inSpread: 0.3, omega: 4, omegaSpread: 2, s: 1.1, sSpread: 1.6, curl: 0.15 },
-  /** A rest, now and then (`chance` of each move): nearly still, curled into a question mark, eased in slowly. */
-  rest: { chance: 0.2, at: 0.12, atSpread: 0.18, omega: 2, s: 2.2, sSpread: 2.4, curl: 1 },
-  /** A flick (`chance` of each move): out to `to` fast and back, the whip running up the tail. */
-  flick: { chance: 0.16, to: 0.9, omega: 26, hold: 0.12, back: 9 },
-  twitches: { calm: [2.5, 4], cross: [0.5, 0.8], content: [3.5, 4] },
-  cross: { at: 0.4, atSpread: 0.2, omega: 13, omegaSpread: 5, s: 0.26, sSpread: 0.2, curl: -0.2 },
-  content: { at: 0.22, atSpread: 0.12, omega: 1.5, s: 2.4, sSpread: 1.2, curl: 1 },
-  /** How fast the curl eases to its goal (rad/s, critically damped). */
-  curlOmega: 2.6,
-  /** Integration step (s): small enough for the stiffest spring, whatever the frame rate. */
-  step: 1 / 240,
-} as const;
-const RADIANS = Math.PI / 180;
+export const TAIL = { ...LINE, segments: LINE.points.length - 1, pad: { left: 0.02, top: 0.04, right: 0.5, bottom: 0.04 } } as const;
+/** The tail's motion: cat/tail.ts (a chain of springs, a travelling S-wave, flicks). */
+export { WHIP, restTail, stepTail, type TailMood, type TailState } from "./cat/tail";
 /**
  * The art's eyes (its irises, measured: art px): centre, half width and half
  * height, and the tilt of the width (degrees, clockwise). The lids close in
@@ -105,17 +62,35 @@ const EYES = [
 ] as const;
 /** The art's fur round its eyes. */
 const FUR = "#0E0C0B";
-/** Its outfit on its art (catAccessory), on its tipped head: a bow by its right ear, a collar, a beret or flowers between its ears. */
+/** Its outfit on its art (catAccessory), on its tipped head: a collar or a scarf, spectacles along its eyes, a deerstalker between its ears. */
 const OUTFIT: Placements = {
-  bow: { x: 276, y: 112, w: 150, rotate: 22 },
-  bell: { x: 206, y: 341, w: 170, rotate: -8 },
-  beret: { x: 176, y: 150, w: 150, rotate: -22 },
-  flowers: { x: 170, y: 160, w: 190, rotate: -22 },
+  collar: { x: 206, y: 341, w: 170, rotate: -8 },
+  scarf: { x: 206, y: 352, w: 200, rotate: -8 },
+  specs: { x: 215, y: 217, w: 167, rotate: -29 },
+  deerstalker: { x: 196, y: 144, w: 186, rotate: -18 },
 };
 /** Rough handling: it pulls away from a hand this long (ms). */
 const ENOUGH_MS = 3000;
+/** Now and then a blink (every `every` ms, plus up to `spread`); one in `double` is a double blink. No hops: it sits still unless something happens. */
+const BLINK = { every: 3800, spread: 5200, double: 0.25 } as const;
+/**
+ * The mug by it on home's sill (`mug`). Once a visit, at a random moment
+ * `first` to `first + spread` ms in (never in the first moments), it gets
+ * curious: it leans to it, pats it twice (it wobbles), and nudges it off the
+ * sill's edge (it tips and drops out of sight). `smash` ms after it leaves the
+ * sill, the crash (feedback's mugBreak); it startles and runs off, is gone
+ * `gone` ms, then comes back and sits down. The mug stays gone for the visit.
+ * With a hand on it when the moment comes, it waits `retry` ms. The mug's body
+ * is `size` of its width across, its right edge `edge` of its width in from
+ * its left (by its haunch); its paw reaches from its chest (`chest`, shares of
+ * its box). Not under reduced motion (the mug just sits there, steaming).
+ */
+export const MUG = {
+  first: 50000, spread: 60000, retry: 8000, smash: 1000, gone: 5000,
+  size: 0.27, edge: 0.3, chest: { x: 0.4, y: 0.7 },
+} as const;
 
-export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat" }: {
+export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat", mug }: {
   /** On-screen width (points). */
   width: number;
   /** Before it pops up (ms). */
@@ -123,6 +98,12 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
   /** Bump it for another happy pop and sparkles. */
   cheer?: number;
   label?: string;
+  /**
+   * Home's sill: a mug by it (MUG), its foot `base` points up from the cat's
+   * box's bottom (the sill's top). A new `visit` (home opened again) brings it
+   * back; while not `active` (home not in front) nothing happens to it.
+   */
+  mug?: { visit: number; active: boolean; base: number };
 }) {
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
@@ -132,6 +113,23 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
   const sx = useSharedValue(1);
   const sy = useSharedValue(1);
   const breath = useSharedValue(0);
+  // Its own blinks (lids, 0..1).
+  const blink = useSharedValue(0);
+  // The mug business: leaning to it (degrees), the paw's reach (0..1+) and lift (points), its run (points across, and the hops' lift),
+  // and the mug's slide, drop and turn.
+  const look = useSharedValue(0);
+  const reach = useSharedValue(0);
+  const lift = useSharedValue(0);
+  const runX = useSharedValue(0);
+  const runY = useSharedValue(0);
+  const mugX = useSharedValue(0);
+  const mugY = useSharedValue(0);
+  const mugR = useSharedValue(0);
+  // The visit the mug went off the sill on (it's back on the next), and the one its steam stopped on.
+  const [goneOn, setGoneOn] = useState<number | undefined>(undefined);
+  const [coldOn, setColdOn] = useState<number | undefined>(undefined);
+  const [startled, setStartled] = useState(false);
+  const feedback = useFeedback();
   const [burst, setBurst] = useState<{ at: number; text: string } | null>(null);
   const [sulking, setSulking] = useState(false);
 
@@ -154,7 +152,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
       sx.set(withSequence(withTiming(1.08, { duration: 90 }), withDelay(420, withSpring(1, { damping: 7, stiffness: 150 }))));
     },
   });
-  const tail = useTailSwish({ still: reducedMotion, sulking, purring: petting.purring });
+  const tail = useTailSwish({ still: reducedMotion, sulking: sulking || startled, purring: petting.purring });
   useEffect(() => {
     if (!sulking) return;
     const t = setTimeout(() => setSulking(false), ENOUGH_MS);
@@ -167,17 +165,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
     bounce(delay);
     breath.set(withDelay(delay, withRepeat(withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }), -1, true)));
     const t = setTimeout(() => setBurst({ at: Date.now(), text: "!" }), delay + 150);
-    // A happy hop now and then (not with a hand on it).
-    let hop: ReturnType<typeof setTimeout>;
-    const again = () => {
-      if (petting.touch.get() < 0.1) bounce(0);
-      hop = setTimeout(again, 5000 + Math.random() * 5000);
-    };
-    hop = setTimeout(again, delay + 4000);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(hop);
-    };
+    return () => clearTimeout(t);
     // bounce reads shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reducedMotion, delay]);
@@ -191,29 +179,136 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cheer, reducedMotion]);
 
+  // Blinks now and then (its lids only: it sits still unless something happens).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const next = () => {
+      const close = { duration: 70 }, open = { duration: 110 };
+      blink.set(Math.random() < BLINK.double
+        ? withSequence(withTiming(1, close), withTiming(0, open), withDelay(90, withTiming(1, close)), withTiming(0, open))
+        : withSequence(withTiming(1, close), withTiming(0, open)));
+      timer = setTimeout(next, BLINK.every + Math.random() * BLINK.spread);
+    };
+    timer = setTimeout(next, delay + 2200);
+    return () => clearTimeout(timer);
+  }, [blink, delay]);
+
+  // The mug: back each visit; once a visit, knocked off (MUG).
+  const visit = mug?.visit, active = !!mug?.active;
+  const mugGone = goneOn !== undefined && goneOn === visit;
+  const mugSteam = !(coldOn !== undefined && coldOn === visit);
+  const acts = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const knocked = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (visit === undefined) return;
+    knocked.current = undefined;
+    for (const v of [mugX, mugY, mugR]) v.set(0);
+  }, [visit, mugX, mugY, mugR]);
+  useEffect(() => {
+    if (visit === undefined || !active || reducedMotion) return;
+    const timers = acts.current;
+    const later = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+    const w = width;
+    const run = w * 1.5 + 40;
+    const knock = () => {
+      if (knocked.current === visit) return;
+      // Not with a hand on it: a little later.
+      if (petting.touch.get() > 0.05 || petting.purr.get() > 0.05) {
+        later(MUG.retry, knock);
+        return;
+      }
+      knocked.current = visit;
+      const quick = Easing.out(Easing.quad);
+      // It turns to the mug, curious.
+      look.set(withTiming(-6, { duration: 380, easing: Easing.inOut(Easing.sin) }));
+      // Two pats: the paw out to it, the mug wobbling; back a little.
+      const pat = (at: number, wobble: number) => later(at, () => {
+        reach.set(withSequence(withTiming(1, { duration: 110, easing: quick }), withDelay(90, withTiming(0.35, { duration: 150 }))));
+        lift.set(withSequence(withTiming(-w * 0.03, { duration: 60 }), withTiming(0, { duration: 60 })));
+        mugR.set(withDelay(100, withSequence(withTiming(wobble, { duration: 70 }), withTiming(-wobble * 0.6, { duration: 90 }), withSpring(0, { damping: 6, stiffness: 220 }))));
+      });
+      pat(600, 5);
+      pat(1350, 8);
+      // A look at it, head tipped, then the nudge: it slides, tips over the edge and drops out of sight.
+      later(2050, () => look.set(withSequence(withTiming(-9, { duration: 200 }), withTiming(-6, { duration: 300 }))));
+      later(2700, () => {
+        setColdOn(visit);
+        reach.set(withSequence(withTiming(1.3, { duration: 200, easing: quick }), withDelay(120, withTiming(0, { duration: 220 }))));
+        mugX.set(withSequence(withTiming(-w * 0.12, { duration: 260, easing: Easing.inOut(Easing.quad) }), withTiming(-w * 0.2, { duration: 420 })));
+        mugR.set(withDelay(200, withTiming(-80, { duration: 300, easing: Easing.in(Easing.quad) })));
+        mugY.set(withDelay(260, withTiming(w * 1.2, { duration: 440, easing: Easing.in(Easing.quad) })));
+      });
+      // Out of sight, gone; a second after it left the sill, the crash.
+      later(3500, () => setGoneOn(visit));
+      later(3000 + MUG.smash, () => {
+        feedback.mugBreak();
+        setBurst({ at: Date.now(), text: "!" });
+        setStartled(true);
+        look.set(withTiming(4, { duration: 80 }));
+        sy.set(withSequence(withTiming(1.14, { duration: 80 }), withTiming(0.9, { duration: 120 }), withTiming(1, { duration: 120 })));
+        sx.set(withSequence(withTiming(0.92, { duration: 80 }), withTiming(1.08, { duration: 120 }), withTiming(1, { duration: 120 })));
+      });
+      // It runs off: a few bounding hops, out of the window.
+      const hops = (from: number, to: number) => {
+        const steps = [0.3, 0.6, 0.85, 1].map((k) => withTiming(from + (to - from) * k, { duration: 110, easing: Easing.linear }));
+        runX.set(withSequence(steps[0], ...steps.slice(1)));
+        const bob = [0, 1, 2, 3].flatMap(() => [withTiming(-w * 0.12, { duration: 55 }), withTiming(0, { duration: 55 })]);
+        runY.set(withSequence(bob[0], ...bob.slice(1)));
+      };
+      const off = 3000 + MUG.smash + 380;
+      later(off, () => {
+        look.set(withTiming(0, { duration: 100 }));
+        hops(0, run);
+      });
+      // Back after a while: it bounds in and sits down.
+      later(off + 440 + MUG.gone, () => {
+        setStartled(false);
+        hops(run, 0);
+      });
+      later(off + 440 + MUG.gone + 460, () => bounce(0));
+    };
+    later(MUG.first + Math.random() * MUG.spread, knock);
+    return () => {
+      timers.forEach(clearTimeout);
+      timers.length = 0;
+      // Left mid-way: back on the sill at once (the mug, if it went, stays gone).
+      for (const v of [look, reach, lift, runX, runY]) {
+        cancelAnimation(v);
+        v.set(0);
+      }
+      setStartled(false);
+    };
+    // bounce, petting's values and feedback are stable for this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visit, active, reducedMotion, width]);
+
   const f = useStopMotion(
-    [pop, sx, sy, breath, petting.poke, petting.lean, petting.purr, petting.clock, petting.touch],
-    [reducedMotion ? 1 : 0, 1, 1, 0, 0, 0, 0, 0, 0],
+    [pop, sx, sy, breath, petting.poke, petting.lean, petting.purr, petting.clock, petting.touch, blink, look, reach, lift, runX, runY],
+    [reducedMotion ? 1 : 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   );
+  const mugF = useStopMotion([mugX, mugY, mugR], [0, 0, 0]);
   const style = useAnimatedStyle(() => {
-    const [p, x, y, b, poke, lean, purr, clock] = f.get();
+    const [p, x, y, b, poke, lean, purr, clock, , , turn, , , rx, ry] = f.get();
     // A hand on it: the flinch, the lean, the purr (its paws stay put: it turns from the bottom).
     const m = pettingMotion(poke, lean, purr, clock, width, height);
     return {
       opacity: Math.min(1, p * 3),
       transform: [
-        { translateY: (1 - p) * height * 0.25 + m.y * 0.4 },
-        { translateX: m.x * 0.6 },
-        { rotate: `${m.rotate * 0.6}deg` },
+        { translateY: (1 - p) * height * 0.25 + m.y * 0.4 + ry },
+        { translateX: m.x * 0.6 + rx + turn * width * 0.004 },
+        { rotate: `${m.rotate * 0.6 + turn}deg` },
         { scaleX: x * m.sx * p * (1 - b * 0.012) },
         { scaleY: y * m.sy * p * (1 + b * 0.02) },
       ],
     };
   });
 
-  const mark = { color: theme.sweet, fontFamily: theme.hand.fontFamily };
+  const mark = { color: theme.glow, fontFamily: theme.hand.fontFamily };
   return (
     <View style={{ width, height }} pointerEvents="box-none">
+      {mug && !mugGone ? (
+        <SillMug size={width * MUG.size} left={width * (MUG.edge - MUG.size)} bottom={mug.base} f={mugF} steam={mugSteam} still={reducedMotion} />
+      ) : null}
       <Animated.View style={[styles.cat, { width, height }, style]}>
         <Tail width={width} height={height} bends={tail} />
         <Image source={ART} style={{ width, height }} resizeMode="contain" />
@@ -228,6 +323,7 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
             lashWidth={Math.max(1.5, width * 0.014)}
           />
         ))}
+        {mug && !reducedMotion ? <PatPaw width={width} height={height} base={mug.base} f={f} /> : null}
         <CatOutfit kind={outfit} width={width} artWidth={TAIL.size[0]} at={OUTFIT} sweet={theme.sweet} foil={theme.foil} />
         {/* Over it all, the hand's layer: stroke it (it purrs), or give it a rub from a screen reader. */}
         <PetLayer petting={petting} label={`${label}${OUTFIT_WORDS[outfit] ? `,${OUTFIT_WORDS[outfit]}` : ""}. Pet the cat`} testID="sitting-cat" />
@@ -239,12 +335,12 @@ export function SittingCat({ width, delay = 0, cheer = 0, label = "The black cat
       ) : null}
       {petting.happy !== null && !reducedMotion ? (
         <View style={[styles.burst, { left: width * 0.5, top: height * 0.1 }]} pointerEvents="none" testID="cat-happy">
-          <Burst key={petting.happy} text="" size={width * 0.5} color={theme.sweet} glyph={mark} />
+          <Burst key={petting.happy} text="" size={width * 0.5} color={theme.glow} glyph={mark} />
         </View>
       ) : null}
       {burst !== null && !reducedMotion ? (
         <View style={[styles.burst, { left: width * 0.5, top: height * 0.12 }]} pointerEvents="none">
-          <Burst key={burst.at} text={burst.text} size={width * 0.7} color={theme.sweet} glyph={mark} />
+          <Burst key={burst.at} text={burst.text} size={width * 0.7} color={theme.glow} glyph={mark} />
         </View>
       ) : null}
     </View>
@@ -305,134 +401,6 @@ export function tailBends(joints: number[]): number[] {
     before = turn;
   }
   return out;
-}
-
-/** The tail's motion (see WHIP): each joint's turn and spin, the sweep's and curl's, the twitch's, and its timetable (s). */
-export type TailState = {
-  t: number; th: number[]; v: number[];
-  sweep: number; sweepV: number; goal: number; omega: number;
-  curl: number; curlV: number; curlGoal: number;
-  tw: number; twV: number;
-  next: number; back: number; backGoal: number; backOmega: number; twitchAt: number;
-  /** The mood its moves were picked for (a new one starts a move at once). */
-  mood: TailMood;
-};
-/** Calm, cross (rough handling) or content (purring). */
-export type TailMood = 0 | 1 | 2;
-
-/** The tail as it lies, about to start a swish. */
-export function restTail(): TailState {
-  "worklet";
-  const n = WHIP.joints.length;
-  const th: number[] = [], v: number[] = [];
-  for (let j = 0; j < n; j++) {
-    th.push(0);
-    v.push(0);
-  }
-  return {
-    t: 0, th, v, sweep: 0, sweepV: 0, goal: 0, omega: WHIP.swish.omega,
-    curl: 0, curlV: 0, curlGoal: WHIP.swish.curl, tw: 0, twV: 0,
-    next: 0.4, back: -1, backGoal: 0, backOmega: 0, twitchAt: 3, mood: 0,
-  };
-}
-
-/** Its next move, when the last one's time is up (`rand` 0..1, as Math.random). */
-function nextMove(st: TailState, mood: TailMood, rand: () => number) {
-  "worklet";
-  if (mood === 1) {
-    const c = WHIP.cross;
-    st.goal = (st.goal > 0 ? -1 : 1) * (c.at + c.atSpread * rand());
-    st.omega = c.omega + c.omegaSpread * rand();
-    st.curlGoal = c.curl;
-    st.next = st.t + c.s + c.sSpread * rand();
-    return;
-  }
-  if (mood === 2) {
-    const c = WHIP.content;
-    st.goal = (st.goal > 0.05 ? -0.3 : 1) * (c.at + c.atSpread * rand());
-    st.omega = c.omega;
-    st.curlGoal = c.curl;
-    st.next = st.t + c.s + c.sSpread * rand();
-    return;
-  }
-  const r = rand();
-  if (r < WHIP.flick.chance) {
-    // A flick out, then back to where it was going.
-    const f = WHIP.flick;
-    st.back = st.t + f.hold;
-    st.backGoal = st.goal;
-    st.backOmega = f.back;
-    st.goal = f.to;
-    st.omega = f.omega;
-    st.next = st.t + 0.9 + rand() * 1.2;
-  } else if (r < WHIP.flick.chance + WHIP.rest.chance) {
-    const w = WHIP.rest;
-    st.goal = w.at + w.atSpread * rand();
-    st.omega = w.omega;
-    st.curlGoal = w.curl;
-    st.next = st.t + w.s + w.sSpread * rand();
-  } else {
-    // A swish the other way: out (away from the body) further than in.
-    const w = WHIP.swish;
-    st.goal = st.goal > 0.2 ? w.in - w.inSpread * rand() : w.out + w.outSpread * rand();
-    st.omega = w.omega + w.omegaSpread * rand();
-    st.curlGoal = w.curl;
-    st.next = st.t + w.s + w.sSpread * rand();
-  }
-}
-
-/**
- * The tail `dt` seconds on (on the UI thread, each frame): its moves picked as
- * they fall due, then its springs run in small steps. A new state; and the
- * joints' turns (radians) for tailBends.
- */
-export function stepTail(from: TailState, mood: TailMood, dt: number, rand: () => number): { state: TailState; joints: number[] } {
-  "worklet";
-  const st: TailState = { ...from, th: from.th.slice(), v: from.v.slice() };
-  const n = WHIP.joints.length;
-  const steps = Math.max(1, Math.ceil(Math.min(0.1, dt) / WHIP.step));
-  const h = Math.min(0.1, dt) / steps;
-  const swing = WHIP.swing * RADIANS, hook = WHIP.hook * RADIANS;
-  if (st.mood !== mood) {
-    st.mood = mood;
-    st.next = st.t;
-    st.back = -1;
-  }
-  for (let k = 0; k < steps; k++) {
-    st.t += h;
-    if (st.back >= 0 && st.t >= st.back) {
-      st.goal = st.backGoal;
-      st.omega = st.backOmega;
-      st.back = -1;
-    }
-    if (st.t >= st.next) nextMove(st, mood, rand);
-    if (st.t >= st.twitchAt) {
-      const [every, spread] = mood === 1 ? WHIP.twitches.cross : mood === 2 ? WHIP.twitches.content : WHIP.twitches.calm;
-      st.twV += (rand() < 0.5 ? -1 : 1) * WHIP.twitchKick * (mood === 2 ? 0.5 : 1);
-      st.twitchAt = st.t + every + spread * rand();
-    }
-    // The sweep and the curl ease to their goals (critically damped); the twitch rings and dies away.
-    st.sweepV += (st.omega * st.omega * (st.goal - st.sweep) - 2 * st.omega * st.sweepV) * h;
-    st.sweep += st.sweepV * h;
-    const co = WHIP.curlOmega;
-    st.curlV += (co * co * (st.curlGoal - st.curl) - 2 * co * st.curlV) * h;
-    st.curl += st.curlV * h;
-    const to = WHIP.twitchOmega;
-    st.twV += (-to * to * st.tw - 2 * WHIP.twitchZeta * to * st.twV) * h;
-    st.tw += st.twV * h;
-    // Each joint follows the one below it, bent by its muscles' share (semi-implicit Euler).
-    let below = 0;
-    for (let j = 0; j < n; j++) {
-      const w = WHIP.omega[j];
-      const target = below + st.sweep * WHIP.sweep[j] * swing + st.curl * WHIP.curl[j] * hook;
-      st.v[j] += (w * w * (target - st.th[j]) - 2 * WHIP.zeta[j] * w * st.v[j]) * h;
-      st.th[j] += st.v[j] * h;
-      below = st.th[j];
-    }
-  }
-  const joints: number[] = [];
-  for (let j = 0; j < n; j++) joints.push(st.th[j] + st.tw * WHIP.twitch[j]);
-  return { state: st, joints };
 }
 
 /**
@@ -530,14 +498,45 @@ function Tail({ width, height, bends }: { width: number; height: number; bends: 
   );
 }
 
+/**
+ * Its paw reaching from its chest to the mug (MUG) and patting it: a forearm of
+ * fur and a paw, out as far as the frame's reach (0 tucked away, 1 on the mug,
+ * more: a push), lifted by its lift.
+ */
+function PatPaw({ width, height, base, f }: { width: number; height: number; base: number; f: SharedValue<number[]> }) {
+  const px = width * MUG.chest.x, py = height * MUG.chest.y;
+  // The mug's shoulder, by the cat: its body's top right, a little down.
+  const tx = width * (MUG.edge - 0.03), ty = height - base - width * MUG.size * 0.95;
+  const L = Math.hypot(tx - px, ty - py);
+  const a = Math.atan2(ty - py, tx - px);
+  const arm = width * 0.085, paw = width * 0.12;
+  const armStyle = useAnimatedStyle(() => {
+    const r = f.get()[11];
+    return { opacity: r > 0.04 ? 1 : 0, transform: [{ rotate: `${(a * 180) / Math.PI}deg` }, { scaleX: Math.max(0.01, r) }] };
+  });
+  const pawStyle = useAnimatedStyle(() => {
+    const v = f.get();
+    const r = v[11];
+    return { opacity: r > 0.04 ? 1 : 0, transform: [{ translateX: Math.cos(a) * L * r }, { translateY: Math.sin(a) * L * r + v[12] }] };
+  });
+  return (
+    <>
+      <Animated.View pointerEvents="none" style={[styles.arm, { left: px, top: py - arm / 2, width: L, height: arm, borderRadius: arm / 2, transformOrigin: "0% 50%" }, armStyle]} />
+      <Animated.View pointerEvents="none" style={[styles.paw, { left: px - paw / 2, top: py - paw * 0.4, width: paw, height: paw * 0.8, borderRadius: paw / 2 }, pawStyle]} testID="sitting-cat-paw" />
+    </>
+  );
+}
+
 /** The lids are shut while a hand is on it (the frame's touch). */
 const touched = (v: number[]) => {
   "worklet";
-  return v[8];
+  return Math.max(v[8], v[9]);
 };
 
 const styles = StyleSheet.create({
   cat: { transformOrigin: "50% 100%" },
   tail: { position: "absolute" },
   burst: { position: "absolute", width: 0, height: 0, alignItems: "center" },
+  arm: { position: "absolute", backgroundColor: FUR },
+  paw: { position: "absolute", backgroundColor: FUR, borderWidth: 1, borderColor: "#3A2C34" },
 });

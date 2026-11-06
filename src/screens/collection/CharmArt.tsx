@@ -6,8 +6,10 @@
 // - a sticker (the plain finish): a die-cut white border, a thin ink line,
 //   the same colours, flat like a sticker;
 // - not earned yet: just its shape, a soft silhouette in the board's tone.
-// Also here: the cat's outfits as little preview icons (the cats draw them
-// on themselves; these only show the choice).
+// Mystery things, not sweets: a skeleton key, a fedora, a struck matchbook; a
+// magnifier, a fingerprint, an evidence tag; a sleepy moon, a planchette, a
+// candle. Also here: the cat's outfits as little preview icons (the cats draw
+// them on themselves; these only show the choice).
 import type { ReactNode } from "react";
 import Svg, { G, Path } from "react-native-svg";
 import type { Accessory, AccessoryChoice, CharmKind, Finish } from "@/game/collection/charms";
@@ -32,94 +34,107 @@ const spark = (cx: number, cy: number, r: number) => {
   const w = r * 0.26;
   return `M${cx} ${r2(cy - r)} Q${r2(cx + w)} ${r2(cy - w)} ${r2(cx + r)} ${cy} Q${r2(cx + w)} ${r2(cy + w)} ${cx} ${r2(cy + r)} Q${r2(cx - w)} ${r2(cy + w)} ${r2(cx - r)} ${cy} Q${r2(cx - w)} ${r2(cy - w)} ${cx} ${r2(cy - r)} Z`;
 };
-const HEART = "M12 21 C5 15.5 2 12.2 2 8.4 C2 5.4 4.3 3.2 7.1 3.2 C9.1 3.2 10.8 4.3 12 6 C13.2 4.3 14.9 3.2 16.9 3.2 C19.7 3.2 22 5.4 22 8.4 C22 12.2 19 15.5 12 21 Z";
-/** A little heart `w` across, centred on (cx, cy). */
-const heart = (cx: number, cy: number, w: number, fill: string): Part => ({ d: HEART, fill, transform: `translate(${r2(cx - w / 2)} ${r2(cy - w / 2)}) scale(${r2(w / 24)})` });
-
 const INK = "#2A1620";
 
 export const DRAWINGS: Record<CharmKind, Drawing> = {
-  // A skeleton key with a heart for its bow.
+  // A skeleton key, its round bow cut through with a keyhole.
   key: {
     tilt: -16,
     base: [
-      { d: "M32 31 C25 26.5 18 22 18 15.6 C18 11.4 21.2 8.4 25 8.4 C28 8.4 30.6 10.2 32 12.8 C33.4 10.2 36 8.4 39 8.4 C42.8 8.4 46 11.4 46 15.6 C46 22 39 26.5 32 31 Z", fill: "#F4A7C0" },
-      { d: "M29 27 H35 V53.5 Q32 57.5 29 53.5 Z", fill: "#7B4A80" },
+      { d: circ(32, 17, 11), fill: "#7B4A80" },
+      { d: "M29 26 H35 V53.5 Q32 57.5 29 53.5 Z", fill: "#7B4A80" },
       { d: "M34 41.5 H42.5 Q44 41.5 44 43 V46.5 Q44 48 42.5 48 H34 Z", fill: "#7B4A80" },
       { d: "M34 50 H40 Q41.5 50 41.5 51.5 V53.5 Q41.5 55 40 55 H34 Z", fill: "#7B4A80" },
     ],
     details: [
-      { d: "M32 22.5 C29.6 20.7 27 19 27 16.6 C27 15 28.2 13.9 29.6 13.9 C30.7 13.9 31.5 14.5 32 15.4 C32.5 14.5 33.3 13.9 34.4 13.9 C35.8 13.9 37 15 37 16.6 C37 19 34.4 20.7 32 22.5 Z", fill: "#3B2540" },
+      { d: circ(32, 15.2, 3.4), fill: "#2A1620" },
+      { d: "M30.3 16.5 H33.7 L34.8 22.6 H29.2 Z", fill: "#2A1620" },
     ],
-    lines: [{ d: "M28.6 33.5 H35.4" }, { d: "M28.6 36.8 H35.4" }],
-    shine: "M21.6 15 Q21.8 12.2 24.6 11.6",
+    lines: [{ d: "M28.6 32.5 H35.4" }, { d: "M28.6 35.8 H35.4" }],
+    shine: "M23.4 14 Q24.2 9.6 28.4 8",
   },
-  // A fedora with a blush band and a feather.
+  // A fedora with an ink band and a press card tucked in it.
   fedora: {
     tilt: -6,
     base: [
       { d: "M18.5 37 Q17 24 21 17.5 Q24.5 12.5 29 15.5 Q32 17 35 15.5 Q39.5 12.5 43 17.5 Q47 24 45.5 37 Z", fill: "#5A3560" },
-      { d: "M41 32 Q44 21 51.5 14.5 Q51 24 44.5 33 Z", fill: "#F4A7C0" },
+      { d: "M40.5 31.5 L44.5 19 L52.5 21.6 L48.5 34 Z", fill: "#F4E6C8" },
       { d: "M7 41 Q8.5 35.5 19 35 Q32 34 45 35 Q55.5 35.5 57 41 Q56 46.5 45 46.5 Q32 48.5 19 46.5 Q8 46.5 7 41 Z", fill: "#432748" },
     ],
-    details: [{ d: "M18.2 30.5 Q32 33.5 45.8 30.5 L45.6 36.2 Q32 38.8 18.4 36.2 Z", fill: "#E9B8A6" }],
-    lines: [{ d: "M32 17.5 Q30.8 22 32 26.5" }, { d: "M43.2 31.5 Q46 24 50.4 16.5", w: 1.2 }],
+    details: [{ d: "M18.2 30.5 Q32 33.5 45.8 30.5 L45.6 36.2 Q32 38.8 18.4 36.2 Z", fill: "#21121C" }],
+    lines: [
+      { d: "M32 17.5 Q30.8 22 32 26.5" },
+      { d: "M44.6 23.4 L50.4 25.3 M43.7 26.4 L48.4 27.9", w: 1.1, color: "#5A3560", alt: "#5A3560" },
+    ],
     shine: "M22 25 Q22 19.5 25 17",
   },
-  // A champagne coupe with a lipstick kiss on its rim.
-  glass: {
+  // A matchbook from a hotel bar, one match struck.
+  matchbook: {
     tilt: 8,
     base: [
-      { d: "M11 17 H53 Q52.5 32.5 32 35.5 Q11.5 32.5 11 17 Z", fill: "#FFE6C2" },
-      { d: "M30 34 H34 V49 H30 Z", fill: "#F8EEF1" },
-      { d: "M19 52.5 Q20 48.5 32 48.5 Q44 48.5 45 52.5 Q44 56 32 56 Q20 56 19 52.5 Z", fill: "#F8EEF1" },
+      { d: "M15.5 12.5 H20.5 V24 H15.5 Z", fill: "#F4E6C8" },
+      { d: "M22.5 12.5 H27.5 V24 H22.5 Z", fill: "#F4E6C8" },
+      { d: "M29.5 12.5 H34.5 V24 H29.5 Z", fill: "#F4E6C8" },
+      { d: "M39.5 31.5 L50.6 14.2 L54.4 16.6 L43.3 33.9 Z", fill: "#F4E6C8" },
+      { d: "M55.5 3.5 Q61 9.5 59.5 13.5 Q58 16.8 54.6 16 Q51.2 15 51.6 11.2 Q52 7.5 55.5 3.5 Z", fill: "#FFD9A8" },
+      { d: "M14 22 H44 Q47 22 47 25 V53 Q47 56 44 56 H14 Q11 56 11 53 V25 Q11 22 14 22 Z", fill: "#7A2A3C" },
     ],
     details: [
-      { d: "M13.2 22 Q32 25.5 50.8 22 Q49.5 31 32 33 Q14.5 31 13.2 22 Z", fill: "#F5C88E" },
-      { d: circ(24, 28, 1.4), fill: "#FFF6E6" },
-      { d: circ(28.5, 25.8, 1), fill: "#FFF6E6" },
-      { d: circ(34, 29, 1.2), fill: "#FFF6E6" },
-      { d: "M37 17.6 Q39.6 14.6 42 16.6 Q44.4 14.6 47 17.6 Q44.6 21.6 42 21.4 Q39.4 21.6 37 17.6 Z", fill: "#D6406E" },
+      { d: circ(18, 12.5, 3), fill: "#C83D50" },
+      { d: circ(25, 12.5, 3), fill: "#C83D50" },
+      { d: circ(32, 12.5, 3), fill: "#C83D50" },
+      { d: circ(52.6, 15.4, 2.8), fill: "#3A2630" },
+      { d: "M55.6 7.6 Q58.2 10.6 57.4 12.6 Q56.6 14.2 55 13.8 Q53.4 13.2 53.6 11.4 Q53.8 9.6 55.6 7.6 Z", fill: "#F5A25A" },
+      { d: "M11 40 H47 V45 H11 Z", fill: "#F4E6C8" },
+      { d: "M11 49.5 H47 V53 Q47 56 44 56 H14 Q11 56 11 53 Z", fill: "#3A2630" },
+      { d: spark(29, 31.5, 5.6), fill: "#E9C97F" },
     ],
-    lines: [{ d: "M37.8 17.8 Q42 19.2 46.2 17.8", w: 1.1, color: "#7B2445", alt: "#7B2445" }],
-    shine: "M16 21 Q17.5 27 22.5 30",
+    lines: [{ d: "M11 26.5 H47", w: 1.2 }],
+    shine: "M14.5 29 V37",
   },
-  // A magnifier with a heart in its lens.
+  // A magnifier, a fingerprint's ridges caught in its lens.
   magnifier: {
     tilt: 0,
     base: [
       { d: "M38 42 L42 38 L54.5 50.5 Q57 53 55 55 Q53 57 50.5 54.5 Z", fill: "#6A3036" },
       { d: circ(27, 27, 17), fill: "#C83D50" },
     ],
-    details: [{ d: circ(27, 27, 11.5), fill: "#FFF3D6" }, heart(27.5, 28.5, 10, "#E3566A")],
-    lines: [{ d: "M44.4 47.2 L47.2 44.4" }, { d: "M48.4 51.2 L51.2 48.4" }],
+    details: [{ d: circ(27, 27, 11.5), fill: "#FFF3D6" }],
+    lines: [
+      { d: "M44.4 47.2 L47.2 44.4" },
+      { d: "M48.4 51.2 L51.2 48.4" },
+      { d: "M21.5 32 Q20.6 23.5 27.6 23.2 Q33.6 23 34 29.5", w: 1.5, color: "#C83D50", alt: "#C83D50" },
+      { d: "M25 33 Q24.4 27 28 27 Q30.8 27 30.8 30.4", w: 1.5, color: "#C83D50", alt: "#C83D50" },
+    ],
     shine: "M19.6 24 Q20.6 19.4 25 18",
   },
-  // A heart with a fingerprint's ridges.
+  // A fingerprint, its ridges whorled.
   fingerprint: {
     tilt: -5,
-    base: [{ d: "M32 55 C20 46 9 38 9 24.5 C9 16 15 10 22.2 10 C26.6 10 30 12.6 32 16.2 C34 12.6 37.4 10 41.8 10 C49 10 55 16 55 24.5 C55 38 44 46 32 55 Z", fill: "#C83D50" }],
+    base: [{ d: "M32 8 C44.5 8 52.5 18 52.5 31 C52.5 46 43.5 56 32 56 C20.5 56 11.5 46 11.5 31 C11.5 18 19.5 8 32 8 Z", fill: "#C83D50" }],
     lines: [
       { d: "M32 29.5 Q34 29.5 34 31.5 Q34 34 31.5 36", alt: "#FBEFE8" },
       { d: "M27.5 31.5 Q27.5 25.5 32 25.5 Q38 25.5 38 31.5 Q38 37 33 41", alt: "#FBEFE8" },
       { d: "M23.5 33 Q22.5 21.5 32 21.5 Q42 21.5 42 31.5 Q42 39.5 35.5 45", alt: "#FBEFE8" },
       { d: "M18.5 30 Q19.5 17.5 32 17.5 Q45 17.5 46.5 30", alt: "#FBEFE8" },
       { d: "M27.5 44.5 Q31 40.5 30 35.5", alt: "#FBEFE8" },
+      { d: "M17.5 37 Q19.5 45.5 26 50.5", alt: "#FBEFE8" },
     ],
-    shine: "M14.5 22 Q15.2 16.8 19.5 15",
+    shine: "M16.5 22 Q17.5 15.5 22.5 12.5",
   },
-  // An evidence tag on its red string, a heart for the case.
+  // An evidence tag on its red string, checked off.
   tag: {
     tilt: -10,
     base: [{ d: "M13 24 L23 13 H51 Q54.5 13 54.5 16.5 V45.5 Q54.5 49 51 49 H23 L13 38 Z", fill: "#F6D776" }],
     details: [
       { d: "M28 18.5 H50 V25 H28 Z", fill: "#C83D50" },
       { d: circ(20.5, 31, 3.2), fill: "#2A161B" },
-      heart(45, 40.5, 8, "#C83D50"),
+      { d: circ(45, 40.5, 4.8), fill: "#C83D50" },
     ],
     lines: [
       { d: "M28 31 H48", w: 1.6, color: "#7A5A33", alt: "#7A5A33" },
       { d: "M28 36.5 H39", w: 1.6, color: "#7A5A33", alt: "#7A5A33" },
+      { d: "M42.6 40.6 L44.4 42.5 L47.6 38.8", w: 1.5, color: "#FBEFE8", alt: "#FBEFE8" },
       { d: "M20.5 31 Q11 22 6.5 29 Q6 36 20.5 31", w: 2, color: "#C83D50", alt: "#C83D50" },
     ],
     shine: "M16.5 26 L21.5 20.5",
@@ -131,11 +146,11 @@ export const DRAWINGS: Record<CharmKind, Drawing> = {
       { d: "M40 7 C25 7.5 13.5 19 14 32.5 C14.5 46 26 57 41 56 C45.5 55.7 49.5 54.2 52.5 52 C40 52.5 30.5 43.5 30 32 C29.6 21 34.5 11.5 40 7 Z", fill: "#F6E7B0" },
       { d: spark(46, 22, 8), fill: "#9FF2D8" },
     ],
-    details: [{ d: circ(21.5, 39, 2.4), fill: "#F3B6E6" }],
+    details: [{ d: circ(21.5, 39, 2.4), fill: "#C9B6F5" }],
     lines: [{ d: "M18.5 32.5 Q21.5 35.5 24.5 32.5", w: 1.8, color: "#3A2E5C", alt: "#3A2E5C" }],
     shine: "M19 21 Q21 15.5 25.5 12.5",
   },
-  // A heart-shaped planchette and its little window.
+  // A planchette, its little window and its star.
   planchette: {
     tilt: 10,
     base: [{ d: "M32 5.5 C35.5 10.5 52 21 54.2 34.5 C55.8 46 46.5 55 32 55 C17.5 55 8.2 46 9.8 34.5 C12 21 28.5 10.5 32 5.5 Z", fill: "#B8A6F7" }],
@@ -143,13 +158,13 @@ export const DRAWINGS: Record<CharmKind, Drawing> = {
       { d: circ(32, 29, 8.5), fill: "#F6E7B0" },
       { d: circ(32, 29, 6), fill: "#252949" },
       { d: spark(32, 29, 3.4), fill: "#9FF2D8" },
-      { d: spark(20, 41, 3.2), fill: "#F3B6E6" },
-      { d: spark(44, 41, 3.2), fill: "#F3B6E6" },
+      { d: circ(20, 42, 1.8), fill: "#F6E7B0" },
+      { d: circ(44, 42, 1.8), fill: "#F6E7B0" },
     ],
     lines: [{ d: "M20 48.5 Q32 52 44 48.5" }],
     shine: "M15.5 31 Q17 21.5 23 15.5",
   },
-  // A candle with a spirit-mint flame and orchid drips.
+  // A candle with a spirit-mint flame and lavender drips.
   candle: {
     tilt: 0,
     base: [
@@ -159,7 +174,7 @@ export const DRAWINGS: Record<CharmKind, Drawing> = {
     ],
     details: [
       { d: "M32 12.5 Q35 16.5 34.6 19.2 Q34 21.6 32 21.6 Q30 21.6 29.4 19.2 Q29 16.5 32 12.5 Z", fill: "#FFFBEA" },
-      { d: "M25 26 H39 V31 Q37.5 34 36.5 31.5 Q35.5 36.5 33.8 31.8 Q32 29.5 30 32.5 Q28.5 37 27.5 32 Q26.5 30 25 31.5 Z", fill: "#F3B6E6" },
+      { d: "M25 26 H39 V31 Q37.5 34 36.5 31.5 Q35.5 36.5 33.8 31.8 Q32 29.5 30 32.5 Q28.5 37 27.5 32 Q26.5 30 25 31.5 Z", fill: "#C9B6F5" },
     ],
     lines: [{ d: "M32 23.6 V26.4", w: 1.6, color: "#252949", alt: "#252949" }, { d: "M19.5 50.6 Q32 53 44.5 50.6" }],
     shine: "M28 35 V44",
@@ -224,16 +239,11 @@ export function Charm({ kind, finish = "gold", size, silhouette = false, tone = 
 // The cat's outfits, as preview icons (a 40 box)
 // ---------------------------------------------------------------------------
 
-const petals = (cx: number, cy: number, r: number) =>
-  Array.from({ length: 5 }, (_, i) => {
-    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-    return circ(r2(cx + Math.cos(a) * r), r2(cy + Math.sin(a) * r), r2(r * 0.78));
-  });
-
 /** One of the cat's outfits (or "none": a paw), `size` across, in its own colours; `muted` when locked. */
 export function AccessoryIcon({ accessory, size, muted = false, tone = "#4A3A52" }: { accessory: AccessoryChoice; size: number; muted?: boolean; tone?: string }) {
   const c = (hex: string) => (muted ? tone : hex);
   const ink = muted ? tone : INK;
+  const glint = muted ? null : (d: string, o = 0.8) => <Path d={d} fill="none" stroke="#FFFFFF" strokeOpacity={o} strokeWidth={1.4} strokeLinecap="round" />;
   const body = ((): ReactNode => {
     switch (accessory) {
       case "none":
@@ -246,52 +256,56 @@ export function AccessoryIcon({ accessory, size, muted = false, tone = "#4A3A52"
             <Path d={circ(29, 17.5, 3.2)} />
           </G>
         );
-      case "bow":
+      case "collar":
         return (
           <G strokeLinejoin="round">
-            <Path d="M18.5 23 L14 33 L17.4 31.8 L19.4 34.5 L21 24.5 Z" fill={c("#D9708F")} stroke={ink} strokeWidth={1.4} />
-            <Path d="M21.5 23 L26 33 L22.6 31.8 L20.6 34.5 L19 24.5 Z" fill={c("#D9708F")} stroke={ink} strokeWidth={1.4} />
-            <Path d="M20 20 Q9 9.5 5.5 14 Q3.5 19.5 5.5 25 Q9 30 20 20 Z" fill={c("#F4A7C0")} stroke={ink} strokeWidth={1.6} />
-            <Path d="M20 20 Q31 9.5 34.5 14 Q36.5 19.5 34.5 25 Q31 30 20 20 Z" fill={c("#F4A7C0")} stroke={ink} strokeWidth={1.6} />
-            <Path d={circ(20, 20, 3.6)} fill={c("#E58AA7")} stroke={ink} strokeWidth={1.6} />
-            {muted ? null : <Path d="M8.5 16.5 Q9.5 14.5 12 14.2" fill="none" stroke="#FFFFFF" strokeOpacity={0.8} strokeWidth={1.4} strokeLinecap="round" />}
+            <Path d="M4 9 Q20 17 36 9 L35.4 14.2 Q20 22.4 4.6 14.2 Z" fill={c("#6E3B24")} stroke={ink} strokeWidth={1.4} />
+            <Path d="M6.4 12.4 Q20 18.6 33.6 12.4" fill="none" stroke={c("#D9B98A")} strokeWidth={0.9} strokeDasharray="1.8 2" />
+            <Path d="M8 10.4 L12.4 12.2 L11.6 17.4 L7.2 15.6 Z" fill="none" stroke={c("#E8C36F")} strokeWidth={1.4} />
+            <Path d={circ(20, 20.2, 1.8)} fill="none" stroke={ink} strokeWidth={1.3} />
+            <Path d={circ(20, 27, 7.4)} fill={c("#E8C36F")} stroke={ink} strokeWidth={1.6} />
+            <Path d="M13.2 25.6 Q20 28.2 26.8 25.6" fill="none" stroke={c("#A97F33")} strokeWidth={1.3} />
+            <Path d={circ(20, 29.6, 1.6)} fill={ink} />
+            <Path d="M20 30.6 V33.6" stroke={ink} strokeWidth={1.5} strokeLinecap="round" />
+            {glint?.("M15.6 24 Q16.4 21.6 18.6 21.1", 0.85)}
           </G>
         );
-      case "bell":
+      case "scarf":
         return (
           <G strokeLinejoin="round">
-            <Path d="M4 11 Q20 17.5 36 11" fill="none" stroke={c("#C83D50")} strokeWidth={3.6} strokeLinecap="round" />
-            <Path d={circ(20, 15.5, 2.6)} fill="none" stroke={ink} strokeWidth={1.6} />
-            <Path d={circ(20, 25, 9.2)} fill={c("#E8C36F")} stroke={ink} strokeWidth={1.6} />
-            <Path d="M11.4 23 Q20 26.5 28.6 23" fill="none" stroke={c("#A97F33")} strokeWidth={1.4} />
-            <Path d={circ(20, 28.6, 1.8)} fill={ink} />
-            <Path d="M20 30 V33.6" stroke={ink} strokeWidth={1.6} strokeLinecap="round" />
-            {muted ? null : <Path d="M14.5 21.5 Q15.5 18.6 18.2 18" fill="none" stroke="#FFFFFF" strokeOpacity={0.85} strokeWidth={1.4} strokeLinecap="round" />}
+            <Path d="M14.4 18 L10.6 33.6 L17.2 34.8 L19.4 18.6 Z" fill={c("#E8DCC3")} stroke={ink} strokeWidth={1.3} />
+            <Path d="M11.6 28.4 L17.9 29.6" stroke={c("#5A2E4A")} strokeWidth={1.8} strokeLinecap="round" />
+            <Path d="M19 18 L22 32.8 L28 31 L23.4 17.4 Z" fill={c("#E8DCC3")} stroke={ink} strokeWidth={1.3} />
+            <Path d="M21.2 27 L26.4 25.4" stroke={c("#5A2E4A")} strokeWidth={1.8} strokeLinecap="round" />
+            <Path d="M3.5 9 Q20 18 36.5 9 L35.8 15.6 Q20 25 4.2 15.6 Z" fill={c("#E8DCC3")} stroke={ink} strokeWidth={1.5} />
+            <Path d="M8 13.6 L9.4 15.4 L10.8 13.6 M14 16 L15.4 17.8 L16.8 16 M23.2 16 L24.6 17.8 L26 16 M29.2 13.6 L30.6 15.4 L32 13.6" fill="none" stroke={c("#BFA983")} strokeWidth={0.9} strokeLinecap="round" />
+            <Path d={circ(17.6, 18.4, 3.8)} fill={c("#E8DCC3")} stroke={ink} strokeWidth={1.3} />
           </G>
         );
-      case "beret":
+      case "specs":
         return (
-          <G strokeLinejoin="round">
-            <Path d="M19 12 Q19.4 7.6 22.6 7" fill="none" stroke={ink} strokeWidth={2} strokeLinecap="round" />
-            <Path d="M5.5 24 Q4 13.5 20 12 Q36 13.5 34.5 24 Q28 28 20 28 Q12 28 5.5 24 Z" fill={c("#B23A5C")} stroke={ink} strokeWidth={1.6} />
-            <Path d="M8.5 25.6 Q20 30.5 31.5 25.6 L31 28.6 Q20 33 9 28.6 Z" fill={c("#6E2240")} stroke={ink} strokeWidth={1.4} />
-            {muted ? null : <Path d="M10.5 19 Q12.5 15.4 17 14.6" fill="none" stroke="#FFFFFF" strokeOpacity={0.6} strokeWidth={1.4} strokeLinecap="round" />}
+          <G>
+            <Path d={circ(11.5, 21, 7.6)} fill={muted ? "none" : "rgba(255, 244, 226, 0.1)"} stroke={ink} strokeWidth={3.4} />
+            <Path d={circ(11.5, 21, 7.6)} fill="none" stroke={c("#E8C36F")} strokeWidth={1.6} />
+            <Path d={circ(28.5, 21, 7.6)} fill={muted ? "none" : "rgba(255, 244, 226, 0.1)"} stroke={ink} strokeWidth={3.4} />
+            <Path d={circ(28.5, 21, 7.6)} fill="none" stroke={c("#E8C36F")} strokeWidth={1.6} />
+            <Path d="M18.6 19.4 Q20 16.8 21.4 19.4" fill="none" stroke={ink} strokeWidth={3} strokeLinecap="round" />
+            <Path d="M18.6 19.4 Q20 16.8 21.4 19.4" fill="none" stroke={c("#E8C36F")} strokeWidth={1.4} strokeLinecap="round" />
+            {glint?.("M7.4 19.2 Q8 16.4 10.6 15.8", 0.7)}
+            {glint?.("M24.4 19.2 Q25 16.4 27.6 15.8", 0.7)}
           </G>
         );
-      case "flowers":
+      case "deerstalker":
         return (
           <G strokeLinejoin="round">
-            <Path d="M7 26 Q20 31 33 26" fill="none" stroke={c("#7FB58F")} strokeWidth={2.4} strokeLinecap="round" />
-            {[
-              { x: 11, y: 21, r: 4.2, fill: "#F4A7C0" },
-              { x: 29, y: 21, r: 4.2, fill: "#B8A6F7" },
-              { x: 20, y: 17, r: 5, fill: "#FFD9A8" },
-            ].map((f, i) => (
-              <G key={i}>
-                {petals(f.x, f.y, f.r).map((d, j) => <Path key={j} d={d} fill={c(f.fill)} stroke={ink} strokeWidth={1.1} />)}
-                <Path d={circ(f.x, f.y, f.r * 0.55)} fill={c("#F6D776")} stroke={ink} strokeWidth={1.1} />
-              </G>
-            ))}
+            <Path d="M10.4 25.6 Q5.6 25.4 3 28.8 Q8.4 30.2 12.6 27.8 Z" fill={c("#6A4E31")} stroke={ink} strokeWidth={1.3} />
+            <Path d="M29.6 25.6 Q34.4 25.4 37 28.8 Q31.6 30.2 27.4 27.8 Z" fill={c("#6A4E31")} stroke={ink} strokeWidth={1.3} />
+            <Path d="M8 27.4 Q6.8 13.6 20 11.6 Q33.2 13.6 32 27.4 Q20 30.4 8 27.4 Z" fill={c("#9C7A52")} stroke={ink} strokeWidth={1.5} />
+            <Path d="M9.2 21.6 Q20 19 30.8 21.6 M15 28.4 Q13.8 18.4 18.6 12 M25 28.4 Q26.2 18.4 21.4 12" fill="none" stroke={c("#6A4E31")} strokeWidth={0.9} strokeLinecap="round" />
+            <Path d="M10.4 17.4 Q20 15 29.6 17.4" fill="none" stroke={c("#B4553F")} strokeWidth={0.7} strokeLinecap="round" />
+            <Path d="M10.6 24.8 Q9.8 19.6 13.2 19.4 Q14.4 22.6 12.6 25.4 Z M29.4 24.8 Q30.2 19.6 26.8 19.4 Q25.6 22.6 27.4 25.4 Z" fill={c("#6A4E31")} stroke={ink} strokeWidth={1.1} />
+            <Path d={circ(20, 11.4, 1.8)} fill={c("#6A4E31")} stroke={ink} strokeWidth={1.1} />
+            {glint?.("M11.6 19.6 Q12.6 15.6 16.4 14", 0.45)}
           </G>
         );
     }

@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  ALL_CHARMS, MODE_CHARMS, TITLES, finishFor, nextTitle, pickCharm, titleFor, titleNews, unlockAt, unlockedAccessories,
+  ACCESSORIES, ALL_CHARMS, CHARM_INFO, MODE_CHARMS, TITLES, charmKindOf, finishFor, nextTitle, pickCharm, titleFor, titleNews, unlockAt, unlockedAccessories,
 } from "../charms";
 import {
   ACCESSORY_KEY, COLLECTION_KEY, awardCharm, casesClosed, loadAccessory, loadCollection, markBoardSeen, parseCollection,
@@ -45,19 +45,36 @@ describe("charms", () => {
 
   it("has a ladder of titles that grows with cases closed, with outfits on the way", () => {
     expect(TITLES.length).toBeGreaterThanOrEqual(6);
-    expect(titleFor(0).title).toBe("Tea-Stained Novice");
-    expect(titleFor(3).title).toBe("Velvet Sleuth");
-    expect(titleFor(999).title).toBe("Midnight Oracle");
-    expect(titleFor(-4).title).toBe("Tea-Stained Novice");
+    expect(titleFor(0).title).toBe("Armchair Amateur");
+    expect(titleFor(3).title).toBe("Night-Owl Sleuth");
+    expect(titleFor(999).title).toBe("Legendary Know-It-All");
+    expect(titleFor(-4).title).toBe("Armchair Amateur");
     expect(nextTitle(0)?.at).toBe(1);
     expect(nextTitle(999)).toBeNull();
     expect(unlockedAccessories(0)).toEqual([]);
-    expect(unlockedAccessories(3)).toEqual(["bow", "bell"]);
-    expect(unlockedAccessories(100)).toEqual(["bow", "bell", "beret", "flowers"]);
-    for (const a of ["bow", "bell", "beret", "flowers"] as const) expect(Number.isFinite(unlockAt(a))).toBe(true);
-    expect(titleNews(titleFor(3))).toBe("Now a Velvet Sleuth · a bell for the cat");
-    expect(titleNews(titleFor(6))).toBe("Now an Inkwell Inspector · a beret for the cat");
-    expect(titleNews(titleFor(15))).toBe("Now a Midnight Oracle");
+    expect(unlockedAccessories(1)).toEqual(["collar"]);
+    expect(unlockedAccessories(3)).toEqual(["collar", "scarf"]);
+    expect(unlockedAccessories(100)).toEqual(["collar", "scarf", "specs", "deerstalker"]);
+    for (const a of ACCESSORIES) expect(Number.isFinite(unlockAt(a))).toBe(true);
+    expect(titleNews(titleFor(1))).toBe("Now a Keyhole Snoop · a bell collar for the cat");
+    expect(titleNews(titleFor(3))).toBe("Now a Night-Owl Sleuth · a knitted scarf for the cat");
+    expect(titleNews(titleFor(6))).toBe("Now an Inkwell Inspector · spectacles for the cat");
+    expect(titleNews(titleFor(10))).toBe("Now an Unflappable Detective · a deerstalker for the cat");
+    expect(titleNews(titleFor(15))).toBe("Now a Legendary Know-It-All");
+  });
+
+  it("names its charms and outfits as mystery things, never hearts, bows or flowers", () => {
+    const words = [...Object.values(CHARM_INFO).map((c) => c.name), ...ACCESSORIES, ...TITLES.map((t) => t.title)].join(" ");
+    expect(words).not.toMatch(/heart|lipstick|kiss|bow\b|flower|beret|tiara/i);
+  });
+
+  it("reads an older build's charm under its new name", () => {
+    expect(charmKindOf("glass")).toBe("matchbook");
+    expect(charmKindOf("matchbook")).toBe("matchbook");
+    expect(charmKindOf("toString")).toBeNull();
+    expect(charmKindOf(7)).toBeNull();
+    const kept = parseCollection(JSON.stringify({ cases: { r: { genre: "noir", kind: "glass", finish: "gold", at: 1 } } }));
+    expect(kept.cases.r.kind).toBe("matchbook");
   });
 });
 
@@ -87,7 +104,7 @@ describe("the board on the device", () => {
     expect(first.status).toBe("new");
     expect(first.closed).toBe(1);
     expect(first.charm.finish).toBe("sticker");
-    expect(first.title?.title).toBe("Candlelit Snoop");
+    expect(first.title?.title).toBe("Keyhole Snoop");
     resetAwardMemory();
     const again = await awardCharm("r1", "noir", { hints: 3, wrong: 4 }, 200);
     expect(again.status).toBe("kept");
@@ -135,14 +152,14 @@ describe("the board on the device", () => {
   });
 
   it("says which title the case will bring before it is awarded", async () => {
-    expect((await titleIfClosed("r1"))?.title).toBe("Candlelit Snoop");
+    expect((await titleIfClosed("r1"))?.title).toBe("Keyhole Snoop");
     await awardCharm("r1", "noir", null);
-    expect((await titleIfClosed("r1"))?.title).toBe("Candlelit Snoop");
+    expect((await titleIfClosed("r1"))?.title).toBe("Keyhole Snoop");
     resetAwardMemory();
     expect(await titleIfClosed("r1")).toBeNull();
     expect(await titleIfClosed("r2")).toBeNull();
     await awardCharm("r2", "noir", null);
-    expect((await titleIfClosed("r3"))?.title).toBe("Velvet Sleuth");
+    expect((await titleIfClosed("r3"))?.title).toBe("Night-Owl Sleuth");
   });
 
   it("counts charms as new until the board is seen", async () => {
@@ -159,14 +176,23 @@ describe("the cat's outfit", () => {
     expect(await loadAccessory()).toBe("none");
     const heard: string[] = [];
     const off = subscribeAccessory((a) => heard.push(a));
-    await saveAccessory("beret");
-    expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("beret");
-    expect(await loadAccessory()).toBe("beret");
+    await saveAccessory("specs");
+    expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("specs");
+    expect(await loadAccessory()).toBe("specs");
     await saveAccessory("none");
     expect(await AsyncStorage.getItem(ACCESSORY_KEY)).toBe("none");
     off();
-    await saveAccessory("bow");
-    expect(heard).toEqual(["beret", "none"]);
+    await saveAccessory("deerstalker");
+    expect(heard).toEqual(["specs", "none"]);
+  });
+
+  it("reads an older build's bell as the collar, and its bow, beret and flowers as none", async () => {
+    await AsyncStorage.setItem(ACCESSORY_KEY, "bell");
+    expect(await loadAccessory()).toBe("collar");
+    for (const old of ["bow", "beret", "flowers"]) {
+      await AsyncStorage.setItem(ACCESSORY_KEY, old);
+      expect(await loadAccessory()).toBe("none");
+    }
   });
 
   it("reads anything else as none", async () => {

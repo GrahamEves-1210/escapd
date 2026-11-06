@@ -290,25 +290,26 @@ describe("the cat's outfit", () => {
     await setCatAccessory("none");
   });
 
-  it("reads exactly the kept choice (anything else is none)", () => {
-    expect(parseCatAccessory("beret")).toBe("beret");
-    expect(parseCatAccessory("crown")).toBe("none");
+  it("reads exactly the kept choice (an older build's bell is the collar; anything else is none)", () => {
+    expect(parseCatAccessory("deerstalker")).toBe("deerstalker");
+    expect(parseCatAccessory("bell")).toBe("collar");
+    for (const gone of ["bow", "beret", "flowers", "crown", "toString", ""]) expect(parseCatAccessory(gone)).toBe("none");
     expect(parseCatAccessory(null)).toBe("none");
   });
 
   it("is put on both cats from the device, and changes at once when picked", async () => {
-    await AsyncStorage.setItem(CAT_ACCESSORY_KEY, "bow");
+    await AsyncStorage.setItem(CAT_ACCESSORY_KEY, "specs");
     const { result } = await renderHook(() => useCatAccessory());
     await act(async () => {});
-    expect(result.current).toBe("bow");
+    expect(result.current).toBe("specs");
     const x = makeMutable(0.5), y = makeMutable(0.4);
     const view = await render(<><PeekingCat width={58} beamX={x} beamY={y} frame={null} /><SittingCat width={100} label="The black cat" /></>);
     await act(async () => {});
-    expect(screen.getAllByTestId("cat-outfit-bow", { includeHiddenElements: true })).toHaveLength(2);
-    expect(screen.getByLabelText("A black cat in a bow watches your light")).toBeTruthy();
-    await act(async () => setCatAccessory("flowers"));
-    expect(screen.getAllByTestId("cat-outfit-flowers", { includeHiddenElements: true })).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "The black cat, in a flower crown. Pet the cat" })).toBeTruthy();
+    expect(screen.getAllByTestId("cat-outfit-specs", { includeHiddenElements: true })).toHaveLength(2);
+    expect(screen.getByLabelText("A black cat in round spectacles watches your light")).toBeTruthy();
+    await act(async () => setCatAccessory("deerstalker"));
+    expect(screen.getAllByTestId("cat-outfit-deerstalker", { includeHiddenElements: true })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "The black cat, in a deerstalker. Pet the cat" })).toBeTruthy();
     await view.unmount();
   });
 });

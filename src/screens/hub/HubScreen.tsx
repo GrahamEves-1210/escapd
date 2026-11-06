@@ -115,6 +115,14 @@ export function HubScreen() {
 
   // Home is the shell: no mode while it is in front.
   useModeOnFocus(null);
+  // Each time home comes to the front is a visit: the cat's mug is back on the sill (it may knock it off again).
+  const [sillVisit, setSillVisit] = useState({ n: 0, active: false });
+  useFocusEffect(
+    useCallback(() => {
+      setSillVisit((v) => ({ n: v.n + 1, active: true }));
+      return () => setSillVisit((v) => ({ ...v, active: false }));
+    }, []),
+  );
 
   // Leaving home drops a late result (nothing navigates a player who has
   // gone), returns a busy card to idle, closes the prompt and clears the
@@ -414,7 +422,8 @@ export function HubScreen() {
         {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
         {catWidth > 0 ? (
           <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
-            <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill" />
+            <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill"
+              mug={{ visit: sillVisit.n, active: sillVisit.active, base: CAT.sink }} />
           </View>
         ) : null}
 

@@ -1,6 +1,6 @@
 // The casebook's doodles, drawn in the cat's inky hand: a confident line gone
 // over twice (a second, thinner pass a hair off the first), round ends, never
-// a ruler's edge. Stars, hearts, sparkles, a moon, a pressed flower, a paw
+// a ruler's edge. Stars, sparkles, a moon, a pressed flower, a paw
 // print, arrows and underlines; and the little things a polaroid shows
 // (a matchbook, an envelope, a ticket...). All decoration: hidden from screen
 // readers. Small SVGs, drawn once.
@@ -39,16 +39,6 @@ export const Star = memo(function Star({ color, size = 22, fill, rotate, style }
     <View style={box(size, rotate, style)} {...hidden}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Ink d="M12 2.6 L14.5 9.1 L21.4 9.3 L16 13.7 L18 20.5 L12 16.7 L6.2 20.8 L8 13.9 L2.7 9.7 L9.6 9 Z" color={color} fill={fill ?? "none"} />
-      </Svg>
-    </View>
-  );
-});
-
-export const Heart = memo(function Heart({ color, size = 20, fill, rotate, style }: DoodleProps) {
-  return (
-    <View style={box(size, rotate, style)} {...hidden}>
-      <Svg width={size} height={size} viewBox="0 0 24 24">
-        <Ink d="M12 20.4 C5.2 15.6 2.6 11.6 3.6 8 C4.7 4.5 9.4 3.9 12 7.7 C14.4 3.7 19.5 4.3 20.5 8.1 C21.5 11.8 18.6 15.7 12 20.4 Z" color={color} fill={fill ?? "none"} />
       </Svg>
     </View>
   );

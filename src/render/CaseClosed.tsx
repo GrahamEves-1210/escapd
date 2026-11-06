@@ -56,7 +56,7 @@ import { useFeedback } from "@/game/feedback";
 import { setMode, themeFor } from "@/game/mode";
 import { SittingCat } from "@/play2/SittingCat";
 import { useTheme } from "@/theme/ThemeProvider";
-import { LETTER, LETTER_SHEET, LETTER_TEXT, PAGE, PAYOFF_TYPE, alpha, handType } from "@/theme/payoff";
+import { LETTER, LETTER_SHEET, LETTER_TEXT, PAGE, PAYOFF_TYPE, SEAL, alpha, handType } from "@/theme/payoff";
 import { Letterhead } from "@/play2/letters/Letterhead";
 import { PaperClip, Sprig } from "@/play2/letters/Marks";
 import { Paper } from "@/play2/letters/Paper";
@@ -384,9 +384,9 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
                   delay={Math.max(0, pinAt(plan) - elapsed())}
                   from={{ x: (width - 2 * L.edge) / 2 - PIN.size / 2 + 12, y: L.pad + L.head + L.gap + heroH / 2 - PIN.size / 2 + 14 }}
                   reduced={reduced}
-                  colors={[payoff.glow, payoff.sweet, payoff.foil]}
+                  colors={[payoff.glow, payoff.foil, theme.ink]}
                   tagInk={PAGE.ink}
-                  tagPaper={payoff.sweet}
+                  tagPaper={SEAL.light}
                   style={styles.pin}
                   testID="closed-charm"
                 />
@@ -435,7 +435,7 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
 
                 <Confetti
                   fire={cheer}
-                  colors={[payoff.sweet, payoff.foil, theme.accent, payoff.glow]}
+                  colors={[payoff.foil, payoff.glow, theme.accent, theme.ink]}
                   x={Math.max(polaroidW - sealSize * 0.45, polaroidW + column / 2 - sealSize / 2 - 10) + sealSize / 2}
                   y={sealSize / 2 + 4}
                   reduced={reduced}
@@ -545,7 +545,7 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
         {news ? (
           <View style={styles.news} testID="closed-news">
             <SparkleGlyph size={12} color={payoff.foil} />
-            <Text style={[handType(16, L.news), { color: payoff.sweet }]} numberOfLines={1} adjustsFontSizeToFit>{news}</Text>
+            <Text style={[handType(16, L.news), { color: payoff.glow }]} numberOfLines={1} adjustsFontSizeToFit>{news}</Text>
             <SparkleGlyph size={12} color={payoff.foil} />
           </View>
         ) : null}

@@ -25,7 +25,7 @@ import { ref, type ModeTheme } from "@/theme/tokens";
 import type { FoundCard } from "./InspectView";
 import { itemIcon } from "./ItemTray";
 import { Board } from "./journal/Board";
-import { Arrow, CoffeeRing, Heart, Moon, Paw, PressedFlower, Sparkle, Star, Underline } from "./journal/Doodles";
+import { Arrow, CoffeeRing, Moon, Paw, PressedFlower, Sparkle, Star, Underline } from "./journal/Doodles";
 import { Polaroid } from "./journal/JournalCard";
 import { LeadTracker, MarginNote } from "./journal/Margin";
 import { EvidenceBoard } from "./journal/LibraryCard";
@@ -273,7 +273,7 @@ function Sticker({ item, index, palette: p, hand, onExamine }: { item: CasebookP
   );
 }
 
-/** The page's corner doodles, by mode: a moon and stars, a heart and sparkles, a star and a pressed flower. */
+/** The page's corner doodles, by mode: a moon and stars, a star and a pressed flower, a gold star and sparkles. */
 function CornerDoodles({ genre, palette: p }: { genre: ModeTheme["genre"]; palette: JournalPalette }) {
   if (genre === "paranormal") {
     return (
@@ -296,7 +296,7 @@ function CornerDoodles({ genre, palette: p }: { genre: ModeTheme["genre"]; palet
   }
   return (
     <>
-      <Heart color={p.pen} fill={p.sweet} size={22} rotate={-12} style={styles.cornerA} />
+      <Star color={p.pen} fill={p.foil[0]} size={22} rotate={-12} style={styles.cornerA} />
       <Sparkle color={p.foil[2]} size={12} style={styles.cornerB} />
       <Sparkle color={p.pen} size={8} style={styles.cornerC} />
       <PressedFlower color={p.pen} fill={p.sweet} size={48} rotate={-24} style={styles.cornerFoot} />

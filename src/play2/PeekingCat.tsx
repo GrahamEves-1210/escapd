@@ -154,15 +154,24 @@ const ACT = {
   crouch: 380, wiggle: 720, wigglePeriod: 333, pounce: 1780, talk: 0.4, lickBeat: 170, rubBeat: 190,
   groom: 0.14, groomGap: 35000, afterReaction: 1500, away: 60000,
 } as const;
-/** Its outfit on its art (catAccessory): a bow by its right ear, a collar under its chin, a beret or flowers on its head. */
+/** Its outfit on its art (catAccessory): a collar or a scarf under its chin, spectacles on its eyes, a deerstalker between its ears. */
 const OUTFIT: Placements = {
-  bow: { x: 440, y: 186, w: 230, rotate: 18 },
-  bell: { x: 290, y: 494, w: 210, rotate: 0 },
-  beret: { x: 292, y: 170, w: 270, rotate: -10 },
-  flowers: { x: 290, y: 192, w: 300, rotate: 0 },
+  collar: { x: 290, y: 494, w: 210, rotate: 0 },
+  scarf: { x: 290, y: 512, w: 270, rotate: 0 },
+  specs: { x: 291.5, y: 309.5, w: 344, rotate: 0 },
+  deerstalker: { x: 300, y: 146, w: 320, rotate: -6 },
 };
-/** How a screen reader hears what it's wearing. */
-export const OUTFIT_WORDS: Record<CatAccessory, string> = { none: "", bow: " in a bow", bell: " with a bell collar", beret: " in a beret", flowers: " in a flower crown" };
+/** What it's wearing, in its label ("A black cat in a deerstalker watches your light"). */
+export const OUTFIT_WORDS: Record<CatAccessory, string> = { none: "", collar: " in a bell collar", scarf: " in a knitted scarf", specs: " in round spectacles", deerstalker: " in a deerstalker" };
+/**
+ * Peeking: now and then (`chance` of its idle moments) it sinks `depth` of its
+ * height behind the ledge, holds `hold` ms and comes back up, slowly. A cat
+ * mounted within `swap` ms of the last one going (a close-up opened or closed)
+ * doesn't rise from behind the ledge again: it's the same cat, already there.
+ */
+const PEEK = { chance: 0.1, depth: 0.4, hold: 900, swap: 1500 } as const;
+/** When the last peeking cat went (ms). */
+let lastPeekGone = -Infinity;
 /** The time (ms), for its handlers. */
 const msNow = () => Date.now();
 /** What it says after a pounce, now and then. */
@@ -527,7 +536,9 @@ export function PeekingCat({
   }, [headX, headY]);
 
   // Rise from behind the ledge.
-  const rise = useSharedValue(reducedMotion ? 0 : height);
+  // A cat swapped in for another (the room for a close-up, the casebook) is already there: it rises only when it's new.
+  const [entering] = useState(() => !reducedMotion && Date.now() - lastPeekGone > PEEK.swap);
+  const rise = useSharedValue(entering ? height : 0);
   // Breathing: 0..1, a slow loop.
   const breath = useSharedValue(0);
   // Hop (negative up) and flinch/duck (positive down), on reactions.
@@ -845,12 +856,14 @@ export function PeekingCat({
 
   useEffect(() => {
     if (reducedMotion) return;
-    rise.set(withDelay(500, withSpring(0, { damping: 14, stiffness: 140, mass: 0.8 })));
-    // Stretched as it springs up, squashed as it lands on its paws.
-    sy.set(withDelay(500, withSequence(withTiming(1.12, { duration: 180 }), withTiming(0.92, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
-    sx.set(withDelay(500, withSequence(withTiming(0.92, { duration: 180 }), withTiming(1.07, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
+    if (entering) {
+      rise.set(withDelay(500, withSpring(0, { damping: 14, stiffness: 140, mass: 0.8 })));
+      // Stretched as it springs up, squashed as it lands on its paws.
+      sy.set(withDelay(500, withSequence(withTiming(1.12, { duration: 180 }), withTiming(0.92, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
+      sx.set(withDelay(500, withSequence(withTiming(0.92, { duration: 180 }), withTiming(1.07, { duration: 120 }), withSpring(1, { damping: 6, stiffness: 160 }))));
+    }
     breath.set(withRepeat(withTiming(1, { duration: 1900, easing: Easing.inOut(Easing.sin) }), -1, true));
-  }, [reducedMotion, rise, breath, sx, sy]);
+  }, [reducedMotion, entering, rise, breath, sx, sy]);
 
   // Blinks (sometimes a double), and the odd curious head tilt.
   useEffect(() => {
@@ -868,13 +881,12 @@ export function PeekingCat({
         if (Math.random() < ACT.groom && Date.now() - lastGroom.current > ACT.groomGap && free()) {
           // A wash: a paw licked, or behind an ear.
           groom();
-        } else if (Math.random() < 0.3) {
-          // Duck behind the ledge, then peek back up.
+        } else if (Math.random() < PEEK.chance) {
+          // Now and then it sinks behind the ledge and peeks back up, slowly (no spring, no stretch: never a bounce).
           rise.set(withSequence(
-            withTiming(height * 0.55, { duration: 220, easing: Easing.in(Easing.quad) }),
-            withDelay(700, withSpring(0, { damping: 14, stiffness: 150, mass: 0.8 })),
+            withTiming(height * PEEK.depth, { duration: 420, easing: Easing.inOut(Easing.sin) }),
+            withDelay(PEEK.hold, withTiming(0, { duration: 520, easing: Easing.inOut(Easing.sin) })),
           ));
-          sy.set(withDelay(920, withSequence(withTiming(1.1, { duration: 160 }), withSpring(1, { damping: 6, stiffness: 160 }))));
         } else {
           const to = (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 2);
           idleTilt.set(withSequence(withSpring(to, { damping: 7, stiffness: 90 }), withDelay(900, withSpring(0, { damping: 10, stiffness: 80 }))));
@@ -910,9 +922,9 @@ export function PeekingCat({
     if (reaction.kind === "found") {
       pop(0.2);
     } else if (reaction.kind === "warm") {
-      // Perks up: eyes wide, a quick stretch up (ears up), a small "!".
+      // Perks up: eyes wide, sitting up a touch (eased, not a hop), a small "!".
       lid.set(withTiming(0, { duration: 60 }));
-      pop(0.12);
+      sy.set(withSequence(withTiming(1.04, { duration: 160, easing: Easing.out(Easing.quad) }), withDelay(300, withTiming(1, { duration: 380, easing: Easing.inOut(Easing.sin) }))));
     } else if (reaction.kind === "empty") {
       // A yawn: eyes squeezed shut, a slow stretch with the head tipped back, then it settles.
       lid.set(withSequence(withTiming(0.9, { duration: 250 }), withDelay(600, withTiming(0, { duration: 200 }))));
@@ -1024,6 +1036,7 @@ export function PeekingCat({
   useEffect(() => {
     lastGroom.current = Date.now();
     return () => {
+      lastPeekGone = Date.now();
       act.current?.timers.forEach(clearTimeout);
       clearTimeout(unrig.current);
     };
@@ -1113,13 +1126,13 @@ export function PeekingCat({
       {cheer !== null && !reducedMotion ? (
         // Caught the light: sparkles, no mark.
         <View style={{ transform: [{ translateX: -width * 0.4 }] }}>
-          <Burst key={cheer} size={width * 0.75} color={theme.sweet} glyph={mark} text="" />
+          <Burst key={cheer} size={width * 0.75} color={theme.glow} glyph={mark} text="" />
         </View>
       ) : null}
       {petting.happy !== null && !reducedMotion ? (
         // A gentle rub's happy slow blink: a couple of small sparkles.
         <View style={{ transform: [{ translateX: -width * 0.4 }] }} testID="cat-happy">
-          <Burst key={petting.happy} size={width * 0.55} color={theme.sweet} glyph={mark} text="" />
+          <Burst key={petting.happy} size={width * 0.55} color={theme.glow} glyph={mark} text="" />
         </View>
       ) : null}
       {perk !== null && !reducedMotion ? (

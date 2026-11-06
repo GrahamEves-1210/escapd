@@ -3,31 +3,31 @@
 // plum-brown frame and sill on the screen's edges and a cross of mullions;
 // behind the glass a midnight-indigo sky going mauve under a low, rainy
 // overcast, a full moon veiled by thin cloud in the lower right pane over a
-// soft treeline, and on the sill a stack of books with a lit candle and a mug
-// of tea (assets/backdrop/window.jpg, scripts/brand/window.py). Over the art,
+// soft treeline, and on the sill a stack of books with a lit candle
+// (assets/backdrop/window.jpg, scripts/brand/window.py; the mug of tea is the
+// cat's, src/play2/cat/Mug.tsx, so it can knock it off). Over the art,
 // on one canvas:
 // - thin cloud keeps drifting across the glass, over the moon, lit silver as
 //   it passes in front of it, the moon's soft corona through it;
 // - rain keeps hitting the glass, softly: drops land, bead, then some run
 //   down leaving a trail. All of it stays on the glass: inside the four panes
-//   (clipped), so the frame and the sill stay solid, and round the books, the
-//   candle and the mug on the sill (PROPS), which stand in front of it (the
-//   cat, drawn over this canvas, too);
-// - steam curls up off the tea;
+//   (clipped), so the frame and the sill stay solid, and round the books and
+//   the candle on the sill (PROPS), which stand in front of it (the cat and
+//   its mug, drawn over this canvas, too);
 // - the candle's flame breathes and flickers, a warm halo in the theme's glow;
 // - fairy lights strung across the top, in the theme's glow, sweet and foil,
 //   twinkling slowly.
 // Under reduced motion it is all still: the clouds hold their places (one
-// across the moon), the steam holds its curl, no drops landing, the flame
+// across the moon), no drops landing, the flame
 // and the lights steady. No lightning: the storm is a quiet one.
 import { useMemo, type ReactNode } from "react";
 import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurMask, Canvas, Circle, Group, LinearGradient, Oval, Path, RadialGradient, Skia, useClock, vec, type SkPath } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, Circle, Group, Oval, Path, RadialGradient, Skia, useClock, vec, type SkPath } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, MS_TO_S, PROPS, RAIN, SHOWER, STEAM, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
+import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, MS_TO_S, PROPS, RAIN, SHOWER, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
 
 const WINDOW = require("../../../assets/backdrop/window.jpg") as number;
 /** A clock in ms to seconds. */
@@ -98,8 +98,7 @@ export function WindowBackdrop() {
     glass: { left, top, width: w, height: h },
     moon: { x: art.left + art.width * ART.moon.x, y: art.top + art.height * ART.moon.y, r: art.width * ART.moon.r },
   };
-  const mug = { x: art.left + art.width * ART.mug.x, y: art.top + art.height * ART.mug.y, size: art.width * ART.mug.w };
-  const nook: NookProps = { panes, props, sky, mug, flame, glow: theme.glow, width, top: insets.top, colors: [theme.glow, theme.sweet, theme.foil] };
+  const nook: NookProps = { panes, props, sky, flame, glow: theme.glow, width, top: insets.top, colors: [theme.glow, theme.sweet, theme.foil] };
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window">
@@ -127,8 +126,6 @@ interface NookProps {
   /** What stands on the sill in front of the glass: cut out of that clip. */
   props: SkPath;
   sky: Sky;
-  /** The mug's mouth, and its width (points). */
-  mug: { x: number; y: number; size: number };
   flame: { x: number; y: number };
   glow: string;
   /** The screen's width, and the safe top the fairy lights hang under. */
@@ -148,25 +145,23 @@ function Glass({ panes, props, children }: { panes: SkPath; props: SkPath; child
   );
 }
 
-/** Reduced motion: the clouds, the steam, the candle and the lights, all still; no rain. */
-function StillNook({ panes, props, sky, mug, flame, glow, width, top, colors }: NookProps) {
+/** Reduced motion: the clouds, the candle and the lights, all still; no rain. */
+function StillNook({ panes, props, sky, flame, glow, width, top, colors }: NookProps) {
   const halo = useSharedValue<number>(CANDLE.rest);
   const lit = useSharedValue<number>(FAIRY.rest);
   const clouds = useSharedValue(0);
-  const steam = useSharedValue(STEAM.still / MS_TO_S);
   return (
     <>
       <Glass panes={panes} props={props}>
         <Clouds sky={sky} clock={clouds} />
       </Glass>
-      <Steam mug={mug} clock={steam} />
       <Flame at={flame} glow={glow} opacity={halo} />
       <FairyLights width={width} top={top} colors={colors} clock={lit} />
     </>
   );
 }
 
-function LiveNook({ panes, props, sky, mug, flame, glow, width, top, colors }: NookProps) {
+function LiveNook({ panes, props, sky, flame, glow, width, top, colors }: NookProps) {
   const clock = useClock();
   const halo = useDerivedValue(() => {
     return CANDLE.rest + CANDLE.flicker * flicker(clock.value * PER_SECOND);
@@ -182,7 +177,6 @@ function LiveNook({ panes, props, sky, mug, flame, glow, width, top, colors }: N
           ))}
         </Group>
       </Glass>
-      <Steam mug={mug} clock={clock} />
       <Flame at={flame} glow={glow} opacity={halo} />
       <FairyLights width={width} top={top} colors={colors} clock={clock} />
     </>
@@ -235,48 +229,6 @@ function Cloud({ spec, sky, clock }: { spec: (typeof CLOUDS.list)[number]; sky: 
       <Oval x={-w / 2} y={y - h / 2} width={w} height={h} color={CLOUDS.lit} opacity={lit}>
         <BlurMask blur={blur} style="normal" />
       </Oval>
-    </Group>
-  );
-}
-
-/** Steam curling up off the tea (STEAM): a few thin wisps, waves travelling up them. `clock` in ms. */
-function Steam({ mug, clock }: { mug: { x: number; y: number; size: number }; clock: SharedValue<number> }) {
-  return (
-    <Group>
-      {STEAM.wisps.map((spec, i) => (
-        <Wisp key={i} spec={spec} mug={mug} clock={clock} />
-      ))}
-    </Group>
-  );
-}
-
-function Wisp({ spec, mug, clock }: { spec: (typeof STEAM.wisps)[number]; mug: { x: number; y: number; size: number }; clock: SharedValue<number> }) {
-  const { size } = mug;
-  const x0 = mug.x + spec.dx * size;
-  const y0 = mug.y - STEAM.lift * size;
-  const rise = spec.rise * size;
-  const amp = STEAM.amp * size;
-  const path = useDerivedValue(() => {
-    const t = clock.value * PER_SECOND;
-    let d = "";
-    for (let i = 0; i <= STEAM.segments; i += 1) {
-      const k = i / STEAM.segments;
-      // It sways more as it rises, and leans a little.
-      const x = x0 + spec.lean * size * k + amp * (STEAM.swayFrom + (1 - STEAM.swayFrom) * k) * Math.sin(k * STEAM.waves * TURN - t * STEAM.speed + spec.phase);
-      d += `${i === 0 ? "M" : " L"} ${x} ${y0 - k * rise}`;
-    }
-    return d;
-  });
-  const opacity = useDerivedValue(() => {
-    const s = (1 + Math.sin(clock.value * PER_SECOND * STEAM.breath + spec.phase)) / 2;
-    return STEAM.low + (STEAM.high - STEAM.low) * s;
-  });
-  return (
-    <Group opacity={opacity}>
-      <Path path={path} style="stroke" strokeWidth={STEAM.width} strokeCap="round" strokeJoin="round">
-        <LinearGradient start={vec(0, y0)} end={vec(0, y0 - rise)} colors={[STEAM.clear, STEAM.color, STEAM.color, STEAM.clear]} positions={[...STEAM.fade]} />
-        <BlurMask blur={STEAM.blur} style="normal" />
-      </Path>
     </Group>
   );
 }

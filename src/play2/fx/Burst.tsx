@@ -1,5 +1,5 @@
 // A little celebration at something on the photo: tiny inky things pop out of
-// it and drift (noir: little stars, a heart or two and a curl of smoke; crime
+// it and drift (noir: little stars, an inked spark or two and a curl of smoke; crime
 // scene: evidence markers and magnifier glints; paranormal: wisps and moons),
 // and a handwritten word stamps on and fades ("Oh!" for a find; "Aha!" in a
 // stamp's frame for a solved step, bigger). On a roll it grows: more of them, a
@@ -42,11 +42,11 @@ export const BURST = {
   wordLift: 40,
 } as const;
 
-type Kind = "star" | "star5" | "heart" | "smoke" | "marker" | "glint" | "wisp" | "moon";
+type Kind = "star" | "star5" | "spark" | "smoke" | "marker" | "glint" | "wisp" | "moon";
 
 /** What each mode throws, in order of how often (the first most). */
 const MIX: Record<Genre, readonly Kind[]> = {
-  noir: ["star5", "star", "star5", "heart", "star", "smoke"],
+  noir: ["star5", "star", "star5", "spark", "star", "smoke"],
   crime_scene: ["marker", "glint", "star", "marker", "glint", "star"],
   paranormal: ["wisp", "moon", "star", "wisp", "star", "moon"],
 };
@@ -80,7 +80,8 @@ function star5(): string {
 const SHAPES: Record<Kind, string> = {
   star: "M0 -10 Q1.7 -1.7 10 0 Q1.7 1.7 0 10 Q-1.7 1.7 -10 0 Q-1.7 -1.7 0 -10 Z",
   star5: star5(),
-  heart: "M0 8.5 C-8 3.5 -10.5 -2 -7.6 -6 C-5.2 -9.2 -1.6 -8 0 -4.8 C1.6 -8 5.2 -9.2 7.6 -6 C10.5 -2 8 3.5 0 8.5 Z",
+  // An inked asterisk: three quick strokes crossing (stroked, like the smoke).
+  spark: "M0 -9 L0 9 M-7.8 -4.5 L7.8 4.5 M-7.8 4.5 L7.8 -4.5",
   smoke: "M0 10 C-7 6 6 2 0 -2 C-5 -5 1 -10 5 -8",
   marker: "M-6.5 8 L-3 -8 L3 -8 L6.5 8 Z",
   glint: "M0 -12 Q0.9 -0.9 12 0 Q0.9 0.9 0 12 Q-0.9 0.9 -12 0 Q-0.9 -0.9 0 -12 Z",
@@ -143,7 +144,7 @@ export function Burst({ x, y, genre, strength, word, level, count, seed }: Burst
   const colors: Record<Kind, string> = {
     star: theme.glow,
     star5: theme.foil,
-    heart: theme.sweet,
+    spark: theme.glow,
     smoke: "rgba(236,226,232,0.75)",
     marker: theme.detail ?? theme.sweet,
     glint: "#FFFDF6",
@@ -200,7 +201,7 @@ export function Burst({ x, y, genre, strength, word, level, count, seed }: Burst
             allowFontScaling={false}
             style={[styles.text, {
               fontFamily: theme.hand.fontFamily, fontSize, lineHeight: Math.round(fontSize * 1.25),
-              color: stamped ? theme.stamp : theme.sweet, textShadowColor: theme.ground,
+              color: stamped ? theme.stamp : theme.glow, textShadowColor: theme.ground,
             }]}
           >
             {word}
@@ -238,8 +239,8 @@ function BitView({ bit, t, c, ink }: { bit: Bit; t: SharedValue<number>; c: numb
   if (!path) return null;
   return (
     <Group transform={transform} opacity={opacity}>
-      {bit.kind === "smoke" ? (
-        <Path path={path} color={bit.color} style="stroke" strokeWidth={2.2} strokeCap="round" />
+      {bit.kind === "smoke" || bit.kind === "spark" ? (
+        <Path path={path} color={bit.color} style="stroke" strokeWidth={bit.kind === "spark" ? 2.6 : 2.2} strokeCap="round" />
       ) : (
         <>
           <Path path={path} color={bit.color} />

@@ -330,11 +330,11 @@ export function SparkleGlyph({ size, color }: { size: number; color: string }) {
   );
 }
 
-/** A little heart, drawn. */
-export function HeartGlyph({ size, color }: { size: number; color: string }) {
+/** A little five-point star, drawn (a gold star on the page, not a heart). */
+export function StarGlyph({ size, color }: { size: number; color: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Path d="M12 21 C5 15.5 2 12.2 2 8.4 C2 5.4 4.3 3.2 7.1 3.2 C9.1 3.2 10.8 4.3 12 6 C13.2 4.3 14.9 3.2 16.9 3.2 C19.7 3.2 22 5.4 22 8.4 C22 12.2 19 15.5 12 21 Z" fill={color} />
+      <Path d="M12 2.2 L14.6 8.8 L21.6 9.2 L16.2 13.7 L17.9 20.6 L12 16.8 L6.1 20.6 L7.8 13.7 L2.4 9.2 L9.4 8.8 Z" fill={color} strokeLinejoin="round" stroke={color} strokeWidth={1.2} />
     </Svg>
   );
 }
@@ -354,7 +354,7 @@ export function Twinkle({ size, color, delay = 0, reduced, style }: { size: numb
   );
 }
 
-type Bit = { angle: number; reach: number; size: number; spin: number; fall: number; kind: "spark" | "heart" | "dot" | "strip"; color: string };
+type Bit = { angle: number; reach: number; size: number; spin: number; fall: number; kind: "spark" | "star" | "dot" | "strip"; color: string };
 
 /** The burst's pieces, laid out once from a seed so a burst is always the same pretty shape. */
 export function confettiBits(colors: readonly string[], count = 18): Bit[] {
@@ -363,7 +363,7 @@ export function confettiBits(colors: readonly string[], count = 18): Bit[] {
     seed = (seed * 9301 + 49297) % 233280;
     return seed / 233280;
   };
-  const kinds: Bit["kind"][] = ["spark", "heart", "dot", "strip", "spark", "dot"];
+  const kinds: Bit["kind"][] = ["spark", "star", "dot", "strip", "spark", "dot"];
   return Array.from({ length: count }, (_, i) => ({
     angle: (i / count) * Math.PI * 2 + rnd() * 0.5,
     reach: 70 + rnd() * 80,
@@ -420,8 +420,8 @@ function Piece({ t, bit }: { t: SharedValue<number>; bit: Bit }) {
     <Animated.View style={[styles.piece, { marginLeft: -sz / 2, marginTop: -sz / 2 }, s]}>
       {bit.kind === "spark" ? (
         <SparkleGlyph size={sz * 1.4} color={bit.color} />
-      ) : bit.kind === "heart" ? (
-        <HeartGlyph size={sz * 1.2} color={bit.color} />
+      ) : bit.kind === "star" ? (
+        <StarGlyph size={sz * 1.2} color={bit.color} />
       ) : bit.kind === "dot" ? (
         <View style={{ width: sz * 0.7, height: sz * 0.7, borderRadius: sz, backgroundColor: bit.color }} />
       ) : (

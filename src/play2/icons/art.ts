@@ -115,14 +115,14 @@ const note: Shape[] = [
   tape(18, 5.4, 12.5, 5.6, -8, C.blushTape),
 ];
 
-// A letter: an envelope sealed with a drop of red wax, a heart pressed in it.
+// A letter: an envelope sealed with a drop of red wax, a star pressed in it.
 const letter: Shape[] = [
   g("rotate(-4 24 24)", [
     path("M6.6 13.4 L41.4 12.6 L41.8 35.8 L7.2 36.4 Z", { fill: C.paper, ink: true }),
     path("M7.4 35.9 L19.6 25.4 M41.2 35.4 L28.6 25.2", { stroke: C.inkSoft, w: 1.1 }),
     path("M6.9 13.8 L24 27.4 L41.1 13", { fill: C.paperShade, ink: true, w: 1.5 }),
     path("M24.1 22.2 C27.4 22 29.4 24.4 29.2 27.2 C29 30.2 26.6 32.2 23.8 32 C20.8 31.8 18.8 29.6 19 26.8 C19.2 24.2 21.2 22.3 24.1 22.2 Z", { fill: C.wax, ink: true }),
-    path("M24 29.6 C21.8 28.2 21 27 21.4 25.9 C21.8 24.9 23.2 24.8 24 25.9 C24.8 24.8 26.2 24.9 26.6 25.9 C27 27 26.2 28.2 24 29.6 Z", { fill: C.waxDark }),
+    path("M24.0 23.5 L24.9 25.9 L27.4 26.0 L25.4 27.6 L26.1 30.0 L24.0 28.6 L21.9 30.0 L22.6 27.6 L20.6 26.0 L23.1 25.9 Z", { fill: C.waxDark }),
     line("M20.6 24.6 C21.2 23.6 22.2 23 23.2 22.9", "#F08B97", 1.1),
   ]),
 ];

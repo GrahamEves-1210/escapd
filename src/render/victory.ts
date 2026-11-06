@@ -220,10 +220,10 @@ export function ratingReason(genre: Genre, summary: Pick<CaseSummary, "hints" | 
 /** The cat's line on case closed, by how it went. */
 export function catVerdict(summary: Pick<CaseSummary, "hints" | "wrong"> | null | undefined): string {
   const rating = magnifierRating(summary);
-  if (rating === 3) return "Not one tip. I'm impressed \u2665";
-  if (rating === 2) return summary!.hints ? "I only helped a little \u2665" : "A wrong turn or two. Still brilliant \u2665";
-  if (rating === 1) return "We got there together \u2665";
-  return "Another one for your shelf \u2665";
+  if (rating === 3) return "Not one tip. Show-off.";
+  if (rating === 2) return summary!.hints ? "I helped. A little. You're welcome." : "A wrong turn or two. Still sharp.";
+  if (rating === 1) return "We got there. Mostly me.";
+  return "Another one for the shelf.";
 }
 
 /** When each part of the moment happens, in ms after case closed mounts. */

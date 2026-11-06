@@ -9,9 +9,9 @@
 //   with its name and three pips for the finishes she has of it (gold,
 //   silver, sticker); the ones she hasn't are soft silhouettes. A tap on an
 //   earned charm wiggles it and says what it is;
-// - the cat's wardrobe: just the cat, or a bow, a bell, a beret, flowers,
-//   each unlocked by a title; the pick is kept for the cats to wear
-//   ("escapd.cat.accessory").
+// - the cat's wardrobe: just the cat, or a bell collar, a knitted scarf,
+//   round spectacles, a deerstalker (a detective's cat), each unlocked by a
+//   title; the pick is kept for the cats to wear ("escapd.cat.accessory").
 // Opening it marks her charms as seen (home's chip loses its dot).
 import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
@@ -53,7 +53,9 @@ export const BOARD = {
 /** The board's tones: a velvet a shade off the ground, a silhouette's soft shape on it. */
 const VELVET = "#2A1D31";
 const SILHOUETTE = "#3D2D45";
-const STITCH = "rgba(255, 214, 230, 0.16)";
+const STITCH = "rgba(217, 178, 106, 0.2)";
+/** The plum ink pooled low on the ground. */
+const PLUM = "#7B4A80";
 const PIP: Record<Finish, string> = { gold: "#D9B26A", silver: "#C9CEDA", sticker: "#FFFDF8" };
 
 /** What she has of one charm: its best finish, the finishes she has, from how many cases. */
@@ -131,8 +133,8 @@ export function CollectionScreen() {
         {/* Her name card: the cat, her title, how far to the next. */}
         <View style={[styles.nameCard, { backgroundColor: S.surface, borderColor: S.rim }]} testID="collection-title-card">
           <View style={styles.catSpot}>
-            {/* Mounted again on a new outfit, so it puts it on. */}
-            <SittingCat key={accessory} width={BOARD.cat} label={accessory === "none" ? "The black cat" : `The black cat, wearing her ${ACCESSORY_NAME[accessory].toLowerCase()}`} />
+            {/* Mounted again on a new outfit, so it puts it on (it says what it's wearing itself). */}
+            <SittingCat key={accessory} width={BOARD.cat} label="The black cat" />
           </View>
           <View style={styles.nameWords}>
             <Text style={[ref.type.series, { color: S.inkMuted }]}>Your detective title</Text>
@@ -140,7 +142,7 @@ export function CollectionScreen() {
             <View style={[styles.bar, { backgroundColor: alpha(S.foil, 0.18) }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <View style={[styles.barFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: S.foil }]} />
             </View>
-            <Text style={[ref.type.handSmall, { color: S.sweet }]} testID="collection-progress">
+            <Text style={[ref.type.handSmall, { color: S.foil }]} testID="collection-progress">
               {`${closed} ${closed === 1 ? "case" : "cases"} closed`}
               {next ? ` · ${next.at - closed} more to ${next.title}` : " · the very top"}
             </Text>
@@ -168,7 +170,7 @@ export function CollectionScreen() {
         {/* The cat's wardrobe. */}
         <View style={styles.wardrobe} testID="collection-wardrobe">
           <Text style={[styles.heading, { color: S.ink }]} accessibilityRole="header">The cat&apos;s wardrobe</Text>
-          <Text style={[ref.type.handSmall, { color: S.inkMuted }]}>Titles bring her something new to wear.</Text>
+          <Text style={[ref.type.handSmall, { color: S.inkMuted }]}>Every new title brings the cat something to wear.</Text>
           <View style={styles.tiles} accessibilityRole="radiogroup">
             {(["none", ...ACCESSORIES] as AccessoryChoice[]).map((a) => {
               const open = a === "none" || unlocked.has(a);
@@ -257,7 +259,7 @@ function CharmSlot({ kind, held, picked, onPress }: { kind: CharmKind; held?: Ch
   );
 }
 
-/** A candle's glow high on the ground, and a blush low down. Decorative. */
+/** A candle's glow high on the ground, and a little plum ink low down. Decorative. */
 function Glow() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -268,8 +270,8 @@ function Glow() {
             <Stop offset={1} stopColor={S.glow} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="cbSweet" cx="85%" cy="92%" rx="60%" ry="30%" fx="85%" fy="92%">
-            <Stop offset={0} stopColor={S.sweet} stopOpacity={0.1} />
-            <Stop offset={1} stopColor={S.sweet} stopOpacity={0} />
+            <Stop offset={0} stopColor={PLUM} stopOpacity={0.22} />
+            <Stop offset={1} stopColor={PLUM} stopOpacity={0} />
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#cbGlow)" />
