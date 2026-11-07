@@ -52,13 +52,16 @@ export const TAIL = { ...LINE, segments: LINE.points.length - 1, pad: { left: 0.
 /** The tail's motion: cat/tail.ts (a chain of springs, a travelling S-wave, flicks). */
 export { WHIP, restTail, stepTail, type TailMood, type TailState } from "./cat/tail";
 /**
- * The art's eyes (its irises, measured: art px): centre, half width and half
- * height, and the tilt of the width (degrees, clockwise). The lids close in
- * each eye's own frame (EyeLid).
+ * The art's eyes (its irises, pupils included, measured: art px): centre, and
+ * half width and half height in the frame of its head, which the art draws
+ * cocked: the line between its eyes leans 29.4 degrees anticlockwise. The lids
+ * close in that frame (EyeLid), so they come down along its head's own up and
+ * down, not straight down the screen nor across each eye's slant.
  */
+const HEAD_TILT = -29.4;
 const EYES = [
-  { x: 170.1, y: 242.9, a: 30.5, b: 22.6, tilt: 9.2 },
-  { x: 258.9, y: 193.3, a: 20.1, b: 29.9, tilt: 12.1 },
+  { x: 170.0, y: 242.9, a: 27.5, b: 24.8, tilt: HEAD_TILT },
+  { x: 258.6, y: 193.0, a: 24.6, b: 25.3, tilt: HEAD_TILT },
 ] as const;
 /** The art's fur round its eyes. */
 const FUR = "#0E0C0B";

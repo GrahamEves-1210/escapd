@@ -1,7 +1,7 @@
 // Traces on the photo that only ultraviolet shows (gameplay v2: UV evidence),
 // drawn as what they are: fingerprints with their ridges (whorls and loops), a
-// palm pressed flat with its creases, a splash with its spatter and its drips
-// running down a wall, a line of shoe prints with their tread (bare feet in
+// palm pressed flat with its creases, a dried splash with its spatter, a
+// line of shoe prints with their tread (bare feet in
 // the paranormal), and writing in a hurried hand. Each is drawn procedurally
 // from its seed, scaled to its box and laid on its surface (a floor's
 // perspective flattens it, a wall's slants it a little), in the colours of
@@ -440,9 +440,8 @@ export function drawTrace(t: Pick<StageTrace, "kind" | "surface" | "seed" | "box
     }
     case "stain": {
       // A splash dried where it landed: an uneven pool, spikes and satellite drops flung out the way it
-      // was thrown (teardrops, their tails pointing back), and on a wall, drips run down from it.
-      const wall = t.surface === "wall";
-      const cx = bx + bw * 0.45, cy = by + bh * (wall ? 0.35 : 0.5);
+      // was thrown (teardrops, their tails pointing back). Dried, so nothing runs: no drips, even on a wall.
+      const cx = bx + bw * 0.45, cy = by + bh * 0.5;
       const R = Math.min(bw, bh) * 0.3;
       const k1 = rnd() * 6, k2 = rnd() * 6;
       const squash = t.surface === "floor" ? 0.6 : 1;
@@ -479,18 +478,6 @@ export function drawTrace(t: Pick<StageTrace, "kind" | "surface" | "seed" | "box
         }
         drop.push(put(-tail, 0));
         fill.push(poly(drop, true));
-      }
-      if (wall) {
-        // Drips: from the pool's lower edge, thinning as they run, each ending in a bead.
-        for (let i = 0; i < 2 + Math.floor(rnd() * 3); i++) {
-          const x = cx + (rnd() - 0.5) * R * 1.8;
-          const top = cy + R * (0.55 + rnd() * 0.2);
-          const len = bh * (0.25 + rnd() * 0.4);
-          const wd = 1.2 + rnd() * 1.6;
-          const sway = (rnd() - 0.5) * 3;
-          fill.push(poly([[x - wd, top], [x + wd, top], [x + wd * 0.5 + sway, top + len], [x - wd * 0.5 + sway, top + len]], true));
-          fill.push(ellipse(x + sway, top + len + wd, wd * 1.3, wd * 1.6, 0, rnd, 0, 0, 0.1, 10));
-        }
       }
       return { blot: pool, fill: fill.join(" "), lines: lines.join(" "), line: 0.9 };
     }
