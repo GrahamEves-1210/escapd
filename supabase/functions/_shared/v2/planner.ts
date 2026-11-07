@@ -15,18 +15,19 @@ import { type Box1000, boxArea, boxToRect, isValidBox } from "../geometry.ts";
 import { cryptoInt, isWeakCode, mintSuffix, type RandomInt, slugId } from "../mint.ts";
 import { type ArchetypeId, type ControlDomain, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, SYMBOLS, variantSpec } from "./archetypes.ts";
 import {
-  ALIBIS, capitalise, caseLabel, describeObject, type Evidence, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES, optionEvidence,
-  ordinalLine, type Pick, romanMark, suspectEvidence, SUSPECTS, TIME_OF_DEATH, TRACE_BEATS, TRACE_HERRINGS, TRACE_LABELS, TRACE_REPORTS,
-  TRACE_VALUE, VICTIMS, writeCard,
+  ALIBIS, capitalise, caseLabel, describeObject, DURATIONS, type Evidence, type Frame, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES,
+  optionEvidence, orderLine, orderMark, type Pick, placeLine, suspectEvidence, SUSPECTS, TIME_DOCS, TIME_OF_DEATH, TIME_REL_LEAD,
+  type TimeDoc, TRACE_BEATS, TRACE_HERRINGS, TRACE_LABELS, TRACE_REPORTS, TRACE_VALUE, VICTIMS, writeCard,
 } from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
 import { simulate, type SimReport } from "./simulate.ts";
 import { categoryOf, type InventoryObject, isPortableType, type ObjectCategory } from "./taxonomy.ts";
-import type {
-  AccuseOption, CardDef, Condition, Effect, FinaleDef, ItemDef, Mode, MotifId, ObjectDef, Rect, RoomDefinitionV2,
-  RoomSecretV2, Rule, SlotKind, SlotValue, StateValue, StepDef, TraceKind, TraceSpec, Trigger,
+import {
+  type AccuseOption, type CardDef, type Condition, type Effect, type FinaleDef, type ItemDef, type Mode, type MotifId, type ObjectDef, ORDER_RULES,
+  orderHolds, type OrderRule, type Rect, type RoomDefinitionV2, type RoomSecretV2, type Rule, type SlotKind, type SlotValue, type StateValue, type StepDef,
+  type TraceKind, type TraceSpec, type Trigger,
 } from "./types.ts";
-import { validateDefinition } from "./validate.ts";
+import { slotRefs, validateDefinition } from "./validate.ts";
 
 export interface PlanOptions {
   mode: Mode;
@@ -57,6 +58,8 @@ export const MAX_OBJECTS = 14;
 export const MIN_POOL = 4;       // interactive objects besides the exit
 const DEMANDING: ArchetypeId[] = ["ClockHands", "TuningDial", "CombinationLock"];
 const CONTAINERS: ArchetypeId[] = ["Drawer", "LiftUnder", "FrameTilt"];
+/** What a flashlight can't hide under: an ornament, a mug, a plant pot. */
+const SMALL_UNDER: ObjectCategory[] = ["decor", "plant"];
 const CONTAINER_CONTROL: Partial<Record<ArchetypeId, string>> = { Drawer: "open", LiftUnder: "lifted", FrameTilt: "tilted" };
 /** The last hint rung's verb for finding something in a container. */
 const verb = (b: Bound) => (b.archetype === "Drawer" ? (b.variant === "drawer" ? "Pull out" : "Open") : b.archetype === "LiftUnder" ? "Lift" : "Tilt");
@@ -64,6 +67,8 @@ const verb = (b: Bound) => (b.archetype === "Drawer" ? (b.variant === "drawer" ?
 const target = (b: Bound) => (b.archetype === "Drawer" && b.variant === "drawer" && !/\bdrawers?\b/i.test(b.inv.label) ? `a drawer of the ${b.inv.label}` : `the ${b.inv.label}`);
 /** Kinds whose card lines are whole sentences (crime-scene evidence, ritual fragments). */
 const LIST_KINDS: SlotKind[] = ["option", "object"];
+/** Crime scene: the hours around a death "close to midnight". */
+const DEATH_HOURS = [10, 11, 12, 1];
 const WORDS = ["OAK", "ELM", "ASH", "INK", "OWL", "FOX", "JAM", "ICE", "RYE", "GIN", "VOW", "HEX", "ORE", "SKY", "WAX", "YEW"];
 
 /** Deterministic [0, 1) stream from a string seed (FNV-1a + mulberry32). */
@@ -100,6 +105,8 @@ interface Want {
   preferUsed?: boolean;
   samePhotoAs?: Bound;
   excludeIds?: (string | undefined)[];
+  /** Beyond the archetype: whether this object, hosting it, makes sense for what it holds. */
+  fits?: (b: Bound, a: ArchetypeId) => boolean;
 }
 
 interface Option { motif: MotifId; min: number; fixed: boolean; run: () => string | null }
@@ -107,7 +114,10 @@ interface Option { motif: MotifId; min: number; fixed: boolean; run: () => strin
 interface SlotMeta {
   tag?: string;          // digits: the door wheels' symbols they belong on
   ordinal?: number;      // object: the ritual position (0-based)
+  order?: OrderRule;     // object: what its fragment says about that position
   evidence?: Evidence;   // option: the document (or UV forensics) that rules it out, with {{s}} for its name
+  time?: TimeDoc;        // time: the document it is written on (a ticket), and how it reads elsewhere
+  after?: string;        // a sentence the card showing this slot ends with (a time's second fact, when on the same card)
 }
 
 /** A UV trace placed on the photo: on or beside a real object (`anchor`), or on the floor by it. */
@@ -140,8 +150,12 @@ const overlapArea = (a: Rect, b: Rect) =>
   Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 const listOf = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
-/** What a step hands over: an item into the hand, or a card to read where it was found. */
-type Payload = { item: string } | { card: string };
+/**
+ * What a step hands over: an item into the hand, or a card to read where it was found (`note`: writing
+ * with these slots, `plain`: a fixed card such as a keepsake; both written once the place is known, so
+ * the card can say where it was).
+ */
+type Payload = { item: string } | { card: string } | { note: string[] } | { plain: Frame };
 
 class Builder {
   slots: Record<string, SlotValue> = {};
@@ -165,11 +179,22 @@ class Builder {
 
   /** Text choices draw from their own stream, so wording never changes a room's structure. */
   pick: Pick;
+  /** `pick`, preferring an entry no card has used yet. */
+  fresh: Pick;
+  /** UV finds glow on objects rather than as traces on the photo (the last round of candidates). */
+  glowFirst = false;
   names: (typeof ITEM_NAMES)[Mode];
 
   constructor(public mode: Mode, public pool: Bound[], public exit: Bound, public rng: () => number, public rint: RandomInt, public trng: () => number) {
     this.pick = <T>(xs: readonly T[]): T => xs[Math.floor(this.trng() * xs.length)];
     this.names = ITEM_NAMES[mode];
+    // Card words prefer what the room hasn't said yet: no two cards with one title, no place line twice.
+    this.fresh = <T>(xs: readonly T[]): T => {
+      const said = (x: T) => typeof x === "string" ? this.cards.some((c) => c.text.includes(x))
+        : typeof (x as { title?: unknown })?.title === "string" && this.cards.some((c) => c.title === (x as { title: string }).title);
+      const unsaid = xs.filter((x) => !said(x));
+      return this.pick(unsaid.length ? unsaid : xs);
+    };
   }
 
   /** `n` distinct entries of `xs`, in a seeded order. */
@@ -181,12 +206,16 @@ class Builder {
   snap(): () => void {
     const pool = this.pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
     const [slots, used, values, ciphers, ids] = [{ ...this.slots }, { ...this.used }, new Set(this.values), [...this.ciphers], new Set(this.ids)];
-    const n = [this.items.length, this.cards.length, this.rules.length, this.steps.length, this.traces.length];
+    const n = [this.items.length, this.rules.length, this.steps.length, this.traces.length];
     const named = new Map(this.namedAt);
+    const meta = new Map(this.meta);
+    // Cards are copied whole: a time's second fact may be added to a card written earlier.
+    const cards = this.cards.map((c) => ({ ...c }));
     return () => {
       this.pool = pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
-      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids), namedAt: new Map(named) });
-      this.items.length = n[0]; this.cards.length = n[1]; this.rules.length = n[2]; this.steps.length = n[3]; this.traces.length = n[4];
+      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids), namedAt: new Map(named), meta: new Map(meta) });
+      this.cards.splice(0, this.cards.length, ...cards.map((c) => ({ ...c })));
+      this.items.length = n[0]; this.rules.length = n[1]; this.steps.length = n[2]; this.traces.length = n[3];
     };
   }
 
@@ -202,10 +231,11 @@ class Builder {
       let av: { archetype?: ArchetypeId; variant?: string } = {};
       if (w.accept) {
         if (b.archetype) {
-          if (!w.accept(b.archetype, b.variant!)) continue;
+          if (!w.accept(b.archetype, b.variant!) || (w.fits && !w.fits(b, b.archetype))) continue;
           av = { archetype: b.archetype, variant: b.variant };
         } else {
-          const fits = b.hostable.filter((h) => w.accept!(h.archetype, h.variant) && (!DEMANDING.includes(h.archetype) || b.inv.fully_visible));
+          const fits = b.hostable.filter((h) => w.accept!(h.archetype, h.variant) && (!w.fits || w.fits(b, h.archetype)) &&
+            (!DEMANDING.includes(h.archetype) || b.inv.fully_visible));
           if (!fits.length) continue;
           av = fits[Math.floor(this.rng() * fits.length)];
         }
@@ -243,7 +273,7 @@ class Builder {
       let value: string, text: string | undefined;
       const r = this.rint;
       switch (kind) {
-        case "time": value = `${1 + r(12)}:${String(5 * r(12)).padStart(2, "0")}`; if (value === "12:00") continue; break;
+        case "time": value = `${1 + r(12)}:${String(5 * r(12)).padStart(2, "0")}`; if (value === "12:00" || !this.timeOk(value)) continue; break;
         case "freq": { const t = 881 + r(199); if (t % 10 === 0) continue; value = (t / 10).toFixed(1); break; }
         case "page": value = String(12 + r(288)); break;
         case "offset": value = String(2 + r(23)); break;
@@ -257,6 +287,11 @@ class Builder {
     }
   }
 
+  /** Crime scene: no lock's time falls in the hours around the death, where it would read as testimony. */
+  timeOk(value: string): boolean {
+    return this.mode !== "crime_scene" || !DEATH_HOURS.includes(Number(value.split(":")[0]));
+  }
+
   /** One slot as written in the room: "▲● {{d}}", "p. {{page}}", an alibi, "Second, {{object}}." (`mark`: drawn on an object). */
   phrase(s: string, mark = false, spoken = false): string {
     const m = this.meta.get(s) ?? {};
@@ -268,7 +303,9 @@ class Builder {
       case "cipher": return mark ? ref : `${ref}, letters that spell nothing`;
       // On a surface, only the inspector's question; on a card, the evidence itself (never "ruled out").
       case "option": return mark ? `${ref}?` : (m.evidence?.line ?? "{{s}}").replace(/\{\{s\}\}/g, ref);
-      case "object": return mark ? romanMark(m.ordinal ?? 0, ref) : ordinalLine(m.ordinal ?? 0, ref);
+      case "object": return mark ? orderMark(m.order ?? "first", ref) : orderLine(m.order ?? "first", ref);
+      // A time away from its own document says what it is ("the last train, {{t}}").
+      case "time": return m.time ? m.time.brief.replace("{v}", ref) : ref;
       default: return ref;
     }
   }
@@ -278,17 +315,35 @@ class Builder {
     return slots.map((s) => this.phrase(s, true)).join("  ");
   }
 
-  /** A card with `slots`, written as a finding in the mode's voice; it never names what a value is for. */
-  clue(medium: Medium, slots: string[]): string {
+  /**
+   * A card with `slots`, written as a finding in the mode's voice; it never names what a value is for.
+   * `host`: the object it was found in, under, behind or on (found and read): the card says where.
+   */
+  clue(medium: Medium, slots: string[], host?: Bound): string {
+    const place = host && (medium === "found" || medium === "read") ? this.placeOf(host) : undefined;
+    const at = place ? `${place} ` : "";
     // One piece of crime-scene evidence found on its own is the document itself (a hotel register, a coroner's note).
     const ev = slots.length === 1 ? this.meta.get(slots[0])?.evidence : undefined;
+    let card: { title: string; text: string };
     if (ev && (medium === "found" || medium === "read" || medium === "pages")) {
-      return this.plainCard(ev.title, `${medium === "pages" ? "Folded in at that page. " : ""}${ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`)}`);
+      card = { title: ev.title, text: `${medium === "pages" ? "Folded in at that page. " : at}${ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`)}` };
+    } else {
+      const list = slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
+      const kind = slots.length === 1 ? this.slots[slots[0]].kind : undefined;
+      // A lone time found or read is its own document (the ticket says "Departure: {{t}}").
+      const doc = slots.length === 1 && (medium === "found" || medium === "read") ? this.meta.get(slots[0])?.time : undefined;
+      const values = doc ? [`{{${slots[0]}}}`] : slots.map((s) => this.phrase(s, false, medium === "radio"));
+      card = writeCard(this.mode, medium, values, list, this.fresh, kind, doc, place);
     }
-    const list = slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
-    const kind = slots.length === 1 ? this.slots[slots[0]].kind : undefined;
-    const { title, text } = writeCard(this.mode, medium, slots.map((s) => this.phrase(s, false, medium === "radio")), list, this.pick, kind);
-    return this.plainCard(title, text);
+    const after = slots.map((s) => this.meta.get(s)?.after).filter((a): a is string => !!a);
+    const text = after.length ? `${card.text}${card.text.includes("\n") ? "\n" : " "}${after.join(" ")}` : card.text;
+    return this.plainCard(card.title, text);
+  }
+
+  /** Where a card was found, as a sentence: never naming an object the values being built are for. */
+  placeOf(host: Bound): string {
+    const avoid = [this.exit, ...this.consumers].map((c) => c.inv.label);
+    return placeLine({ archetype: host.archetype ?? "", variant: host.variant, type: host.inv.type, label: host.inv.label }, this.fresh, avoid);
   }
 
   plainCard(title: string, text: string): string {
@@ -307,8 +362,41 @@ class Builder {
 
   step(motif: MotifId, thread: number | null, object: string | undefined, requires: string[], hints: [string, string, string], optional = false, title?: string): string {
     const id = `step_${this.steps.length + 1}`;
-    this.steps.push({ id, title: title ?? STEP_TITLE[motif], thread, motif, ...(object ? { object } : {}), requires, hints, ...(optional ? { optional } : {}) });
+    const b = object ? [this.exit, ...this.pool].find((o) => o.id === object) : undefined;
+    const why = this.why(motif, b, optional);
+    this.steps.push({ id, title: title ?? STEP_TITLE[motif], thread, motif, ...(object ? { object } : {}), requires, hints, ...(optional ? { optional } : {}), ...(why ? { why } : {}) });
     return id;
+  }
+
+  /** The in-world reason for a step (StepDef.why), by motif and the object it happens at. */
+  why(motif: MotifId, b: Bound | undefined, optional: boolean): string | undefined {
+    const l = b?.inv.label ?? "room";
+    switch (motif) {
+      case "read": return `Somebody left it on the ${l} to be read by whoever looked closely.`;
+      case "contain": return `Hidden in the ${l} so that only someone who searched would find it.`;
+      case "story_fragment": return optional && b?.archetype ? `A keepsake left in the ${l}: it tells the story, not the way out.` : undefined;
+      case "contain_lock": return `The ${l} was locked, and what opens it was hidden apart from it.`;
+      case "set_state": return b?.archetype === "TuningDial" ? `The message on the ${l} only comes through on one frequency, and someone wrote it down.` : undefined;
+      case "cross_reference": return `Something was pressed between the pages of the ${l}, and only the page number leads to it.`;
+      case "room_change": return b?.archetype === "Light" ? `The writing was made to show only when the ${l} is on.` : `The writing on the ${l} only shows in that light.`;
+      case "tool_reveal": return "Left in ink or traces that only show under ultraviolet light.";
+      case "split": return "Torn in two and hidden apart, so neither half says anything alone.";
+      case "decode": return "Written in a cipher so that a stranger reading it learns nothing.";
+      case "finale": return this.mode === "noir" ? "Whoever locked the door left its combination in pieces around the room."
+        : "The accusation is made here, and only the evidence decides it.";
+      case "ordering": return "The presence lets go only when its offerings are made in the right order; each fragment remembers one part of it.";
+    }
+  }
+
+  /** Hint rung one for a find: points at a kind of place in the room, not at nothing. */
+  nudge(b: Bound): string {
+    const t = b.inv.type, cat = categoryOf(t);
+    if (b.archetype === "Drawer") return b.variant === "drawer" ? "One of the drawers in this room isn't empty." : "Something here with a door or a lid is worth opening.";
+    if (b.archetype === "FrameTilt") return "One of the things on the walls hangs slightly crooked.";
+    if (b.archetype === "Readable") return ["bookshelf", "shelf", "book", "book_stack", "magazine", "notebook"].includes(t) ? "The books and papers here are worth a closer look." : "Something pinned or hung up here has writing on it.";
+    if (cat === "textile") return "Something soft in this room sits a little higher than it should.";
+    if (cat === "plant") return "Look under the green things.";
+    return "Something small here could be lifted.";
   }
 
   rule(trigger: Trigger, when: Condition[], effects: Effect[], step?: string): void {
@@ -317,11 +405,13 @@ class Builder {
 
   /** Writing found in a container: a card to read where it lies, not an item (an item would only repeat it). */
   note(slots: string[]): Payload {
-    return { card: this.clue("found", slots) };
+    return { note: slots };
   }
 
-  /** What finding a payload does: an item into the hand (its card, if it has one, shown), or a card to read. */
-  give(p: Payload): Effect[] {
+  /** What finding a payload at `host` does: an item into the hand (its card, if it has one, shown), or a card to read. */
+  give(p: Payload, host?: Bound): Effect[] {
+    if ("note" in p) return [{ do: "show_card", card: this.clue("found", p.note, host) }];
+    if ("plain" in p) return [{ do: "show_card", card: this.plainCard(p.plain.title, host ? `${this.placeOf(host)} ${p.plain.lead}` : p.plain.lead) }];
     if ("card" in p) return [{ do: "show_card", card: p.card }];
     const card = this.items.find((i) => i.id === p.item)?.card;
     return [{ do: "grant", item: p.item }, ...(card ? [{ do: "show_card", card } as Effect] : [])];
@@ -367,7 +457,8 @@ class Builder {
     return this.choose([
       { motif: "contain", min: 1, fixed: true, run: () => this.contain({ item }, thread) },
       { motif: "contain_lock", min: 2, fixed: false, run: () => this.lockedContain({ item }, budget, thread, depth) },
-      { motif: "set_state", min: 2, fixed: false, run: () => this.setState([], { item }, budget, thread, depth) },
+      // Never a flashlight behind a clock face.
+      ...(this.items.find((i) => i.id === item)?.kind === "tool" ? [] : [{ motif: "set_state" as const, min: 2, fixed: false, run: () => this.setState([], { item }, budget, thread, depth) }]),
     ], budget, depth + 1);
   }
 
@@ -375,23 +466,28 @@ class Builder {
     const p = this.pickObject({ trigger: "inspect", thread, accept: (a, v) => a === "Readable" && v === "card" });
     if (!p) return null;
     const b = this.bind(p, thread, "inspect");
-    const card = this.clue("read", slots);
+    const card = this.clue("read", slots, b);
     const shelf = b.inv.type === "bookshelf" || b.inv.type === "shelf";
-    const s = this.step("read", thread, b.id, [], ["Some things here are meant to be read.", `Take a closer look at the ${b.inv.label}.`,
+    const s = this.step("read", thread, b.id, [], [this.nudge(b), `Take a closer look at the ${b.inv.label}.`,
       shelf ? `Search the ${b.inv.label} and read what's tucked in among the books.` : `Read the ${b.inv.label}.`]);
     this.rule({ on: "inspect", object: b.id }, [], [{ do: "show_card", card }], s);
     return s;
   }
 
   contain(payload: Payload, thread: number, optional = false): string | null {
-    const p = this.pickObject({ trigger: "contain", thread, accept: (a) => CONTAINERS.includes(a) });
+    // A flashlight goes in a drawer or a cupboard, taped behind a frame, or under a cushion or a book; never under a mug or a pot.
+    const bulky = "item" in payload && this.items.find((i) => i.id === payload.item)?.kind === "tool";
+    const p = this.pickObject({
+      trigger: "contain", thread, accept: (a) => CONTAINERS.includes(a),
+      fits: bulky ? (b, a) => a !== "LiftUnder" || !SMALL_UNDER.includes(categoryOf(b.inv.type)) : undefined,
+    });
     if (!p) return null;
     const b = this.bind(p, thread, "contain");
     const control = CONTAINER_CONTROL[b.archetype!]!;
     const label = b.inv.label;
     const s = this.step(optional ? "story_fragment" : "contain", optional ? null : thread, b.id, [],
-      ["Not everything is on the surface.", `The ${label} could hide something.`, `${verb(b)} ${target(b)}.`], optional);
-    this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { lit: true } }], this.give(payload), s);
+      [this.nudge(b), `The ${label} could hide something.`, `${verb(b)} ${target(b)}.`], optional);
+    this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { lit: true } }], this.give(payload, b), s);
     return s;
   }
 
@@ -404,8 +500,8 @@ class Builder {
       const key = this.item("key", this.names.key);
       const up = this.deliver(key, budget - 1, thread, depth);
       if (!up) return null;
-      const s = this.step("contain_lock", thread, b.id, [up], ["Something here is locked.", `The ${b.inv.label} is locked; a key must be somewhere.`, `Use the ${this.names.key.toLowerCase()} on the ${b.inv.label}.`]);
-      this.rule({ on: "use", item: key, object: b.id }, [], [{ do: "open", object: b.id }, { do: "consume", item: key }, ...this.give(payload)], s);
+      const s = this.step("contain_lock", thread, b.id, [up], ["Something here is locked.", `The ${b.inv.label} is locked, and the ${this.names.key.toLowerCase()} you found is small enough to fit it.`, `Use the ${this.names.key.toLowerCase()} on the ${b.inv.label}.`]);
+      this.rule({ on: "use", item: key, object: b.id }, [], [{ do: "open", object: b.id }, { do: "consume", item: key }, ...this.give(payload, b)], s);
       return s;
     };
     const byCode = () => {
@@ -416,9 +512,11 @@ class Builder {
       const code = this.slot("code", m.value, m.text);
       const up = this.waitingOn(b, () => this.info([code], budget - 1, thread, depth + 1));
       if (!up) return null;
-      const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.", `The ${b.inv.label} has a three-wheel lock; the code is written somewhere.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
+      const what = b.variant === "letters" ? "letters" : b.variant === "symbols" ? "symbols" : "digits";
+      const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.",
+        `The ${b.inv.label} has a lock with three wheels of ${what}, and ${this.sourceOf(up) ?? "a clue you found"} has three ${what} on it.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
       this.rule({ on: "submit", object: b.id }, [{ if: "submitted", eq: { slot: code } }],
-        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload)], s);
+        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload, b)], s);
       return s;
     };
     const order = this.rng() < 0.5 ? [byKey, byCode] : [byCode, byKey];
@@ -431,31 +529,119 @@ class Builder {
     return null;
   }
 
-  /** Clock hands or a tuning dial set to a value learned upstream. Shows `slots`, or grants `item` (clock only). */
+  /**
+   * Clock hands or a tuning dial set to a value learned upstream. Shows `slots`, or grants `item` (clock only).
+   * A clock's time is worked out, never copied: a document gives a time and a second fact says how far
+   * off the moment that matters was. Where it can, that second fact is on a card of another thread (a
+   * braid: neither card alone sets the clock).
+   */
   setState(slots: string[], item: Payload | null, budget: number, thread: number, depth: number): string | null {
     const p = this.pickObject({ trigger: "set", thread, accept: (a) => a === "ClockHands" || (!item && a === "TuningDial") });
     if (!p) return null;
     const b = this.bind(p, thread, "set");
     const clock = b.archetype === "ClockHands";
-    const kind = clock ? "time" : "freq";
-    const m = this.mint(kind);
-    // No "for the clock": which thing a value belongs to is the player's to work out.
-    const input = this.slot(kind, m.value);
-    if (clock) b.initial.time = this.mint("time").value;
-    const up = this.waitingOn(b, () => this.info([input], budget - 1, thread, depth + 1));
-    if (!up) return null;
     const control = clock ? "time" : "freq";
+    const label = b.inv.label;
+    let input: string, up: string | null, requires: string[], connection: string;
+    if (clock) {
+      const t = this.timeFacts(thread, b);
+      if (!t) return null;
+      b.initial.time = this.mint("time").value;
+      input = t.target;
+      up = this.waitingOn(b, () => this.info([t.base], budget - 1, thread, depth + 1));
+      if (!up) return null;
+      requires = [up, ...(t.carrier ? [t.carrier.step] : [])];
+      const baseCard = this.cards.find((c) => c.text.includes(`{{${t.base}}}`));
+      const what = baseCard ? `the ${baseCard.title.toLowerCase()}` : "one clue";
+      connection = t.carrier
+        ? `The time on ${what} is only half of it: the ${this.cards.find((c) => c.id === t.carrier!.card)!.title.toLowerCase()} says how far off it was. The ${label} wants the real moment.`
+        : `${capitalise(what)} gives a time, and a second line on it says how far off it was. The ${label} wants the real moment.`;
+    } else {
+      input = this.slot("freq", this.mint("freq").value);
+      up = this.waitingOn(b, () => this.info([input], budget - 1, thread, depth + 1));
+      if (!up) return null;
+      requires = [up];
+      connection = `The ${label} has a dial, and ${this.sourceOf(up) ?? "a clue you found"} gives a frequency.`;
+    }
     const payload = item ?? (clock ? this.note(slots) : null);
     const effects: Effect[] = clock
-      ? [{ do: "set_state", target: b.id, key: "panel", value: true }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload!)]
+      ? [{ do: "set_state", target: b.id, key: "panel", value: true }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload!, b)]
       : [{ do: "show_card", card: this.clue("radio", slots) }];
-    const s = this.step("set_state", thread, b.id, [up], [
+    const s = this.step("set_state", thread, b.id, requires, [
       clock ? "A stopped clock is waiting for the right time." : "Something in the room can be tuned.",
-      clock ? `The ${b.inv.label}'s hands can be moved.` : `The ${b.inv.label} has a dial; a frequency is written somewhere.`,
-      clock ? `Set the ${b.inv.label} to {{${input}}}.` : `Tune the ${b.inv.label} to {{${input}}}.`,
+      connection,
+      clock ? `Set the ${label} to {{${input}}}.` : `Tune the ${label} to {{${input}}}.`,
     ]);
     this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { slot: input } }], effects, s);
+    if (clock) this.steps[this.steps.length - 1].why = `The ${label} was stopped at the real moment, not the time written down; set to it, its back panel opens.`;
     return s;
+  }
+
+  /**
+   * The two facts behind a clock's time: a written time (`base`, shown) and how far off the real moment
+   * was, in words. `target` (derived, never shown) is the moment. The second fact goes on a card another
+   * thread already gives (`carrier`) when there is one, else on the same card as the base time.
+   */
+  timeFacts(thread: number, clock: Bound): { base: string; target: string; carrier?: { card: string; step: string } } | null {
+    const doc = this.fresh(TIME_DOCS[this.mode]);
+    const toMin = (v: string) => { const [h, m] = v.split(":").map(Number); return (h % 12) * 60 + m; };
+    const fromMin = (x: number) => { const t = ((x % 720) + 720) % 720; return `${Math.floor(t / 60) || 12}:${String(t % 60).padStart(2, "0")}`; };
+    for (let tries = 0; tries < 12; tries++) {
+      const target = this.mint("time").value;
+      const [mins, words] = DURATIONS[this.rint(DURATIONS.length)];
+      const base = fromMin(toMin(target) - doc.sign * mins);
+      if (base === "12:00" || !this.timeOk(base) || this.values.has(`time:${base}`)) continue;
+      this.values.add(`time:${base}`);
+      const rel = doc.rel.replace("{d}", words);
+      const baseSlot = this.slot("time", base, undefined, { time: doc });
+      const carrier = this.carrierCard(thread, clock);
+      if (carrier) {
+        const c = this.cards.find((x) => x.id === carrier.card)!;
+        c.text = `${c.text}${c.text.includes("\n") ? "\n" : " "}${TIME_REL_LEAD[this.mode].carrier.replace("{r}", rel)}`;
+        const on = slotRefs(c.text)[0];
+        return { base: baseSlot, target: this.slot("time", target, undefined, undefined, [baseSlot, on]), carrier };
+      }
+      this.meta.set(baseSlot, { time: doc, after: TIME_REL_LEAD[this.mode].same.replace("{r}", rel) });
+      return { base: baseSlot, target: this.slot("time", target, undefined, undefined, [baseSlot]) };
+    }
+    return null;
+  }
+
+  /** A card another thread gives on solving a step, that can carry one more line: never evidence, never a keepsake. */
+  carrierCard(thread: number, clock: Bound): { card: string; step: string } | null {
+    const out: { card: string; step: string }[] = [];
+    // Nor a card that names the clock (a trace "on the wall above the wall clock"): it would point at it.
+    const names = (t: string) => [clock, this.exit].some((o) => new RegExp(`\\b${o.inv.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(t));
+    for (const r of this.rules) {
+      const st = r.step ? this.steps.find((x) => x.id === r.step) : undefined;
+      if (!st || st.thread === null || st.thread === thread || st.optional || st.object === clock.id) continue;
+      for (const e of r.effects) {
+        const card = e.do === "show_card" ? e.card : e.do === "grant" ? this.items.find((i) => i.id === e.item)?.card : undefined;
+        const c = card ? this.cards.find((x) => x.id === card) : undefined;
+        const refs = c ? slotRefs(c.text) : [];
+        // Never evidence (it must read as a document), and never a card that already says how far off a time was.
+        const timed = Object.values(TIME_REL_LEAD[this.mode]).some((l) => c?.text.includes(l.split("{r}")[0]));
+        if (!c || !refs.length || timed || names(c.text) || refs.some((n) => this.slots[n]?.kind === "option" || this.slots[n]?.kind === "time" || this.slots[n]?.from)) continue;
+        out.push({ card: c.id, step: st.id });
+      }
+    }
+    return out.length && this.rng() < 0.85 ? out[Math.floor(this.rng() * out.length)] : null;
+  }
+
+  /** The card a step shows, as a hint names it ("the train ticket from the desk"), or null. */
+  sourceOf(step: string): string | null {
+    const st = this.steps.find((x) => x.id === step);
+    for (const r of this.rules.filter((x) => x.step === step)) {
+      for (const e of r.effects) {
+        const card = e.do === "show_card" ? e.card : e.do === "grant" ? this.items.find((i) => i.id === e.item)?.card : undefined;
+        const c = card ? this.cards.find((x) => x.id === card) : undefined;
+        if (!c) continue;
+        const at = st?.object ? [this.exit, ...this.pool].find((o) => o.id === st.object)?.inv.label : undefined;
+        const title = c.title.toLowerCase();
+        return `the ${title}${at && !at.toLowerCase().includes(title) && !title.includes(at.toLowerCase()) ? ` from the ${at}` : ""}`;
+      }
+    }
+    return null;
   }
 
   crossReference(slots: string[], budget: number, thread: number, depth: number): string | null {
@@ -466,7 +652,8 @@ class Builder {
     const page = this.slot("page", this.mint("page").value);
     const up = this.waitingOn(b, () => this.info([page], budget - 1, thread, depth + 1));
     if (!up) return null;
-    const s = this.step("cross_reference", thread, b.id, [up], ["One clue points into a book.", `A page number you found belongs to the ${b.inv.label}.`, `Find page {{${page}}} in the ${b.inv.label}.`]);
+    const s = this.step("cross_reference", thread, b.id, [up], ["One clue points into a book.",
+      `${capitalise(this.sourceOf(up) ?? "a clue you found")} gives a page number, and the ${b.inv.label} has pages.`, `Find page {{${page}}} in the ${b.inv.label}.`]);
     this.rule({ on: "control", target: b.id, control: "page" }, [{ if: "control", target: b.id, control: "page", eq: { slot: page } }],
       [{ do: "show_card", card: this.clue("pages", slots) }, { do: "overlay", object: b.id, overlay: "pinned_card" }], s);
     return s;
@@ -500,7 +687,8 @@ class Builder {
 
   toolReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
     // Traces on the photo itself when there's room for both steps (light it, then lift it); else a glow on an object.
-    if (budget >= 2 && slots.length <= MAX_TRACES) {
+    // (In a last round of candidates, the glow lands on something already seen instead: a revisit, for rooms short of one.)
+    if (budget >= 2 && slots.length <= MAX_TRACES && !this.glowFirst) {
       const restore = this.snap();
       const s = this.traceReveal(slots, budget, thread, depth, budget >= 3);
       if (s) return s;
@@ -611,7 +799,9 @@ class Builder {
     if (ev) return this.plainCard(title, where(ev.traces[t.kind]!).replace(/\{\{s\}\}/g, `{{${slot}}}`));
     const lead = where(this.pick(TRACE_VALUE[this.mode][t.kind]!));
     const v = this.phrase(slot);
-    return this.plainCard(title, LIST_KINDS.includes(this.slots[slot].kind) ? `${lead}\n${v}` : `${lead} ${/[.!?]$/.test(v) ? v : `${v}.`}`);
+    const list = LIST_KINDS.includes(this.slots[slot].kind);
+    const after = this.meta.get(slot)?.after;
+    return this.plainCard(title, `${list ? `${lead}\n${v}` : `${lead} ${/[.!?]$/.test(v) ? v : `${v}.`}`}${after ? `${list ? "\n" : " "}${after}` : ""}`);
   }
 
   /**
@@ -644,7 +834,7 @@ class Builder {
     const lifted = (t: Trace): Condition => ({ if: "state", target: t.id, key: "lifted", eq: { lit: true } });
     const one = traces.length === 1;
     const first = traces[0].t;
-    const wheres = listOf(traces.map(({ t }) => t.where));
+    const wheres = listOf([...new Set(traces.map(({ t }) => t.where))]);
     const anchors = listOf([...new Set(traces.map(({ t }) => this.labelOf(t.anchor)))].map((l) => `the ${l}`));
     const names = listOf([...new Set(traces.map(({ t }) => t.label.toLowerCase()))]);
     const each = listOf(traces.map(({ t }) => `the ${t.label.toLowerCase()} on ${t.where}`));
@@ -709,7 +899,9 @@ class Builder {
     const itemStep = encStep && this.deliver(wheel, 1, thread, depth);
     const offStep = itemStep && this.info([offset], budget - 3, thread, depth + 1);
     if (!encStep || !itemStep || !offStep) return null;
-    const s = this.step("decode", thread, undefined, [encStep, itemStep, offStep], ["A coded line and a wheel to read it.", "The cipher wheel's ring needs the right offset.", `Set the cipher wheel to {{${offset}}} and read the coded line.`]);
+    const s = this.step("decode", thread, undefined, [encStep, itemStep, offStep], ["A coded line and a wheel to read it.",
+      `The letters on ${this.sourceOf(encStep) ?? "the coded card"} spell nothing until the cipher wheel's ring is turned; ${this.sourceOf(offStep) ?? "another clue"} gives the setting.`,
+      `Set the cipher wheel to {{${offset}}} and read the coded line.`]);
     this.rule({ on: "control", target: wheel, control: "offset" }, [{ if: "control", target: wheel, control: "offset", eq: { slot: offset } }, { if: "solved", step: encStep }],
       [{ do: "show_card", card: this.clue("decoded", slots) }], s);
     return s;
@@ -721,6 +913,29 @@ const STEP_TITLE: Record<MotifId, string> = {
   cross_reference: "Find the page", decode: "Decode it", tool_reveal: "Under the light", room_change: "Change the room",
   ordering: "Perform the ritual", contain_lock: "Open the lock", story_fragment: "A keepsake", finale: "The way out",
 };
+
+/**
+ * What each of `n` ritual fragments says about its offering's place, so that exactly one order fits all
+ * of them and no single fragment gives more than one place outright: at most one says "first" or "last"
+ * or "neither first nor last"; the others only rule places out.
+ */
+export function orderPuzzle(n: number, rng: () => number): OrderRule[] {
+  const perms = permutations(Array.from({ length: n }, (_, i) => i));
+  const absolute: OrderRule[] = ["first", "last", "middle"];
+  const sets: OrderRule[][] = [];
+  const grow = (k: number, acc: OrderRule[]) => {
+    if (k === n) {
+      if (acc.filter((r) => absolute.includes(r)).length > 1) return;
+      // Exactly one order fits: the true one (offering k at place k).
+      const fit = perms.filter((p) => p.every((place, k2) => orderHolds(acc[k2], place, n)));
+      if (fit.length === 1) sets.push([...acc]);
+      return;
+    }
+    for (const r of ORDER_RULES) if (orderHolds(r, k, n)) grow(k + 1, [...acc, r]);
+  };
+  grow(0, []);
+  return sets[Math.floor(rng() * sets.length)];
+}
 
 /** Caesar-shift a value's text with the ring offset (digits map onto letters), for the coded card. */
 function encipher(text: string, offset: number): string {
@@ -768,13 +983,14 @@ const NESTED = 0.6;
 
 function buildCandidate(
   inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number, trng: () => number,
-  seed: string | number,
+  seed: string | number, glowFirst = false,
 ): Candidate | string {
   const taken = new Set<string>();
   const mk = (o: InventoryObject): Bound => ({ inv: o, id: slugId(o.label, taken), hostable: hostableArchetypes(o), archetype: null, roles: 0, triggers: [], threads: [], initial: {} });
   const exit = mk(exitObj);
   const pool = inv.filter((o) => o !== exitObj).sort((a, b) => b.salience - a.salience).map(mk);
   const B = new Builder(mode, pool, exit, rng, rint, trng);
+  B.glowFirst = glowFirst;
   const voice = MODE_COPY[mode];
 
   // Mode skeleton: the finale's inputs become thread goals.
@@ -853,7 +1069,9 @@ function buildCandidate(
     finaleHow = "Cross off every suspect, motive and method the evidence rules out. One of each is left.";
   } else {
     const length = 3;
-    const positions = Array.from({ length }, (_, k) => B.slot("object", "?", undefined, { ordinal: k }));
+    // Each fragment says where its offering may or may not go; only together do they fix the order.
+    const rules = orderPuzzle(length, rng);
+    const positions = Array.from({ length }, (_, k) => B.slot("object", "?", undefined, { ordinal: k, order: rules[k] }));
     const owner = dealt(length);
     owner.forEach((t, k) => outputs[t].push(positions[k]));
     positionOwner.push(...owner);
@@ -861,7 +1079,7 @@ function buildCandidate(
     finale = { kind: "ritual", object: exit.id, length };
     submit = { kind: "sequence", length };
     finaleHint = "";   // named once the ritual's objects are chosen
-    finaleHow = "Each fragment you found names one offering and its place in the order. Match what they describe to things in this room.";
+    finaleHow = "Each fragment describes one offering and says where it may or may not go. Match each to a thing in this room; only one order fits every fragment.";
   }
 
   // Threads, grown backwards from their goals.
@@ -916,7 +1134,7 @@ function buildCandidate(
     const chosen = names.map((n) => picked!.get(n)!);
     for (const [name, b] of picked) {
       const described = unclear.includes(b.id) ? null : describeObject(b.inv.type, b.inv.label);
-      B.slots[name] = { kind: "object", value: b.id, text: described ?? `the ${b.inv.label}` };
+      B.slots[name] = { kind: "object", value: b.id, text: described ?? `the ${b.inv.label}`, ...(B.meta.get(name)?.order ? { order: B.meta.get(name)!.order } : {}) };
     }
     B.slots[answer] = { ...B.slots[answer], value: chosen.map((c) => c.id).join("|") };
     // The last rung may give the answer: plainly, by name.
@@ -932,8 +1150,8 @@ function buildCandidate(
   // Optional extras: a story fragment, and at most one removable small object.
   if (rng() < 0.6) {
     const restore = B.snap();
-    const keepsake = B.pick(KEEPSAKES[mode]);
-    if (!B.contain({ card: B.plainCard(keepsake.title, keepsake.lead) }, -2, true)) restore();
+    const keepsake = B.fresh(KEEPSAKES[mode]);
+    if (!B.contain({ plain: keepsake }, -2, true)) restore();
   }
   const anchors = new Set(B.traces.map((t) => t.anchor));
   const portable = B.pool.filter((b) => b.roles === 0 && !anchors.has(b.id) && isPortableType(b.inv.type) && categoryOf(b.inv.type) !== "textile" &&
@@ -1012,9 +1230,15 @@ function buildCandidate(
   const allPhotos = new Set(inv.map((o) => o.photo_index)).size;
   const motifs = required.map((s) => s.motif);
   const openings = required.filter((s) => s.requires.length === 0).length;
+  // Variety: the aha motifs (a torn note, a cipher) and a braid (a step needing another thread's card) score;
+  // the room that is only "UV flashlight, then a lamp" scores less, so rooms don't all run the same script.
+  const threadOf = new Map(B.steps.map((s) => [s.id, s.thread]));
+  const braids = required.filter((s) => s.thread !== null && s.requires.some((r) => threadOf.get(r) !== null && threadOf.get(r) !== s.thread)).length;
+  const has = (m: MotifId) => motifs.includes(m);
   const score = 2 * (photos / Math.min(allPhotos, 4)) + used.reduce((a, b) => a + b.inv.salience, 0) / Math.max(1, used.length) +
-    0.4 * new Set(motifs).size + 0.5 * Math.min(revisits, 2) + 0.3 * Math.min(roomChanges, 3) + 0.3 * Math.min(openings, 3) -
-    0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7));
+    0.4 * new Set(motifs).size + 0.5 * Math.min(revisits, 2) + 0.3 * Math.min(roomChanges, 2) + 0.3 * Math.min(openings, 3) -
+    0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7)) + 0.6 * Math.min(braids, 1) + 0.5 * (has("decode") ? 1 : 0) + 0.4 * (has("split") ? 1 : 0) -
+    (has("tool_reveal") && has("room_change") ? 0.6 : 0);
   return { definition, secret, summary: { threads: nThreads, motifs, objectsUsed: used.length + 1, photos, score, candidatesTried: 0 } };
 }
 
@@ -1044,7 +1268,7 @@ export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanR
     for (let c = round * n; c < (round + 1) * n; c++) {
       const rng = seededRandom(`${opts.seed}:${opts.mode}:${c}`);
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
-      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed);
+      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2);
       if (typeof r === "string") fail(r); else built.push(r);
     }
     built.sort((a, b) => b.summary.score - a.summary.score);

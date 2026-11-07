@@ -7,10 +7,12 @@
 // reachable); the finale only fires once every required step is solved; every
 // shown slot is on exactly one card, that card is reachable, and every rule that
 // needs the slot fires only after it was seen; derived slots appear on no card.
+// Proves the finale is a deduction: an accusation's evidence rules out all but the
+// answer in each question; a ritual's fragments leave exactly the answer's order.
 // Reports pacing metrics from the shortest winning path.
 import { DOMAIN_SLOT_KIND, normalize } from "./archetypes.ts";
 import { applyAction, initialState } from "./engine.ts";
-import type { Action, Condition, PlayState, RoomDefinitionV2, RoomSecretV2, StateValue } from "./types.ts";
+import { type Action, type Condition, orderHolds, type PlayState, type RoomDefinitionV2, type RoomSecretV2, type StateValue } from "./types.ts";
 import { slotRefs } from "./validate.ts";
 
 export interface SimMetrics {
@@ -172,6 +174,7 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
     }
   }
   if (truncated) errors.push(`state space exceeded ${maxStates} states`);
+  errors.push(...finaleLogic(def, secret));
   errors.push(...slotLeaks);
 
   const wins = states.map((s, i) => (s.completed ? i : -1)).filter((i) => i >= 0);
@@ -254,6 +257,44 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
     pathLength: path.length,
   };
   return { ok: errors.length === 0, errors, metrics, path };
+}
+
+
+function permutationsOf(n: number): number[][] {
+  const go = (xs: number[]): number[][] => xs.length <= 1 ? [xs] : xs.flatMap((x, i) => go([...xs.slice(0, i), ...xs.slice(i + 1)]).map((r) => [x, ...r]));
+  return go(Array.from({ length: n }, (_, i) => i));
+}
+
+/**
+ * The finale's logic, from the secret alone. Accusation: in each question, the options the shown
+ * evidence names (each slot a card rules out) leave exactly the answer. Ritual (rooms whose fragments
+ * carry an order rule): exactly one order of the offerings fits every fragment, and it is the answer's.
+ */
+export function finaleLogic(def: RoomDefinitionV2, secret: RoomSecretV2): string[] {
+  const errors: string[] = [];
+  const submit = secret.rules.find((r) => r.trigger.on === "submit" && r.trigger.object === def.finale.object);
+  const cond = submit?.when.find((c) => c.if === "submitted");
+  const answer = cond && "eq" in cond && "slot" in cond.eq ? secret.slots[cond.eq.slot] : undefined;
+  if (!answer?.from) return errors;
+  if (def.finale.kind === "accusation") {
+    const lists = [def.finale.suspects, def.finale.motives, def.finale.methods];
+    answer.from.forEach((name, i) => {
+      const dim = secret.slots[name];
+      const options = lists[i] ?? [];
+      const ruled = new Set((dim?.from ?? []).map((n) => secret.slots[n]).filter((s) => s && !s.from && s.kind === "option").map((s) => s.value));
+      const left = options.filter((o) => !ruled.has(o.id)).map((o) => o.id);
+      if (left.length !== 1 || left[0] !== dim?.value) errors.push(`accusation: the evidence leaves ${left.length} options in question ${i + 1}, not exactly the answer`);
+    });
+  }
+  if (def.finale.kind === "ritual") {
+    const parts = answer.from.map((n) => secret.slots[n]);
+    if (parts.every((p) => p?.order)) {
+      const n = parts.length;
+      const fit = permutationsOf(n).filter((p) => p.every((place, k) => orderHolds(parts[k].order!, place, n)));
+      if (fit.length !== 1 || fit[0].some((place, k) => place !== k)) errors.push(`ritual: ${fit.length} orders fit the fragments, not exactly the answer's`);
+    }
+  }
+  return errors;
 }
 
 function describe(a: Action): string {

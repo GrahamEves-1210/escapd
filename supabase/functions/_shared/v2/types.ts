@@ -105,11 +105,33 @@ export type SlotKind =
   | "time" | "freq" | "page" | "offset" | "digits" | "letters" | "symbols" | "cipher"
   | "option" | "object" | "code";
 
+/**
+ * Where a ritual fragment says its offering goes (paranormal), relative to a three-offering order:
+ * the fragments together leave exactly one order (the simulator checks it), so the order is deduced.
+ */
+export const ORDER_RULES = ["first", "last", "middle", "not_first", "not_last", "not_middle"] as const;
+export type OrderRule = typeof ORDER_RULES[number];
+
+/** Whether `rule` holds for place `k` (0-based) of an order of `n`. */
+export function orderHolds(rule: OrderRule, k: number, n: number): boolean {
+  const first = k === 0, last = k === n - 1;
+  switch (rule) {
+    case "first": return first;
+    case "last": return last;
+    case "middle": return !first && !last;
+    case "not_first": return !first;
+    case "not_last": return !last;
+    case "not_middle": return first || last;
+  }
+}
+
 export interface SlotValue {
   kind: SlotKind;
   value: string;                        // what rules compare ("7|2|9" for wheels)
   text?: string;                        // what cards show (defaults to value)
   from?: string[];                      // derived: never shown; known once every source is known
+  /** A ritual offering's slot: what its fragment says about its place in the order (absent on older rooms). */
+  order?: OrderRule;
 }
 
 /** A literal or a slot reference. Minted answers are always slots. */
@@ -167,6 +189,9 @@ export interface StepDef {
   requires: Id[];            // steps that must be solved first (planner's dependency graph)
   optional?: boolean;        // story fragments: never required
   hints: [string, string, string];  // nudge, direction, reveal (may hold {{slot}})
+  /** Why, in the room's world, this clue is where it is and works as it does ("the clock stopped at the
+   *  moment that mattered"): for the author to explain the step. Never shown as is; no slots, no digits. */
+  why?: string;
 }
 
 export interface RoomSecretV2 {

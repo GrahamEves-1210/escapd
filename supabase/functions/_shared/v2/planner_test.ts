@@ -1,8 +1,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { applyAction, initialState, renderCard } from "./engine.ts";
-import { planRoom, type PlanResult } from "./planner.ts";
+import { DURATIONS } from "./copy.ts";
+import { orderPuzzle, planRoom, type PlanResult, seededRandom } from "./planner.ts";
+import { finaleLogic, simulate } from "./simulate.ts";
+import { categoryOf } from "./taxonomy.ts";
 import { BEDROOM_NO_DOOR, BEDROOM_WITH_DOOR, FULL_15, obj, planProblems, seededRandomInt, SPARSE_5 } from "./test_fixtures.ts";
-import { MODES } from "./types.ts";
+import { MODES, orderHolds } from "./types.ts";
 
 const ROOMS = { BEDROOM_WITH_DOOR, BEDROOM_NO_DOOR, SPARSE_5, FULL_15 };
 
@@ -262,4 +265,110 @@ Deno.test("planner: UV traces sit on the photo by a real object, and the torch t
     }
   }
   assert(rooms >= 30, `only ${rooms} of 54 rooms have UV traces`);
+});
+
+// ---------------------------------------------------------------------------
+// Deductions: clock times from two facts, the ritual order, the accusation grid
+// ---------------------------------------------------------------------------
+const toMin = (v: string) => { const [h, m] = v.split(":").map(Number); return (h % 12) * 60 + m; };
+
+Deno.test("planner: a clock's time is worked out from a written time and a second fact, never copied", () => {
+  let clocks = 0, braided = 0;
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of [...SEEDS, "w7", "w8", "w9"]) {
+    const { definition: def, secret } = planned(inv, mode, seed);
+    for (const r of secret.rules) {
+      const c = r.when.find((x) => x.if === "control" && x.control === "time");
+      if (!c || c.if !== "control" || !("slot" in c.eq)) continue;
+      clocks++;
+      const target = secret.slots[c.eq.slot];
+      assert(target.kind === "time" && target.from?.length, `${mode} ${seed}: the clock's time is shown on a card`);
+      const base = secret.slots[target.from[0]];
+      assertEquals(base.kind, "time");
+      // The amount between them is written in words on the card with the base time or on the carrier card.
+      const cardsWith = target.from.map((n) => def.cards.find((x) => x.text.includes(`{{${n}}}`))!);
+      const words = cardsWith.map((x) => x.text).join(" ");
+      const diff = Math.abs(toMin(target.value) - toMin(base.value));
+      const gap = Math.min(diff, 720 - diff);
+      assert(DURATIONS.some(([m, w]) => m === gap && words.includes(w)), `${mode} ${seed}: ${base.value} -> ${target.value} not explained by "${words}"`);
+      // The clock step needs every card the time comes from.
+      const step = secret.steps.find((s) => s.id === r.step)!;
+      for (const card of cardsWith) {
+        const shownBy = secret.rules.filter((x) => x.step && x.effects.some((e) => (e.do === "show_card" && e.card === card.id) ||
+          (e.do === "grant" && def.items.find((i) => i.id === e.item)?.card === card.id))).map((x) => x.step!);
+        const reach = (id: string, seen = new Set<string>()): boolean => shownBy.includes(id) ||
+          (!seen.has(id) && (seen.add(id), secret.steps.find((s) => s.id === id)!.requires.some((q) => reach(q, seen))));
+        assert(step.requires.some((q) => reach(q)), `${mode} ${seed}: the clock doesn't wait for ${card.title}`);
+      }
+      if (target.from.length === 2) braided++;
+      if (mode === "crime_scene") for (const v of [base.value, target.value]) assert(![10, 11, 12, 1].includes(Number(v.split(":")[0])), `crime time ${v} near the death`);
+    }
+  }
+  assert(clocks >= 10 && braided >= 3, `${clocks} clocks, ${braided} braided`);
+});
+
+Deno.test("planner: the ritual order is deduced: fragments rule places in or out, and only the answer fits them all", () => {
+  for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(inv, "paranormal", seed);
+    const parts = Object.values(secret.slots).filter((s) => s.kind === "object");
+    assertEquals(parts.length, 3);
+    assert(parts.every((s) => s.order), "every offering has an order rule");
+    assert(parts.filter((s) => ["first", "last", "middle"].includes(s.order!)).length <= 1, "more than one fragment gives a place outright");
+    assertEquals(finaleLogic(def, secret), []);
+    for (const c of def.cards) assert(!/\b(Second|Third),/.test(c.text), `an ordinal: ${c.text}`);
+  }
+});
+
+Deno.test("simulator: a finale whose evidence or fragments don't leave exactly the answer is refused", () => {
+  const crime = planned(FULL_15, "crime_scene", "grid");
+  const answer = Object.values(crime.secret.slots).find((s) => s.kind === "code" && s.from)!;
+  const dim = answer.from![0];
+  const broken = structuredClone(crime.secret);
+  broken.slots[dim] = { ...broken.slots[dim], from: broken.slots[dim].from!.slice(1) };   // one suspect never ruled out
+  assert(finaleLogic(crime.definition, broken).some((e) => e.startsWith("accusation")));
+  const para = planned(FULL_15, "paranormal", "grid");
+  const loose = structuredClone(para.secret);
+  for (const s of Object.values(loose.slots)) if (s.kind === "object") s.order = "not_middle";   // many orders fit
+  assert(finaleLogic(para.definition, loose).some((e) => e.startsWith("ritual")));
+  assert(!simulate(para.definition, loose).ok);
+});
+
+Deno.test("planner: orderPuzzle always leaves exactly one order", () => {
+  for (let i = 0; i < 200; i++) {
+    const rules = orderPuzzle(3, seededRandom(`o${i}`));
+    const perms = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    const fit = perms.filter((p) => p.every((place, k) => orderHolds(rules[k], place, 3)));
+    assertEquals(fit, [[0, 1, 2]]);
+  }
+});
+
+Deno.test("planner: cards say where they were, and the UV flashlight is never under an ornament or a plant", () => {
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(inv, mode, seed);
+    for (const r of secret.rules) {
+      const step = secret.steps.find((s) => s.id === r.step);
+      if (!step || (step.motif !== "contain" && step.motif !== "story_fragment") || r.trigger.on !== "control") continue;
+      const host = def.objects.find((o) => o.id === step.object)!;
+      for (const e of r.effects) {
+        if (e.do === "show_card") {
+          const text = def.cards.find((c) => c.id === e.card)!.text;
+          assert(text.includes(host.label) || text.startsWith("Hidden where") || (host.variant === "drawer" && /\bdrawer\b/.test(text)), `${mode}: "${text}" doesn't say it was in the ${host.label}`);
+        }
+        if (e.do === "grant" && def.items.find((i) => i.id === e.item)?.kind === "tool") {
+          assert(!["decor", "plant"].includes(categoryOf(host.type)), `${mode}: the flashlight under the ${host.label}`);
+        }
+      }
+    }
+  }
+});
+
+Deno.test("planner: every step but a take says why it is where it is; first hints point at a kind of place", () => {
+  for (const mode of MODES) for (const seed of SEEDS) {
+    const { secret } = planned(FULL_15, mode, seed);
+    for (const s of secret.steps) {
+      if (!s.optional || s.motif !== "story_fragment" || secret.rules.some((r) => r.step === s.id && r.trigger.on === "control" && r.trigger.control !== "taken")) {
+        if (!(s.optional && secret.rules.some((r) => r.step === s.id && r.trigger.on === "control" && r.trigger.control === "taken"))) assert(s.why && !/[{}]/.test(s.why), `${mode} ${s.id} ${s.motif}: no why`);
+      }
+      assert(s.hints[0] !== "Not everything is on the surface.", `${mode}: an empty nudge`);
+    }
+  }
 });

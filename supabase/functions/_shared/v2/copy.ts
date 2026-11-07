@@ -16,7 +16,7 @@
 //   - No digits outside {{slots}}: a stray number would read as a clue.
 //   - Choices are deterministic from the caller's `pick` (a seeded stream).
 import type { ObjectType } from "./taxonomy.ts";
-import type { Mode, SlotKind, TraceKind } from "./types.ts";
+import type { Mode, OrderRule, SlotKind, TraceKind } from "./types.ts";
 
 export type Pick = <T>(xs: readonly T[]) => T;
 
@@ -129,7 +129,7 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     ],
     read: [
       f("Margin note", "Circled in red, as if someone wanted it found: {v}"),
-      f("Margin note", "A note in the victim's handwriting, pressed hard: {v}"),
+      f("Margin note", "Pencilled in the margin and circled twice: {v}"),
     ],
     pages: [f("Dry-cleaning tag", "Pressed flat at that page, a dry-cleaning tag. Inked on it: {v}")],
     lamp: [f("Indented writing", "Raking light picks out an indentation in the surface: {v}")],
@@ -159,64 +159,157 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
 };
 
 /**
- * Documents that carry one value of a kind (a time on a train ticket, a page on a library slip), for
- * writing found or read: mixed in with the medium's own frames. Never a word about what it's for.
+ * Documents that carry one value of a kind (a page on a library slip, a code on a padlock receipt), for
+ * writing found or read: a value of a kind with documents is always on one of them, so a number has a
+ * reason to be written down. Never a word about what it's for. (Times: TIME_DOCS.)
  */
-type DocKind = Exclude<SlotKind, "option" | "object">;
+type DocKind = Exclude<SlotKind, "option" | "object" | "time">;
 const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
   noir: {
-    time: [
-      f("Train ticket", "A third-class single, punched once by the guard. The departure, printed in the corner: {v}"),
-      f("Theatre ticket", "Stalls, the seat number torn away. The curtain time, stamped across it in purple: {v}"),
-      f("Telegram", "ARRIVING ON THE LATE TRAIN STOP MEET ME AT {v} STOP COME ALONE STOP"),
-    ],
     freq: [
       f("Matchbook", "From the Blue Lantern. Inside the flap, in lipstick: Tune in, {v}, after midnight"),
       f("Taxi log", "A page from a cab dispatcher's log. One line circled twice: Night car, call in on {v}"),
     ],
     page: [
       f("Library slip", "A city library slip, long overdue. Pencilled under the date stamp: {v}"),
-      f("Pawn ticket", "For one leather-bound book, never collected. On the back, in a neat hand: see {v}"),
+      f("Pawn ticket", "For one leather-bound volume, never collected. On the back, in a neat hand: see {v}"),
+      f("Bookmark", "A cheap leather bookmark, the tassel chewed. Inked on the end: {v}"),
     ],
     digits: [
-      f("Luggage tag", "A brass-eyed tag from a suitcase that never arrived. Inked where the room goes: {v}"),
-      f("Hotel bill", "From a hotel that rents by the hour. Torn off the bottom, in the clerk's hand: {v}"),
+      f("Luggage tag", "A brass-eyed tag from a suitcase that never arrived. Inked where the room number goes: {v}"),
+      f("Hotel bill", "From a cheap hotel down by the docks. Torn off the bottom, in the clerk's hand: {v}"),
+      f("Cloakroom ticket", "From the Blue Lantern's coat check, never redeemed. Punched through the middle: {v}"),
+      f("Pawn ticket", "One silver cigarette case, pawned and never collected. Stamped in red where the number goes: {v}"),
     ],
     code: [
       f("Hardware receipt", "For one padlock, paid in cash, no name given. Scrawled across the back: {v}"),
       f("Shoeshine stub", "A shoeshine stand's ticket. On the back, in pencil, pressed hard: {v}"),
+      f("Matchbook", "From a bar called the Blue Lantern. Inside the flap, in hurried pencil: {v}"),
     ],
     offset: [f("Pocket diary", "Every page blank but one, and on it, circled: {v}")],
     cipher: [f("Telegram", "Delivered, never opened until now. The whole message: {v}")],
   },
   crime_scene: {
-    time: [
-      f("Parking ticket", "Issued on the street outside last night. The warden's time, in the box: {v}"),
-      f("Train ticket", "A platform ticket from the coat on the chair, clipped by the inspector. Stamped in purple: {v}"),
+    freq: [
+      f("Dispatch slip", "Torn from the dispatcher's pad, in the night sergeant's capitals: Night channel, {v}"),
+      f("Scanner log", "The victim's scanner log. One channel, ringed twice: {v}"),
     ],
-    freq: [f("Dispatch slip", "Torn from the dispatcher's pad, in the night sergeant's capitals: Night channel, {v}")],
-    page: [f("Library slip", "From the victim's library book, overdue. Pencilled under the date stamp: {v}")],
-    digits: [f("Luggage tag", "From the case under the bed. Where the room goes, in the victim's hand: {v}")],
+    page: [
+      f("Library slip", "A library slip the inspector clipped to the evidence list. Pencilled under the date stamp, in the inspector's hand: {v}"),
+      f("Index card", "From the inspector's card index on the case. One line only: see {v}"),
+    ],
+    digits: [f("Luggage tag", "Torn from the victim's case. Where the room goes, in the victim's hand: {v}")],
     code: [
       f("Receipt", "From a locksmith across town, for one padlock. On the back, in biro: {v}"),
       f("Phone bill", "The victim's, unpaid. Written in the margin and boxed twice: {v}"),
+      f("Sticky note", "Half a fingerprint on the adhesive. In blue ink, boxed: {v}"),
     ],
     offset: [f("Diary page", "The victim's diary, one entry only, and only this: {v}")],
     cipher: [f("Postcard", "No picture, no signature. Just one line in capitals: {v}")],
   },
   paranormal: {
-    time: [
-      f("Mourning card", "Black-edged, for a child. The hour of passing, in copperplate: {v}"),
-      f("Parish register", "A page torn from the parish register. Beside a burial, the hour, underlined: {v}"),
+    freq: [
+      f("Wireless log", "A page from an old wireless log, the ink gone brown. One line, underlined: {v}"),
+      f("Séance notes", "Pencil notes from a séance in this room. One line, underlined twice: the voice comes on {v}"),
     ],
-    freq: [f("Wireless log", "A page from an old wireless log, the ink gone brown. One line, underlined: {v}")],
-    page: [f("Hymn sheet", "Torn from a pew. Ringed in pencil at the foot: {v}")],
+    page: [
+      f("Hymn sheet", "Torn from a pew. Ringed in pencil at the foot: {v}"),
+      f("Bookmark", "A black ribbon bookmark, frayed at the end. Stitched into it in white thread: {v}"),
+    ],
     digits: [f("Christening card", "Lace edges gone grey. Inside, where the name should be: {v}")],
-    code: [f("Sampler", "A child's cross-stitch, unfinished. The last row, in black thread: {v}")],
+    code: [
+      f("Sampler", "A child's cross-stitch, unfinished. The last row, in black thread: {v}"),
+      f("Slate", "A child's school slate. Chalked on it, and never rubbed out: {v}"),
+    ],
     offset: [f("Diary page", "A girl's diary, one line on an empty page: {v}")],
     cipher: [f("Burnt letter", "Only one line survived the fire: {v}")],
   },
 };
+
+/**
+ * A time that sets a clock is never the bare value: a document gives a time (`lead`, `{v}`), and a
+ * second fact (`rel`, `{d}` an amount of time in words) says how far the moment that matters was from
+ * it. The clock wants that moment, so the player combines the two. `brief`: the time when it is
+ * written somewhere other than on the document itself (a radio voice, a glow, a trace). `sign`: the
+ * moment is after (+1) or before (-1) the written time.
+ */
+export interface TimeDoc { title: string; lead: string; brief: string; rel: string; sign: 1 | -1 }
+const td = (title: string, lead: string, brief: string, rel: string, sign: 1 | -1 = 1): TimeDoc => ({ title, lead, brief, rel, sign });
+export const TIME_DOCS: Record<Mode, TimeDoc[]> = {
+  noir: [
+    td("Train ticket", "A third-class single for the last train out, punched once by the guard. Departure, printed in the corner: {v}", "the last train, {v}",
+      "The last train never leaves on time. It pulls out {d} after the time on the ticket."),
+    td("Theatre ticket", "Stalls, the seat number torn away. Curtain up, stamped across it in purple: {v}", "curtain up at {v}",
+      "The curtain went up {d} late that night. Somebody kept the whole house waiting."),
+    td("Telegram", "ARRIVING ON THE LATE TRAIN STOP MEET ME AT {v} STOP COME ALONE STOP", "meet at {v}",
+      "He turned up to the meeting {d} late. He always does."),
+  ],
+  crime_scene: [
+    td("Parking ticket", "Issued on the street outside. The warden's time, written in the box: {v}", "the warden's ticket, {v}",
+      "From the traffic office: that warden's watch was found to run {d} fast.", -1),
+    td("Platform ticket", "A platform ticket, clipped by the inspector. Stamped in purple: {v}", "platform ticket stamped {v}",
+      "The stationmaster's note: the platform clock ran {d} slow all that week."),
+  ],
+  paranormal: [
+    td("Mourning card", "Black-edged, for a child. The hour of passing, in copperplate: {v}", "she passed at {v}",
+      "They rang the bell {d} after she passed, and stopped every clock in the house on its last stroke."),
+    td("Parish register", "A page torn from the parish register. Beside a burial, the hour it began, underlined: {v}", "the burial began at {v}",
+      "The bell was tolled only when the last earth was in, {d} after the burial began."),
+  ],
+};
+
+/** How the second fact about a time is written: on the same document, or on another card ("carrier"). */
+export const TIME_REL_LEAD: Record<Mode, { same: string; carrier: string }> = {
+  noir: { same: "Pencilled underneath: \"{r}\"", carrier: "On the back, in another hand: \"{r}\"" },
+  crime_scene: { same: "Paper-clipped to it: {r}", carrier: "Paper-clipped to it, a second note: {r}" },
+  paranormal: { same: "Beneath, fainter: {r}", carrier: "And at the very bottom, fainter, as if added later: {r}" },
+};
+
+/** Amounts of time in words (minutes): never digits on a card. */
+export const DURATIONS: [number, string][] = [
+  [15, "a quarter of an hour"], [20, "twenty minutes"], [25, "twenty-five minutes"], [30, "half an hour"], [40, "forty minutes"],
+  [45, "three quarters of an hour"], [50, "fifty minutes"], [60, "an hour"], [75, "an hour and a quarter"], [90, "an hour and a half"],
+];
+
+// ---------------------------------------------------------------------------
+// Where a card was found: a sentence before it, by what held it
+// ---------------------------------------------------------------------------
+/** The object a card was found in, under, behind or on. */
+export interface Place { archetype: string; variant?: string; type: ObjectType; label: string }
+
+const PLACES: { when: (p: Place) => boolean; lines: string[] }[] = [
+  { when: (p) => p.archetype === "Drawer" && p.variant === "drawer", lines: ["Pushed to the back of the drawer.", "Under the drawer's paper lining.", "At the back of the drawer, under a tangle of string."] },
+  { when: (p) => p.archetype === "Drawer" && p.type === "wardrobe", lines: ["In the inside pocket of a coat hanging in the {l}.", "In a shoebox on the floor of the {l}."] },
+  { when: (p) => p.archetype === "Drawer" && ["cabinet", "sideboard", "tv_stand", "filing_cabinet"].includes(p.type), lines: ["Taped inside the door of the {l}.", "Behind everything on the bottom shelf of the {l}."] },
+  { when: (p) => p.archetype === "Drawer" && ["chest", "trunk", "suitcase", "box", "toolbox", "safe"].includes(p.type), lines: ["Under the lining of the {l}.", "At the bottom of the {l}, under everything else."] },
+  { when: (p) => p.archetype === "Drawer" || p.archetype === "CombinationLock", lines: ["The only thing inside the {l}.", "Inside the {l}, at the very back."] },
+  { when: (p) => p.archetype === "LiftUnder" && ["pillow", "cushion"].includes(p.type), lines: ["Under the {l}, flattened by its weight.", "Slipped under the {l}."] },
+  { when: (p) => p.archetype === "LiftUnder" && ["rug", "blanket", "towel", "curtain"].includes(p.type), lines: ["Flat under the {l}.", "Folded small under the {l}."] },
+  { when: (p) => p.archetype === "LiftUnder" && ["plant_pot", "potted_plant"].includes(p.type), lines: ["Under the {l}, stuck to the saucer.", "Under the {l}, in a ring of dried soil."] },
+  { when: (p) => p.archetype === "LiftUnder" && ["basket", "bag"].includes(p.type), lines: ["At the bottom of the {l}.", "Under everything in the {l}."] },
+  { when: (p) => p.archetype === "LiftUnder", lines: ["Folded small under the {l}.", "Under the {l}."] },
+  { when: (p) => p.archetype === "FrameTilt" && p.type === "mirror", lines: ["Wedged behind the {l}.", "Taped to the back of the {l}."] },
+  { when: (p) => p.archetype === "FrameTilt" && p.type === "poster", lines: ["Tucked behind the {l}.", "Taped behind the {l}, at the corner."] },
+  { when: (p) => p.archetype === "FrameTilt", lines: ["Taped to the back of the {l}.", "Tucked behind the {l}'s frame."] },
+  { when: (p) => p.archetype === "ClockHands", lines: ["Folded small behind the {l}'s face.", "Behind the {l}'s face, against the works."] },
+  { when: (p) => p.archetype === "Readable" && ["bookshelf", "shelf"].includes(p.type), lines: ["Tucked between two books on the {l}.", "Pushed in behind a row of books on the {l}."] },
+  { when: (p) => p.archetype === "Readable" && ["book", "book_stack", "magazine"].includes(p.type), lines: ["Slipped inside the cover of the {l}.", "Used as a bookmark in the {l}."] },
+  { when: (p) => p.archetype === "Readable" && p.type === "notebook", lines: ["Tucked into the back of the {l}.", "Between the last used pages of the {l}."] },
+  { when: (p) => p.archetype === "Readable" && ["calendar", "noticeboard"].includes(p.type), lines: ["Pinned to the {l}.", "Pinned to the {l}, half under another page."] },
+  { when: (p) => p.archetype === "Readable", lines: ["Tucked into the corner of the {l}.", "Pinned to the {l}."] },
+];
+
+/**
+ * The sentence that says where a card was: "Pushed to the back of the drawer." `avoid`: labels a card
+ * must not name (the objects its value is for): a place line that would is written without its label.
+ */
+export function placeLine(p: Place, pick: Pick, avoid: string[] = []): string {
+  const line = pick(PLACES.find((x) => x.when(p))?.lines ?? [HIDDEN]);
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = avoid.some((a) => a && new RegExp(`\\b${esc(a)}\\b`, "i").test(p.label));
+  return line.includes("{l}") && names ? HIDDEN : line.replace(/\{l\}/g, p.label);
+}
+const HIDDEN = "Hidden where nobody would think to look.";
 
 // ---------------------------------------------------------------------------
 // Cards: several lines (crime-scene evidence, ritual fragments)
@@ -251,7 +344,7 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
       f("Yellowed scrap", "In a cramped, old hand, the ink gone brown:"),
       f("Scratched card", "Scratched with a pin, the letters shaking:"),
       f("Child's drawing", "Crayon pressed through the paper, in a careful list:"),
-      f("Diary page", "From a girl's diary: Mama says we must do it in the right order, or it won't rest."),
+      f("Diary page", "From a girl's diary: Mama says we must do it in the right order, or it won't rest. She wrote down what she knew:"),
       f("Séance notes", "Notes from a séance held in this room, the pencil shaking:"),
     ],
     read: [f("Faded writing", "Words that weren't there when you first looked:")],
@@ -264,13 +357,22 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
   },
 };
 
-/** A card's title and text: `values` are the value phrases (each with its {{slot}}); `kind`: a lone value's kind. */
-export function writeCard(mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind): { title: string; text: string } {
-  const docs = !list && kind && (medium === "found" || medium === "read") ? DOCS[mode][kind as DocKind] ?? [] : [];
-  const frame = pick([...(list ? LIST : INLINE)[mode][medium], ...docs]);
-  if (list) return { title: frame.title, text: `${frame.lead}\n${values.join("\n")}` };
+/**
+ * A card's title and text: `values` are the value phrases (each with its {{slot}}); `kind`: a lone
+ * value's kind; `doc`: the document a lone value is written on (a time's ticket); `place`: where it was
+ * found, a sentence put first. A lone value of a kind with documents, found or read, is on one of them.
+ */
+export function writeCard(
+  mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind, doc?: Frame, place?: string,
+): { title: string; text: string } {
+  const docs = !list && (medium === "found" || medium === "read") ? (doc ? [doc] : kind ? DOCS[mode][kind as DocKind] ?? [] : []) : [];
+  const frame = pick(docs.length ? docs : (list ? LIST : INLINE)[mode][medium]);
+  const at = place ? `${place} ` : "";
+  if (list) return { title: frame.title, text: `${at}${frame.lead}\n${values.join("\n")}` };
   const v = values.join(", ");
-  return { title: frame.title, text: frame.lead.replace("{v}", /[.!?]$/.test(v) ? v : `${v}.`) };
+  // A full stop after the value only when the value ends the sentence ("MEET ME AT {v} STOP" needs none).
+  const end = frame.lead.endsWith("{v}") && !/[.!?"]$/.test(v) ? "." : "";
+  return { title: frame.title, text: at + frame.lead.replace("{v}", `${v}${end}`) };
 }
 
 // ---------------------------------------------------------------------------
@@ -338,15 +440,17 @@ export const ALIBIS: Frame[] = [
 ];
 
 /** Forensics on a UV trace that can't be a suspect's ({where}, {{s}}). */
+// Each says first why the trace is the killer's (made in the struggle, at the end), then why the
+// suspect can't have made it: two facts, so the suspect is crossed off by what the report states.
 const SUSPECT_TRACES: Partial<Record<TraceKind, string[]>> = {
   prints: [
-    "Prints lifted from {where}: a full right hand, every fingertip sharp, pressed down hard as if someone leaned their weight on it. Clipped to the report, a fracture clinic note: {{s}}'s right arm has been in plaster to the knuckles since the weekend.",
+    "The only fresh prints in the room, lifted from {where}: they were pressed into the face powder spilt in the struggle, so whoever made them was here at the end. A full right hand, every fingertip sharp, pressed down hard. Clipped to the report, a fracture clinic note: {{s}}'s right arm has been in plaster to the knuckles since the weekend.",
   ],
   footprints: [
-    "Footprints lifted from {where}: one set of big men's work boots, a long heavy stride, there and back. The shoes taken from {{s}} for comparison are barely half their length.",
+    "Footprints lifted from {where}, walked through the ink spilt in the struggle, so made by whoever was here at the end: big men's work boots, a long heavy stride, there and back. The shoes taken from {{s}} for comparison are barely half their length.",
   ],
   palm: [
-    "A palm print on {where}, set high, above a tall man's head. The statement sheet has {{s}} as the shortest of the three, who needs a stool to reach a top shelf.",
+    "A palm print on {where}, in the hand cream knocked over in the struggle, so left by whoever was here at the end. It sits high, above a tall man's head. The statement sheet has {{s}} as the shortest of the three, who needs a stool to reach a top shelf.",
   ],
 };
 
@@ -487,7 +591,7 @@ export const TRACE_VALUE: Record<Mode, Partial<Record<TraceKind, string[]>>> = {
     prints: ["Fingerprints in face powder on {where}, a woman's, small and quick. Drawn in the powder beside them with a fingertip:"],
   },
   crime_scene: {
-    writing: ["Writing wiped off {where} but legible under UV. The victim's hand, pressed hard:"],
+    writing: ["Writing wiped off {where} but legible under UV: the inspector's own note to the next officer on the case, pressed hard:"],
     prints: ["Prints lifted from {where}, and beside them, drawn in the dust with a fingertip:"],
   },
   paranormal: {
@@ -518,10 +622,27 @@ export const TRACE_HERRINGS: Record<Mode, Partial<Record<TraceKind, string>>> = 
 // ---------------------------------------------------------------------------
 // Paranormal: the ritual's objects, described by what they are, never named
 // ---------------------------------------------------------------------------
-const ORDINAL = ["First", "Second", "Third", "Fourth", "Fifth"];
-const ROMAN = ["I", "II", "III", "IV", "V"];
-export const ordinalLine = (k: number, ref: string): string => `${ORDINAL[k] ?? `Then`}, ${ref}.`;
-export const romanMark = (k: number, ref: string): string => `${ROMAN[k] ?? ""} · ${ref}`;
+/**
+ * A ritual fragment's line: where its offering goes, said so that no one fragment gives the order and
+ * all of them together leave exactly one ("Never the first: what holds the light."). The rule word
+ * comes first, so the description (lowercase) never has to start a sentence.
+ */
+export const ORDER_LINES: Record<OrderRule, string> = {
+  first: "First of all: {o}.",
+  last: "Last of all: {o}.",
+  middle: "Neither first nor last: {o}.",
+  not_first: "Never the first: {o}.",
+  not_last: "Never the last: {o}.",
+  not_middle: "First or last, never between: {o}.",
+};
+/** The same, as a glow mark drawn on an object. */
+const ORDER_MARKS: Record<OrderRule, string> = {
+  first: "first · {o}", last: "last · {o}", middle: "neither first nor last · {o}",
+  not_first: "never first · {o}", not_last: "never last · {o}", not_middle: "first or last · {o}",
+};
+export const orderLine = (rule: OrderRule, ref: string): string => ORDER_LINES[rule].replace("{o}", ref);
+export const orderMark = (rule: OrderRule, ref: string): string => ORDER_MARKS[rule].replace("{o}", ref);
+
 
 /** Words in a label that describe the thing better than its type does. */
 const BY_LABEL: [RegExp, string][] = [

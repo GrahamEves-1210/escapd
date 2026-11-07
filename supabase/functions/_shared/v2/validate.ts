@@ -137,6 +137,7 @@ function validateSecret(def: RoomDefinitionV2, secret: RoomSecretV2, targets: Ma
     if (!ID.test(s.id)) err(`step id ${s.id} is malformed`);
     for (const r of s.requires) if (!steps.has(r)) err(`${s.id}: requires unknown step ${r}`);
     if (s.hints.length !== 3 || s.hints.some((h) => !h?.trim())) err(`${s.id}: needs 3 hint rungs`);
+    if (s.why !== undefined && (typeof s.why !== "string" || !s.why.trim() || s.why.includes("{{"))) err(`${s.id}: why is a plain sentence`);
   }
 
   const control = (target: string, id: string) => {
