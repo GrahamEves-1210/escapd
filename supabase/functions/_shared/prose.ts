@@ -57,6 +57,9 @@ const STORY_RULE = `Story: the brief names the story family. Set story_family to
 // Every genre (MODES_PROMPT.md, Part 1.5).
 const PEOPLE_RULE = `People: every character is fictional. Never cast a real person seen in a photo (whole or in part, such as a hand or an arm, or in a reflection, a framed picture or on a screen) as a character, and never describe anyone, or any part of anyone, in the photos. No gore and no graphic injury; write for ages 12 and up.`;
 
+// Every genre: how the words should read, and the worn phrases that make writing read as generated.
+const STYLE_RULE = `Style: specific, physical and plain. Write what is there, as the photo shows it (the dented brass corner, the coffee ring on the cover, the curtain hem that doesn't reach the floor), and let the reader feel it; never name the feeling. Short sentences, varied; at most one image per sentence; ordinary words before rare ones. Every line says something true about this room or this story; cut any line that would fit any room. Never write these or their cousins: "a chill runs down your spine", "little did you know", "whispers of", "echoes of", "the air is thick", "hangs heavy", "time stands still", "a sense of", "you can't shake the feeling", "something isn't right", "secrets it holds", "tells a story", "a testament to", "as if the room itself", "the walls have ears", "piece together the puzzle", "the plot thickens", "only time will tell", "a tapestry of", "delve", "unravel", "mysterious", "enigmatic", "eerie silence", "deafening silence", "heart pounding", "lurking", "shrouded", "in the shadows". No em dashes or en dashes: use a full stop, a comma or a colon. No exclamation marks, no rhetorical questions, no "not just X, but Y", and no strings of three adjectives.`;
+
 const ROOM_RULES = `Never make real family photos, medication, documents, valuables or anyone's personal identity part of the story. Never tell the player to do anything physical in the real room: no fire, electricity, chemicals or climbing, no real doors or locks, no moving furniture. All searching happens by tapping the photo.`;
 
 const GENRE_PROMPTS: Record<Genre, { voice: string; never: string; write: string[] }> = {
@@ -97,7 +100,7 @@ const WHAT_TO_WRITE = [
 /** A genre's voice, its never-list and the people rule: shared with gameplay v2's author call (v2/author.ts). */
 export function voiceRules(genre: Genre): string {
   const g = GENRE_PROMPTS[genre];
-  return `${g.voice}\n\n${g.never}\n${PEOPLE_RULE}`;
+  return `${g.voice}\n${STYLE_RULE}\n\n${g.never}\n${PEOPLE_RULE}`;
 }
 
 /** The prose system prompt for a genre. Always starts "You write the text" (ai_test routes on it). */
@@ -106,6 +109,7 @@ export function proseSystem(genre: Genre): string {
   return `${PROSE_INTRO}
 
 ${g.voice}
+${STYLE_RULE}
 
 ${STORY_RULE}
 ${g.never}

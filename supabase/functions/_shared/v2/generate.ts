@@ -95,11 +95,12 @@ export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
   let problems = roomProblems(room.definition, room.secret);
   if (problems.length) {
     stage("author_rejected", { errors: problems.slice(0, 4).join("; ") });
-    room = { definition: plan.definition, secret: plan.secret, kept: -1 };
+    room = { definition: plan.definition, secret: plan.secret, kept: -1, rejected: [] };
     problems = roomProblems(room.definition, room.secret);
     if (problems.length) throw fail(`planned room failed its own checks: ${problems.slice(0, 6).join("; ")}`, ErrorCode.invalidAfterRepair, false);
   }
-  stage("prose", { kept: room.kept });
+  // Which fields kept the planner's words (ids only), and whether the model settled its story first.
+  stage("prose", { kept: room.kept, rejected: room.rejected.slice(0, 12).join(","), bible: Boolean(text?.bible?.story?.trim()) });
   const outlined = await outlines;
   stage("segmentation", { objects: room.definition.objects.length, outlines: outlined.size });
 

@@ -62,7 +62,7 @@ function ids(call: JsonCall<unknown>, list: string): string[] {
   const section = (name: string) => brief.split("\n\n").find((p) => p.startsWith(name)) ?? "";
   const all = (re: RegExp, text: string) => [...new Set([...text.matchAll(re)].map((m) => m[1]))];
   switch (list) {
-    case "objects": return all(/(?:^|; )([a-z0-9_-]+) = /g, section("Objects:").replace(/^Objects: /, ""));
+    case "objects": return all(/^([a-z0-9_-]+) = /gm, section("Objects,"));
     case "items": return all(/(?:^|; )([a-z0-9_-]+) = /g, section("Items:").replace(/^Items: /, ""));
     case "cards": return all(/^(card_\d+) /gm, brief);
     case "steps": return all(/^(step_\d+)\b/gm, brief);
@@ -79,10 +79,11 @@ const keepRefs = (s: string) => {
 /** The author: words for every id, keeping each card's and hint's placeholders (read from the brief). */
 function author(call: JsonCall<unknown>) {
   const brief = textOf(call);
-  const cardText = new Map([...brief.matchAll(/^(card_\d+) "[^"]*": (".*")$/gm)].map((m) => [m[1], JSON.parse(m[2]) as string]));
+  const cardText = new Map([...brief.matchAll(/^(card_\d+) "[^"]*"(?: \([^)]*\))?: (".*")$/gm)].map((m) => [m[1], JSON.parse(m[2]) as string]));
   const hints = new Map([...brief.matchAll(/^(step_\d+)\b.*Hints now: (.*)$/gm)].map((m) => [m[1], JSON.parse(`[${m[2].replaceAll(" / ", ",")}]`) as string[]]));
   const names = ["Ada Finch", "Bram Hollis", "Cora Vane", "Greed", "Jealousy", "Revenge", "Sleeping draught", "Loose rail", "Cold tea"];
   return {
+    bible: { story: "Leo hid the code before he left.", cast: "Leo: the one who left.", clues: "Every card: Leo's." },
     objective: "Find what Leo hid and leave by the door, close to midnight.", intro: "The room is as you left it. Almost.",
     brief: "Leo left in a hurry, close to midnight. You came to find out why. Start with the desk.",
     ending: "The door gives, and the night air comes in.",
@@ -184,6 +185,9 @@ async function planned(mode: Mode = "noir") {
   return plan;
 }
 
+const optionDimension = (def: RoomDefinitionV2, id: string) =>
+  def.finale.kind !== "accusation" ? "" : def.finale.suspects.some((o) => o.id === id) ? "suspect" : def.finale.motives.some((o) => o.id === id) ? "motive" : "method";
+
 const emptyText = (): AuthorText => ({
   objects: new Map(), items: new Map(), cards: new Map(), steps: new Map(), beats: new Map(), options: new Map(),
 });
@@ -201,9 +205,11 @@ Deno.test("author: the crime-scene brief names each option's question and curren
   const brief = authorBrief(definition, secret);
   for (const o of definition.finale.suspects) assert(brief.includes(`${o.id} (suspect, now ${JSON.stringify(o.name)})`), brief);
   for (const o of definition.finale.methods) assert(brief.includes(`${o.id} (method, now ${JSON.stringify(o.name)})`), brief);
-  assert(brief.includes("this card's evidence rules out"));
-  // The true answers are derived: the brief never lists them as placeholders.
-  for (const [name, s] of Object.entries(secret.slots)) if (s.kind === "option" && s.from) assert(!brief.includes(`{{${name}}}:`), name);
+  assert(brief.includes("the card's facts rule this suspect out"), brief);
+  // The true answers are derived: listed only as what the evidence leaves, never shown on a card.
+  for (const [name, s] of Object.entries(secret.slots)) {
+    if (s.kind === "option" && s.from) assert(brief.includes(`{{${name}}}: the ${optionDimension(definition, s.value)} the evidence leaves standing.`), name);
+  }
 });
 
 Deno.test("author: a card or hint that drops, adds or repeats a placeholder, or writes a digit, keeps the planner's words", async () => {
@@ -213,13 +219,15 @@ Deno.test("author: a card or hint that drops, adds or repeats a placeholder, or 
   const text = emptyText();
   text.brief = "Room 12 is cold.";                            // digit: rejected
   text.objective = "Get out through the door.";               // fine
-  text.cards.set(card.id, { title: "Ticket", text: `${ref} and ${ref}` });   // repeated: rejected
+  // A title keeps the word the casebook draws it by ("Taped note" stays taped).
+  const title = /^taped\b/i.test(card.title) ? "Taped ticket" : "Ticket";
+  text.cards.set(card.id, { title, text: `${ref} and ${ref}` });   // repeated: rejected
   const out = applyAuthor(definition, secret, text);
   assertEquals(out.definition.title, definition.title);
   assertEquals(out.definition.brief, definition.brief);
   assertEquals(out.definition.objective, "Get out through the door.");
   assertEquals(out.definition.cards.find((c) => c.id === card.id)!.text, card.text);
-  assertEquals(out.definition.cards.find((c) => c.id === card.id)!.title, "Ticket");
+  assertEquals(out.definition.cards.find((c) => c.id === card.id)!.title, title);
   assertEquals(cleanText("At {{s1}} sharp.", 40), "At {{s1}} sharp.");
   assertEquals(cleanText("At 11:40 sharp.", 40), null);
 });
