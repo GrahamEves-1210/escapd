@@ -6,13 +6,21 @@
 import { applyAction, initialState, renderCard } from "./engine.ts";
 import type { Action, ActionResult, PlayState, RoomDefinitionV2, RoomSecretV2, StepDef } from "./types.ts";
 
-/** How long a wrong submit locks further submits. */
+/** How long a wrong submit locks further submits: the first ones. */
 export const COOLDOWN_MS = 5000;
+/** The longest wait: a run of wrong answers ends here, so guessing (27 accusations) costs real time. */
+export const MAX_COOLDOWN_MS = 60_000;
+/** The wait after the `n`th wrong answer in a row (1-based): the first two cheap, then longer. A right submit starts the count again. */
+export function cooldownFor(n: number): number {
+  return n <= 2 ? COOLDOWN_MS : n === 3 ? 15_000 : n === 4 ? 30_000 : MAX_COOLDOWN_MS;
+}
 
 /** game_sessions.state for a v2 session: the engine's state, the hint rungs taken, and v1's required key. */
 export interface StoredStateV2 extends PlayState {
   hints: Record<string, number>;
   revealed_hotspots: string[];
+  /** Wrong submits since the last right one (the cooldown grows with it). Absent on older sessions: none. */
+  wrong_run?: number;
 }
 
 export interface PlayRequest {
@@ -102,13 +110,15 @@ export function play(
   let changed = false;
 
   if (req.action) {
-    const { hints: taken, revealed_hotspots, ...state } = stored;
+    const { hints: taken, revealed_hotspots, wrong_run, ...state } = stored;
     const out = applyAction(def, secret, state, req.action, { cooldownActive: locked !== null });
     result = out.result;
-    stored = { ...out.state, hints: taken, revealed_hotspots };
+    // The run of wrong answers: one more on a wrong submit, cleared by a right one, kept otherwise.
+    const run = result.outcome === "wrong" ? (wrong_run ?? 0) + 1 : req.action.type === "submit" && result.outcome === "ok" ? 0 : wrong_run ?? 0;
+    stored = { ...out.state, hints: taken, revealed_hotspots, ...(run ? { wrong_run: run } : {}) };
     actions = 1;
     if (result.outcome === "wrong") wrong = 1;
-    if (result.start_cooldown) locked = now + COOLDOWN_MS;
+    if (result.start_cooldown) locked = now + cooldownFor(run);
     changed = true;
   } else if (req.hint) {
     const step = nextStep(secret, stored.solved);
@@ -125,7 +135,7 @@ export function play(
     }
   }
 
-  const { hints: _h, revealed_hotspots: _r, ...state } = stored;
+  const { hints: _h, revealed_hotspots: _r, wrong_run: _w, ...state } = stored;
   const response: PlayResponse = {
     state,
     ...(result ? { result } : {}),

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  COOLDOWN_MS, nextStep, play, storedState,
+  MAX_COOLDOWN_MS, nextStep, play, storedState,
   type Action, type ActionResult, type FoundCardV2, type PlayRequest, type PlayResponse, type PlayState,
   type RoomDefinitionV2, type RoomSecretV2, type StoredStateV2,
 } from "@/engine/v2";
@@ -119,8 +119,8 @@ const viewOf = (r: PlayResponse): View => ({
   hints: r.hints,
   canHint: r.can_hint,
   progress: r.progress ?? { solved: 0, total: 0 },
-  // The server's clock may differ from the device's: never wait longer than one cooldown from now.
-  cooldownUntil: r.cooldown_until === null ? 0 : Math.min(r.cooldown_until, Date.now() + COOLDOWN_MS),
+  // The server's clock may differ from the device's: never wait longer than the longest cooldown from now.
+  cooldownUntil: r.cooldown_until === null ? 0 : Math.min(r.cooldown_until, Date.now() + MAX_COOLDOWN_MS),
   completed: r.completed,
   ending: r.ending ?? null,
 });

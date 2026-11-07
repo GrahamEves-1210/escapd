@@ -439,6 +439,32 @@ export const ALIBIS: Frame[] = [
   f("Luggage tag", "Torn from {{s}}'s case, checked onto the overnight flight, boarding closed at half past ten, and the steward's list shows the seat taken all the way."),
 ];
 
+/**
+ * Alibis that hold only until half past eleven, a few streets away ({{s}}). Against "close to midnight"
+ * alone they rule nobody out (there was time to get here); against NARROWED_DEATH, on another card,
+ * they do. The one deduction in the case that needs two cards.
+ */
+export const PARTIAL_ALIBIS: Frame[] = [
+  f("Theatre usher's note", "{{s}} had a seat at the late show at the picture house two streets away, from the overture at nine to the final curtain at half past eleven. The usher swears the seat was never empty, and saw them leave with the crowd."),
+  f("Bar tab", "{{s}}'s tab at the corner bar round the block, opened at nine and settled at half past eleven. The barman says they never left the stool until then, and walked out the moment it was paid."),
+  f("Church hall register", "{{s}} called the numbers at the church hall bingo round the corner, from nine until the doors closed at half past eleven, and was the last to leave, locking up."),
+];
+
+/** What narrows the time of death to before half past eleven: a fact added to another card, later. */
+export const NARROWED_DEATH: string[] = [
+  "Pinned on later, from the coroner: the victim's wristwatch smashed in the fall and stopped at twenty past eleven. \"Close to midnight\" was too generous.",
+  "Pinned on later, a neighbour's statement: she heard the fall through the wall at a quarter past eleven, just as the news ended, and nothing after it.",
+  "Pinned on later, from the landlady: she heard the struggle and the fall at ten past eleven, as she wound the hall clock, and the house was silent after.",
+];
+
+/** A partial alibi as evidence: the document, or the inspector's copy of it wiped off a surface (UV). */
+export function partialEvidence(alibi: Frame): Evidence {
+  return {
+    title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}`,
+    traces: { writing: `Writing wiped off {where} but legible under UV: the inspector's own copy of the ${alibi.title.toLowerCase()}. ${alibi.lead}` },
+  };
+}
+
 /** Forensics on a UV trace that can't be a suspect's ({where}, {{s}}). */
 // Each says first why the trace is the killer's (made in the struggle, at the end), then why the
 // suspect can't have made it: two facts, so the suspect is crossed off by what the report states.
@@ -650,32 +676,34 @@ const BY_LABEL: [RegExp, string][] = [
   [/\bsafe\b/, "what guards what was precious"],
 ];
 
+// One description per type where it can be, so two different things in a room never read the same.
 const BY_TYPE: Partial<Record<ObjectType, string>> = {
-  wall_clock: "the face that keeps the hours", alarm_clock: "the face that keeps the hours",
-  desk_lamp: "what holds the light", floor_lamp: "what holds the light", ceiling_light: "what holds the light", string_lights: "what holds the light",
+  wall_clock: "the face on the wall that keeps the hours", alarm_clock: "the little face that wakes the sleeper",
+  desk_lamp: "the light that bends low over the work", floor_lamp: "the light that stands taller than a child",
+  ceiling_light: "the light that hangs overhead", string_lights: "the little lights strung in a row",
   bookshelf: "where the books stand in rows", shelf: "what holds things up off the floor",
-  book: "the pages someone read too often", book_stack: "the pages someone read too often", notebook: "where someone wrote their thoughts down",
-  magazine: "the pages someone read too often",
-  desk: "where the letters were written", table: "where things are set down", coffee_table: "where things are set down",
-  side_table: "where things are set down", nightstand: "what stands beside the sleeper",
+  book: "the pages someone read too often", book_stack: "the pages piled one on another", notebook: "where someone wrote their thoughts down",
+  magazine: "the glossy pages no one kept",
+  desk: "where the letters were written", table: "where the family sat down to eat", coffee_table: "the low table where the cups were set",
+  side_table: "the little table at someone's elbow", nightstand: "what stands beside the sleeper",
   dresser: "where the folded clothes are kept", filing_cabinet: "where the papers are filed away",
-  wardrobe: "where the clothes still hang", cabinet: "what hides behind its doors", sideboard: "what hides behind its doors",
-  bed: "where someone slept", sofa: "where someone sat and waited", armchair: "where someone sat and waited",
-  chair: "where someone sat and waited", stool: "where someone sat and waited", bench: "where someone sat and waited",
+  wardrobe: "where the clothes still hang", cabinet: "what hides behind its doors", sideboard: "the long cupboard where the good plates were kept",
+  bed: "where someone slept", sofa: "where the family sat together", armchair: "the deep seat with arms to rest on",
+  chair: "where someone sat and waited", stool: "the seat with no back", bench: "the long bare seat",
   ottoman: "where tired feet rested", tv_stand: "where the screen goes dark",
-  chest: "what was packed and closed", trunk: "what was packed and closed", box: "what was packed and closed",
+  chest: "the heavy lid that was closed for good", trunk: "what was packed for a journey", box: "what was packed and closed",
   suitcase: "what was packed and never taken", basket: "what holds and carries", jar: "what was sealed tight",
   safe: "what guards what was precious", toolbox: "what holds the tools", bag: "what was carried out and back",
-  pillow: "where a head once rested", cushion: "where a head once rested", rug: "what lies flat on the floor",
+  pillow: "where a head once rested", cushion: "the soft square someone leaned on", rug: "what lies flat on the floor",
   curtain: "what keeps the window", blanket: "what kept the cold away", towel: "what dried the hands",
   framed_picture: "the face behind the glass", poster: "what's pinned to the wall", mirror: "the glass that looks back",
   noticeboard: "where notes are pinned", calendar: "where the days are counted", map: "where the roads are drawn",
-  radio: "the voice in the box", speaker: "the voice in the box", record_player: "what once played music",
+  radio: "the voice in the box", speaker: "the box the music came out of", record_player: "what once played music",
   typewriter: "the keys that wrote", fan: "what stirs the air", telephone: "what rings when no one calls",
-  guitar: "the strings no one plays", keyboard_instrument: "the keys no one plays", violin: "the strings no one plays",
+  guitar: "the strings no one plays", keyboard_instrument: "the keys no one plays", violin: "the strings played under the chin",
   drum: "what was beaten", vase: "what held the flowers", candle: "the flame that waits", trophy: "the prize someone won",
   globe: "the whole world, made small", figurine: "the little watcher", mug: "what held something warm", bottle: "what was emptied",
-  plant_pot: "the living green thing", potted_plant: "the living green thing",
+  plant_pot: "the pot of dark earth", potted_plant: "the living green thing",
 };
 
 /** How a ritual card names an object without naming it, or null when nothing fits. */

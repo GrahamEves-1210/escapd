@@ -12,6 +12,6 @@ export {
   seededRandom, STEP_BAND, THREE_THREAD_POOL, usableObjects,
 } from "./planner.ts";
 export {
-  COOLDOWN_MS, type FoundCardV2, nextStep, play, type PlayRequest, type PlayResponse, type PlaySave, storedState,
+  COOLDOWN_MS, cooldownFor, type FoundCardV2, MAX_COOLDOWN_MS, nextStep, play, type PlayRequest, type PlayResponse, type PlaySave, storedState,
   type StoredStateV2,
 } from "./play.ts";

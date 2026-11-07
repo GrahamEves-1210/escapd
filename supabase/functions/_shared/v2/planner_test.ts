@@ -1,10 +1,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { applyAction, initialState, renderCard } from "./engine.ts";
-import { DURATIONS } from "./copy.ts";
+import { describeObject, DURATIONS, NARROWED_DEATH, PARTIAL_ALIBIS } from "./copy.ts";
 import { orderPuzzle, planRoom, type PlanResult, seededRandom } from "./planner.ts";
 import { finaleLogic, simulate } from "./simulate.ts";
 import { categoryOf } from "./taxonomy.ts";
-import { BEDROOM_NO_DOOR, BEDROOM_WITH_DOOR, FULL_15, obj, planProblems, seededRandomInt, SPARSE_5 } from "./test_fixtures.ts";
+import { BEDROOM_NO_DOOR, BEDROOM_WITH_DOOR, FULL_15, obj, planProblems, seededRandomInt, SPARSE_5, syntheticInventory } from "./test_fixtures.ts";
+import { slotRefs, wordClashes } from "./validate.ts";
 import { MODES, orderHolds } from "./types.ts";
 
 const ROOMS = { BEDROOM_WITH_DOOR, BEDROOM_NO_DOOR, SPARSE_5, FULL_15 };
@@ -371,4 +372,48 @@ Deno.test("planner: every step but a take says why it is where it is; first hint
       assert(s.hints[0] !== "Not everything is on the surface.", `${mode}: an empty nudge`);
     }
   }
+});
+
+Deno.test("validator: a word lock's answer that stands as a word in the room's text is refused; planned rooms never do it", () => {
+  const r = planned(FULL_15, "noir", "words");
+  const def = structuredClone(r.definition), secret = structuredClone(r.secret);
+  secret.slots.code_x = { kind: "code", value: "I|N|K", text: "INK" };
+  def.cards[0] = { ...def.cards[0], text: `${def.cards[0].text} In blue ink.` };
+  assertEquals(wordClashes(def, secret), ["code_x"]);
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const p = planned(inv, mode, seed);
+    assertEquals(wordClashes(p.definition, p.secret), []);
+  }
+});
+
+Deno.test("planner: ritual offerings are described, never named, and no two read the same", () => {
+  for (let i = 0; i < 120; i++) {
+    const inv = syntheticInventory(i, 8 + (i % 8));
+    const r = planRoom(inv, { mode: "paranormal", seed: `ritual-${i}`, randomInt: seededRandomInt(i) });
+    if (!r.ok) continue;
+    const parts = Object.values(r.secret.slots).filter((s) => s.kind === "object");
+    assertEquals(new Set(parts.map((s) => s.text)).size, parts.length, `room ${i}: two offerings read the same`);
+    for (const s of parts) {
+      const o = r.definition.objects.find((x) => x.id === s.value)!;
+      assertEquals(s.text, describeObject(o.type, o.label), `room ${i}: ${o.label} is named, not described`);
+      assert(!new RegExp(`\\b${o.label}\\b`, "i").test(s.text ?? ""), `room ${i}: ${s.text}`);
+    }
+  }
+});
+
+Deno.test("planner: one crime deduction needs two cards: an alibi until half past eleven, and a later card narrowing the time of death", () => {
+  let apart = 0, rooms = 0;
+  for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
+    const { definition: def, secret } = planned(inv, "crime_scene", seed);
+    rooms++;
+    const partial = def.cards.filter((c) => PARTIAL_ALIBIS.some((a) => c.text.includes(a.lead.split("{{s}}")[1].slice(0, 30))));
+    const narrow = def.cards.filter((c) => NARROWED_DEATH.some((n) => c.text.includes(n)));
+    assertEquals(partial.length, 1, `${seed}: the partial alibi`);
+    assertEquals(narrow.length, 1, `${seed}: the narrowed time of death`);
+    if (partial[0] !== narrow[0]) apart++;
+    assertEquals(finaleLogic(def, secret), []);
+    // Every card that carries the narrowing is evidence the accusation can't be made without.
+    assert(slotRefs(narrow[0].text).some((n) => secret.slots[n].kind === "option"));
+  }
+  assert(apart >= rooms - 2, `${apart} of ${rooms} rooms keep the two facts on different cards`);
 });

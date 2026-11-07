@@ -17,6 +17,26 @@ export const slotRefs = (text: string): string[] => [...text.matchAll(SLOT_REF)]
 const typeAllowed = (rule: HostRule | null, t: ObjectType) =>
   !!rule && ((rule.types?.includes(t) ?? false) || (rule.categories?.includes(categoryOf(t)) ?? false));
 
+/**
+ * Word answers (a lock that spells INK) that also stand as an ordinary word in the room's own text
+ * ("In blue ink", "the ink spilt"): the room would hand the answer over. Slots are left out (a card
+ * may show its own answer); every public string and every hint and beat is read.
+ */
+export function wordClashes(def: RoomDefinitionV2, secret: RoomSecretV2): string[] {
+  const strip = (t: string) => t.replace(SLOT_REF, " ");
+  const text = [
+    def.title, def.objective, def.brief ?? "", def.intro ?? "",
+    ...def.objects.map((o) => o.label), ...def.items.map((i) => i.name), ...def.cards.flatMap((c) => [c.title, c.text]),
+    ...secret.steps.flatMap((s) => [s.title, ...s.hints]),
+    ...secret.rules.flatMap((r) => r.effects.flatMap((e) => (e.do === "beat" ? [e.text] : e.do === "overlay" && e.text ? [e.text] : []))),
+    secret.ending,
+  ].map(strip).join("\n");
+  return Object.entries(secret.slots).filter(([, s]) => {
+    const word = s.text ?? "";
+    return s.kind === "code" && !s.from && /^[A-Z]{3,}$/.test(word) && new RegExp(`\\b${word}\\b`, "i").test(text);
+  }).map(([n]) => n);
+}
+
 export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2): string[] {
   const errors: string[] = [];
   const err = (m: string) => errors.push(m);
@@ -108,7 +128,10 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
   }
   for (const i of def.items) if (i.card && !cards.has(i.card)) err(`${i.id}: unknown card ${i.card}`);
 
-  if (secret) errors.push(...validateSecret(def, secret, targets, cards));
+  if (secret) {
+    errors.push(...validateSecret(def, secret, targets, cards));
+    for (const n of wordClashes(def, secret)) err(`slot {{${n}}}: its word stands in the room's own text`);
+  }
   return errors;
 }
 

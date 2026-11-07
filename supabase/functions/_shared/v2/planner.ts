@@ -16,7 +16,7 @@ import { cryptoInt, isWeakCode, mintSuffix, type RandomInt, slugId } from "../mi
 import { type ArchetypeId, type ControlDomain, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, SYMBOLS, variantSpec } from "./archetypes.ts";
 import {
   ALIBIS, capitalise, caseLabel, describeObject, DURATIONS, type Evidence, type Frame, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES,
-  optionEvidence, orderLine, orderMark, type Pick, placeLine, suspectEvidence, SUSPECTS, TIME_DOCS, TIME_OF_DEATH, TIME_REL_LEAD,
+  NARROWED_DEATH, optionEvidence, orderLine, orderMark, PARTIAL_ALIBIS, partialEvidence, type Pick, placeLine, suspectEvidence, SUSPECTS, TIME_DOCS, TIME_OF_DEATH, TIME_REL_LEAD,
   type TimeDoc, TRACE_BEATS, TRACE_HERRINGS, TRACE_LABELS, TRACE_REPORTS, TRACE_VALUE, VICTIMS, writeCard,
 } from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
@@ -27,7 +27,7 @@ import {
   orderHolds, type OrderRule, type Rect, type RoomDefinitionV2, type RoomSecretV2, type Rule, type SlotKind, type SlotValue, type StateValue, type StepDef,
   type TraceKind, type TraceSpec, type Trigger,
 } from "./types.ts";
-import { slotRefs, validateDefinition } from "./validate.ts";
+import { slotRefs, validateDefinition, wordClashes } from "./validate.ts";
 
 export interface PlanOptions {
   mode: Mode;
@@ -1010,6 +1010,7 @@ function buildCandidate(
   };
 
   const positionOwner: number[] = [];   // ritual: the thread whose card gives each position
+  let partial: Evidence | undefined;    // crime scene: the alibi that needs the narrowed time of death
   let finale: FinaleDef;
   let answer: string;
   let submit: ControlDomain;
@@ -1043,9 +1044,13 @@ function buildCandidate(
     // one suspect, one motive and one method survive. Each true answer is derived from the two
     // eliminations (never written anywhere), and the accusation from the three answers.
     // Each wrong option gets its evidence now: a document (or UV forensics) that rules it out by what it says.
-    const alibis = B.sample(ALIBIS, 2);
+    // One wrong suspect's alibi holds only until half past eleven: it rules them out only against a later
+    // card that narrows the time of death (the case's one two-card deduction). The other has a full alibi.
+    const alibis = B.sample(ALIBIS, 1);
+    partial = partialEvidence(B.pick(PARTIAL_ALIBIS));
+    let given = 0;
     const pools: { name: string; evidence: () => Evidence }[][] = [
-      B.sample(SUSPECTS, 3).map((name) => ({ name, evidence: () => suspectEvidence(alibis.shift()!, B.pick) })),
+      B.sample(SUSPECTS, 3).map((name) => ({ name, evidence: () => (given++ === 0 ? partial! : suspectEvidence(alibis.shift()!, B.pick)) })),
       B.sample(MOTIVES, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
       B.sample(METHODS, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
     ];
@@ -1066,7 +1071,7 @@ function buildCandidate(
     finale = { kind: "accusation", object: exit.id, suspects: dims[0].options, motives: dims[1].options, methods: dims[2].options };
     submit = { kind: "accusation" };
     finaleHint = `At the ${exit.inv.label}, accuse {{${dims[0].slot}}}. Motive: {{${dims[1].slot}}}. Method: {{${dims[2].slot}}}.`;
-    finaleHow = "Cross off every suspect, motive and method the evidence rules out. One of each is left.";
+    finaleHow = "Cross off every suspect, motive and method the evidence rules out; read each alibi against the latest word on when the death happened. One of each is left.";
   } else {
     const length = 3;
     // Each fragment says where its offering may or may not go; only together do they fix the order.
@@ -1090,6 +1095,18 @@ function buildCandidate(
     ends.push(end);
   }
 
+  // Crime scene: the fact that narrows the time of death goes on another card of the evidence, so the
+  // partial alibi rules its suspect out only once both cards are read.
+  if (partial) {
+    const slotOf = Object.keys(B.slots).find((n) => B.meta.get(n)?.evidence === partial);
+    const alibiCard = slotOf ? B.cards.find((c) => c.text.includes(`{{${slotOf}}}`)) : undefined;
+    if (!alibiCard) return "the partial alibi is on no card";
+    // Another card of evidence (it holds a ruled-out option, so the accusation can't be made without it).
+    const others = B.cards.filter((c) => c !== alibiCard && slotRefs(c.text).some((n) => B.slots[n]?.kind === "option"));
+    const host = others.length ? others[Math.floor(rng() * others.length)] : alibiCard;
+    host.text = `${host.text}${host.text.includes("\n") ? "\n" : " "}${B.pick(NARROWED_DEATH)}`;
+  }
+
   // Paranormal: the ritual's objects, preferring ones the threads already used. Cards describe each
   // by what it is ("the face that keeps the hours"), so the player works out which thing is meant: an
   // object whose description would fit two things in the room is left out, and so, where possible, is
@@ -1100,6 +1117,7 @@ function buildCandidate(
       const d = describeObject(o.type, o.label);
       if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
     }
+    // Never one that two things in the room would fit, nor one with no description (it would be named outright).
     const unclear = B.pool.filter((b) => (counts.get(describeObject(b.inv.type, b.inv.label) ?? "") ?? 0) !== 1).map((b) => b.id);
     const names = Object.keys(B.slots).filter((n) => B.slots[n].kind === "object");
     const foundAt = (name: string): string[] => {
@@ -1114,7 +1132,7 @@ function buildCandidate(
         const taken = [...picked.values()].map((c) => c.id);
         // Never the object its own card names (a trace's "the floor by the rug"), at any level.
         const named = B.namedAt.get(name) ?? [];
-        const excludeIds = level === 0 ? [...taken, ...unclear, ...foundAt(name), ...named] : level === 1 ? [...taken, ...unclear, ...named] : [...taken, ...named];
+        const excludeIds = level === 0 ? [...taken, ...unclear, ...foundAt(name), ...named] : [...taken, ...unclear, ...named];
         const p = B.pickObject({ trigger: "ritual", thread: -1, preferUsed: true, excludeIds });
         if (!p) return null;
         picked.set(name, B.bind(p, -1, "ritual"));
@@ -1122,7 +1140,7 @@ function buildCandidate(
       return picked;
     };
     let picked: Map<string, Bound> | null = null;
-    for (let level = 0; level < 3 && !picked; level++) {
+    for (let level = 0; level < 2 && !picked; level++) {
       for (const order of permutations(names)) {
         const restore = B.snap();
         picked = fill(order, level);
@@ -1133,14 +1151,13 @@ function buildCandidate(
     if (!picked) return "not enough objects for the ritual";
     const chosen = names.map((n) => picked!.get(n)!);
     for (const [name, b] of picked) {
-      const described = unclear.includes(b.id) ? null : describeObject(b.inv.type, b.inv.label);
-      B.slots[name] = { kind: "object", value: b.id, text: described ?? `the ${b.inv.label}`, ...(B.meta.get(name)?.order ? { order: B.meta.get(name)!.order } : {}) };
+      const described = describeObject(b.inv.type, b.inv.label)!;
+      B.slots[name] = { kind: "object", value: b.id, text: described, ...(B.meta.get(name)?.order ? { order: B.meta.get(name)!.order } : {}) };
     }
     B.slots[answer] = { ...B.slots[answer], value: chosen.map((c) => c.id).join("|") };
     // The last rung may give the answer: plainly, by name.
     finaleHint = `At the ${exit.inv.label}, perform the ritual in order: ${chosen.map((c) => `the ${c.inv.label}`).join(", ")}.`;
   }
-  for (const c of B.ciphers) B.slots[c.slot].value = encipher(c.of.map((s) => B.slots[s].text ?? B.slots[s].value).join(" "), Number(c.offset));
 
   const fin = B.step(finale.kind === "ritual" ? "ordering" : "finale", null, exit.id, ends,
     ["Everything you've learned ends at the way out.", finaleHow, finaleHint]);
@@ -1210,6 +1227,17 @@ function buildCandidate(
     ...(mode === "crime_scene" ? { keep: [TIME_OF_DEATH] } : {}),
   };
 
+  // A word lock's answer never stands as a word in the room's own text ("In blue ink" with INK): another word.
+  for (const name of wordClashes(definition, secret)) {
+    const all = [definition.objective, definition.brief ?? "", ...definition.objects.map((o) => o.label), ...definition.cards.map((c) => `${c.title} ${c.text}`),
+      ...B.steps.flatMap((s) => s.hints), secret.ending].join(" ");
+    const taken = new Set(Object.values(B.slots).map((s) => s.text));
+    const word = WORDS.find((w) => !taken.has(w) && !new RegExp(`\\b${w}\\b`, "i").test(all));
+    if (!word) return "no word for the lock that the room doesn't already say";
+    B.slots[name] = { ...B.slots[name], value: word.split("").join("|"), text: word };
+  }
+  // Coded lines last, once every value they encode is final.
+  for (const c of B.ciphers) B.slots[c.slot].value = encipher(c.of.map((s) => B.slots[s].text ?? B.slots[s].value).join(" "), Number(c.offset));
   const errors = validateDefinition(definition, secret);
   if (errors.length) return `invalid: ${errors[0]}`;
 
