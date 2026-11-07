@@ -184,6 +184,7 @@ Placeholders, and why the rules around them exist. {{name}} stands for an answer
 - No digits outside placeholders, anywhere: write "half past eleven", "the second drawer". A stray number reads like part of a code and sends the player the wrong way.
 - Symbols just before a placeholder (▲, ●◆) tell the player which wheels of the door those digits belong on. Keep them exactly, right before their placeholder ("●◆ {{digits_2}}"), use no other such symbols, and never call a wheel by its number.
 - The words just before an offering's placeholder say where it goes in the ritual (${ORDER_PHRASES.map((p) => `"${p}"`).join(", ")}): keep them exactly as written, right before it. Some cards only narrow the order down, on purpose, so the player has to put them together: never make one say more than it does.
+- In a crime scene, keep every clock time and distance written in words exactly as it is ("until half past eleven", "the picture house two streets away", "stopped at twenty past eleven"): an alibi that holds until one time, read against a time of death on another card, is the whole deduction, and a time changed by a quarter of an hour changes who it rules out. Keep the narrowing lines added to a card later ("Pinned on later, from the coroner: …") whole.
 - Keep every amount of time in words together with the words that say which way it runs ("twenty minutes after the time on the ticket", "ran a quarter of an hour slow", "went up twenty-five minutes late"), even in a line added to a card from another thread with no placeholder in it: the player works a clock's real moment out from it.
 - A card title keeps the words the casebook draws it by (UV, Taped, between the pages, sticky).
 - Lengths are hard limits, in characters; a longer field is thrown away: objective ${AUTHOR_LIMITS.objective}, brief ${AUTHOR_LIMITS.brief}, intro ${AUTHOR_LIMITS.intro}, ending ${AUTHOR_LIMITS.ending}, names ${AUTHOR_LIMITS.name}, card and step titles ${AUTHOR_LIMITS.cardTitle}, cards ${AUTHOR_LIMITS.cardText}, hints ${AUTHOR_LIMITS.hint}, beats ${AUTHOR_LIMITS.beat}. A card or hint whose original is already longer may stay about as long as it is.
@@ -570,6 +571,8 @@ export function keepsMarks(original: string, rewritten: string): boolean {
       if (!new RegExp(`${escape(clause)}[\\s,:·]*${slot}`, "i").test(rewritten)) return false;
     }
   }
+  // Clock times and distances in words are a crime scene's alibis and its time of death: each stays as it is.
+  for (const re of [CLOCK_WORDS, DISTANCE]) for (const m of original.matchAll(re)) if (!lower.includes(m[0].toLowerCase())) return false;
   for (const sentence of original.split(/(?<=[.!?])\s+|\n/)) {
     for (const m of sentence.matchAll(DURATION)) {
       if (!lower.includes(m[0].toLowerCase())) return false;
@@ -583,6 +586,16 @@ const NUMBER_WORDS = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|tw
 // The planner's own amounts (copy.ts DURATIONS), longest first, then any other "<number> minutes".
 const DURATION = new RegExp(`\\b(?:${[...DURATIONS.map(([, w]) => w)].sort((a, b) => b.length - a.length).map(escape).join("|")}|(?:${NUMBER_WORDS}) (?:minutes?|hours?))\\b`, "gi");
 const DIRECTION = /\b(after|before|early|late|slow|fast|behind|ahead|earlier|later)\b/g;
+const HOURS = "one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve";
+/** A clock time in words: "half past eleven", "a quarter to midnight", "eleven o'clock", "at nine", "the ten-fifteen". */
+export const CLOCK_WORDS = new RegExp(
+  `\\b(?:(?:a quarter|quarter|half|five|ten|twenty|twenty-five) (?:past|to) (?:${HOURS}|midnight|midday|noon)` +
+    `|(?:${HOURS}) o'clock|(?:${HOURS})-(?:oh-five|fifteen|thirty|forty-five|ten|twenty|forty|fifty)` +
+    // A bare hour after "at", "until"... (not "one"/"two", too often not a time), unless it starts "ten past".
+    `|(?:at|from|until|till|by) (?:three|four|five|six|seven|eight|nine|ten|eleven|twelve|midnight|midday|noon)(?! (?:past|to) (?:${HOURS}|midnight|midday|noon)| o'clock|-))\\b`, "gi");
+/** Where someone was, in words: "two streets away", "round the corner", "an hour's drive out". */
+export const DISTANCE = new RegExp(
+  `\\b(?:(?:a few|two|three|four|five|six|ten) (?:streets|miles|cities|towns|doors|blocks|floors) away|round the (?:corner|block)|an hour's drive)\\b`, "gi");
 
 /** The words a card title keeps so the casebook draws it the same way (src/play2/journal/JournalCard.tsx lookOf). */
 const TITLE_LOOKS = [/\bUV\b|ultraviolet/i, /^(taped|mended)\b/i, /between the pages/i, /sticky/i, /on the air/i, /in the light/i, /decoded/i];

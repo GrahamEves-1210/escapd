@@ -256,3 +256,31 @@ Deno.test("author: a how-far-off line added from another thread keeps its amount
   assert(!keepsMarks(watch, "The warden's watch ran a quarter of an hour slow."), "fast is not slow");
   assert(keepsMarks(watch, "A note from the traffic office: the warden's watch ran a quarter of an hour fast."));
 });
+
+Deno.test("author: clock times and distances in words, the crime scene's whole deduction, stay as written", async () => {
+  const { PARTIAL_ALIBIS, NARROWED_DEATH } = await import("./copy.ts");
+  const { CLOCK_WORDS, DISTANCE } = await import("./author.ts");
+  const found = (re: RegExp, t: string) => [...t.matchAll(re)].map((m) => m[0].toLowerCase());
+  // Every time and place the planner's partial alibis and narrowing lines hold is recognised.
+  for (const a of PARTIAL_ALIBIS) {
+    assert(found(CLOCK_WORDS, a.lead).includes("half past eleven"), a.title);
+    assert(found(CLOCK_WORDS, a.lead).some((t) => /nine/.test(t)), a.title);
+    assert(found(DISTANCE, a.lead).length > 0, a.title);
+  }
+  for (const line of NARROWED_DEATH) assert(found(CLOCK_WORDS, line).some((t) => /past eleven/.test(t)), line);
+  assertEquals(found(CLOCK_WORDS, "the fall at ten past eleven"), ["ten past eleven"]);
+  assertEquals(found(CLOCK_WORDS, "a quarter to midnight, then eleven o'clock, the ten-fifteen north"), ["a quarter to midnight", "eleven o'clock", "ten-fifteen"]);
+
+  const alibi = PARTIAL_ALIBIS[0].lead.replace("{{s}}", "{{option_2}}");
+  const kept = "{{option_2}} had a seat at the late show at the picture house two streets away, from the overture at nine to the final curtain at half past eleven. The usher never saw the seat empty.";
+  assert(keepsMarks(alibi, kept));
+  assert(!keepsMarks(alibi, kept.replace("half past eleven", "a quarter past eleven")), "the time changed");
+  assert(!keepsMarks(alibi, kept.replace("two streets away", "across town")), "the distance changed");
+  assert(!keepsMarks(alibi, kept.replace(" at nine", "")), "the start dropped");
+
+  const evidence = "Custody record: {{option_1}}, held overnight at the central station. Booked in at ten, released after breakfast.\n" + NARROWED_DEATH[0];
+  const rewrite = "Custody record, central station: {{option_1}}, held overnight. Booked in at ten, released after breakfast.";
+  assert(keepsMarks(evidence, `${rewrite}\n${NARROWED_DEATH[0]}`));
+  assert(!keepsMarks(evidence, rewrite), "the coroner's line dropped");
+  assert(!keepsMarks(evidence, `${rewrite}\n${NARROWED_DEATH[0].replace("twenty past eleven", "twenty to twelve")}`), "the watch time changed");
+});
