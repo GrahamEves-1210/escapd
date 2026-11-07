@@ -102,7 +102,8 @@ Deno.test("author: the noir chain says what each find gives and where its placeh
     if (s.kind === "digits") assert(new RegExp(`\\{\\{${name}\\}\\}: (one digit|\\w+ digits) of the door's code, for the wheels? marked \\S+\\. Read: card_\\d+`).test(brief), name);
   }
   assert(/\{\{code_\d+\}\}: the door's whole code: \{\{digits_\d+\}\}( then \{\{digits_\d+\}\})+, wheel by wheel\./.test(brief), brief);
-  assert(chain.includes("→ the player gets the UV flashlight"), chain);
+  // A found item is named in the chain (the UV flashlight, a key, a blank letter: the room's tool varies).
+  assert(/→ the player gets the [A-Za-z]/.test(chain), chain);
   assert(/enter \{\{code_\d+\}\} on the door → the way out opens/.test(chain), chain);
   // Where each object is, so a card can say "by the window".
   assert(/^desk = desk \[Drawer\/drawer\] \(photo \d, [a-z ]+\)$/m.test(brief), brief);

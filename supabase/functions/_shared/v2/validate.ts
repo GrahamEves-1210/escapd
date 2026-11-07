@@ -3,8 +3,9 @@
 // the dynamic properties. Returns a list of errors; empty means valid.
 import { ARCHETYPES, type ArchetypeId, type HostRule } from "./archetypes.ts";
 import { categoryOf, isObjectType, isPortableType, type ObjectType } from "./taxonomy.ts";
+import { traceSiteOk } from "./traces.ts";
 import {
-  type Condition, type Effect, MODES, type ObjectDef, OVERLAYS, type RoomDefinitionV2, type RoomSecretV2,
+  type Condition, type Effect, MODES, type ObjectDef, OVERLAYS, REVEALS, type RoomDefinitionV2, type RoomSecretV2,
   TRACE_KINDS, type Trigger, type Value,
 } from "./types.ts";
 
@@ -70,6 +71,8 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
       if (o.archetype !== null || o.controls.length || o.exit || o.removable || o.hidden || o.submit) err(`${o.id}: a trace has no archetype, controls or role`);
       const anchor = def.objects.find((x) => x.id === t?.anchor);
       if (anchor && (anchor.trace || anchor.photo_index !== o.photo_index)) err(`${o.id}: a trace's anchor is a real object on its photo`);
+      // Only where that kind of trace physically goes (footprints on floors and rugs, prints on hard things...).
+      if (anchor && t && TRACE_KINDS.includes(t.kind) && !traceSiteOk(t.kind, t.surface, anchor.type)) err(`${o.id}: ${t.kind} can't be ${t.surface === "on" ? "on" : t.surface === "wall" ? "on the wall by" : "on the floor by"} a ${anchor.type}`);
     }
     const expected = new Map<string, string>();
     if (o.archetype !== null) {
@@ -125,6 +128,7 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
     unique(c.id, "card", cards);
     cards.add(c.id);
     if (!c.title?.trim() || typeof c.text !== "string") err(`${c.id}: title and text are required`);
+    if (c.reveal !== undefined && !REVEALS.includes(c.reveal)) err(`${c.id}: unknown reveal ${c.reveal}`);
   }
   for (const i of def.items) if (i.card && !cards.has(i.card)) err(`${i.id}: unknown card ${i.card}`);
 

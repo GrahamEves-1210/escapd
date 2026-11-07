@@ -20,3 +20,31 @@ test("plans and plays a v2 room in the app runtime", () => {
   for (const action of r.report.path) state = applyAction(r.definition, r.secret, state, action).state;
   expect(state.completed).toBe(true);
 });
+
+test("the reveal tools play in the app runtime: a letter warmed at a lamp, a note read in a mirror", () => {
+  const room = [
+    inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("pillow", 2, ["can_lift"]), inv("cabinet", 2, ["has_doors", "can_open"]),
+    inv("desk_lamp", 1, ["light_source"]), inv("mirror", 3, ["wall_mounted", "reflective"]), inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]),
+  ];
+  const found = new Set<string>();
+  for (let i = 0; i < 120 && found.size < 2; i++) {
+    let s = i + 1;
+    const randomInt = (max: number) => { s = (s * 16807) % 2147483647; return s % max; };
+    const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `tools-${i}`, randomInt });
+    if (!r.ok) continue;
+    const reveals = r.definition.cards.filter((c) => c.reveal).map((c) => c.reveal!);
+    if (!reveals.length) continue;
+    let state = initialState(r.definition);
+    const seen: string[] = [];
+    for (const action of r.report.path) {
+      const out = applyAction(r.definition, r.secret, state, action);
+      for (const e of out.result.effects) if (e.do === "show_card") seen.push(e.card);
+      state = out.state;
+    }
+    expect(state.completed).toBe(true);
+    // The tool's card was read on the way out.
+    for (const c of r.definition.cards.filter((x) => x.reveal)) expect(seen).toContain(c.id);
+    reveals.forEach((k) => found.add(k));
+  }
+  expect([...found].sort()).toEqual(["heat", "mirror"]);
+});

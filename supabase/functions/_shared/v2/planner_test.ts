@@ -148,9 +148,11 @@ Deno.test("planner: found items carry no card that repeats them; paired halves d
     const { definition: def } = planned(inv, mode, seed);
     for (const i of def.items) {
       assert(/^[A-Z]/.test(i.name), `${mode}: ${i.name}`);
-      // Only an assembled item has a card: what its pieces say together.
-      if (i.card) assertEquals(i.kind, "assembled", `${mode}: ${i.name} has a card`);
-      assert(i.kind !== "prop", `${mode}: a note is a card to read, not an item: ${i.name}`);
+      // Only an assembled item has a card (what its pieces say together), or a note that reads only with a
+      // tool, whose card says how it reads (it smells of lemons; it's written backwards), never a value.
+      const card = i.card ? def.cards.find((c) => c.id === i.card)! : undefined;
+      if (card) assert(i.kind === "assembled" || (i.kind === "prop" && !card.text.includes("{{")), `${mode}: ${i.name} has a card`);
+      if (i.kind === "prop") assert(card, `${mode}: a note is a card to read, not an item: ${i.name}`);
     }
     assertEquals(new Set(def.items.map((i) => i.name)).size, def.items.length, `${mode}: duplicate item names`);
     const texts = def.cards.map((c) => `${c.title}|${c.text}`);
@@ -265,7 +267,8 @@ Deno.test("planner: UV traces sit on the photo by a real object, and the torch t
       assert(ox <= 0 || oy <= 0, `${a.id} overlaps ${c.id}`);
     }
   }
-  assert(rooms >= 30, `only ${rooms} of 54 rooms have UV traces`);
+  // UV is one tool among several now: some rooms have traces, most use something else.
+  assert(rooms >= 8 && rooms <= 30, `${rooms} of 54 rooms have UV traces`);
 });
 
 // ---------------------------------------------------------------------------
@@ -350,7 +353,7 @@ Deno.test("planner: cards say where they were, and the UV flashlight is never un
       if (!step || (step.motif !== "contain" && step.motif !== "story_fragment") || r.trigger.on !== "control") continue;
       const host = def.objects.find((o) => o.id === step.object)!;
       for (const e of r.effects) {
-        if (e.do === "show_card") {
+        if (e.do === "show_card" && !def.items.some((i) => i.card === e.card)) {
           const text = def.cards.find((c) => c.id === e.card)!.text;
           assert(text.includes(host.label) || text.startsWith("Hidden where") || (host.variant === "drawer" && /\bdrawer\b/.test(text)), `${mode}: "${text}" doesn't say it was in the ${host.label}`);
         }

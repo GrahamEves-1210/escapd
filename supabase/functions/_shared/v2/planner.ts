@@ -21,6 +21,7 @@ import {
 } from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
 import { simulate, type SimReport } from "./simulate.ts";
+import { TRACE_SURFACES, traceSiteOk } from "./traces.ts";
 import { categoryOf, type InventoryObject, isPortableType, type ObjectCategory } from "./taxonomy.ts";
 import {
   type AccuseOption, type CardDef, type Condition, type Effect, type FinaleDef, type ItemDef, type Mode, type MotifId, type ObjectDef, ORDER_RULES,
@@ -107,6 +108,8 @@ interface Want {
   excludeIds?: (string | undefined)[];
   /** Beyond the archetype: whether this object, hosting it, makes sense for what it holds. */
   fits?: (b: Bound, a: ArchetypeId) => boolean;
+  /** Only objects like this (a mirror), whatever they host. */
+  where?: (b: Bound) => boolean;
 }
 
 interface Option { motif: MotifId; min: number; fixed: boolean; run: () => string | null }
@@ -138,11 +141,6 @@ interface Trace {
 const TRACE_SIZE: Record<TraceKind, [number, number]> = {
   prints: [0.12, 0.09], palm: [0.13, 0.14], writing: [0.28, 0.09], stain: [0.18, 0.11], footprints: [0.36, 0.2],
 };
-const TRACE_SURFACES: Record<TraceKind, TraceSpec["surface"][]> = {
-  prints: ["on", "wall"], palm: ["on", "wall"], writing: ["wall", "on"], stain: ["floor", "wall"], footprints: ["floor"],
-};
-/** Things a print or writing can sit on (not a cushion, not a plant). */
-const TRACE_HOSTS: ObjectCategory[] = ["furniture", "storage", "door", "wall", "electronic", "instrument"];
 /** At most this many traces carry one step's values (one each); more and the plain glow mark is used. */
 const MAX_TRACES = 3;
 
@@ -183,6 +181,8 @@ class Builder {
   fresh: Pick;
   /** UV finds glow on objects rather than as traces on the photo (the last round of candidates). */
   glowFirst = false;
+  /** The room's one reveal tool (seeded per room, so UV is one tool among several): "any" lifts the limit. */
+  tool: RevealTool | "any" = "any";
   names: (typeof ITEM_NAMES)[Mode];
 
   constructor(public mode: Mode, public pool: Bound[], public exit: Bound, public rng: () => number, public rint: RandomInt, public trng: () => number) {
@@ -228,6 +228,7 @@ class Builder {
     for (const b of this.pool) {
       if (b.roles >= 2 || b.triggers.includes(w.trigger) || b === this.removable || w.excludeIds?.includes(b.id)) continue;
       if (w.markable && !isMarkable(b.inv.type)) continue;
+      if (w.where && !w.where(b)) continue;
       let av: { archetype?: ArchetypeId; variant?: string } = {};
       if (w.accept) {
         if (b.archetype) {
@@ -382,6 +383,8 @@ class Builder {
       case "tool_reveal": return "Left in ink or traces that only show under ultraviolet light.";
       case "split": return "Torn in two and hidden apart, so neither half says anything alone.";
       case "decode": return "Written in a cipher so that a stranger reading it learns nothing.";
+      case "warm_reveal": return "Written in lemon juice, which dries invisible and only shows when it's warmed.";
+      case "mirror_reveal": return "Written backwards, so only someone who thought to use a mirror could read it.";
       case "finale": return this.mode === "noir" ? "Whoever locked the door left its combination in pieces around the room."
         : "The accusation is made here, and only the evidence decides it.";
       case "ordering": return "The presence lets go only when its offerings are made in the right order; each fragment remembers one part of it.";
@@ -446,7 +449,9 @@ class Builder {
       { motif: "set_state", min: 2, fixed: false, run: () => this.setState(slots, null, budget, thread, depth) },
       { motif: "cross_reference", min: 2, fixed: false, run: () => this.crossReference(slots, budget, thread, depth) },
       { motif: "room_change", min: 2, fixed: true, run: () => this.roomChange(slots, thread) },
-      { motif: "tool_reveal", min: 2, fixed: false, run: () => this.toolReveal(slots, budget, thread, depth) },
+      ...(this.tool === "uv" || this.tool === "any" ? [{ motif: "tool_reveal" as const, min: 2, fixed: false, run: () => this.toolReveal(slots, budget, thread, depth) }] : []),
+      ...(this.tool === "warm" || this.tool === "any" ? [{ motif: "warm_reveal" as const, min: 2, fixed: false, run: () => this.warmReveal(slots, budget, thread, depth) }] : []),
+      ...(this.tool === "mirror" || this.tool === "any" ? [{ motif: "mirror_reveal" as const, min: 2, fixed: false, run: () => this.mirrorReveal(slots, budget, thread, depth) }] : []),
       { motif: "split", min: 3, fixed: true, run: () => this.split(slots, thread) },
       ...(codable ? [{ motif: "decode" as const, min: 4, fixed: false, run: () => this.decode(slots, budget, thread, depth) }] : []),
     ], budget, depth);
@@ -708,6 +713,55 @@ class Builder {
     return s;
   }
 
+  // ---- Notes that read only with something in the room ------------------------
+  /**
+   * A blank letter written in lemon juice (found somewhere), warmed at a lamp the player switches on: the
+   * writing browns in. The letter says it smells of lemons when found; the lamp may be one another
+   * thread lights (a braid). Shows `slots`.
+   */
+  warmReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    const lp = this.pickObject({ trigger: "warm", thread, preferUsed: true, accept: (a, v) => a === "Light" && v !== "torch" });
+    if (!lp) return null;
+    const lamp = this.bind(lp, thread, "warm");
+    const n = this.names.letter;
+    const letter = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead) });
+    const up = this.deliver(letter, budget - 1, thread, depth);
+    if (!up) return null;
+    const card = this.clue("heat", slots);
+    this.cards.find((c) => c.id === card)!.reveal = "heat";
+    const name = n.title.toLowerCase(), l = lamp.inv.label;
+    const s = this.step("warm_reveal", thread, lamp.id, [up], [
+      "Some writing only shows when it's warmed.",
+      `The ${name} smells of lemons: lemon juice dries invisible and turns brown with heat, and the ${l} gets warm once it's on.`,
+      `Switch on the ${l}, then hold the ${name} to it.`,
+    ]);
+    this.rule({ on: "use", item: letter, object: lamp.id }, [{ if: "control", target: lamp.id, control: "on", eq: { lit: true } }],
+      [{ do: "consume", item: letter }, { do: "show_card", card }, { do: "beat", text: "Brown letters creep up out of the blank paper." }], s);
+    return s;
+  }
+
+  /** A note in mirror writing (found somewhere), held up to the room's own mirror: it reads plainly. Shows `slots`. */
+  mirrorReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    const mp = this.pickObject({ trigger: "mirror", thread, preferUsed: true, where: (b) => b.inv.type === "mirror" || (b.inv.features.includes("reflective") && categoryOf(b.inv.type) !== "textile") });
+    if (!mp) return null;
+    const mirror = this.bind(mp, thread, "mirror");
+    const n = this.names.backwards;
+    const note = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead) });
+    const up = this.deliver(note, budget - 1, thread, depth);
+    if (!up) return null;
+    const card = this.clue("mirror", slots);
+    this.cards.find((c) => c.id === card)!.reveal = "mirror";
+    const name = n.title.toLowerCase(), l = mirror.inv.label;
+    const s = this.step("mirror_reveal", thread, mirror.id, [up], [
+      "Some writing is meant to be read the other way round.",
+      `The ${name} is written back to front, and the ${l} would turn it round.`,
+      `Hold the ${name} up to the ${l}.`,
+    ]);
+    this.rule({ on: "use", item: note, object: mirror.id }, [],
+      [{ do: "consume", item: note }, { do: "show_card", card }, { do: "beat", text: "In the glass the backwards letters come right." }], s);
+    return s;
+  }
+
   // ---- UV traces -------------------------------------------------------------
   /** Kinds of trace that can carry a slot, in a seeded order of preference. */
   traceKinds(slot: string | null): TraceKind[] {
@@ -729,38 +783,40 @@ class Builder {
     const placed = this.traces.filter((t) => t.photo === photo).map((t) => t.rect);
     const label = b.inv.label;
     const rug = b.inv.type === "rug";
-    const host = TRACE_HOSTS.includes(categoryOf(b.inv.type));
     const r3 = (v: number) => Math.round(v * 1000) / 1000;
-    const tryRect = (x: number, y: number, maxOverlap: number): Rect | null => {
+    const tryRect = (x: number, y: number, maxOverlap: number, clearOfSelf: boolean): Rect | null => {
       const r = { x: r3(Math.min(0.99 - w, Math.max(0.01, x))), y: r3(Math.min(0.99 - h, Math.max(0.01, y))), w, h };
       if (Math.abs(r.x - x) > 0.04 || Math.abs(r.y - y) > 0.04) return null;   // pushed far off where it belongs
       if (placed.some((p) => overlapArea(p, r) > 0)) return null;
       if (others.some((o) => overlapArea(o, r) > maxOverlap * w * h)) return null;
+      // Beside or by an object is off it: footprints "by the bed" are never drawn across the bed.
+      if (clearOfSelf && overlapArea(a, r) > 0.02 * w * h) return null;
       return r;
     };
-    for (const surface of TRACE_SURFACES[kind]) {
+    // Only where this kind of trace physically goes (traces.ts): never footprints on a bed or prints on a cushion.
+    for (const surface of TRACE_SURFACES[kind].filter((s) => traceSiteOk(kind, s, b.inv.type))) {
       const spots: { x: number; y: number; max: number; where: string }[] = [];
-      if (surface === "on" && host && !rug && a.w >= w * 1.25 && a.h >= h * 1.25) {
+      if (surface === "on" && a.w >= w * 1.25 && a.h >= h * 1.25) {
         const where = /\bdrawers?\b/i.test(label) ? `the front of the ${label}` : b.inv.type === "door" && kind === "prints" ? `the ${label}, by the handle` : `the ${label}`;
         const at = (fx: number, fy: number) => spots.push({ x: a.x + a.w * fx - w / 2, y: a.y + a.h * fy - h / 2, max: 0.5, where });
         if (b.inv.type === "door") at(kind === "prints" ? 0.78 : 0.5, kind === "palm" ? 0.35 : 0.48);
         else if (/\bdrawers?\b/i.test(label)) at(0.5, 0.35);
         else { at(0.5, 0.3); at(0.3, 0.55); at(0.7, 0.5); }
-      } else if (surface === "wall" && !rug && categoryOf(b.inv.type) !== "textile") {
+      } else if (surface === "wall") {
         const y = a.y + Math.min(0.15, a.h * 0.2);
         spots.push({ x: a.x - w - 0.02, y, max: 0.1, where: `the wall beside the ${label}` });
         spots.push({ x: a.x + a.w + 0.02, y, max: 0.1, where: `the wall beside the ${label}` });
         spots.push({ x: a.x + a.w / 2 - w / 2, y: a.y - h - 0.03, max: 0.1, where: `the wall above the ${label}` });
       } else if (surface === "floor") {
-        if (rug && a.w >= w * 1.1 && a.h >= h * 0.9) spots.push({ x: a.x + a.w / 2 - w / 2, y: a.y + a.h / 2 - h / 2, max: 1, where: `the ${label}` });
+        if (rug && a.w >= w * 1.1 && a.h >= h * 0.9) spots.push({ x: a.x + a.w / 2 - w / 2, y: a.y + a.h / 2 - h / 2, max: 0.15, where: `the ${label}` });
         else if (!rug && a.y + a.h >= 0.55) {
           const y = Math.min(0.97 - h, Math.max(0.62, a.y + a.h + 0.01));
-          for (const fx of [0.5, 0.2, 0.8]) spots.push({ x: a.x + a.w * fx - w / 2, y, max: 0.45, where: `the floor by the ${label}` });
+          for (const fx of [0.5, 0.2, 0.8]) spots.push({ x: a.x + a.w * fx - w / 2, y, max: 0.05, where: `the floor by the ${label}` });
         }
       }
       for (const p of spots) {
         if (surface === "wall" && p.y + h > 0.72) continue;   // a wall is above the floor
-        const rect = tryRect(p.x, p.y, p.max);
+        const rect = tryRect(p.x, p.y, p.max, surface !== "on" && !rug);
         if (rect) return { surface, rect, where: p.where };
       }
     }
@@ -912,7 +968,27 @@ const STEP_TITLE: Record<MotifId, string> = {
   read: "Read it", contain: "Look inside", split: "Piece it together", set_state: "Set the mechanism",
   cross_reference: "Find the page", decode: "Decode it", tool_reveal: "Under the light", room_change: "Change the room",
   ordering: "Perform the ritual", contain_lock: "Open the lock", story_fragment: "A keepsake", finale: "The way out",
+  warm_reveal: "Warm it", mirror_reveal: "In the mirror",
 };
+
+/** The reveal tools a room can be given (UV traces and glows; a letter in lemon juice; a note in mirror writing), or none. */
+export type RevealTool = "uv" | "warm" | "mirror" | "none";
+
+/**
+ * The room's one reveal tool. UV, the lemon-juice letter (needs a lamp) and the mirror note (needs a mirror)
+ * weigh the same, and "none" makes up the rest, so UV is in about a third of rooms that have a lamp.
+ */
+export function revealTool(objs: InventoryObject[], rng: () => number): RevealTool {
+  const lamp = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "Light" && h.variant !== "torch"));
+  const mirror = objs.some((o) => o.type === "mirror" || (o.features.includes("reflective") && categoryOf(o.type) !== "textile"));
+  const tools: [RevealTool, number][] = [["uv", 1], ...(lamp ? [["warm", 1] as [RevealTool, number]] : []), ...(mirror ? [["mirror", 1] as [RevealTool, number]] : [])];
+  // No tool at all only where a lamp can still change the room (and give it a revisit); a room with
+  // neither a lamp nor a mirror has nothing else that reveals, so it gets the UV light.
+  if (lamp) tools.push(["none", Math.max(0, 3 - tools.length)]);
+  let r = rng() * tools.reduce((a, [, w]) => a + w, 0);
+  for (const [t, w] of tools) if ((r -= w) < 0) return t;
+  return "uv";
+}
 
 /**
  * What each of `n` ritual fragments says about its offering's place, so that exactly one order fits all
@@ -991,6 +1067,9 @@ function buildCandidate(
   const pool = inv.filter((o) => o !== exitObj).sort((a, b) => b.salience - a.salience).map(mk);
   const B = new Builder(mode, pool, exit, rng, rint, trng);
   B.glowFirst = glowFirst;
+  // The room's reveal tool, seeded by the room (every candidate the same, so scoring can't always pick UV),
+  // and lifted in the last round, for rooms that plan no other way.
+  B.tool = glowFirst ? "any" : revealTool(pool.map((b) => b.inv), seededRandom(`${seed}:${mode}:tool`));
   const voice = MODE_COPY[mode];
 
   // Mode skeleton: the finale's inputs become thread goals.
@@ -1212,7 +1291,9 @@ function buildCandidate(
     id: t.id, photo_index: t.photo, box: t.rect, label: t.label, type: "other", archetype: null, controls: [], initial: { revealed: false },
     trace: { kind: t.kind, surface: t.surface, anchor: t.anchor, seed: t.seed },
   }));
-  const objects = [...[exit, ...used, ...herrings].map(toDef), ...traceDefs];
+  // A trace's anchor is always in the room, so what the trace is on or by can be checked (and named).
+  const anchored = B.pool.filter((b) => B.traces.some((t) => t.anchor === b.id) && !used.includes(b) && !herrings.includes(b));
+  const objects = [...[exit, ...used, ...herrings, ...anchored].map(toDef), ...traceDefs];
   const victim = mode === "crime_scene" ? B.pick(VICTIMS) : undefined;
   const definition: RoomDefinitionV2 = {
     schema_version: 2, mode,
@@ -1266,7 +1347,9 @@ function buildCandidate(
   const score = 2 * (photos / Math.min(allPhotos, 4)) + used.reduce((a, b) => a + b.inv.salience, 0) / Math.max(1, used.length) +
     0.4 * new Set(motifs).size + 0.5 * Math.min(revisits, 2) + 0.3 * Math.min(roomChanges, 2) + 0.3 * Math.min(openings, 3) -
     0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7)) + 0.6 * Math.min(braids, 1) + 0.5 * (has("decode") ? 1 : 0) + 0.4 * (has("split") ? 1 : 0) -
-    (has("tool_reveal") && has("room_change") ? 0.6 : 0);
+    (has("tool_reveal") && has("room_change") ? 0.6 : 0) +
+    // The room was given its tool: a plan that uses it wins over one that doesn't.
+    (B.tool === "warm" && has("warm_reveal") || B.tool === "mirror" && has("mirror_reveal") ? 0.8 : 0);
   return { definition, secret, summary: { threads: nThreads, motifs, objectsUsed: used.length + 1, photos, score, candidatesTried: 0 } };
 }
 

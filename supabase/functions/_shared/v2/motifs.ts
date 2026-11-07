@@ -29,5 +29,7 @@ export const MOTIFS: Record<Exclude<MotifId, "finale">, MotifSpec> = {
   room_change: { id: "room_change", summary: "a lamp changes the room and marks another object", delivers: ["info"], minSteps: 2, fixed: true, archetypes: ["Light"], maxPerRoom: 1, weight: w(1, 0.8, 1.1) },
   ordering: { id: "ordering", summary: "an order learned in pieces, entered in sequence (the ritual)", delivers: ["info"], minSteps: 1, archetypes: ["Door"], weight: w(0, 0, 1) },
   contain_lock: { id: "contain_lock", summary: "a key or a code opens a container (at most one per room)", delivers: ["info", "item"], minSteps: 2, archetypes: ["Drawer", "CombinationLock"], maxPerRoom: 1, weight: w(1, 0.7, 0.7) },
+  warm_reveal: { id: "warm_reveal", summary: "a blank letter in lemon juice, warmed at a lamp the player switches on", delivers: ["info"], minSteps: 2, archetypes: ["Light"], maxPerRoom: 1, weight: w(1.4, 1.2, 1.4) },
+  mirror_reveal: { id: "mirror_reveal", summary: "a note in mirror writing, read by holding it to the room's mirror", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.3, 1.2, 1.5) },
   story_fragment: { id: "story_fragment", summary: "an optional prop that rewards looking", delivers: [], minSteps: 0, archetypes: ["Drawer", "LiftUnder", "FrameTilt"], weight: w(1, 1, 1) },
 };

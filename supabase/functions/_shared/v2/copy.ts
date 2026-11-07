@@ -21,7 +21,7 @@ import type { Mode, OrderRule, SlotKind, TraceKind } from "./types.ts";
 export type Pick = <T>(xs: readonly T[]) => T;
 
 /** Where a card's writing was found, which decides how it reads. */
-export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded";
+export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror";
 
 export interface Frame { title: string; lead: string }
 const f = (title: string, lead: string): Frame => ({ title, lead });
@@ -119,6 +119,8 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Radio", "Through the static, a man's voice repeats it, flat and tired: {v}")],
     assembled: [f("Taped note", "Edge to edge, the two halves finally say something: {v}")],
     decoded: [f("Decoded note", "Line up the ring and the gibberish turns plain: {v}")],
+    heat: [f("Lemon-juice letter", "Held to the warm bulb, brown letters creep up out of the blank paper, an old spy's trick: {v}")],
+    mirror: [f("Mirror writing", "In the glass the backwards hand turns plain, and somebody's careful secret with it: {v}")],
   },
   crime_scene: {
     found: [
@@ -137,6 +139,8 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Police radio", "Between stations, the police band crackles. The dispatcher repeats: {v}")],
     assembled: [f("Taped statement", "Fitted edge to edge, the torn statement gives a clean read: {v}")],
     decoded: [f("Decoded note", "With the ring set, the cipher resolves: {v}")],
+    heat: [f("Lemon-juice note", "Warmed at the lamp, writing somebody kept from prying eyes browns into view: {v}")],
+    mirror: [f("Mirror writing", "Held up to the mirror, the backwards note reads plainly: {v}")],
   },
   paranormal: {
     found: [
@@ -155,6 +159,8 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Radio", "Under the hiss, a child's voice, counting slowly: {v}")],
     assembled: [f("Mended page", "Pressed together, the torn edges knit. It reads: {v}")],
     decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself: {v}")],
+    heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret letters brown in, one by one: {v}")],
+    mirror: [f("Mirror writing", "In the glass the child's back-to-front letters come right: {v}")],
   },
 };
 
@@ -324,6 +330,8 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Radio", "Through the static:")],
     assembled: [f("Taped note", "Edge to edge, the halves read:")],
     decoded: [f("Decoded note", "Plain at last:")],
+    heat: [f("Lemon-juice letter", "Held to the warm bulb, brown writing creeps up out of the blank paper:")],
+    mirror: [f("Mirror writing", "In the glass the backwards hand turns plain:")],
   },
   crime_scene: {
     found: [
@@ -338,6 +346,8 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Police radio", "Between stations, the police band. The dispatcher reads out the night's checks:")],
     assembled: [f("Taped statement", "Taped back together, the statement lists what was checked:")],
     decoded: [f("Decoded note", "With the ring set, the coded notes read:")],
+    heat: [f("Lemon-juice note", "Warmed at the lamp, the inspector's private copy of the file browns into view, written in lemon juice so no suspect could read it over his shoulder:")],
+    mirror: [f("Mirror writing", "Held up to the mirror, the inspector's backwards notes read plainly, his habit for anything a suspect might glimpse:")],
   },
   paranormal: {
     found: [
@@ -354,6 +364,8 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     radio: [f("Radio", "Under the hiss, a child's voice, reciting:")],
     assembled: [f("Mended page", "Pressed together, the torn edges knit. It reads:")],
     decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself:")],
+    heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret writing browns in:")],
+    mirror: [f("Mirror writing", "In the glass the back-to-front letters come right:")],
   },
 };
 
@@ -378,10 +390,23 @@ export function writeCard(
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
-export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string }> = {
-  noir: { key: "Brass key", halves: ["Torn note (left)", "Torn note (right)"], joined: "Taped note", torch: "UV flashlight", wheel: "Cipher wheel" },
-  crime_scene: { key: "Small key", halves: ["Torn statement (left)", "Torn statement (right)"], joined: "Taped statement", torch: "UV flashlight", wheel: "Cipher wheel" },
-  paranormal: { key: "Iron key", halves: ["Torn page (left)", "Torn page (right)"], joined: "Mended page", torch: "UV flashlight", wheel: "Cipher wheel" },
+export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame }> = {
+  noir: {
+    key: "Brass key", halves: ["Torn note (left)", "Torn note (right)"], joined: "Taped note", torch: "UV flashlight", wheel: "Cipher wheel",
+    // What each says when found is the clue to how it reads (no value on it yet).
+    letter: f("Blank letter", "Good notepaper, folded twice, with nothing written on it. It smells faintly of lemons."),
+    backwards: f("Backwards note", "One line in a looping hand, every letter written back to front. You can't read it straight."),
+  },
+  crime_scene: {
+    key: "Small key", halves: ["Torn statement (left)", "Torn statement (right)"], joined: "Taped statement", torch: "UV flashlight", wheel: "Cipher wheel",
+    letter: f("Blank letter", "A sheet of good paper, blank, but stiff in places, as if something clear dried on it. It smells of lemons."),
+    backwards: f("Backwards note", "Somebody wrote this backwards, letter by letter, as if it was only ever meant to be read in a mirror."),
+  },
+  paranormal: {
+    key: "Iron key", halves: ["Torn page (left)", "Torn page (right)"], joined: "Mended page", torch: "UV flashlight", wheel: "Cipher wheel",
+    letter: f("Blank page", "A page from a child's exercise book, empty, the paper stiff where something was painted on and dried. It smells of lemons."),
+    backwards: f("Backwards note", "Small letters, every one back to front, the way a child writes when she's playing at secrets."),
+  },
 };
 
 /** "wall clock" -> "Wall clock": an item's display name from an object label. */

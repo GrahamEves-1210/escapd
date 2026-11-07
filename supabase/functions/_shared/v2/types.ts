@@ -68,10 +68,16 @@ export interface ItemDef {
   card?: Id;                           // what examining it shows
 }
 
+/** How a card's writing comes to light, for the app to play: warmed at a lamp (lemon juice), read in a mirror. */
+export const REVEALS = ["heat", "mirror"] as const;
+export type Reveal = typeof REVEALS[number];
+
 export interface CardDef {
   id: Id;
   title: string;
   text: string;                        // may contain {{slot}}; values live in the secret
+  /** Writing found with a tool (absent: just read): the app shows it coming up that way. */
+  reveal?: Reveal;
 }
 
 export interface AccuseOption { id: Id; name: string }
@@ -178,7 +184,9 @@ export interface Rule {
 
 export type MotifId =
   | "split" | "set_state" | "cross_reference" | "decode" | "tool_reveal" | "room_change"
-  | "ordering" | "contain_lock" | "story_fragment" | "contain" | "read" | "finale";
+  | "ordering" | "contain_lock" | "story_fragment" | "contain" | "read" | "finale"
+  // A found note that only reads with something in the room: lemon juice warmed at a lit lamp; mirror writing held to a mirror.
+  | "warm_reveal" | "mirror_reveal";
 
 export interface StepDef {
   id: Id;
