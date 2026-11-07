@@ -42,7 +42,7 @@ function Hung({ text, style, testID }: { text: string; style: object; testID?: s
   );
 }
 
-export function MoonBrief({ label, series, context, objective, objectiveLabel, catLine, catLabel, catDelay }: BriefLetterProps) {
+export function MoonBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       {/* A sprig pressed in the letter, poking out from under it. */}
@@ -57,7 +57,7 @@ export function MoonBrief({ label, series, context, objective, objectiveLabel, c
           <Text style={[MOON_TYPE.italic, { color: P.faded }]}>{`${objectiveLabel}:`}</Text>
           <Text style={[MOON_TYPE.body, { color: P.ink }]}>{objective}</Text>
         </View>
-        <Text style={[handType(20, 25), styles.hand, { color: P.ink }]} testID="brief-cat-line">{keepTogether(catLine)}</Text>
+        <Text style={[handType(20, 25), styles.hand, { color: P.ink }]} testID="brief-postscript">{keepTogether(postscript)}</Text>
       </Paper>
       <WaxDrop color={P.candle} seed={label} size={30} style={styles.drips} />
       <WaxSeal wax={P.wax} light={P.waxLight} deep={P.waxDeep} seed={label} broken size={88} rotate={-12} style={styles.seal} />

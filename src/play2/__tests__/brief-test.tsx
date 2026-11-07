@@ -10,7 +10,7 @@ import { act, fireEvent, render, renderHook, screen } from "@testing-library/rea
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { LETTER, LETTER_FONT } from "@/theme/payoff";
 import { caseLabel } from "@/render/victory";
-import { BEGIN, BRIEF_CAT_LINE, BRIEF_OPENING, Brief, OBJECTIVE_LABEL, briefWords, ownBrief, useBrief, withoutObjective } from "../Brief";
+import { BEGIN, BRIEF_POSTSCRIPT, BRIEF_OPENING, Brief, OBJECTIVE_LABEL, briefWords, ownBrief, useBrief, withoutObjective } from "../Brief";
 
 jest.mock("@shopify/react-native-skia", () => {
   const base = jest.requireActual("../../../jest/skia-mock");
@@ -57,7 +57,7 @@ describe("Brief", () => {
     expect(screen.queryByText("The Long Night")).toBeNull();
     expect(screen.getByTestId("brief-objective").props.accessibilityLabel).toBe(`${OBJECTIVE_LABEL[mode]}: ${OBJECTIVE}`);
     expect(screen.getByLabelText(/^The black cat/)).toBeTruthy();
-    expect(screen.getByTestId("brief-cat-line").props.children.replace(/\u00a0/g, " ")).toBe(BRIEF_CAT_LINE);
+    expect(screen.getByTestId("brief-postscript").props.children.replace(/\u00a0/g, " ")).toBe(BRIEF_POSTSCRIPT);
     // The context reads as the text itself (a typed slip is struck through, never read).
     expect(screen.getByTestId("brief-context").props.accessibilityLabel ?? screen.getByTestId("brief-context").props.children).toBe(BRIEF_OPENING[mode]);
     await fireEvent.press(screen.getByText(BEGIN));

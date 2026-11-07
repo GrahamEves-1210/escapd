@@ -1,7 +1,9 @@
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ARCHETYPES, normalize, variantSpec, type ArchetypeId, type ControlDomain, type FinaleDef, type StateValue } from "@/engine/v2";
+import { Text } from "react-native";
 import { Mechanism } from "../mechanisms";
+import { GIVE_AT, REACH_AT } from "../mechanisms/kit";
 import type { MechanismProps, MechanismTarget } from "../mechanisms/types";
 
 const target = (archetype: ArchetypeId | null, variant?: string, label = "Thing"): MechanismTarget => {
@@ -69,6 +71,26 @@ describe("mechanisms", () => {
     const frame = await mount(target("FrameTilt", "tilt", "Painting"));
     await act("Tilt the Painting", "activate");
     expect(frame.onSet).toHaveBeenCalledWith("tilted", true);
+  });
+
+  it("a drawer, a door, a cushion and a frame have what they hold in them all along, reachable once it mostly shows", async () => {
+    const cases: [MechanismTarget, Record<string, StateValue>][] = [
+      [target("Drawer", "drawer"), { open: true }], [target("Drawer", "compartment"), { open: true }],
+      [target("LiftUnder", "lift", "Cushion"), { lifted: true }], [target("FrameTilt", "tilt", "Painting"), { tilted: true }],
+    ];
+    for (const [t, opened] of cases) {
+      // Shut: there under the front (never waiting for it to open), but not to be picked up through it.
+      const shut = await mount(t, { inside: <Text testID="held">a note</Text> });
+      expect(screen.getByTestId("held")).toBeTruthy();
+      expect(screen.getByTestId("mech-inside").props.pointerEvents).toBe("none");
+      await shut.view.unmount();
+      const open = await mount(t, { state: { ...variantSpec(t.archetype!, t.variant).initial, ...opened }, inside: <Text testID="held">a note</Text> });
+      expect(screen.getByTestId("mech-inside").props.pointerEvents).toBe("box-none");
+      await open.view.unmount();
+    }
+    // It gives early (what's inside comes with it), and can be taken before it's all the way out.
+    expect(GIVE_AT).toBeLessThan(REACH_AT);
+    expect(REACH_AT).toBeLessThan(1);
   });
 
   it("turns straight to a page with the number wheels, which stand at the page it's open at", async () => {

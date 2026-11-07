@@ -1,5 +1,6 @@
-// LiftUnder: drag the cloth or cushion up to see beneath it. Past COMMIT_AT it
-// stays lifted: onSet("lifted", true).
+// LiftUnder: drag the cloth or cushion up to see beneath it. The moment it
+// gives (GIVE_AT) it's lifted: onSet("lifted", true), the finger still on it,
+// so what was under it is there, uncovered from its near edge as it rises.
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -7,7 +8,7 @@ import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
-import { Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
+import { GIVE_AT, Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import type { MechanismProps } from "./types";
 
 const RISE = 84;
@@ -25,7 +26,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
     feedback.tick();
     onSet("lifted", false);
   }, [feedback, onSet]);
-  const { progress, gesture, commitNow } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit, onUncommit, land: tryKey(target) });
+  const { progress, gesture, commitNow, reach } = usePull({ axis: "up", range: RISE, done: lifted, busy, onCommit, onUncommit, land: tryKey(target), giveAt: GIVE_AT });
 
   const w = Math.min(width - 2 * ref.space.xl, 240);
   const clothStyle = useAnimatedStyle(() => {
@@ -46,8 +47,8 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
     <Stage width={width}>
       <View style={[styles.room, { height: STAGE }]}>
         <Animated.View style={[styles.hollow, { width: w * 0.8, backgroundColor: theme.ground, borderColor: theme.rim }, hollowStyle]} />
-        {/* What was under it, lying in the hollow it left. */}
-        {inside ? <View style={[styles.lying, { width: w * 0.8 }]} pointerEvents="box-none">{inside}</View> : null}
+        {/* What was under it, there all along in the hollow, uncovered as it rises; picked up once most of it shows. */}
+        {inside ? <View style={[styles.lying, { width: w * 0.8 }]} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
         <GestureDetector gesture={gesture}>
           <Animated.View
             {...activatable(lifted ? `${target.label}, lifted` : `Lift the ${target.label}`, "Looks underneath", lifted ? onUncommit : commitNow, busy)}

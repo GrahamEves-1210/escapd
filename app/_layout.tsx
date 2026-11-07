@@ -93,6 +93,9 @@ export default function RootLayout() {
   );
 }
 
+/** The game's screens: no swipe back, from the edge or anywhere. */
+const IN_GAME = { gestureEnabled: false, fullScreenGestureEnabled: false } as const;
+
 function ThemedStack() {
   const { reduced_motion } = usePreferences();
   return (
@@ -106,7 +109,12 @@ function ThemedStack() {
           contentStyle: { backgroundColor: color.canvas },
           animation: reduced_motion ? "none" : "fade",
         }}
-      />
+      >
+        {/* In a case, leaving is the back button's alone: no edge swipe back (iOS, Android's predictive back)
+            out of the game by accident, into the photos it was built from. */}
+        <Stack.Screen name="play/[roomId]" options={IN_GAME} />
+        <Stack.Screen name="play/complete/[roomId]" options={IN_GAME} />
+      </Stack>
     </ThemeProvider>
   );
 }

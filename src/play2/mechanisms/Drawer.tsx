@@ -1,6 +1,8 @@
 // Drawer and compartment: pull the front out (a drawer slides toward you, a
-// compartment door swings on its left hinge). Past COMMIT_AT it opens:
-// onSet("open", true). Locked, it gives a few points and rattles.
+// compartment door swings on its left hinge). The moment it gives (GIVE_AT) it
+// opens: onSet("open", true), the finger still on it, so what's inside lies
+// there under the front and is uncovered as it comes, never popping in at the
+// end. Locked, it gives a few points and rattles.
 import { useCallback } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -8,7 +10,7 @@ import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { ref } from "@/theme/tokens";
-import { Glint, LANDING, Line, STAGE, Stage, activatable, tryKey, useLockedLine, usePull, useRattle } from "./kit";
+import { GIVE_AT, Glint, LANDING, Line, STAGE, Stage, activatable, tryKey, useLockedLine, usePull, useRattle } from "./kit";
 import type { MechanismProps } from "./types";
 
 const TRAVEL = 72;
@@ -39,8 +41,8 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
     markTried();
   }, [feedback, rattle, markTried]);
 
-  const { progress, gesture, commitNow, landed } = usePull({
-    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked, onUncommit, land: tryKey(target),
+  const { progress, gesture, commitNow, landed, reach } = usePull({
+    axis: swing ? "x" : "down", range: swing ? 140 : TRAVEL, done: open, locked, busy, onCommit, onLocked, onUncommit, land: tryKey(target), giveAt: GIVE_AT,
   });
 
   const w = Math.min(width - 2 * ref.space.lg, 280);
@@ -66,8 +68,8 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
     }
     return { transform: [{ translateY: p * TRAVEL }, { scale: 1 + p * 0.06 }] };
   });
-  // The inside's shadow lifts as it opens.
-  const insideStyle = useAnimatedStyle(() => ({ opacity: interpolate(Math.abs(progress.get()), [0, 1], [0.2, 1]) }));
+  // The front's shadow over the inside lifts as it opens (what's in it is never dimmed out of sight).
+  const shadeStyle = useAnimatedStyle(() => ({ opacity: interpolate(Math.abs(progress.get()), [0, 0.45], [0.42, 0], "clamp") }));
 
   // What the front is called, and the verbs, the same for the screen reader as on the line under it.
   const say = swing
@@ -86,11 +88,21 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
             ]}
           >
             {/* The dark inside the front leaves behind. */}
-            <Animated.View style={[styles.inside, { height: swing ? door.h : h, backgroundColor: theme.ground, borderColor: theme.rim }, insideStyle]}>
+            <View style={[styles.inside, { height: swing ? door.h : h, backgroundColor: theme.ground, borderColor: theme.rim }]}>
               <View style={[styles.insideEdge, { borderColor: theme.rim }]} />
-              {/* What's in it, lying in the part the front slid off (pushed shut, the front covers it again). */}
-              {inside ? <View style={[styles.lying, { height: swing ? door.h : TRAVEL - ref.space.sm }]} pointerEvents="box-none">{inside}</View> : null}
-            </Animated.View>
+              {/* What's in it, there all along: lying in the part the front slides off (by the free edge, for a
+                  door), uncovered as it opens; it can be picked up once most of it shows. */}
+              {inside ? (
+                <View
+                  style={[styles.lying, swing ? styles.byEdge : null, { height: swing ? door.h : TRAVEL - ref.space.sm }]}
+                  pointerEvents={reach ? "box-none" : "none"}
+                  testID="mech-inside"
+                >
+                  {inside}
+                </View>
+              ) : null}
+              <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.shade, shadeStyle]} />
+            </View>
             {/* The front is the control for assistive tech (what's inside stays reachable on its own). */}
             <Animated.View
               {...activatable(
@@ -109,7 +121,7 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
               )}
               {locked ? <View style={[styles.keyhole, { backgroundColor: theme.ground }]} /> : null}
               {/* Just pulled open: the light catches its front as it lands at the stop. */}
-              {landed ? <Glint delay={LANDING.delayMs + LANDING.inMs} radius={ref.radius.tag / 2} /> : null}
+              {landed ? <Glint key={landed} delay={LANDING.delayMs + LANDING.inMs} radius={ref.radius.tag / 2} /> : null}
             </Animated.View>
           </Animated.View>
         </GestureDetector>
@@ -139,6 +151,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   lying: { position: "absolute", left: 0, right: 0, top: 0, alignItems: "center", justifyContent: "center" },
+  // Behind a door: by its free edge, the side that opens first.
+  byEdge: { alignItems: "flex-end", paddingRight: ref.space.sm },
+  shade: { backgroundColor: "#000000" },
   insideEdge: { position: "absolute", left: ref.space.lg, right: ref.space.lg, top: ref.space.lg, bottom: 0, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0 },
   front: {
     borderRadius: ref.radius.tag / 2,

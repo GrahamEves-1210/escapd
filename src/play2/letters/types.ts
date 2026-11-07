@@ -5,7 +5,7 @@ import type { SceneSource } from "@/render/SceneView";
 
 export type Photo = { source: SceneSource; cacheKey?: string };
 
-/** The brief before a case: what happened, what to find, the cat's word. */
+/** The brief before a case: what happened, what to find, a postscript on where the tips are. */
 export interface BriefLetterProps {
   /** The case's number ("Case no. 2141"), its series line. */
   label: string;
@@ -13,7 +13,8 @@ export interface BriefLetterProps {
   context: string;
   objective: string;
   objectiveLabel: string;
-  catLine: string;
+  /** The writer's postscript, handwritten at the foot (never the cat's: it doesn't talk). */
+  postscript: string;
   catLabel: string;
   catDelay: number;
   /** Her own room, for a print clipped to the file (crime scene). */

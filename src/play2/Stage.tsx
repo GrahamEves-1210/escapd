@@ -29,7 +29,7 @@ import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
 import { V2 } from "./layout";
 import { useOutlines } from "./useOutlines";
-import { UvTrace, type StageTrace } from "./UvTrace";
+import { tapTrace, UvTrace, type StageTrace } from "./UvTrace";
 import { Ambient, CarLight } from "./fx/Ambient";
 import { Burst } from "./fx/Burst";
 import type { BurstEvent } from "./fx/useCelebrate";
@@ -186,7 +186,14 @@ export function Stage({
       }
     },
   });
-  // A tap points the light there; looking closer is the magnifier's (dragged onto something).
+  // A tap points the light there; looking closer is the magnifier's (dragged onto something). Under UV, a
+  // tap on a trace the light has found looks at it too (it isn't an object to drag the magnifier onto
+  // only): one it hasn't found yet, the light is pointed at and finds.
+  const tapped = (x: number, y: number) => {
+    const t = tapTrace(traces, x, y, uv);
+    if (t && "look" in t) onLook(t.look);
+    else if (t) onTrace?.(t.find);
+  };
   const tap = useTapGesture({
     maxDistance: 12,
     onActivate: (e) => {
@@ -195,6 +202,7 @@ export function Stage({
       if (s.w <= 0) return;
       tx.set(withTiming(e.x / s.w, { duration: 160 }));
       ty.set(withTiming(e.y / s.h, { duration: 160 }));
+      scheduleOnRN(tapped, e.x / s.w, e.y / s.h);
     },
   });
   // Looking closer: the light swings onto the object and the view pushes in on

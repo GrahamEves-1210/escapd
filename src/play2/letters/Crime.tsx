@@ -84,7 +84,7 @@ function Envelope({ seed }: { seed: string }) {
   );
 }
 
-export function CrimeBrief({ label, series, context, objective, objectiveLabel, catLine, catLabel, catDelay, photo }: BriefLetterProps) {
+export function CrimeBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay, photo }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       <Envelope seed={label} />
@@ -116,7 +116,7 @@ export function CrimeBrief({ label, series, context, objective, objectiveLabel, 
       {photo ? <View style={styles.printAt}><Print photo={photo} tilt={5} /></View> : null}
       {/* The sticky note with the cat's word. */}
       <Paper color={P.note} seed={`${label}:note`} grain={0.45} shade={alpha("#000000", 0.45)} lift={0.8} style={styles.note} padding={styles.notePad}>
-        <Text style={[handType(19, 23), { color: P.noteInk }]} testID="brief-cat-line">{keepTogether(catLine)}</Text>
+        <Text style={[handType(19, 23), { color: P.noteInk }]} testID="brief-postscript">{keepTogether(postscript)}</Text>
       </Paper>
       <LetterCat width={CAT} delay={catDelay} label={catLabel} style={styles.cat} />
     </View>

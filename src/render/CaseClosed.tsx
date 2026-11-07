@@ -18,7 +18,7 @@
 // culprit, motive and method on ruled lines); then the record's cells (the
 // time, the tips taken, the wrong calls, the clues found of the case's); the
 // rating (magnifiers in brass, or paranormal's "Second sight" in moons) with
-// what earned it; the cat's line on how it went; and at its foot the app's name and a
+// what earned it; the cat's paw print; and at its foot the app's name and a
 // library date stamp, SOLVED and the day, so a screenshot says where it's
 // from. Behind it, the mode's ground and its soft glow; a few twinkles; a
 // little confetti when the seal lands. Then the pinned actions.
@@ -54,6 +54,7 @@ import Svg, { Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import type { Genre } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
 import { setMode, themeFor } from "@/game/mode";
+import { PawPrintIcon } from "phosphor-react-native";
 import { SittingCat } from "@/play2/SittingCat";
 import { useTheme } from "@/theme/ThemeProvider";
 import { LETTER, LETTER_SHEET, LETTER_TEXT, PAGE, PAYOFF_TYPE, SEAL, alpha, handType } from "@/theme/payoff";
@@ -69,7 +70,7 @@ import { PIN, PinnedCharm, type ShownCharm } from "@/screens/collection/PinnedCh
 import type { SceneSource } from "./SceneView";
 import { suspectA11yLabel, type SuspectFace } from "./SuspectFile";
 import {
-  RATING_LABEL, RATING_MARK, SERIES_LINE, catVerdict, magnifierRating, ratingReason, statLines, victoryTimeline,
+  RATING_LABEL, RATING_MARK, SERIES_LINE, magnifierRating, ratingReason, statLines, victoryTimeline,
   type CaseRecap, type CaseSummary, type StatKey, type VictoryTimeline,
 } from "./victory";
 
@@ -116,7 +117,7 @@ export const CLOSED_LAYOUT = {
   evidence: 20,
   /** The rating's reason, under its marks. */
   reason: { fontSize: 13, lineHeight: 18 },
-  /** The cat's line, handwritten. */
+  /** The cat's paw print (a line's height). */
   catLine: { size: 18, lineHeight: 22 },
   /** Kept spare under the budget: its line counts are estimates, not layout. */
   slack: 12,
@@ -521,11 +522,11 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
                 </Beat>
               ) : null}
 
-              {/* The cat's word on how it went. */}
+              {/* The cat's mark on the page: a paw print, pressed on in its ink (it never says a word). */}
               <Beat delay={plan ? since(plan.timeline.solved) : head.impact} reduced={reduced}>
-                <Text style={[handType(L.catLine.size, L.catLine.lineHeight), styles.centre, { color: payoff.pageInk }]} testID="closed-cat-line">
-                  {catVerdict(shown)}
-                </Text>
+                <View style={[styles.paw, { height: L.catLine.lineHeight }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="closed-paw">
+                  <PawPrintIcon size={L.catLine.size + 2} weight="fill" color={payoff.pageInk} style={styles.pawTilt} />
+                </View>
               </Beat>
 
               {/* Where a screenshot is from: the app, and the library's stamp. */}
@@ -657,6 +658,8 @@ const styles = StyleSheet.create({
   polaroid: { position: "absolute", left: 4 },
   seal: { position: "absolute", top: 0 },
   cat: { position: "absolute", right: 2, bottom: 0 },
+  paw: { alignItems: "center", justifyContent: "center", opacity: 0.8 },
+  pawTilt: { transform: [{ rotate: "-14deg" }] },
   words: { alignSelf: "stretch", gap: 2, paddingHorizontal: 4 },
   exit: { fontSize: 15, lineHeight: 20 },
   centre: { textAlign: "center" },

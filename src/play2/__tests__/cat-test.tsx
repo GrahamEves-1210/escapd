@@ -1,7 +1,7 @@
 // The cat mounts with its eyes and lids, takes a find and a wrong answer, thinks with "?"s, and dozes off when the light is still (long after a stuck glance would come).
-// It says lines (one at a time, rule lines first), and glances where it's told (a mark on that side, now and then a word; thinking, quietly).
+// It never says a word: guessing gets a slow blink and a huff, and it glances where it's told (a mark on that side, now and then a paw that way; thinking, quietly).
 // Stroked it purrs (no heart), a screen reader can pet it or rub it, and rough quick taps (never stroking) are too much. The sitting cat purrs too.
-// Its cues: a scolding after three wrong answers in a row, a perk once per thing the light finds, glances when the player is stuck (at the way out once everything's been looked at).
+// Its cues: a huff after three wrong answers in a row, a perk once per thing the light finds, glances when the player is stuck (at the way out once everything's been looked at).
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
 import { createGestureController } from "react-native-gesture-handler/jest-utils";
 import { makeMutable } from "react-native-reanimated";
@@ -70,40 +70,58 @@ describe("PeekingCat", () => {
     }
   });
 
-  it("says a line, one at a time, and takes it down", async () => {
+  it("never says a word: guessing gets a huff from its nose, an empty find a yawn", async () => {
     jest.useFakeTimers();
     try {
       const x = makeMutable(0.5), y = makeMutable(0.4);
-      const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={null} say={{ text: "Empty.", at: 1 }} />);
-      expect(screen.getByText("Empty.")).toBeTruthy();
-      // Another flavour line too soon: dropped. A rule line: cuts in.
-      await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={null} say={{ text: "Hm.", at: 2 }} />);
-      expect(screen.queryByText("Hm.")).toBeNull();
-      await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={null} say={{ text: "Think. Don't guess.", at: 3, rule: true }} waiting />);
-      expect(screen.getByText("Think. Don't guess.")).toBeTruthy();
+      const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={null} reaction={{ kind: "empty", at: 1 }} />);
+      expect(screen.queryByTestId("cat-huff")).toBeNull();
+      await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={null} reaction={{ kind: "guess", at: 2 }} waiting />);
+      expect(screen.getByTestId("cat-huff")).toBeTruthy();
       await act(async () => {
         jest.advanceTimersByTime(3000);
       });
       expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
       await view.unmount();
+      // Under reduced motion its slow blink says it: no puffs.
+      const still = await render(<ThemeProvider reducedMotion><PeekingCat width={58} beamX={x} beamY={y} frame={null} reaction={{ kind: "guess", at: 3 }} /></ThemeProvider>);
+      expect(screen.queryByTestId("cat-huff")).toBeNull();
+      await still.unmount();
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it("glances where it's told, with a \"!\" (or a \"?\" when it wonders) and now and then a word", async () => {
-    const x = makeMutable(0.5), y = makeMutable(0.4);
-    const frame = { x: 0, y: 100, width: 390, height: 600 };
-    const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={{ x: 300, y: 200, wonder: true, line: "Over there." }} />);
-    expect(screen.getAllByText("?")).toHaveLength(1);
-    expect(screen.getByText("Over there.")).toBeTruthy();
-    await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={null} />);
-    expect(screen.queryAllByText("?")).toHaveLength(0);
-    // The next glance: an "!"; its word too soon after the last one, so not said.
-    await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={{ x: 20, y: 400, line: "That way." }} />);
-    expect(screen.getByTestId("v2-cat-point")).toHaveTextContent("!");
-    expect(screen.queryByText("That way.")).toBeNull();
-    await view.unmount();
+  it("glances where it's told, with a \"!\" (or a \"?\" when it wonders) and now and then a paw that way", async () => {
+    jest.useFakeTimers();
+    try {
+      const x = makeMutable(0.5), y = makeMutable(0.4);
+      const frame = { x: 0, y: 100, width: 390, height: 600 };
+      const view = await render(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={{ x: 300, y: 200, wonder: true }} />);
+      expect(screen.getAllByText("?")).toHaveLength(1);
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      // Just its eyes and a lean: its paws stay in the art.
+      expect(screen.queryByTestId("cat-swipe")).toBeNull();
+      await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={null} />);
+      expect(screen.queryAllByText("?")).toHaveLength(0);
+      // The next glance: an "!", and a paw patting the ledge that way (cut out of the art for it), never a word.
+      await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} lookAt={{ x: 20, y: 400, paw: true }} />);
+      expect(screen.getByTestId("v2-cat-point")).toHaveTextContent("!");
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(screen.getByTestId("cat-swipe")).toBeTruthy();
+      expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      expect(screen.queryByTestId("cat-swipe")).toBeNull();
+      await view.unmount();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("wakes for a glance", async () => {
@@ -202,11 +220,13 @@ describe("PeekingCat", () => {
         await h.up(29);
       };
       for (let i = 0; i < 8; i++) await stroke();
-      expect(screen.queryByText("Enough.")).toBeNull();
+      expect(screen.queryByTestId("cat-huff")).toBeNull();
       for (let i = 0; i < 4; i++) await tap();
-      expect(screen.queryByText("Enough.")).toBeNull();
+      expect(screen.queryByTestId("cat-huff")).toBeNull();
       await tap();
-      expect(screen.getByText("Enough.")).toBeTruthy();
+      // Had enough: a huff (and not a word).
+      expect(screen.getByTestId("cat-huff")).toBeTruthy();
+      expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
       // Sulking, a hand gets no purr.
       await h.down(10);
       await h.rub(40);
@@ -457,22 +477,33 @@ describe("useCatCues", () => {
   const state = { objects: {}, items: {}, inventory: [], solved: [], fired: [], cards: [], seen: [], overlays: [], completed: false } as PlayState;
   const frame = { x: 0, y: 100, width: 390, height: 600 };
 
-  it("scolds a third wrong answer in a row and perks up once per thing", async () => {
-    const react = jest.fn();
-    const { result } = await renderHook(() => useCatCues({ def, state, view: 0, photos: 2, frame, watching: true, cooldown: 0, contents: {}, react }));
-    await act(async () => {
-      result.current.wrong();
-      result.current.wrong();
-    });
-    expect(result.current.say).toBeNull();
-    await act(async () => result.current.wrong());
-    expect(result.current.say).toMatchObject({ text: "Think. Don't guess.", rule: true });
-    await act(async () => {
-      result.current.hover("desk");
-      result.current.hover("desk");
-    });
-    expect(react).toHaveBeenCalledTimes(1);
-    expect(react).toHaveBeenCalledWith(expect.objectContaining({ kind: "warm" }));
+  it("huffs at a third wrong answer in a row and perks up once per thing, never saying a word", async () => {
+    jest.useFakeTimers();
+    try {
+      const react = jest.fn();
+      const { result } = await renderHook(() => useCatCues({ def, state, view: 0, photos: 2, frame, watching: true, cooldown: 0, contents: {}, react }));
+      expect(result.current).not.toHaveProperty("say");
+      await act(async () => {
+        result.current.wrong();
+        result.current.wrong();
+        jest.advanceTimersByTime(1000);
+      });
+      expect(react).not.toHaveBeenCalled();
+      await act(async () => {
+        result.current.wrong();
+        jest.advanceTimersByTime(1000);
+      });
+      expect(react).toHaveBeenCalledWith(expect.objectContaining({ kind: "guess" }));
+      react.mockClear();
+      await act(async () => {
+        result.current.hover("desk");
+        result.current.hover("desk");
+      });
+      expect(react).toHaveBeenCalledTimes(1);
+      expect(react).toHaveBeenCalledWith(expect.objectContaining({ kind: "warm" }));
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("glances at what hasn't been looked at when the player is stuck", async () => {
@@ -502,7 +533,7 @@ describe("useCatCues", () => {
     }
   });
 
-  it("with everything looked at and the case open, glances at the way out (or its arrow), saying so now and then", async () => {
+  it("with everything looked at and the case open, glances at the way out (or its arrow), a paw that way now and then", async () => {
     jest.useFakeTimers();
     const random = jest.spyOn(Math, "random").mockReturnValue(0);
     try {
@@ -515,19 +546,20 @@ describe("useCatCues", () => {
       await act(async () => {
         jest.advanceTimersByTime(47000);
       });
-      // The door, on this view; the first glance says where.
+      // The door, on this view; the first glance points a paw there too.
       expect(result.current.lookAt?.x).toBeCloseTo(0.7 * 390);
-      expect(result.current.lookAt?.line).toBe("Over there.");
+      expect(result.current.lookAt?.paw).toBe(true);
+      expect(result.current.lookAt).not.toHaveProperty("line");
       // On the other view: the arrow toward it.
       await rerender({ view: 0 });
       expect(result.current.lookAt?.y).toBe(400);
-      expect(result.current.lookAt?.line).toBe("That way.");
-      // The glance after (12.5 s on, with no jitter): no word.
+      expect(result.current.lookAt?.paw).toBe(true);
+      // The glance after (12.5 s on, with no jitter): eyes only.
       await act(async () => {
         jest.advanceTimersByTime(12000);
       });
       expect(result.current.lookAt).not.toBeNull();
-      expect(result.current.lookAt?.line).toBeUndefined();
+      expect(result.current.lookAt?.paw).toBe(false);
     } finally {
       random.mockRestore();
       jest.useRealTimers();

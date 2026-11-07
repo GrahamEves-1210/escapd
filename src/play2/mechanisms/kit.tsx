@@ -209,73 +209,96 @@ export function Glint({ delay = 0, duration = 560, radius = 0 }: { delay?: numbe
 }
 
 /** A pull's landing at its stop: past it a hair, back on a stiff little spring. Beats with the drawer's thud. */
-export const LANDING = { over: 0.05, inMs: 110, delayMs: 60, spring: { mass: 0.6, damping: 9, stiffness: 420 } } as const;
+export const LANDING = { over: 0.05, inMs: 110, delayMs: 0, spring: { mass: 0.6, damping: 9, stiffness: 420 } } as const;
+
+/**
+ * Where a drawer, a cushion or a frame gives (0..1 of its travel): the moment it starts to move it's open
+ * to the game, so what's inside is there under it, uncovered as it comes, never popping in at the end.
+ */
+export const GIVE_AT = 0.12;
+/** How much of what's inside must show before it can be picked up (0..1 of the travel). */
+export const REACH_AT = 0.5;
 
 /**
  * The pull-to-commit drag: `progress` follows the finger from 0 to 1 along
- * `axis` over `range` pt (signed -1..1 for "x"). Released past COMMIT_AT it
- * runs home to the end and calls `onCommit`; short of it, it falls back.
- * Locked, it gives a few points and rattles (`onLocked`). A tick when the
- * pull crosses the catch. `done` holds it at the end; while `busy` it holds still.
+ * `axis` over `range` pt (signed -1..1 for "x"). Past `giveAt` (COMMIT_AT
+ * unless given) it commits, while the finger is still down, and keeps
+ * following it; let go, it runs home to the end with a little landing. Let
+ * go short of it, it falls back. Locked, it gives a few points and rattles
+ * (`onLocked`). A tick when the pull crosses COMMIT_AT. `done` holds it at
+ * the end. A drag that starts while `busy` holds still; one under way
+ * carries on through its own commit. The mechanism stays mounted through
+ * its commit (the close-up never remounts it): a refused commit falls back.
  */
-export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked, onUncommit, land }: {
+export function usePull({ axis, range, done, locked = false, busy, onCommit, onLocked, onUncommit, land, giveAt = COMMIT_AT }: {
   axis: PullAxis; range: number; done: boolean; locked?: boolean; busy: boolean;
   onCommit: () => void; onLocked?: () => void;
-  /** The target's tryKey: mounted open just after it was pulled, it lands at its stop with a little bounce. */
+  /** The target's tryKey (its tries are marked, for the close-up's other mechanisms). */
   land?: string;
   /** Given: once done it can be pushed back (a drawer shut, a cushion put back), committing this on release. */
   onUncommit?: () => void;
+  /** Where it commits (0..1): GIVE_AT for things with an inside, which must be there as it opens. */
+  giveAt?: number;
 }): {
   progress: SharedValue<number>; gesture: ReturnType<typeof usePanGesture>; commitNow: () => void;
-  /** Mounted just after it was pulled open: it is landing at its stop now. */
-  landed: boolean;
+  /** Just pulled open: it is landing at its stop now (a new number each time, for a glint). */
+  landed: number;
+  /** Open far enough that what's inside can be picked up (REACH_AT). */
+  reach: boolean;
 } {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
   const progress = useSharedValue(done ? 1 : 0);
+  // Where it was last sent (0, 1 or -1): the state's settle leaves alone a move already headed there.
+  const aim = useSharedValue(done ? 1 : 0);
   const start = useSharedValue(0);
   const live = useSharedValue(false);
   const lockedSV = useSharedValue(locked);
   const reversible = !!onUncommit;
-  const enabled = useSharedValue(!busy && (!done || reversible));
+  const enabled = useSharedValue(!done || reversible);
   const doneSV = useSharedValue(done);
+  const busySV = useSharedValue(busy);
+  // This drag began while something was in flight: it holds still. This drag began shut: it's opening it.
+  const inert = useSharedValue(false);
+  const opening = useSharedValue(false);
   // Set once this drag has committed: it counts the moment it passes the point, not on release.
   const fired = useSharedValue(false);
   const reduced = useSharedValue(reducedMotion);
+  // Bumped as a drag ends: the state is settled again then (a commit answered mid-drag waits for the finger).
+  const [released, setReleased] = useState(0);
+  const [landed, setLanded] = useState(0);
+  const [reach, setReach] = useState(done);
 
   useEffect(() => {
     lockedSV.set(locked);
-    enabled.set(!busy && (!done || reversible));
+    enabled.set(!done || reversible);
     doneSV.set(done);
+    busySV.set(busy);
     reduced.set(reducedMotion);
-  }, [locked, done, busy, reducedMotion, lockedSV, enabled, reduced, reversible, doneSV]);
+  }, [locked, done, busy, reducedMotion, lockedSV, enabled, reduced, reversible, doneSV, busySV]);
 
-  // Settle to the state once nothing is in flight (a refused commit falls back).
+  // Settle to the state once nothing is in flight and no finger is on it (a refused commit falls back; a key
+  // used on it opens it, what's inside uncovered as it goes).
   useEffect(() => {
-    if (busy) return;
+    if (busy || live.get()) return;
     const here = progress.get();
-    const to = done ? (here < 0 ? -1 : 1) : 0;
-    progress.set(withTiming(to, settle(reducedMotion)));
-  }, [done, busy, reducedMotion, progress]);
-
-  // Just pulled open (and mounted afresh by the close-up): the final click, a hair past the stop and back.
-  const [landed] = useState(() => done && justGave(land));
-  useEffect(() => {
-    if (!landed || reducedMotion) return;
-    const end = progress.get() < 0 ? -1 : 1;
-    progress.set(withDelay(LANDING.delayMs, withSequence(
-      withTiming(end * (1 + LANDING.over), { duration: LANDING.inMs, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never }),
-      withSpring(end, { ...LANDING.spring, reduceMotion: ReduceMotion.Never }),
-    )));
-    // Once, on the mount just after the pull.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const to = done ? (here < 0 || aim.get() < 0 ? -1 : 1) : 0;
+    if (aim.get() === to) return;
+    aim.set(to);
+    progress.set(withTiming(to, settle(reducedMotion, 320)));
+  }, [done, busy, reducedMotion, progress, aim, live, released]);
 
   const tick = useCallback(() => feedback.tick(), [feedback]);
   useAnimatedReaction(
     () => Math.abs(progress.get()) >= COMMIT_AT,
     (now, before) => {
       if (before !== null && now !== before && live.get() && !lockedSV.get()) scheduleOnRN(tick);
+    },
+  );
+  useAnimatedReaction(
+    () => Math.abs(progress.get()) >= REACH_AT,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setReach, now);
     },
   );
 
@@ -285,6 +308,8 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
   }, [onCommit, land]);
   const refuse = useCallback(() => onLocked?.(), [onLocked]);
   const uncommit = useCallback(() => onUncommit?.(), [onUncommit]);
+  const release = useCallback(() => setReleased((n) => n + 1), []);
+  const thud = useCallback(() => setLanded(Date.now()), []);
 
   const gesture = usePanGesture({
     enabled,
@@ -292,51 +317,73 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
     minDistance: 4,
     onActivate: () => {
       "worklet";
+      inert.set(busySV.get());
+      if (inert.get()) return;
       cancelAnimation(progress);
       start.set(progress.get());
       live.set(true);
       fired.set(false);
+      opening.set(!doneSV.get());
     },
     onUpdate: (e) => {
       "worklet";
+      if (inert.get()) return;
       const d = axis === "x" ? e.translationX : axis === "down" ? e.translationY : -e.translationY;
       const lo = axis === "x" ? -1 : 0;
       let v = clamp(start.get() + d / range, lo, 1);
       // Locked: the front gives a few points and stops.
       if (lockedSV.get()) v = clamp(v, axis === "x" ? -0.05 : 0, 0.05);
       progress.set(v);
-      // Pulled far enough: it opens now, while the finger is still down.
-      if (!doneSV.get() && !lockedSV.get() && !fired.get() && Math.abs(v) >= COMMIT_AT) {
+      // Pulled far enough: it opens now, while the finger is still down (and goes on following it).
+      if (opening.get() && !doneSV.get() && !lockedSV.get() && !fired.get() && Math.abs(v) >= giveAt) {
         fired.set(true);
         scheduleOnRN(commit);
       }
     },
     onDeactivate: () => {
       "worklet";
+      if (inert.get()) return;
       live.set(false);
       const v = progress.get();
+      const end = v < 0 ? -1 : 1;
       const back = { duration: reduced.get() ? 0 : 220, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.Never };
-      if (lockedSV.get()) {
-        progress.set(withTiming(0, back));
-        scheduleOnRN(refuse);
-        return;
-      }
-      // Open already: pushed most of the way back closes it again; otherwise it springs back open.
-      if (doneSV.get()) {
-        if (Math.abs(v) <= 1 - COMMIT_AT) {
-          progress.set(withTiming(0, back));
-          scheduleOnRN(uncommit);
-        } else {
-          progress.set(withTiming(v < 0 ? -1 : 1, back));
+      const to = (target: number) => {
+        aim.set(target);
+        progress.set(withTiming(target, back));
+      };
+      // Home to its stop: past it a hair and back, the thud of it.
+      const home = () => {
+        aim.set(end);
+        if (reduced.get()) {
+          progress.set(withTiming(end, back));
+          return;
         }
-        return;
-      }
-      if (fired.get() || Math.abs(v) >= COMMIT_AT) {
-        progress.set(withTiming(v < 0 ? -1 : 1, back));
-        if (!fired.get()) scheduleOnRN(commit);
+        progress.set(withSequence(
+          withTiming(end * (1 + LANDING.over), { duration: LANDING.inMs + Math.round((1 - Math.abs(v)) * 160), easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never }),
+          withSpring(end, { ...LANDING.spring, reduceMotion: ReduceMotion.Never }),
+        ));
+        scheduleOnRN(thud);
+      };
+      if (lockedSV.get()) {
+        to(0);
+        scheduleOnRN(refuse);
+      } else if (opening.get()) {
+        if (!fired.get()) to(0);
+        // Refused while the finger was down: back it goes.
+        else if (!doneSV.get() && !busySV.get()) to(0);
+        // Opened, then pushed shut again before letting go.
+        else if (doneSV.get() && Math.abs(v) < giveAt) {
+          to(0);
+          scheduleOnRN(uncommit);
+        } else home();
+      } else if (Math.abs(v) <= 1 - COMMIT_AT) {
+        // Open already: pushed most of the way back closes it again; otherwise it springs back open.
+        to(0);
+        scheduleOnRN(uncommit);
       } else {
-        progress.set(withTiming(0, back));
+        to(end);
       }
+      scheduleOnRN(release);
     },
   });
 
@@ -346,12 +393,13 @@ export function usePull({ axis, range, done, locked = false, busy, onCommit, onL
       onLocked?.();
       return;
     }
+    aim.set(1);
     progress.set(withTiming(1, settle(reducedMotion, 320)));
     markTry(land);
     onCommit();
-  }, [busy, done, locked, onLocked, onCommit, progress, reducedMotion, land]);
+  }, [busy, done, locked, onLocked, onCommit, progress, aim, reducedMotion, land]);
 
-  return { progress, gesture, commitNow, landed };
+  return { progress, gesture, commitNow, landed, reach };
 }
 
 // What the player has dialled or picked, kept across the close-up's remounts
@@ -382,9 +430,12 @@ export function useKept<T>(target: MechanismTarget | undefined, slot: string, in
 /** "Locked" after a try on a locked thing; cleared when it unlocks. */
 export function useLockedLine(locked: boolean) {
   const [tried, setTried] = useState(false);
-  useEffect(() => {
+  // Unlocked (it stays mounted now, through a key used on it): the line goes.
+  const [was, setWas] = useState(locked);
+  if (was !== locked) {
+    setWas(locked);
     if (!locked) setTried(false);
-  }, [locked]);
+  }
   return { showLocked: tried && locked, markTried: () => setTried(true) };
 }
 

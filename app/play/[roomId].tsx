@@ -11,6 +11,7 @@
 // in the closed-case stash (src/render/closedCase.ts) and the route's params.
 import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
+import { useNoBack } from "@/play2/useNoBack";
 import { PlayerV2 } from "@/play2/PlayerV2";
 import type { V2Completion } from "@/play2/caseRecord";
 import { stashClosedCase, statsToParams } from "@/render/closedCase";
@@ -19,6 +20,7 @@ import { Player, type CompletionSummary } from "@/render/Player";
 export default function PlayScreen() {
   const { roomId, v } = useLocalSearchParams<{ roomId: string; v?: string }>();
   const [v1, setV1] = useState(v === "1");
+  useNoBack();
   // Back always goes home (the menu), never back into the camera the case was built from.
   const exit = () => router.dismissTo("/");
   const complete = ({ message, exitMessage, genre, title, accused }: CompletionSummary) =>

@@ -30,14 +30,18 @@ import { CarriedItem, ItemTray, isUvLight, type SlotNode } from "./ItemTray";
 import { CARRY, dropOutcome, Sparkle, useCarry } from "./Carry";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
-import { PeekingCat, type CatLine, type CatReaction } from "./PeekingCat";
+import { PeekingCat, type CatReaction } from "./PeekingCat";
 import { Flashlight, Magnifier, TOOL } from "./Tools";
+import { Reveal, revealOf } from "./tools/Reveal";
 import { useCatCues } from "./useCatCues";
+import { TapAwayView } from "./TapAwayView";
+import { tapMark, type TapPlace } from "./useTapAway";
 import { HintTrail } from "./PawTrail";
 import { ItemIcon } from "./ItemTray";
 import { Burst } from "./fx/Burst";
 import { useCelebrate, type Anchor } from "./fx/useCelebrate";
 import { hitTest, Stage, type StageObject } from "./Stage";
+import { CipherContext, cipherClues, NO_CIPHER } from "./mechanisms/cipher";
 import type { StageTrace } from "./UvTrace";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 import { useCaseThreads } from "./journal/useCaseThreads";
@@ -151,6 +155,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const beam = { x: useSharedValue<number>(V2.torch.rest.x), y: useSharedValue<number>(V2.torch.rest.y) };
   const { height: windowHeight } = useWindowDimensions();
   const [note, setNote] = useState<string | null>(null);
+  // A note brought to light with something in the room (warmed at a lamp, read in a mirror): read by hand.
+  const [reveal, setReveal] = useState<ReturnType<typeof revealOf>>(null);
   const [toasts, setToasts] = useState<string[]>([]);
   // The held item whose card is up (tapped).
   const [shown, setShown] = useState<string | null>(null);
@@ -210,12 +216,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const toast = useCallback((text: string) => setToasts((t) => [...t.slice(-2), text]), []);
   // The cat's read of the game: it glances when the player is stuck, perks up, referees, yawns.
   const cues = useCatCues({ def, state, view, photos, frame, watching: !open && !casebook && !completed && !brief.open, cooldown, contents, react: setCatReaction });
-  // What the cat says belongs to where it was said: a new close-up (or none, or the casebook) starts it quiet,
-  // so a line from the last one ("Empty.") never comes up again over the next.
+  // Where the cat is: a new close-up (or none, or the casebook) gets its own.
   const place = open ? `${open.kind}:${open.id}` : casebook ? "casebook" : "room";
-  const [heard, setHeard] = useState<{ place: string; say: CatLine }>({ place, say: null });
-  if (heard.place !== place) setHeard({ place, say: cues.say });
-  const catSay = cues.say !== heard.say ? cues.say : null;
 
   // The player's side of the room, as left last time: what lay where it was found, the clues already read
   // (once, as the room comes up; only what still fits the room's state).
@@ -421,8 +423,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     if (!uvOn || !uvItem || !objectId || uvChecked.includes(objectId)) return;
     hoverTimer.current = setTimeout(async () => {
-      setUvChecked((list) => [...list, objectId]);
-      take(await act({ type: "use_item", item: uvItem.id, object: objectId }), "room", true, { object: objectId });
+      const result = await act({ type: "use_item", item: uvItem.id, object: objectId });
+      // Checked only once it went through: a request refused while another was in flight is tried again.
+      if (result) setUvChecked((list) => [...list, objectId]);
+      take(result, "room", true, { object: objectId });
     }, 400);
   };
   // A UV trace on the photo (prints, a stain, footprints): the light kept on it a moment reveals it.
@@ -431,8 +435,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (traceTimer.current) clearTimeout(traceTimer.current);
     if (!uvOn || !uvItem || !traceId || uvChecked.includes(traceId)) return;
     traceTimer.current = setTimeout(async () => {
-      setUvChecked((list) => [...list, traceId]);
-      take(await act({ type: "use_item", item: uvItem.id, object: traceId }), "room", true, { object: traceId });
+      const result = await act({ type: "use_item", item: uvItem.id, object: traceId });
+      if (result) setUvChecked((list) => [...list, traceId]);
+      take(result, "room", true, { object: traceId });
     }, 300);
   };
 
@@ -514,9 +519,9 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     : undefined;
 
   const exitObject = def.objects.find((o) => o.exit);
-  // Keyed by where it is: a new close-up gets a cat with nothing left in its speech bubble.
+  // Keyed by where it is: a new close-up gets its own cat.
   const cat = <PeekingCat key={place} width={CAT_W} beamX={beam.x} beamY={beam.y} frame={frame} reaction={catReaction} mood={busy ? "thinking" : "idle"}
-      say={catSay} lookAt={cues.lookAt} waiting={cues.waiting} playful={place === "room"} onSeat={place === "room" ? setCatHead : undefined} />;
+      lookAt={cues.lookAt} waiting={cues.waiting} playful={place === "room"} onSeat={place === "room" ? setCatHead : undefined} />;
 
   const shownItem = shown ? heldItems.find((i) => i.id === shown) : undefined;
   const unread = Math.max(0, casebookCards.length - cluesRead);
@@ -563,6 +568,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (uvOn && item && isUvLight(item)) {
       setShown(null);
       uvOff();
+      return;
+    }
+    // The cipher wheel is worked in its own close-up: a tap opens it.
+    if (item?.kind === "decoder") {
+      feedback.tick();
+      setShown(null);
+      openItem(id);
       return;
     }
     showItem(id);
@@ -652,6 +664,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     }
     feedback.press();
     const result = await act({ type: "use_item", item: itemId, object: target.id });
+    setReveal(revealOf(def, result));
     settle(itemId, result, target);
     if (open?.kind === "object") takeAt(target.id, result);
     else take(result, "room", false, { object: target.id });
@@ -692,13 +705,34 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       slots={HOTBAR_SLOTS}
     />
   );
+  /**
+   * A tap anywhere (TapAwayView) puts down the item selected in the hotbar (a tap on it again does too); on
+   * something in the room, or on the object up close, it tries the item there. Drags are left alone.
+   */
+  const tapAway = (x: number, y: number, where: TapPlace) => {
+    if (!shown || carrying || y >= trayTop) return;
+    const itemId = shown;
+    setShown(null);
+    if (busy) return;
+    const onto = open
+      ? (open.kind === "object" && where === "object" ? { id: open.id, x, y } : null)
+      : where === "room" ? objectUnder(x, y) : null;
+    if (!onto) return;
+    feedback.press();
+    act({ type: "use_item", item: itemId, object: onto.id }).then((result) => {
+      if (dropOutcome(result, itemId) !== "home") sparkleAt(onto.x, onto.y);
+      if (open?.kind === "object") takeAt(onto.id, result);
+      else take(result, "room", false, { object: onto.id });
+    });
+  };
 
   return (
-    <View style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player">
+    <TapAwayView style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player" onTap={tapAway}>
       {/* The game view: the room, between the HUD's top band and its hotbar. */}
       <View
         ref={viewRef}
         collapsable={false}
+        {...tapMark("room")}
         style={[styles.view, { top: hudTop, bottom: windowHeight - viewBottom }]}
         onLayout={measureView}
       >
@@ -863,6 +897,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       ) : null}
 
       {open && target ? (
+        // The cipher wheel's close-up reads the coded line the player has found.
+        <CipherContext.Provider value={target.archetype === "Decoder" ? cipherClues(def.cards, casebookCards) : NO_CIPHER}>
         <InspectView
           target={target}
           state={targetState}
@@ -888,6 +924,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           onClose={() => setOpen(null)}
           revision={revision}
         />
+        </CipherContext.Provider>
       ) : null}
 
       {casebook ? (
@@ -952,6 +989,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         <CarriedItem item={itemById(carrying.id)!} size={carrying.size} carry={carry} origin={root} uv={uvOn && isUvLight(itemById(carrying.id)!)} />
       ) : null}
       {sparkle ? <Sparkle key={sparkle.at} x={sparkle.x} y={sparkle.y} /> : null}
+      {reveal ? <Reveal kind={reveal.kind} title={reveal.title} text={reveal.text} onClose={() => setReveal(null)} /> : null}
       <HintTrail hint={hintTrail} objects={def.objects.filter((o) => visible(o) && !o.trace)} seen={state.seen} view={view} frame={frame} head={catHead}
         watching={!open && !casebook && !completed} origin={root} />
       {celebrate.screen?.point ? (
@@ -959,7 +997,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           word={celebrate.screen.word} level={celebrate.screen.level} count={celebrate.screen.count} seed={celebrate.screen.seed} />
       ) : null}
 
-    </View>
+    </TapAwayView>
   );
 }
 

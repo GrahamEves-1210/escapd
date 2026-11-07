@@ -46,8 +46,8 @@ export const BRIEF_OPENING: Record<Genre, string> = {
 /** What each mode calls the objective on its page. */
 export const OBJECTIVE_LABEL: Record<Genre, string> = { noir: "Your case", crime_scene: "Assignment", paranormal: "What it wants" };
 
-/** The cat's line over Begin. */
-export const BRIEF_CAT_LINE = "I'll be right here if you need a tip. Probably.";
+/** The letter's postscript, in its writer's hand (the cat never says a word): where the tips are. */
+export const BRIEF_POSTSCRIPT = "P.S. Stuck? There are tips in the casebook.";
 
 /** Begin, in every mode. */
 export const BEGIN = "Begin";
@@ -178,7 +178,7 @@ export function Brief({ def, roomId, onBegin, photo }: {
     context: words.context,
     objective: words.objective,
     objectiveLabel: OBJECTIVE_LABEL[genre],
-    catLine: BRIEF_CAT_LINE,
+    postscript: BRIEF_POSTSCRIPT,
     catLabel: "The black cat, ready when you are",
     catDelay: reduced ? 0 : 450,
     photo,

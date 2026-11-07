@@ -1,8 +1,10 @@
 // Looking closer (gameplay v2 §2 "Inspect"): a sheet that rises from the
 // bottom of the room, the photo staying where it is above it (the light swings
 // onto the object). In the sheet: the object's mechanism (mechanisms/), and
-// what it holds lying in it once it's open: a note to tap and read, an item to
-// pick up, or "Nothing here." Held items are icons along the foot to drag up
+// what it holds: a note to tap and read, an item to pick up, or "Nothing
+// here." A drawer, a cushion or a frame has it inside, under or behind it all
+// along, uncovered as it's pulled (never popping in once it's open); the others
+// show it once they're open. Held items are icons along the foot to drag up
 // onto it. Nothing scrolls. Tap above the sheet, Close or Android back to go.
 import { createElement, useEffect, useState, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
@@ -21,6 +23,7 @@ import { softShadow, Tape } from "./journal/Paper";
 import { V2 } from "./layout";
 import { Mechanism } from "./mechanisms";
 import type { MechanismTarget } from "./mechanisms/types";
+import { tapMark } from "./useTapAway";
 
 export { capitalise };
 
@@ -64,6 +67,8 @@ export interface InspectViewProps {
 }
 
 export const CONTAINER_KEYS = ["open", "lifted", "tilted", "panel", "on"] as const;
+/** The mechanisms pulled open (mechanisms/kit usePull) with what they hold inside, under or behind them. */
+export const PULLS = ["Drawer", "LiftUnder", "FrameTilt"] as const;
 
 /** Open, lifted, tilted or its panel open: what's inside can be seen. Things with none of these always show theirs. */
 function showsInside(state: Record<string, StateValue>): boolean {
@@ -113,15 +118,19 @@ export function InspectView(props: InspectViewProps) {
       <Text style={[ref.type.headline, { color: theme.accentInk }]}>Take it</Text>
     </Pressable>
   ) : null;
+  // A drawer, a cushion or a frame holds what it holds inside, under or behind it, where it's
+  // physically there the whole time: drawn in it at once, uncovered as it's pulled, closed or not.
+  const lies = target.archetype !== null && (PULLS as readonly string[]).includes(target.archetype);
   const open = showsInside(state);
-  const inside = open ? contents : [];
+  const inside = open || lies ? contents : [];
   // Opened (or there was nothing to open) and nothing in it: say so.
   const empty = open && contents.length === 0 && (target.archetype === null || CONTAINER_KEYS.some((k) => state[k] === true));
+  // Where "Nothing here." goes: in a drawer's or a cushion's own inside, else on the row above.
+  const emptyInside = lies && target.archetype !== "FrameTilt";
 
-  // What it holds: tap a note to read it, an item to pick it up. A drawer or a
-  // cloth lays it in its own inside; any other mechanism, on a row above it.
-  const lies = target.archetype === "Drawer" || target.archetype === "LiftUnder";
-  const items = inside.length || empty ? (
+  // What it holds: tap a note to read it, an item to pick it up. A pulled thing lays it in its own inside
+  // (and, by itself, lets it be picked up once most of it shows); any other mechanism, on a row above it.
+  const found = (withEmpty: boolean) => (inside.length || (empty && withEmpty) ? (
     <>
       {inside.map((c, i) => {
         return (
@@ -140,14 +149,18 @@ export function InspectView(props: InspectViewProps) {
             accessibilityLabel={c.kind === "card" ? `Read: ${c.card.title}` : `Pick up ${capitalise(c.item.name)}`}
             testID={c.kind === "card" ? `v2-note-${c.card.id}` : `v2-found-${c.item.id}`}
             style={({ pressed }) => [styles.found, pressed && styles.foundPressed]}
+            {...tapMark("found")}
           >
             {c.kind === "card" ? <FoundNote card={c.card} index={i} /> : <FoundSticker item={c.item} index={i} />}
           </Pressable>
         );
       })}
-      {empty && !inside.length ? <Text style={[ref.type.body, styles.empty, { color: theme.inkMuted }]} testID="v2-empty">Nothing here.</Text> : null}
+      {withEmpty && empty && !inside.length ? <Text style={[ref.type.body, styles.empty, { color: theme.inkMuted }]} testID="v2-empty">Nothing here.</Text> : null}
     </>
-  ) : null;
+  ) : null);
+  const items = found(true);
+  const laid = lies ? found(emptyInside) : null;
+  const above = lies ? (!emptyInside && empty && !inside.length ? found(true) : null) : items;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none" testID="v2-inspect">
@@ -173,12 +186,14 @@ export function InspectView(props: InspectViewProps) {
           <>
             {/* What a mechanism without an inside of its own (a lock, wheels, a frame) turned up: on its own
                 row above it, never over its parts or its status line. */}
-            {!lies && items ? (
-              <View style={styles.contentsRow} pointerEvents="box-none" testID="v2-contents">{items}</View>
+            {above ? (
+              <View style={styles.contentsRow} pointerEvents="box-none" testID="v2-contents">{above}</View>
             ) : null}
-            <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]}>
+            <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]} {...tapMark("object")}>
               <Mechanism
-                key={revision}
+                // Redrawn from the engine's state after every action; a pulled thing stays mounted through its
+                // own commit (its drag runs on through it) and settles to the state by itself.
+                key={lies ? "pull" : revision}
                 target={target}
                 state={state}
                 onSet={onSet}
@@ -189,7 +204,7 @@ export function InspectView(props: InspectViewProps) {
                 finale={finale}
                 ritualChoices={ritualChoices}
                 width={width - 2 * ref.space.lg}
-                inside={lies && items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : undefined}
+                inside={laid ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{laid}</View> : undefined}
               />
               {take}
             </View>

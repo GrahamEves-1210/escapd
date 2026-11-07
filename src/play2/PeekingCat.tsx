@@ -21,28 +21,31 @@
 //   - it keeps an eye on the game: it perks up when the light passes over
 //     something worth a look and yawns at an empty drawer (`reaction`), glances
 //     at what the player hasn't looked at yet when they're stuck (`lookAt`:
-//     it leans that way, a "!" or "?" bobbing on that side, now and then a word),
+//     it leans that way, a "!" or "?" bobbing on that side, now and then a paw
+//     patting the ledge toward it), gives a slow, level blink and a huff (a
+//     puff from its nose, a shake of its head) at guessing (`reaction` "guess"),
 //     and sits with its lids half shut while a wrong answer's cooldown runs
 //     (`waiting`),
 //   - it likes being stroked (usePetting): a hand on it and it shuts its eyes
 //     with a small flinch; rubbed, it leans into the hand, sways and purrs (a
 //     fine shiver through it, a soft beat in the hand, "prr"); let go, its eyes
 //     open slowly and it gives a content blink. Rough, quick taps, and it has
-//     had enough for a while ("Enough."),
+//     had enough for a while (a huff and a flinch, lids half shut),
 //   - on the ledge over the room (`playful`), the light held still near it (or
 //     drawn slowly past) is a laser pointer (cat/laser.ts): its eyes lock on,
 //     pupils round, it crouches, its tail comes up behind the ledge, the butt
 //     wiggle, then it springs up and swats at it, pink beans showing, swipe
-//     lines; caught, it shuts its eyes, pleased, with sparkles ("Got it."); the
-//     light whisked away, a miss: a blush, a look away and a lick of its paw
-//     ("Meant to do that."). Rare (a long cooldown), cut short by anything
+//     lines; caught, it shuts its eyes, pleased, with sparkles; the light
+//     whisked away, a miss: a blush, a look away and a lick of its paw, as if
+//     that was the plan. Rare (a long cooldown), cut short by anything
 //     that happens, and never in the way: it's all drawn, nothing to tap,
 //   - now and then it washes: licks a paw, or rubs behind an ear (its paws cut
 //     out of the art for it, cat/rig.tsx),
 //   - the player back after a long while (the light untouched a minute, or the
 //     app away), a big stretch and a yawn; a gentle rub, a happy slow blink,
 //   - it wears its outfit (catAccessory.ts, cat/Accessory.tsx),
-//   - and it says a short line now and then in a speech bubble (`say`).
+//   - and it never says a word: everything it means is in its eyes, its face,
+//     its head and its paws.
 // It all moves at 12 frames a second, like stop motion: the animations run
 // smoothly underneath, and what's drawn is a snapshot of them every 1/12 s.
 // The art's own pupils are painted out (assets/characters/cat_peek.png); the
@@ -62,7 +65,6 @@ import { useFeedback, type Feedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { measureInWindow } from "@/render/PickupFlight";
 import { useTheme } from "@/theme/ThemeProvider";
-import { ref } from "@/theme/tokens";
 import { F } from "./cat/frame";
 import { caught, initialLaser, laserTick } from "./cat/laser";
 import { Face, HuntTail, PeekArt, PeekPaws, Swipe } from "./cat/rig";
@@ -122,10 +124,6 @@ const PAWS = { sink: 0.005, slack: 1, left: 0.36, right: 0.5, breath: 0.6, doze:
 const FPS = 12;
 /** It dozes off when the light has been still this long (ms): well after a stuck player's first glance (useCatCues). */
 const DOZE_AFTER = 70000;
-/** A line is up this long (ms): it pops in, stays about 2.2 s, and fades. */
-const SPEECH_MS = 2650;
-/** At most one line this often (ms); a rule line may cut in on a flavour one. */
-const SPEECH_GAP = 6000;
 /** Rough handling: more than this many quick taps in PET_WINDOW ms and it's had enough for ENOUGH_MS. Rubbing never counts. */
 const PET_LIMIT = 4;
 const PET_WINDOW = 3000;
@@ -140,18 +138,27 @@ const ENOUGH_MS = 3000;
  * average) and, let go, it gives a happy slow blink: the cat's "I love you".
  */
 export const PET = { tap: 260, settle: 350, beat: 1500, cycle: 2400, a11y: 1600, a11yRub: 3200, gentle: 1400, gentleSpeed: 420 } as const;
+/** A huff's puffs last this long (ms). */
+const HUFF_MS = 1200;
+/** Its nose (art px), where a huff comes out. */
+const NOSE = { x: 289, y: 372 };
+/**
+ * Pointing with a paw (art px and degrees, as `pose` takes them, away from its middle): lifted `lift` off the
+ * ledge and out `out` toward the side, turned `turn`; patting down to `low`, a pat each `beat` ms.
+ */
+const POINT = { lift: 210, low: 90, out: 120, turn: 34, beat: 190 };
 /** Glancing, it leans this far (degrees, and of its width) toward the place: more than toward the light. */
 const GLANCE_LEAN = { deg: 6, shift: 0.1 };
 /**
  * Its acts (ms). Laser play: it crouches `crouch` in, starts the butt wiggle at
  * `wiggle` (one shimmy each `wigglePeriod`: four drawn frames) and pounces at
- * `pounce`; it says something after one in `1 / talk`. A lick's tongue flicks
+ * `pounce`. A lick's tongue flicks
  * each `lickBeat`, an ear's rub each `rubBeat`. It grooms now and then (`groom`
  * of its idle moments), never twice within `groomGap`; and no act within
  * `afterReaction` of a reaction. Back after `away` ms gone, it stretches and yawns.
  */
 const ACT = {
-  crouch: 380, wiggle: 720, wigglePeriod: 333, pounce: 1780, talk: 0.4, lickBeat: 170, rubBeat: 190,
+  crouch: 380, wiggle: 720, wigglePeriod: 333, pounce: 1780, lickBeat: 170, rubBeat: 190,
   groom: 0.14, groomGap: 35000, afterReaction: 1500, away: 60000,
 } as const;
 /** Its outfit on its art (catAccessory): a collar or a scarf under its chin, spectacles on its eyes, a deerstalker between its ears. */
@@ -174,8 +181,6 @@ const PEEK = { chance: 0.1, depth: 0.4, hold: 900, swap: 1500 } as const;
 let lastPeekGone = -Infinity;
 /** The time (ms), for its handlers. */
 const msNow = () => Date.now();
-/** What it says after a pounce, now and then. */
-const LASER_LINES = { hit: "Got it.", miss: "Meant to do that." } as const;
 
 /**
  * Stop motion: the sources' values, snapshotted FPS times a second. Styles read
@@ -195,21 +200,22 @@ export function useStopMotion(sources: SharedValue<number>[], initial: number[])
   return shown;
 }
 
-/** A find, a wrong answer, the light over something worth a look ("warm"), or nothing there ("empty"). */
-export type CatReaction = { kind: "found" | "wrong" | "warm" | "empty"; at: number } | null;
+/**
+ * A find, a wrong answer, the light over something worth a look ("warm"), nothing there ("empty"), or
+ * guessing (wrong after wrong: "guess", a slow level blink and a huff).
+ */
+export type CatReaction = { kind: "found" | "wrong" | "warm" | "empty" | "guess"; at: number } | null;
 /** What the cat is doing between reactions: watching, or thinking along with the case. */
 export type CatMood = "idle" | "thinking";
-/** A line for it to say (a new `at` each time). `rule` lines (the game's rules) win over flavour ones. */
-export type CatLine = { text: string; at: number; rule?: boolean } | null;
 /**
  * Somewhere to look instead of the light: window points, or (`from: "cat"`)
  * points from the cat's own centre. With a "!" toward it (`wonder`: a "?";
- * `quiet`: no mark, just its eyes and a lean), and maybe a word (`line`).
+ * `quiet`: no mark, just its eyes and a lean), and maybe a paw patting the ledge that way (`paw`).
  * `track`: the spot drifts left at `speed` pt/s for `span` pt and flicks back,
  * over and over (watching prints go by on a moving string). Not under reduced motion.
  */
 export type CatLook = {
-  x: number; y: number; wonder?: boolean; line?: string; quiet?: boolean; from?: "cat"; track?: { speed: number; span: number };
+  x: number; y: number; wonder?: boolean; paw?: boolean; quiet?: boolean; from?: "cat"; track?: { speed: number; span: number };
 } | null;
 
 /**
@@ -488,7 +494,7 @@ function aim(v: number[], ex: number, ey: number, w: number, h: number, at: At) 
 }
 
 export function PeekingCat({
-  width, beamX, beamY, frame, reaction, mood = "idle", say = null, lookAt = null, waiting = false, playful = false, onSeat,
+  width, beamX, beamY, frame, reaction, mood = "idle", lookAt = null, waiting = false, playful = false, onSeat,
 }: {
   /** On-screen width (points). */
   width: number;
@@ -499,8 +505,6 @@ export function PeekingCat({
   /** The latest thing that happened, to react to (a new `at` each time). */
   reaction?: CatReaction;
   mood?: CatMood;
-  /** Something to say (a new `at` each time); shown if no other line was up too recently. */
-  say?: CatLine;
   /** Where its eyes go while set, over the light (while thinking too: what it's thinking about). */
   lookAt?: CatLook;
   /** A wrong answer's cooldown is running: it sits with its lids half shut. */
@@ -568,18 +572,8 @@ export function PeekingCat({
   const rel = useSharedValue(0);
   const track = useSharedValue(0);
   const [annoyed, setAnnoyed] = useState(false);
-  // The line it's saying, and when the last one went up (and whether it was a rule).
-  const [line, setLine] = useState<{ text: string; at: number } | null>(null);
-  const lastLine = useRef({ at: -Infinity, rule: false });
-
-  /** Say a line, unless one went up too recently (a rule line may cut in on a flavour one). */
-  const speak = (text: string, rule: boolean) => {
-    const now = Date.now();
-    const last = lastLine.current;
-    if (now - last.at < SPEECH_GAP && (last.rule || !rule)) return;
-    lastLine.current = { at: now, rule };
-    setLine({ text, at: now });
-  };
+  // Rough handling's huff (a new time each); guessing's comes with its reaction.
+  const [snort, setSnort] = useState<number | null>(null);
 
   /** A pop: crouch, stretch up, land with a squash, settle. */
   const pop = (up: number) => {
@@ -624,7 +618,7 @@ export function PeekingCat({
   // A catch's sparkles (a new time each).
   const [cheer, setCheer] = useState<number | null>(null);
   const feedback = useFeedback();
-  const act = useRef<{ kind: "play" | "groom" | "yawn"; timers: ReturnType<typeof setTimeout>[] } | null>(null);
+  const act = useRef<{ kind: "play" | "groom" | "yawn" | "point"; timers: ReturnType<typeof setTimeout>[] } | null>(null);
   const unrig = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Set as it mounts: no wash in its first moments.
   const lastGroom = useRef(Infinity);
@@ -637,7 +631,7 @@ export function PeekingCat({
     act.current?.timers.push(setTimeout(fn, ms));
   };
   /** An act starts (any other ends); `rig`: it uses its paws. */
-  const begin = (kind: "play" | "groom" | "yawn", rig: boolean) => {
+  const begin = (kind: "play" | "groom" | "yawn" | "point", rig: boolean) => {
     stopAct();
     act.current = { kind, timers: [] };
     clearTimeout(unrig.current);
@@ -772,13 +766,11 @@ export function PeekingCat({
           smug.set(withSequence(withTiming(1, { duration: 200 }), withDelay(1300, withTiming(0, { duration: 400 }))));
           idleTilt.set(withSequence(withSpring(-side * 4, { damping: 8, stiffness: 120 }), withDelay(1100, withSpring(0, { damping: 10, stiffness: 90 }))));
           setCheer(Date.now());
-          if (Math.random() < ACT.talk) speak(LASER_LINES.hit, false);
           later(2100, finish);
         } else {
           // Missed: a blush, a look away, and a lick of the paw, as if that was the plan all along.
           blush.set(withSequence(withTiming(1, { duration: 160 }), withDelay(2200, withTiming(0, { duration: 500 }))));
           away.set(withSequence(withTiming(-side, { duration: 220 }), withDelay(1900, withTiming(0, { duration: 400 }))));
-          if (Math.random() < ACT.talk) speak(LASER_LINES.miss, false);
           later(600, () => later(lick(paw, 2) + 200, finish));
         }
       });
@@ -796,8 +788,9 @@ export function PeekingCat({
       stopAct();
     },
     onRough: () => {
+      // Had enough: a huff, a flinch, lids half shut a while.
       setAnnoyed(true);
-      speak("Enough.", true);
+      setSnort(Date.now());
       if (!reducedMotion) flinch(0.12);
     },
   });
@@ -813,19 +806,22 @@ export function PeekingCat({
     droop.set(withTiming(sulk ? 1 : 0, { duration: sulk ? 160 : 260 }));
   }, [sulk, droop]);
 
-  // Lines: what it's told to say, each taken down after a moment.
-  useEffect(() => {
-    if (say) speak(say.text, !!say.rule);
-  }, [say]);
-  useEffect(() => {
-    if (!line) return;
-    const timer = setTimeout(() => setLine(null), SPEECH_MS);
-    return () => clearTimeout(timer);
-  }, [line]);
+  /**
+   * A paw that way: lifted off the ledge, reaching out toward the side it's looking, two pats on the ledge,
+   * and back. Its eyes stay on the place.
+   */
+  const pat = (side: -1 | 1) => {
+    begin("point", true);
+    const paw = side < 0 ? "left" : "right";
+    const b = POINT.beat;
+    pose(paw, [[POINT.lift, POINT.out, POINT.turn, 200, 120], [POINT.low, POINT.out + 10, POINT.turn, b], [POINT.lift * 0.7, POINT.out + 6, POINT.turn, b],
+      [POINT.low, POINT.out + 10, POINT.turn, b], [0, 0, 0, 240, 320]]);
+    later(200 + 120 + b * 3 + 560 + 80, finish);
+  };
 
   // A glance somewhere: the eyes go there and it leans that way (a glance
-  // wakes it: it comes before dozing), maybe with a word, then back to the light.
-  const lookX = lookAt?.x, lookY = lookAt?.y, lookLine = lookAt?.line, lookRel = lookAt?.from === "cat";
+  // wakes it: it comes before dozing), maybe a paw that way too, then back to the light.
+  const lookX = lookAt?.x, lookY = lookAt?.y, lookPaw = !!lookAt?.paw, lookRel = lookAt?.from === "cat";
   const trackSpeed = lookAt?.track?.speed ?? 0, trackSpan = lookAt?.track?.span ?? 0;
   useEffect(() => {
     if (lookX === undefined || lookY === undefined) {
@@ -838,10 +834,16 @@ export function PeekingCat({
     rel.set(lookRel ? 1 : 0);
     gaze.set(withTiming(1, { duration: 260, easing: Easing.out(Easing.quad) }));
     lastMove.set(Date.now());
-    if (lookLine) speak(lookLine, false);
-    // stopAct and speak read refs and shared values only.
+    if (lookPaw && !reducedMotion) {
+      // Which side the place is on: from the cat itself, or against where it sits.
+      const toward = lookRel ? lookX : lookX - (headX ?? lookX);
+      // A beat after its eyes get there.
+      const timer = setTimeout(() => pat(toward < 0 ? -1 : 1), 260);
+      return () => clearTimeout(timer);
+    }
+    // stopAct and pat read refs and shared values only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lookX, lookY, lookLine, lookRel, gaze, gx, gy, rel, lastMove]);
+  }, [lookX, lookY, lookPaw, lookRel, gaze, gx, gy, rel, lastMove]);
   // Watching something go by: its eyes follow it left, then flick back to the next.
   useEffect(() => {
     if (reducedMotion || trackSpeed <= 0 || trackSpan <= 0) {
@@ -917,6 +919,9 @@ export function PeekingCat({
       excite.set(withSequence(withTiming(1, { duration: 80 }), withDelay(650, withTiming(0, { duration: 1500, easing: Easing.inOut(Easing.quad) }))));
     } else if (reaction.kind === "warm") {
       excite.set(withSequence(withTiming(DILATE.warm, { duration: 100 }), withDelay(400, withTiming(0, { duration: 900 }))));
+    } else if (reaction.kind === "guess") {
+      // Guessing: a slow, level blink (lids down, held, up), and a huff from its nose.
+      lid.set(withSequence(withTiming(0.85, { duration: 420, easing: Easing.inOut(Easing.sin) }), withDelay(520, withTiming(0, { duration: 460, easing: Easing.inOut(Easing.sin) }))));
     }
     if (reducedMotion) return;
     if (reaction.kind === "found") {
@@ -925,6 +930,13 @@ export function PeekingCat({
       // Perks up: eyes wide, sitting up a touch (eased, not a hop), a small "!".
       lid.set(withTiming(0, { duration: 60 }));
       sy.set(withSequence(withTiming(1.04, { duration: 160, easing: Easing.out(Easing.quad) }), withDelay(300, withTiming(1, { duration: 380, easing: Easing.inOut(Easing.sin) }))));
+    } else if (reaction.kind === "guess") {
+      // A slow shake of its head as it huffs, and it settles.
+      idleTilt.set(withDelay(380, withSequence(
+        withTiming(-4, { duration: 200, easing: Easing.inOut(Easing.sin) }), withTiming(4, { duration: 260, easing: Easing.inOut(Easing.sin) }),
+        withTiming(-2, { duration: 220, easing: Easing.inOut(Easing.sin) }), withSpring(0, { damping: 10, stiffness: 90 }),
+      )));
+      sy.set(withSequence(withTiming(1.03, { duration: 300 }), withTiming(0.98, { duration: 220 }), withTiming(1, { duration: 300 })));
     } else if (reaction.kind === "empty") {
       // A yawn: eyes squeezed shut, a slow stretch with the head tipped back, then it settles.
       lid.set(withSequence(withTiming(0.9, { duration: 250 }), withDelay(600, withTiming(0, { duration: 200 }))));
@@ -1093,6 +1105,8 @@ export function PeekingCat({
     };
   });
 
+  // A huff from its nose: at guessing, or at rough hands (it plays once and ends invisible).
+  const huff = Math.max(reaction?.kind === "guess" ? reaction.at : -1, snort ?? -1);
   // A find's sparkles play once per find (they end invisible).
   const burst = reaction?.kind === "found" ? reaction.at : null;
   // The light over something worth a look: a small "!".
@@ -1147,12 +1161,6 @@ export function PeekingCat({
         </View>
       ) : null}
     </View>
-    {/* What it says, above-right of its head. */}
-    {line ? (
-      <View pointerEvents="none" style={[styles.speechAt, { left: width * 0.95, bottom: height * 0.92, width: width * 3.2 }]}>
-        <CatSpeech key={line.at} text={line.text} still={reducedMotion} />
-      </View>
-    ) : null}
     {/* The ledge hides what's below it: the cat rises from behind it. */}
     <View style={[styles.clip, StyleSheet.absoluteFill]} pointerEvents="box-none">
       {/* Its tail, behind it, up from behind the ledge for the butt wiggle. */}
@@ -1167,6 +1175,7 @@ export function PeekingCat({
           <Eye key={i} eye={eye} width={width} height={height} at={at} f={f} />
         ))}
         <Face width={width} f={f} sweet={theme.sweet} />
+        {huff > 0 && !reducedMotion ? <Huff key={huff} width={width} color={theme.ink} /> : null}
         <CatOutfit kind={outfit} width={width} artWidth={ART_W} at={OUTFIT} sweet={theme.sweet} foil={theme.foil} />
         {rigged ? <PeekPaws art={ART} width={width} height={height} f={f} /> : null}
         {rigged ? <Swipe width={width} f={f} color={theme.ink} /> : null}
@@ -1276,32 +1285,36 @@ function Pointer({ size, side, glyph, text, still }: {
   );
 }
 
-/** A line in a speech bubble, its tail toward the cat: it pops in (pose to pose, at 12 fps), stays a moment, and fades. */
-export function CatSpeech({ text, still }: { text: string; still: boolean }) {
-  const theme = useModeTheme();
-  const t = useSharedValue(still ? 0.5 : 0);
+/**
+ * A huff: two small puffs of breath out of its nose, either side, drifting off and fading (a sigh at
+ * guessing, a snort at rough hands). Not under reduced motion (its slow blink says it).
+ */
+function Huff({ width, color }: { width: number; color: string }) {
+  const k = width / ART_W;
+  const t = useSharedValue(0);
   useEffect(() => {
-    if (still) return;
-    t.set(withTiming(1, { duration: SPEECH_MS, easing: Easing.linear }));
-  }, [t, still]);
-  const shown = useStopMotion([t], [still ? 0.5 : 0]);
-  const anim = useAnimatedStyle(() => {
-    if (still) return { opacity: 1, transform: [{ scale: 1 }] };
-    const ms = shown.get()[0] * SPEECH_MS;
-    // Small, too big, settled; it holds, then fades.
-    const scale = ms < 170 ? 0.5 + (ms / 170) * 0.62 : ms < 300 ? 1.12 - ((ms - 170) / 130) * 0.12 : 1;
-    const opacity = ms < 80 ? ms / 80 : ms > SPEECH_MS - 350 ? Math.max(0, (SPEECH_MS - ms) / 350) : 1;
-    return { opacity, transform: [{ scale }] };
+    t.set(withTiming(1, { duration: HUFF_MS, easing: Easing.out(Easing.quad) }));
+  }, [t]);
+  const shown = useStopMotion([t], [0]);
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill]} testID="cat-huff">
+      {[-1, 1].map((side) => (
+        <Puff key={side} t={shown} side={side} x={NOSE.x * k} y={NOSE.y * k} size={width * 0.2} color={color} />
+      ))}
+    </View>
+  );
+}
+
+function Puff({ t, side, x, y, size, color }: { t: SharedValue<number[]>; side: number; x: number; y: number; size: number; color: string }) {
+  const style = useAnimatedStyle(() => {
+    const p = t.get()[0];
+    return {
+      opacity: p < 0.1 ? (p / 0.1) * 0.9 : 0.9 * Math.max(0, 1 - (p - 0.1) / 0.9),
+      transform: [{ translateX: side * (size * 0.5 + p * size * 1.8) }, { translateY: p * size * 0.6 }, { rotate: `${side * 18}deg` }, { scale: 0.6 + p * 0.9 }],
+    };
   });
   return (
-    <Animated.View
-      style={[styles.speech, { backgroundColor: theme.raised, borderColor: theme.rim }, anim]}
-      accessibilityLiveRegion="polite"
-      testID="v2-cat-speech"
-    >
-      <View style={[styles.tail, { backgroundColor: theme.raised, borderColor: theme.rim }]} />
-      <Text maxFontSizeMultiplier={1.4} style={[ref.type.label, { color: theme.ink }]}>{text}</Text>
-    </Animated.View>
+    <Animated.View style={[styles.puff, { left: x - size / 2, top: y - size / 2, width: size, height: size * 0.62, borderRadius: size, borderColor: color }, style]} />
   );
 }
 
@@ -1512,14 +1525,5 @@ const styles = StyleSheet.create({
   lidClip: { position: "absolute", overflow: "hidden" },
   lid: { position: "absolute" },
   lash: { position: "absolute" },
-  speechAt: { position: "absolute", alignItems: "flex-start" },
-  speech: {
-    maxWidth: "100%", borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 6,
-    transformOrigin: "0% 100%",
-  },
-  // A small diamond half under the bubble's bottom-left edge: its tail, pointing down to the cat.
-  tail: {
-    position: "absolute", left: 10, bottom: -5, width: 10, height: 10, transform: [{ rotate: "45deg" }],
-    borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth,
-  },
+  puff: { position: "absolute", borderWidth: 2, borderStyle: "solid", borderTopColor: "transparent" },
 });

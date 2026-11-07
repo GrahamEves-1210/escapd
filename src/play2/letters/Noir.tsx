@@ -43,7 +43,7 @@ function Letterhead({ text, right }: { text: string; right?: string }) {
   );
 }
 
-export function NoirBrief({ label, series, context, objective, objectiveLabel, catLine, catLabel, catDelay }: BriefLetterProps) {
+export function NoirBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       {/* The sheet under it. */}
@@ -69,7 +69,7 @@ export function NoirBrief({ label, series, context, objective, objectiveLabel, c
           <Typed text={objective} seed={`${label}:goal`} color={P.ribbon} style={NOIR_TYPE.body} />
         </View>
         <View style={styles.signoff}>
-          <Text style={[handType(21, 25), styles.hand, { color: P.pen }]} testID="brief-cat-line">{keepTogether(catLine)}</Text>
+          <Text style={[handType(21, 25), styles.hand, { color: P.pen }]} testID="brief-postscript">{keepTogether(postscript)}</Text>
           <Kiss color={P.lipstick} paper={P.paper} seed={label} width={52} rotate={-12} style={styles.kiss} />
         </View>
       </Paper>

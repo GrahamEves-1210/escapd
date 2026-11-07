@@ -24,6 +24,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useNoBack } from "@/play2/useNoBack";
 import type { AccuseOption } from "@/lib/puzzle-types";
 import { getLatestSession, getPlayableDefinition } from "@/lib/escapd-api";
 import { openCapture } from "@/capture/openCapture";
@@ -50,6 +51,7 @@ type Params = {
 export default function PlayCompleteScreen() {
   const params = useLocalSearchParams<Params>();
   const { roomId } = params;
+  useNoBack();
   // The stash: in memory right after play (at once), else as kept on the device (a reload; undefined while it loads).
   const [stash, setStash] = useState<ClosedCase | null | undefined>(() => closedCaseFor(roomId) ?? undefined);
   useEffect(() => {

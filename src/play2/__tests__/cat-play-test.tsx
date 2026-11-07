@@ -94,7 +94,8 @@ describe("PeekingCat at play", () => {
     // At play: its paws cut out of the art (the swat's swipe ready).
     expect(screen.getByTestId("cat-swipe")).toBeTruthy();
     await step(2600);
-    expect(screen.getByText("Got it.")).toBeTruthy();
+    // Pleased with itself, without a word.
+    expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
     await step(3000);
     expect(screen.queryByTestId("cat-swipe")).toBeNull();
     await view.unmount();
@@ -107,8 +108,11 @@ describe("PeekingCat at play", () => {
     await near(x);
     await step(1500);
     x.set(0.3);
-    await step(2600);
-    expect(screen.getByText("Meant to do that.")).toBeTruthy();
+    await step(1000);
+    // Embarrassed: a lick of its paw (its paws out of the art), and not a word.
+    expect(screen.getByTestId("cat-swipe")).toBeTruthy();
+    await step(1600);
+    expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
     await view.unmount();
   });
 
@@ -128,7 +132,6 @@ describe("PeekingCat at play", () => {
     expect(screen.getByTestId("cat-swipe")).toBeTruthy();
     await view.rerender(<PeekingCat width={58} beamX={x} beamY={y} frame={frame} playful reaction={{ kind: "found", at: 1 }} />);
     await step(4000);
-    expect(screen.queryByText("Got it.")).toBeNull();
     expect(screen.queryByTestId("cat-swipe")).toBeNull();
     await view.unmount();
   });
@@ -141,7 +144,7 @@ describe("PeekingCat at play", () => {
     await near(x);
     await step(5000);
     expect(screen.queryByTestId("cat-swipe")).toBeNull();
-    expect(screen.queryByText("Got it.")).toBeNull();
+    expect(screen.queryByTestId("v2-cat-speech")).toBeNull();
     await view.unmount();
   });
 

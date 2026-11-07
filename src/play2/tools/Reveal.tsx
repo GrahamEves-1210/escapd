@@ -140,7 +140,7 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   );
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: alpha(theme.ground, 0.97) }]} testID={`v2-reveal-${kind}`}>
+    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: theme.ground }]} testID={`v2-reveal-${kind}`}>
       {/* Once it's read, a tap anywhere puts it away. */}
       {done ? <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} testID="v2-reveal-away" /> : null}
       {kind === "heat" ? (

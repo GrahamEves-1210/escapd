@@ -122,9 +122,10 @@ describe("Case closed: noir", () => {
     expect(screen.getByText("Observation", hidden)).toBeTruthy();
     expect(screen.getByTestId("closed-rating-filled-1")).toBeTruthy();
     expect(screen.queryByTestId("closed-rating-filled-2")).toBeNull();
-    // What earned it, and the cat's word on it.
+    // What earned it, and the cat's paw print (never a word from it).
     expect(screen.getByTestId("closed-reason").props.children).toBe("2 magnifiers for 1 tip and 2 wrong codes. No tips and no wrong codes earns 3.");
-    expect(screen.getByTestId("closed-cat-line").props.children).toBe("I helped. A little. You're welcome.");
+    expect(screen.getByTestId("closed-paw", { includeHiddenElements: true })).toBeTruthy();
+    expect(screen.queryByText("I helped. A little. You're welcome.")).toBeNull();
     // Where a screenshot is from: the library's stamp, SOLVED and the day.
     expect(screen.getByText(`Solved · ${stampDate()}`)).toBeTruthy();
     // The cat, sitting beside the polaroid.
@@ -505,7 +506,8 @@ describe("Case closed: the recap", () => {
     expect(await screen.findByLabelText("Clues found: 3 of 4")).toBeTruthy();
     expect(screen.getByLabelText("Rating: 3 of 3 magnifiers")).toBeTruthy();
     expect(screen.getByTestId("closed-reason").props.children).toBe("3 magnifiers: solved with no tips and no wrong codes.");
-    expect(screen.getByTestId("closed-cat-line").props.children).toBe("Not one tip. Show-off.");
+    expect(screen.queryByText("Not one tip. Show-off.")).toBeNull();
+    expect(screen.getByTestId("closed-paw", { includeHiddenElements: true })).toBeTruthy();
   });
 
   it("crime scene: the story tells who, why and how, so the ruled culprit lines give way to it", async () => {
