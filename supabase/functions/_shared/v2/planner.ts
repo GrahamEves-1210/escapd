@@ -279,7 +279,8 @@ class Builder {
         case "page": value = String(12 + r(288)); break;
         case "offset": value = String(2 + r(23)); break;
         case "letters": { const w = WORDS[r(WORDS.length)]; value = w.split("").join("|"); text = w; break; }
-        case "symbols": { const pool: string[] = [...SYMBOLS]; const s: string[] = []; while (s.length < 3) s.push(pool.splice(r(pool.length), 1)[0]); value = s.join("|"); text = s.join(" "); break; }
+        // (Never the first three in their own order: that is how the door's wheels are marked.)
+        case "symbols": { const pool: string[] = [...SYMBOLS]; const s: string[] = []; while (s.length < 3) s.push(pool.splice(r(pool.length), 1)[0]); if (s.join("") === SYMBOLS.slice(0, 3).join("")) continue; value = s.join("|"); text = s.join(" "); break; }
         case "digits": { const d = String(r(1000)).padStart(3, "0"); if (isWeakCode(d)) continue; value = d.split("").join("|"); text = d; break; }
       }
       if (this.values.has(`${kind}:${value}`)) continue;
@@ -385,6 +386,9 @@ class Builder {
       case "decode": return "Written in a cipher so that a stranger reading it learns nothing.";
       case "warm_reveal": return "Written in lemon juice, which dries invisible and only shows when it's warmed.";
       case "mirror_reveal": return "Written backwards, so only someone who thought to use a mirror could read it.";
+      case "rub_reveal": return "Whoever wrote it tore the sheet off and took it; the pen's dents stayed in the page beneath.";
+      case "lens_reveal": return "Printed in red over blue, so it reads only through a red lens kept somewhere else.";
+      case "fold_reveal": return "Written as two halves down the edges of one page, so it reads only when the page is folded.";
       case "finale": return this.mode === "noir" ? "Whoever locked the door left its combination in pieces around the room."
         : "The accusation is made here, and only the evidence decides it.";
       case "ordering": return "The presence lets go only when its offerings are made in the right order; each fragment remembers one part of it.";
@@ -442,6 +446,9 @@ class Builder {
   info(slots: string[], budget: number, thread: number, depth: number): string | null {
     // Sentences (evidence, ritual lines) don't encipher into a readable coded line.
     const codable = !slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
+    // A page worked by hand (warmed, rubbed, folded, held to a lens or a mirror) holds a line or two (two
+    // documents at most): never a whole case file.
+    const brief = slots.length <= 2;
     return this.choose([
       { motif: "read", min: 1, fixed: true, run: () => this.read(slots, thread) },
       { motif: "contain", min: 1, fixed: true, run: () => this.contain(this.note(slots), thread) },
@@ -450,8 +457,11 @@ class Builder {
       { motif: "cross_reference", min: 2, fixed: false, run: () => this.crossReference(slots, budget, thread, depth) },
       { motif: "room_change", min: 2, fixed: true, run: () => this.roomChange(slots, thread) },
       ...(this.tool === "uv" || this.tool === "any" ? [{ motif: "tool_reveal" as const, min: 2, fixed: false, run: () => this.toolReveal(slots, budget, thread, depth) }] : []),
-      ...(this.tool === "warm" || this.tool === "any" ? [{ motif: "warm_reveal" as const, min: 2, fixed: false, run: () => this.warmReveal(slots, budget, thread, depth) }] : []),
-      ...(this.tool === "mirror" || this.tool === "any" ? [{ motif: "mirror_reveal" as const, min: 2, fixed: false, run: () => this.mirrorReveal(slots, budget, thread, depth) }] : []),
+      ...(brief && (this.tool === "warm" || this.tool === "any") ? [{ motif: "warm_reveal" as const, min: 2, fixed: false, run: () => this.warmReveal(slots, budget, thread, depth) }] : []),
+      ...(brief && (this.tool === "mirror" || this.tool === "any") ? [{ motif: "mirror_reveal" as const, min: 2, fixed: false, run: () => this.mirrorReveal(slots, budget, thread, depth) }] : []),
+      ...(brief && (this.tool === "rub" || this.tool === "any") ? [{ motif: "rub_reveal" as const, min: 2, fixed: false, run: () => this.pairReveal("rub", slots, budget, thread, depth) }] : []),
+      ...(brief && (this.tool === "lens" || this.tool === "any") ? [{ motif: "lens_reveal" as const, min: 2, fixed: false, run: () => this.pairReveal("lens", slots, budget, thread, depth) }] : []),
+      ...(brief && (this.tool === "fold" || this.tool === "any") ? [{ motif: "fold_reveal" as const, min: 2, fixed: false, run: () => this.foldReveal(slots, budget, thread, depth) }] : []),
       { motif: "split", min: 3, fixed: true, run: () => this.split(slots, thread) },
       ...(codable ? [{ motif: "decode" as const, min: 4, fixed: false, run: () => this.decode(slots, budget, thread, depth) }] : []),
     ], budget, depth);
@@ -762,6 +772,59 @@ class Builder {
     return s;
   }
 
+  /**
+   * Two things found apart that read only together, either dropped on the other: a notepad whose top sheet
+   * is gone and a soft pencil (rub: the dents come up white); a card printed in red over blue and a red lens
+   * (lens: the red washes out). Each says how it works when found. Needs nothing in the room. Shows `slots`.
+   */
+  pairReveal(kind: "rub" | "lens", slots: string[], budget: number, thread: number, depth: number): string | null {
+    const [h, t] = kind === "rub" ? [this.names.pad, this.names.pencil] : [this.names.printed, this.names.lens];
+    const holder = this.item("prop", h.title, { card: this.plainCard(h.title, h.lead) });
+    const tool = this.item("prop", t.title, { card: this.plainCard(t.title, t.lead) });
+    // Found apart where the thread has room for two finds; else together (a pad with its pencil, a card with its lens).
+    const apart = budget >= 3;
+    const up = this.deliver(holder, budget - (apart ? 2 : 1), thread, depth);
+    const got = up && apart ? this.contain({ item: tool }, thread) : null;
+    if (!up || (apart && !got)) return null;
+    if (!apart) this.rules.find((r) => r.effects.some((e) => e.do === "grant" && e.item === holder))!.effects.push(...this.give({ item: tool }));
+    const card = this.clue(kind, slots);
+    this.cards.find((c) => c.id === card)!.reveal = kind;
+    const hn = h.title.toLowerCase(), tn = t.title.toLowerCase();
+    const s = this.step(kind === "rub" ? "rub_reveal" : "lens_reveal", thread, undefined, got ? [up, got] : [up], kind === "rub"
+      ? ["Something was written on a sheet that's gone.",
+        `The ${hn} still carries the dents of what was written on the sheet above it; the ${tn}, shaded over them, would bring them up.`,
+        `Drop the ${tn} on the ${hn} (or the ${hn} on the ${tn}), then rub the pencil across the page.`]
+      : ["One thing you hold can't be read as it is.",
+        `The ${hn} is printed in red over blue, and through the ${tn} the red washes out.`,
+        `Drop the ${tn} on the ${hn} (or the ${hn} on the ${tn}), then slide the lens across the card.`]);
+    this.rule({ on: "combine", items: [tool, holder] }, [],
+      [{ do: "consume", item: holder }, { do: "consume", item: tool }, { do: "show_card", card },
+        { do: "beat", text: kind === "rub" ? "Under the pencil, the dents come up white." : "Through the red lens, one line stands clear." }], s);
+    return s;
+  }
+
+  /**
+   * A page with half a line of writing down each edge (found somewhere): tapped, and its edges folded to
+   * meet, the halves join into one line. No tool and nothing in the room: any room can have it. Shows `slots`.
+   */
+  foldReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    const n = this.names.fold;
+    const page = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "folded", domain: { kind: "bool" } }] });
+    const up = this.deliver(page, budget - 1, thread, depth);
+    if (!up) return null;
+    const card = this.clue("fold", slots);
+    this.cards.find((c) => c.id === card)!.reveal = "fold";
+    const name = n.title.toLowerCase();
+    const s = this.step("fold_reveal", thread, undefined, [up], [
+      "One page you hold is two halves of something.",
+      `The ${name} has half a line of writing down each edge, marked A and B: folded so A meets B, the halves join.`,
+      `Tap the ${name}, then fold its edges together so A meets B.`,
+    ]);
+    this.rule({ on: "control", target: page, control: "folded" }, [{ if: "control", target: page, control: "folded", eq: { lit: true } }],
+      [{ do: "consume", item: page }, { do: "show_card", card }, { do: "beat", text: "Folded edge to edge, the halves make one line." }], s);
+    return s;
+  }
+
   // ---- UV traces -------------------------------------------------------------
   /** Kinds of trace that can carry a slot, in a seeded order of preference. */
   traceKinds(slot: string | null): TraceKind[] {
@@ -968,26 +1031,39 @@ const STEP_TITLE: Record<MotifId, string> = {
   read: "Read it", contain: "Look inside", split: "Piece it together", set_state: "Set the mechanism",
   cross_reference: "Find the page", decode: "Decode it", tool_reveal: "Under the light", room_change: "Change the room",
   ordering: "Perform the ritual", contain_lock: "Open the lock", story_fragment: "A keepsake", finale: "The way out",
-  warm_reveal: "Warm it", mirror_reveal: "In the mirror",
+  warm_reveal: "Warm it", mirror_reveal: "In the mirror", rub_reveal: "Rub it over", lens_reveal: "Through the lens", fold_reveal: "Fold it",
 };
 
-/** The reveal tools a room can be given (UV traces and glows; a letter in lemon juice; a note in mirror writing), or none. */
-export type RevealTool = "uv" | "warm" | "mirror" | "none";
+/**
+ * The reveal tools a room can be given: UV traces and glows; a letter in lemon juice (needs a lamp); a
+ * note in mirror writing (needs a mirror); a pencil rubbing, a red lens, a fold-in page (need nothing in
+ * the room); or none.
+ */
+export type RevealTool = "uv" | "warm" | "mirror" | "rub" | "lens" | "fold" | "none";
+
+/** The motif each tool is. */
+export const TOOL_MOTIF: Record<Exclude<RevealTool, "none">, MotifId> = {
+  uv: "tool_reveal", warm: "warm_reveal", mirror: "mirror_reveal", rub: "rub_reveal", lens: "lens_reveal", fold: "fold_reveal",
+};
+/** The reveals worked by hand on a sheet of their own (never the UV light). */
+const HANDS_ON: MotifId[] = ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal"];
 
 /**
- * The room's one reveal tool. UV, the lemon-juice letter (needs a lamp) and the mirror note (needs a mirror)
- * weigh the same, and "none" makes up the rest, so UV is in about a third of rooms that have a lamp.
+ * The room's one reveal tool, seeded by the room. UV weighs a little less than each of the others, and
+ * three of them need nothing in the room, so UV is in under a quarter of rooms, with or without a lamp
+ * or a mirror. No tool at all only where a lamp can still change the room.
  */
 export function revealTool(objs: InventoryObject[], rng: () => number): RevealTool {
   const lamp = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "Light" && h.variant !== "torch"));
   const mirror = objs.some((o) => o.type === "mirror" || (o.features.includes("reflective") && categoryOf(o.type) !== "textile"));
-  const tools: [RevealTool, number][] = [["uv", 1], ...(lamp ? [["warm", 1] as [RevealTool, number]] : []), ...(mirror ? [["mirror", 1] as [RevealTool, number]] : [])];
-  // No tool at all only where a lamp can still change the room (and give it a revisit); a room with
-  // neither a lamp nor a mirror has nothing else that reveals, so it gets the UV light.
-  if (lamp) tools.push(["none", Math.max(0, 3 - tools.length)]);
+  const tools: [RevealTool, number][] = [
+    ["uv", 0.8], ["rub", 1], ["lens", 1], ["fold", 1],
+    ...(lamp ? [["warm", 1.2] as [RevealTool, number], ["none", 0.6] as [RevealTool, number]] : []),
+    ...(mirror ? [["mirror", 1.2] as [RevealTool, number]] : []),
+  ];
   let r = rng() * tools.reduce((a, [, w]) => a + w, 0);
   for (const [t, w] of tools) if ((r -= w) < 0) return t;
-  return "uv";
+  return "fold";
 }
 
 /**
@@ -1264,7 +1340,8 @@ function buildCandidate(
 
   // Compile.
   const used = B.pool.filter((b) => b.roles > 0);
-  const nested = (b: Bound) => [exit, ...used].some((u) => u.inv.photo_index === b.inv.photo_index && boxArea(u.inv.box) > boxArea(b.inv.box) &&
+  // (Inside anything bigger in the room, used or not: an unused safe over an unused cabinet steals its taps just the same.)
+  const nested = (b: Bound) => [exit, ...B.pool].some((u) => u !== b && u.inv.photo_index === b.inv.photo_index && boxArea(u.inv.box) > boxArea(b.inv.box) &&
     insideShare(b.inv.box, u.inv.box) >= NESTED);
   const herrings = B.pool.filter((b) => b.roles === 0 && !nested(b)).slice(0, Math.max(0, MAX_OBJECTS - 1 - used.length));
   for (const h of herrings) {
@@ -1331,8 +1408,11 @@ function buildCandidate(
   const lights = (r: Rule) => r.trigger.on === "use" && traceIds.has(r.trigger.object) && r.effects.some((e) => e.do === "set_state");
   const roomChanges = B.rules.filter((r) => ((r.step && required.some((s) => s.id === r.step)) || lights(r)) && r.effects.some((e) => e.do === "overlay")).length;
   if (required.length < STEP_BAND.min || required.length > STEP_BAND.max) return `steps: ${required.length} outside ${STEP_BAND.min}-${STEP_BAND.max}`;
-  if (revisits < 1) return "no revisit";
-  if (roomChanges < 1) return "no room change";
+  // The mid-game turn: an object that comes to mean something new (a revisit) and a room that changes, or a
+  // reveal worked by hand (a page warmed, rubbed, folded), which is its own breakthrough and needs neither.
+  const handsOn = required.some((s) => HANDS_ON.includes(s.motif));
+  if (revisits < 1 && !handsOn) return "no revisit";
+  if (roomChanges < 1 && !handsOn) return "no room change";
 
   const photoOf = new Map([...[exit, ...B.pool].map((b) => [b.id, b.inv.photo_index] as const), ...B.traces.map((t) => [t.id, t.photo] as const)]);
   const photos = new Set(required.flatMap((s) => (s.object ? [photoOf.get(s.object)!] : []))).size;
@@ -1349,7 +1429,7 @@ function buildCandidate(
     0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7)) + 0.6 * Math.min(braids, 1) + 0.5 * (has("decode") ? 1 : 0) + 0.4 * (has("split") ? 1 : 0) -
     (has("tool_reveal") && has("room_change") ? 0.6 : 0) +
     // The room was given its tool: a plan that uses it wins over one that doesn't.
-    (B.tool === "warm" && has("warm_reveal") || B.tool === "mirror" && has("mirror_reveal") ? 0.8 : 0);
+    (B.tool !== "any" && B.tool !== "none" && B.tool !== "uv" && has(TOOL_MOTIF[B.tool]) ? 0.8 : 0);
   return { definition, secret, summary: { threads: nThreads, motifs, objectsUsed: used.length + 1, photos, score, candidatesTried: 0 } };
 }
 

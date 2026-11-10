@@ -88,8 +88,10 @@ export function planProblems(r: PlanResult, mode: Mode): string[] {
   if (!report.ok) p.push(...report.errors);
   const m = report.metrics;
   if (m.requiredSteps < STEP_BAND.min || m.requiredSteps > STEP_BAND.max) p.push(`steps ${m.requiredSteps}`);
-  if (m.revisits < 1) p.push("no revisit");
-  if (m.roomChanges < 1) p.push("no room change");
+  // A revisit and a room change, or a reveal worked by hand (which is the room's breakthrough instead).
+  const handsOn = summary.motifs.some((x) => ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal"].includes(x));
+  if (m.revisits < 1 && !handsOn) p.push("no revisit");
+  if (m.roomChanges < 1 && !handsOn) p.push("no room change");
   if (summary.threads < 2 || summary.threads > 3) p.push(`threads ${summary.threads}`);
   const threads = new Set(secret.steps.filter((s) => s.thread !== null).map((s) => s.thread));
   if (threads.size !== summary.threads) p.push(`steps span ${threads.size} threads, summary says ${summary.threads}`);

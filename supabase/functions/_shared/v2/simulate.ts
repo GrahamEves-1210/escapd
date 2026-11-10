@@ -118,6 +118,8 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
       if (!s.inventory.includes(item.id)) continue;
       for (const c of item.controls ?? []) {
         if (!triggers.has(`c:${item.id}.${c.id}`)) continue;
+        // A held thing worked by hand (a page folded): no value to know.
+        if (c.domain.kind === "bool") { out.push({ type: "set_control", target: item.id, control: c.id, value: true }); continue; }
         for (const v of knownValues) if (v.kind === DOMAIN_SLOT_KIND[c.domain.kind] && normalize(c.domain, v.value) !== null) {
           out.push({ type: "set_control", target: item.id, control: c.id, value: v.value });
         }

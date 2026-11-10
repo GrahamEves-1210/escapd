@@ -31,6 +31,25 @@ describe("item icons", () => {
     expect(icon("Christening spoon", { kind: "taken" })).toBe(ItemIcons.box);
   });
 
+  it("draw the things worked by hand as themselves, before a looser word catches them", () => {
+    expect(icon("Soft pencil")).toBe(ItemIcons.pencil);
+    // "stub" is a ticket's word, but a pencil stub is a pencil.
+    expect(icon("Pencil stub")).toBe(ItemIcons.pencil);
+    expect(icon("Red lens")).toBe(ItemIcons.lens);
+    expect(icon("Red gel")).toBe(ItemIcons.lens);
+    expect(icon("Notepad")).toBe(ItemIcons.notepad);
+    expect(icon("Printed card")).toBe(ItemIcons.printed);
+    expect(icon("Fold-in page")).toBe(ItemIcons.foldIn);
+    // Their neighbours keep their own.
+    expect(icon("Calling card")).toBe(ItemIcons.note);
+    expect(icon("Theatre stub")).toBe(ItemIcons.ticket);
+    expect(icon("Torn page")).toBe(ItemIcons.note);
+  });
+
+  it("has a drawing for every icon in the set", async () => {
+    for (const Glyph of Object.values(ItemIcons)) await render(<Glyph size={40} />);
+  });
+
   it("know the UV light by its name where the casebook has no variant", () => {
     expect(itemIcon({ name: "UV flashlight", kind: "tool", archetype: "Light" })).toBe(ItemIcons.uvLight);
   });

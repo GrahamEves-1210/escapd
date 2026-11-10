@@ -2,7 +2,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { RECT_PADDING } from "../geometry.ts";
 import { applyAction, initialState } from "./engine.ts";
-import { planRoom, type PlanResult, revealTool, seededRandom } from "./planner.ts";
+import { planRoom, type PlanResult, revealTool, seededRandom, TOOL_MOTIF } from "./planner.ts";
 import { obj, seededRandomInt, SPARSE_5, syntheticInventory, BEDROOM_WITH_DOOR, FULL_15 } from "./test_fixtures.ts";
 import { TRACE_SITES, traceSiteOk } from "./traces.ts";
 import { MODES, type Mode } from "./types.ts";
@@ -52,22 +52,24 @@ Deno.test("traces: planned rooms keep every trace where it belongs, and the vali
   assert(seen > 40, `${seen} traces`);
 });
 
-Deno.test("tools: UV is one tool among several: at most about a third of rooms with a lamp, per mode", () => {
-  const lampRooms = [BEDROOM_WITH_DOOR, FULL_15, SPARSE_5];
-  for (const mode of MODES) {
-    let uv = 0, other = 0, rooms = 0;
-    for (const inv of lampRooms) for (let i = 0; i < 20; i++) {
-      const r = planRoom(inv, { mode, seed: `mix-${i}`, randomInt: seededRandomInt(i) });
-      if (!r.ok) continue;
-      rooms++;
-      if (r.summary.motifs.includes("tool_reveal")) uv++;
-      if (r.summary.motifs.some((m) => m === "warm_reveal" || m === "mirror_reveal")) other++;
+Deno.test("tools: UV stays rare (a quarter of rooms or less), with or without a lamp or a mirror, and every tool turns up", () => {
+  const bare = [obj("door", 0), obj("desk", 1), obj("bookshelf", 1), obj("rug", 2), obj("cabinet", 2), obj("pillow", 3), obj("chest", 3)];
+  for (const [name, invs] of [["lamp rooms", [BEDROOM_WITH_DOOR, FULL_15, SPARSE_5]], ["rooms with no lamp or mirror", [bare]]] as const) {
+    for (const mode of MODES) {
+      const used = new Map<string, number>();
+      let rooms = 0;
+      for (const inv of invs) for (let i = 0; i < 60 / invs.length; i++) {
+        const r = planRoom(inv, { mode, seed: `mix-${i}`, randomInt: seededRandomInt(i) });
+        assert(r.ok, `${name} ${mode} ${i}: ${!r.ok && r.detail}`);
+        rooms++;
+        for (const [tool, motif] of Object.entries(TOOL_MOTIF)) if (r.summary.motifs.includes(motif)) used.set(tool, (used.get(tool) ?? 0) + 1);
+      }
+      assert((used.get("uv") ?? 0) / rooms <= 0.27, `${name}, ${mode}: UV in ${used.get("uv")} of ${rooms} rooms`);
+      for (const tool of ["rub", "lens", "fold"]) assert((used.get(tool) ?? 0) >= 3, `${name}, ${mode}: ${tool} in ${used.get(tool) ?? 0} of ${rooms} rooms`);
     }
-    assert(uv / rooms <= 0.4, `${mode}: UV in ${uv} of ${rooms} rooms`);
-    assert(other >= rooms / 6, `${mode}: the other tools in only ${other} of ${rooms} rooms`);
   }
-  // The choice is the room's, and a room with neither a lamp nor a mirror falls back to UV.
-  assertEquals(revealTool([obj("desk", 0), obj("bed", 1)], seededRandom("x")), "uv");
+  // A room with neither a lamp nor a mirror is never given a tool it can't host.
+  for (let i = 0; i < 50; i++) assert(!["warm", "mirror", "none"].includes(revealTool([obj("desk", 0), obj("bed", 1)], seededRandom(`x${i}`))));
 });
 
 /** A room using `motif`, from a few seeds. */
@@ -107,5 +109,54 @@ Deno.test("tools: the lemon-juice letter reads only at a lamp that's on; the bac
       assert(out.result.effects.some((e) => e.do === "show_card" && e.card === card.card));
       assert(!out.state.inventory.includes(item), "the note is used up");
     }
+  }
+});
+
+Deno.test("tools: the pencil rubs the notepad and the lens reads the card, dropped either way round; the fold-in page folds on its own", () => {
+  for (const mode of MODES) {
+    for (const [motif, reveal] of [["rub_reveal", "rub"], ["lens_reveal", "lens"]] as const) {
+      const { definition: def, secret } = withMotif(mode, motif);
+      const step = secret.steps.find((s) => s.motif === motif)!;
+      const rule = secret.rules.find((r) => r.step === step.id)!;
+      assert(rule.trigger.on === "combine");
+      const [a, b] = rule.trigger.items;
+      const card = rule.effects.find((e) => e.do === "show_card");
+      assert(card && card.do === "show_card");
+      assertEquals(def.cards.find((c) => c.id === card.card)!.reveal, reveal);
+      // Both things say how they work when found, and hold no value; they are found in two places.
+      for (const id of [a, b]) {
+        const told = def.cards.find((c) => c.id === def.items.find((i) => i.id === id)!.card)!;
+        assert(!told.text.includes("{{") && told.text.length > 40, told.text);
+      }
+      const names = [a, b].map((id) => def.items.find((i) => i.id === id)!.name).sort();
+      assertEquals(names, reveal === "rub" ? ["Notepad", "Soft pencil"] : ["Printed card", "Red lens"]);
+      assert(step.requires.length === 2 || step.requires.length === 1, "found apart, or together in one find");
+      // The last hint says the drop works either way.
+      assert(/\(or the /.test(step.hints[2]), step.hints[2]);
+      for (const items of [[a, b], [b, a]] as [string, string][]) {
+        const out = applyAction(def, secret, { ...initialState(def), inventory: [a, b] }, { type: "combine", items });
+        assertEquals(out.result.outcome, "ok");
+        assert(out.result.effects.some((e) => e.do === "show_card" && e.card === card.card));
+        assertEquals(out.state.inventory, []);
+      }
+      // One of them alone does nothing.
+      assertEquals(applyAction(def, secret, { ...initialState(def), inventory: [a] }, { type: "combine", items: [a, b] }).result.outcome, "invalid");
+    }
+    const { definition: def, secret } = withMotif(mode, "fold_reveal");
+    const step = secret.steps.find((s) => s.motif === "fold_reveal")!;
+    const rule = secret.rules.find((r) => r.step === step.id)!;
+    assert(rule.trigger.on === "control" && rule.trigger.control === "folded");
+    const page = rule.trigger.target;
+    assert(def.items.find((i) => i.id === page)!.controls?.some((c) => c.id === "folded" && c.domain.kind === "bool"));
+    // In hand (granted, so its control exists), folded: the line reads and the page is used up.
+    const grant = secret.rules.find((r) => r.effects.some((e) => e.do === "grant" && e.item === page))!;
+    let state = initialState(def);
+    state = { ...state, inventory: [page], items: { [page]: { folded: false } }, fired: [grant.id] };
+    const out = applyAction(def, secret, state, { type: "set_control", target: page, control: "folded", value: true });
+    assertEquals(out.result.outcome, "ok");
+    const card = out.result.effects.find((e) => e.do === "show_card");
+    assert(card && card.do === "show_card" && def.cards.find((c) => c.id === card.card)!.reveal === "fold");
+    assert(!out.state.inventory.includes(page));
+    assert(/^Tap the /.test(step.hints[2]), step.hints[2]);
   }
 });

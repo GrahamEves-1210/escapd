@@ -27,7 +27,7 @@ test("the reveal tools play in the app runtime: a letter warmed at a lamp, a not
     inv("desk_lamp", 1, ["light_source"]), inv("mirror", 3, ["wall_mounted", "reflective"]), inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]),
   ];
   const found = new Set<string>();
-  for (let i = 0; i < 120 && found.size < 2; i++) {
+  for (let i = 0; i < 600 && !(found.has("heat") && found.has("mirror")); i++) {
     let s = i + 1;
     const randomInt = (max: number) => { s = (s * 16807) % 2147483647; return s % max; };
     const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `tools-${i}`, randomInt });
@@ -46,5 +46,38 @@ test("the reveal tools play in the app runtime: a letter warmed at a lamp, a not
     for (const c of r.definition.cards.filter((x) => x.reveal)) expect(seen).toContain(c.id);
     reveals.forEach((k) => found.add(k));
   }
-  expect([...found].sort()).toEqual(["heat", "mirror"]);
+  expect(found.has("heat") && found.has("mirror")).toBe(true);
+});
+
+test("the hands-on reveals play in the app runtime: a pencil rubbing, a red lens, a fold-in page", () => {
+  // A room with no lamp and no mirror: these three need nothing in it.
+  const room = [
+    inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("pillow", 2, ["can_lift"]), inv("cabinet", 2, ["has_doors", "can_open"]),
+    inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]), inv("poster", 3, ["wall_mounted"]),
+  ];
+  const found = new Set<string>();
+  let uv = 0, rooms = 0;
+  for (let i = 0; i < 150; i++) {
+    let s = i + 1;
+    const randomInt = (max: number) => { s = (s * 16807) % 2147483647; return s % max; };
+    const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `hands-${i}`, randomInt });
+    if (!r.ok) throw new Error(r.detail);
+    rooms++;
+    if (r.summary.motifs.includes("tool_reveal")) uv++;
+    let state = initialState(r.definition);
+    const seen: string[] = [];
+    for (const action of r.report.path) {
+      const out = applyAction(r.definition, r.secret, state, action);
+      for (const e of out.result.effects) if (e.do === "show_card") seen.push(e.card);
+      state = out.state;
+    }
+    expect(state.completed).toBe(true);
+    for (const c of r.definition.cards.filter((x) => x.reveal)) {
+      expect(seen).toContain(c.id);
+      found.add(c.reveal!);
+    }
+  }
+  expect([...found].sort()).toEqual(["fold", "lens", "rub"]);
+  // UV stays rare even here, where there's no lamp or mirror to use instead.
+  expect(uv / rooms).toBeLessThanOrEqual(0.27);
 });

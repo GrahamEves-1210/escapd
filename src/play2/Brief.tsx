@@ -165,6 +165,8 @@ export function Brief({ def, roomId, onBegin, photo }: {
   const begin = () => {
     if (leaving) return;
     setLeaving(true);
+    // The letter slides away off the desk as it goes (the room comes up out of the dark after it: transitions/LightsOn).
+    if (!reduced) rise.set(withTiming(44, { duration: 280 }));
     out.set(withTiming(0, { duration: reduced ? motion.reducedFade : 280 }));
     setTimeout(onBegin, reduced ? motion.reducedFade : 280);
   };

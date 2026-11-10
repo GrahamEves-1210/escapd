@@ -31,5 +31,8 @@ export const MOTIFS: Record<Exclude<MotifId, "finale">, MotifSpec> = {
   contain_lock: { id: "contain_lock", summary: "a key or a code opens a container (at most one per room)", delivers: ["info", "item"], minSteps: 2, archetypes: ["Drawer", "CombinationLock"], maxPerRoom: 1, weight: w(1, 0.7, 0.7) },
   warm_reveal: { id: "warm_reveal", summary: "a blank letter in lemon juice, warmed at a lamp the player switches on", delivers: ["info"], minSteps: 2, archetypes: ["Light"], maxPerRoom: 1, weight: w(1.4, 1.2, 1.4) },
   mirror_reveal: { id: "mirror_reveal", summary: "a note in mirror writing, read by holding it to the room's mirror", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.3, 1.2, 1.5) },
+  rub_reveal: { id: "rub_reveal", summary: "a notepad whose top sheet is gone and a pencil (found apart, or together in a short thread): rubbed over, the dents read", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.4, 1.5, 1.2) },
+  lens_reveal: { id: "lens_reveal", summary: "a card printed in red over blue and a red lens (found apart, or together in a short thread): through the lens it reads", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.4, 1.2, 1.3) },
+  fold_reveal: { id: "fold_reveal", summary: "a page whose two edges fold to meet, joining two halves of writing", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.3, 1.2, 1.4) },
   story_fragment: { id: "story_fragment", summary: "an optional prop that rewards looking", delivers: [], minSteps: 0, archetypes: ["Drawer", "LiftUnder", "FrameTilt"], weight: w(1, 1, 1) },
 };

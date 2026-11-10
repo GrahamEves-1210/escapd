@@ -7,7 +7,6 @@
 // back to the v1 player (`onFallback`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { CaretLeftIcon, CaretRightIcon, NotebookIcon, ArrowLeftIcon } from "phosphor-react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ActionResult, ItemDef, ObjectDef, StateValue } from "@/engine/v2";
@@ -19,7 +18,6 @@ import { useBoxPatch } from "@/render/removalPatch";
 import { PresenceMeter } from "@/render/PresenceMeter";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { measureInWindow } from "@/render/PickupFlight";
-import { Toast } from "@/render/Toast";
 import { ref } from "@/theme/tokens";
 import { Casebook } from "./Casebook";
 import { useCaseRecord, type V2Completion } from "./caseRecord";
@@ -37,7 +35,6 @@ import { useCatCues } from "./useCatCues";
 import { TapAwayView } from "./TapAwayView";
 import { tapMark, type TapPlace } from "./useTapAway";
 import { HintTrail } from "./PawTrail";
-import { ItemIcon } from "./ItemTray";
 import { Burst } from "./fx/Burst";
 import { useCelebrate, type Anchor } from "./fx/useCelebrate";
 import { hitTest, Stage, type StageObject } from "./Stage";
@@ -45,6 +42,14 @@ import { CipherContext, cipherClues, NO_CIPHER } from "./mechanisms/cipher";
 import type { StageTrace } from "./UvTrace";
 import { useRoomV2, type RoomV2 } from "./useRoomV2";
 import { useCaseThreads } from "./journal/useCaseThreads";
+import { ItemTag } from "./hud/ItemTag";
+import { Press } from "./hud/Press";
+import { Shelf, SHELF_LIP } from "./hud/Shelf";
+import { SlipToast } from "./hud/SlipToast";
+import { railHeight, TopRail } from "./hud/TopRail";
+import { TurnArrow } from "./hud/TurnArrow";
+import { Darkness, LightsOn } from "./transitions/LightsOn";
+import { TurnGhost } from "./transitions/TurnGhost";
 
 export interface PlayerV2Props {
   roomId: string;
@@ -55,12 +60,6 @@ export interface PlayerV2Props {
 }
 
 type Open = { kind: "object"; id: string } | { kind: "item"; id: string };
-
-/** A theme colour (#RRGGBB) at an opacity. */
-function tint(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-  return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : hex;
-}
 
 /** The hotbar's slots: held items fill them from the left, the rest show empty. */
 const HOTBAR_SLOTS = 6;
@@ -112,6 +111,15 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   const [view, setView] = useState(0);
   // Which way the player last turned (the next view slides in from that side).
   const [turnDir, setTurnDir] = useState<1 | -1 | 0>(0);
+  // The photo just turned away from: it lingers in the dark and drifts off as the next slides in (transitions/TurnGhost).
+  const [seenView, setSeenView] = useState(0);
+  const [ghost, setGhost] = useState<{ view: number; dir: 1 | -1; id: number } | null>(null);
+  if (seenView !== view) {
+    setSeenView(view);
+    setGhost((g) => ({ view: seenView, dir: turnDir === -1 ? -1 : 1, id: (g?.id ?? 0) + 1 }));
+  }
+  // From the brief to the room: the dark, the flashlight's click, the room in its beam (transitions/LightsOn).
+  const [lightsOn, setLightsOn] = useState(false);
   const [open, setOpen] = useState<Open | null>(null);
   // What each object turned out to hold (notes to read, items not yet picked up), shown in it when it's open.
   const [contents, setContents] = useState<Record<string, Content[]>>({});
@@ -164,7 +172,6 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // Cards new since the casebook was last opened (they drop in).
   const [casebookFresh, setCasebookFresh] = useState(0);
   const [revision, setRevision] = useState(0);
-  const [bandH, setBandH] = useState<number | null>(null);
   // What the cat last reacted to (a find, a wrong answer).
   const [catReaction, setCatReaction] = useState<CatReaction>(null);
   // The last hint taken (its paw prints lead to what it names), and where the cat's head is (window points).
@@ -525,10 +532,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   const shownItem = shown ? heldItems.find((i) => i.id === shown) : undefined;
   const unread = Math.max(0, casebookCards.length - cluesRead);
-  const glass = { backgroundColor: theme.raised, borderColor: theme.rim };
-  // The top HUD band's height: under the status bar, one row of controls.
-  // The top band: at least one row of controls, taller when the case's line runs on (it's always shown in full).
-  const hudTop = Math.max(insets.top + 58, bandH ?? 0);
+  // The top rail's height: under the status bar, one row of things (hud/TopRail). It never changes: the case folds out over the room.
+  const hudTop = insets.top + railHeight(def.mode);
   // The game view (screen points): under the band, down to the ledge. The tools sit in its bottom corners,
   // the turn arrows halfway down it, whatever the photo inside it is doing.
   const viewBottom = ledgeTop ?? windowHeight - 112;
@@ -568,6 +573,16 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (uvOn && item && isUvLight(item)) {
       setShown(null);
       uvOff();
+      return;
+    }
+    // A fold-in page is worked by hand: a tap opens it on its own sheet, to be folded.
+    if (item?.controls?.some((c) => c.id === "folded")) {
+      feedback.tick();
+      setShown(null);
+      void act({ type: "set_control", target: id, control: "folded", value: true }).then((result) => {
+        setReveal(revealOf(def, result));
+        take(result, "room", true);
+      });
       return;
     }
     // The cipher wheel is worked in its own close-up: a tap opens it.
@@ -638,6 +653,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (onto) {
       feedback.press();
       const result = await act({ type: "combine", items: [itemId, onto.id] });
+      // A pencil on a notepad, a red lens on a printed card (either way round): read on its own sheet.
+      setReveal(revealOf(def, result));
       take(result, "room");
       // Into what they made, once the tray has laid it out (else where the other one was).
       const made = result?.effects.find((e) => e.do === "grant");
@@ -736,6 +753,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         style={[styles.view, { top: hudTop, bottom: windowHeight - viewBottom }]}
         onLayout={measureView}
       >
+        {ghost && localFrame && sources.kind === "ready" && sources.sources[ghost.view] !== undefined ? (
+          <TurnGhost key={`ghost-${ghost.id}`} source={sources.sources[ghost.view]} cacheKey={photoKey(ghost.view)} frame={localFrame} dir={ghost.dir}
+            darkness={V2.torch.darkness[def.mode]} onDone={() => setGhost(null)} />
+        ) : null}
         {source ? (
           <Stage
             key={view}
@@ -764,66 +785,48 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         ) : null}
       </View>
 
-      <View
-        style={[styles.top, styles.band, { minHeight: insets.top + 58, paddingTop: insets.top + ref.space.xs, paddingBottom: ref.space.xs, backgroundColor: theme.ground, borderBottomColor: tint(theme.ink, 0.12) }]}
-        pointerEvents="box-none"
-        onLayout={(e) => setBandH(e.nativeEvent.layout.height)}
-      >
-        <Pressable onPress={onExit} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={[styles.glass, glass]} testID="v2-back">
-          <ArrowLeftIcon size={20} weight="bold" color={theme.ink} />
-        </Pressable>
-        {/* The case: a label in the mode's display face over the whole objective. */}
-        <View accessible accessibilityLabel={`Objective: ${def.objective}`} style={styles.objective} testID="v2-objective">
-          <Text style={[styles.caseLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>The case</Text>
-          <Text style={[styles.objectiveText, { color: theme.ink }]}>{def.objective}</Text>
-          {def.mode === "paranormal" && progress.total > 0 ? (
-            // The presence answers each step the player takes toward the ritual; at the end it is gone.
-            <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
-          ) : null}
-        </View>
-        <Pressable
-          onPress={() => { setCasebookFresh(unread); setCasebook(true); setCluesRead(casebookCards.length); }}
-          accessibilityRole="button"
-          accessibilityLabel={unread ? `Casebook, ${unread} new` : "Casebook"}
-          hitSlop={8}
-          style={[styles.glass, glass]}
-          testID="v2-casebook-open"
-        >
-          <NotebookIcon size={21} weight="bold" color={theme.ink} />
-          {unread ? (
-            <View style={[styles.badge, { backgroundColor: theme.accent }]} testID="v2-casebook-badge">
-              <Text style={[styles.badgeText, { color: theme.accentInk }]}>{unread}</Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
+      {/* The rail over the room: the way back (a brass key tab), the case (a slip, a tag, a plate), the casebook (a little book). */}
+      <TopRail
+        objective={def.objective}
+        unread={unread}
+        onBack={onExit}
+        onCasebook={() => { setCasebookFresh(unread); setCasebook(true); setCluesRead(casebookCards.length); }}
+        below={def.mode === "paranormal" && progress.total > 0 ? (
+          // The presence answers each step the player takes toward the ritual; at the end it is gone.
+          <PresenceMeter presence={{ found: progress.solved, total: progress.total }} gone={completed} />
+        ) : undefined}
+      />
 
       {photos > 1 && !open ? (
         <>
-          <Pressable
-            onPress={() => { feedback.tick(); setTurnDir(-1); setView((v) => (v - 1 + photos) % photos); }}
+          <Press
+            onPress={() => { setTurnDir(-1); setView((v) => (v - 1 + photos) % photos); }}
+            cue="tick"
+            scale={0.86}
             accessibilityRole="button"
             accessibilityLabel={`Previous view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-prev"
             style={[styles.edge, styles.edgeLeft, { top: middle - 26, marginTop: 0 }]}
           >
-            <Chevron Icon={CaretLeftIcon} />
-          </Pressable>
-          <Pressable
-            onPress={() => { feedback.tick(); setTurnDir(1); setView((v) => (v + 1) % photos); }}
+            <TurnArrow dir={-1} />
+          </Press>
+          <Press
+            onPress={() => { setTurnDir(1); setView((v) => (v + 1) % photos); }}
+            cue="tick"
+            scale={0.86}
             accessibilityRole="button"
             accessibilityLabel={`Next view (${view + 1} of ${photos})`}
             hitSlop={12}
             testID="v2-next"
             style={[styles.edge, styles.edgeRight, { top: middle - 26, marginTop: 0 }]}
           >
-            <Chevron Icon={CaretRightIcon} />
-          </Pressable>
+            <TurnArrow dir={1} />
+          </Press>
         </>
       ) : null}
       <View style={[styles.toasts, { top: hudTop + ref.space.sm }]} pointerEvents="none">
-        {toasts.length ? <Toast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
+        {toasts.length ? <SlipToast key={`${toasts.length}-${toasts[0]}`} text={toasts[0]} onHide={() => setToasts((t) => t.slice(1))} /> : null}
       </View>
 
 
@@ -858,28 +861,24 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           {shownItem && !carrying ? (
             <View style={styles.overTools} pointerEvents="box-none">
               {shownItem ? (
-                <View style={[styles.itemCard, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID="v2-item-card">
-                  <View style={[styles.itemGlyph, { backgroundColor: theme.raised }]}>
-                    <ItemIcon item={shownItem} size={34} />
-                  </View>
-                  <View style={styles.itemText}>
-                    <Text style={[styles.caseLabel, styles.itemLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>{HELD_LABEL[def.mode]}</Text>
-                    <Text style={[ref.type.headline, { color: theme.ink }]}>{capitalise(shownItem.name)}</Text>
-                    <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
-                      {shownCard?.text || (isUvLight(shownItem)
-                        ? "Drag it onto your flashlight to switch to UV."
-                        : shownItem.kind === "half" ? "Drag it onto its other half to fit them together." : "Drag it onto something to use it. Hold to look closer.")}
-                    </Text>
-                  </View>
-                </View>
+                <ItemTag
+                  item={shownItem}
+                  label={HELD_LABEL[def.mode]}
+                  name={capitalise(shownItem.name)}
+                  text={shownCard?.text || (isUvLight(shownItem)
+                    ? "Drag it onto your flashlight to switch to UV."
+                    : shownItem.kind === "half" ? "Drag it onto its other half to fit them together." : "Drag it onto something to use it. Hold to look closer.")}
+                />
               ) : null}
             </View>
           ) : null}
           <View
-            style={[styles.footRow, styles.ledge, { backgroundColor: theme.ground, borderTopColor: tint(theme.ink, 0.12), paddingBottom: insets.bottom + ref.space.sm }]}
+            style={[styles.footRow, styles.ledge, { paddingBottom: insets.bottom + ref.space.sm }]}
             pointerEvents="box-none"
             onLayout={(e) => setLedgeTop(windowHeight - e.nativeEvent.layout.height)}
           >
+            {/* The shelf under the room: the mode's wood, a brass lip, the felt-lined wells of the tray let into it. */}
+            <Shelf height={V2.tray.height + SHELF_LIP + ref.space.sm * 2 + insets.bottom} />
             <View style={styles.trayWrap}>{tray}</View>
           </View>
           {/* The cat, peering over the ledge with its paws on its top edge, eyes on your light (over the close-up's
@@ -908,6 +907,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           tray={tray}
           cat={cat}
           item={open.kind === "item" ? itemById(open.id) : undefined}
+          // Where the thing stands in the photo (root points): the close-up's table grows out of it.
+          from={targetObject && frame && targetObject.photo_index === view
+            ? { x: frame.x - root.x + (targetObject.box.x + targetObject.box.w / 2) * frame.width, y: frame.y - root.y + (targetObject.box.y + targetObject.box.h / 2) * frame.height }
+            : null}
           busy={busy}
           cooldown={cooldown}
           finale={targetObject?.exit ? def.finale : undefined}
@@ -970,8 +973,10 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         />
       ) : null}
 
+      {brief.open && !completed ? <Darkness /> : null}
+      {lightsOn && !completed ? <LightsOn top={hudTop} bottom={viewBottom} onDone={() => setLightsOn(false)} /> : null}
       {brief.open && !completed ? (
-        <Brief def={def} roomId={roomId} onBegin={brief.dismiss} photo={sources.kind === "ready" && sources.sources[0] !== undefined ? { source: sources.sources[0], cacheKey: photoKey(0) } : undefined} />
+        <Brief def={def} roomId={roomId} onBegin={() => { setLightsOn(true); brief.dismiss(); }} photo={sources.kind === "ready" && sources.sources[0] !== undefined ? { source: sources.sources[0], cacheKey: photoKey(0) } : undefined} />
       ) : null}
 
       {completed ? (
@@ -1005,49 +1010,24 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { alignItems: "center", justifyContent: "center", gap: ref.space.lg },
   back: { minHeight: ref.hit.min, justifyContent: "center" },
-  top: { position: "absolute", left: 0, right: 0, top: 0, flexDirection: "row", alignItems: "center", gap: ref.space.sm, paddingHorizontal: ref.space.lg },
-  band: { borderBottomWidth: 1, zIndex: 20 },
   view: { position: "absolute", left: 0, right: 0, overflow: "hidden" },
-  glass: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
-  objective: { flex: 1, minHeight: 42, paddingHorizontal: ref.space.sm, justifyContent: "center", gap: 1 },
-  caseLabel: { fontSize: 10, lineHeight: 12, letterSpacing: 1.6, textTransform: "uppercase", textAlign: "center" },
-  objectiveText: { ...ref.type.meta, textAlign: "center" },
-  badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
-  badgeText: { fontSize: 11, lineHeight: 13, fontWeight: "700" },
   toasts: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   edge: {
     position: "absolute", top: "50%", marginTop: -26, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center",
     zIndex: 10,
   },
-  chevronShade: { position: "absolute", transform: [{ translateX: 1 }, { translateY: 2 }] },
   edgeLeft: { left: ref.space.sm },
   edgeRight: { right: ref.space.sm },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0, gap: ref.space.sm },
   footRow: { flexDirection: "row", alignItems: "center", gap: ref.space.sm },
-  ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm, borderTopWidth: 1 },
+  ledge: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm + SHELF_LIP },
   // Just right of the magnifier (bottom-left of the photo), clear of it.
   // Above everything in the foot (zIndex, and elevation on Android), its bottom on the ledge's top edge.
   cat: { position: "absolute", left: ref.space.sm + TOOL + ref.space.sm, zIndex: 20, elevation: 20 },
   trayWrap: { flex: 1 },
-  itemCard: {
-    alignSelf: "center", maxWidth: 360, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: ref.space.sm + 2,
-    flexDirection: "row", alignItems: "center", gap: ref.space.sm, marginHorizontal: ref.space.lg,
-  },
-  itemGlyph: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  itemText: { flexShrink: 1, gap: 1 },
-  itemLabel: { textAlign: "left" },
   // Over the flashlight while the UV light is on (the art itself takes no touches).
   flashSwitch: { position: "absolute", width: TOOL, height: TOOL, zIndex: 9 },
   // The item card stands on the tools' row (the magnifier, the cat, the flashlight), never over it.
   overTools: { gap: ref.space.sm, paddingBottom: TOOL + ref.space.sm * 2 },
 });
 
-/** A turn arrow: a clear, thick chevron, white over a soft dark copy so it reads on any photo. */
-function Chevron({ Icon }: { Icon: typeof CaretLeftIcon }) {
-  return (
-    <>
-      <Icon size={42} weight="bold" color="rgba(0,0,0,0.55)" style={styles.chevronShade} />
-      <Icon size={42} weight="bold" color="#FFFFFF" />
-    </>
-  );
-}

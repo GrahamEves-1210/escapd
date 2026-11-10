@@ -3,18 +3,27 @@
 // an item onto something in the room or the close-up uses it there, onto
 // another held item fits them together, the UV flashlight onto the flashlight
 // switches the light over. A tap says what it is (on the UV flashlight while
-// it's on, a tap switches back to the normal light); a hold examines it. Picked
+// it's on, a tap switches back to the normal light); a hold examines it (once
+// it's let go without having moved: a press that pauses and then drags is a
+// drag, never a look, so dropping one item on its neighbour is reliable). Picked
 // up, the item itself lifts out of its slot (drawn by the player, CarriedItem,
 // above everything) and its slot shows a faint ghost until it's back.
+//
+// The tray is a thing, not a row of tiles: felt-lined wells let into the
+// shelf (hud/Shelf.tsx TrayWells, drawn once), each item lying in its own
+// with a soft shadow under it. The one tapped lifts a little in a ring of
+// brass; the UV light in use glows violet in its well.
 import { createElement, type ComponentRef } from "react";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
-import { GestureDetector, useCompetingGestures, useLongPressGesture, usePanGesture, useTapGesture } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { GestureDetector, useCompetingGestures, useLongPressGesture, usePanGesture, useSimultaneousGestures, useTapGesture } from "react-native-gesture-handler";
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { ItemDef } from "@/engine/v2";
-import { useModeTheme } from "@/game/mode";
+import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
 import { CarryBody, type Carry } from "./Carry";
+import { BRASS, GroundShadow } from "./hud/materials";
+import { TrayWells } from "./hud/Shelf";
 import { ICON_FILL, ItemIcons, type ItemGlyph } from "./icons/ItemIcons";
 
 /**
@@ -31,6 +40,13 @@ export function itemIcon(item: Pick<ItemDef, "name" | "kind" | "archetype"> & { 
   if (item.kind === "half" || /\((left|right)\)|\bhalf\b/.test(n)) return /right/.test(n) ? I.tornRight : I.tornLeft;
   // Something pieced together: a whole page, taped across its tear, never the note its halves' paper might share.
   if (item.kind === "assembled" || /^(taped|mended)\b/.test(n)) return I.taped;
+  // The things worked by hand on a sheet of their own (tools/Reveal.tsx), before anything a looser word would catch
+  // ("Pencil stub" is a pencil, never a ticket stub; "Printed card" is the jumbled card, never a note).
+  if (/pencil/.test(n)) return I.pencil;
+  if (/\blens\b|\bgel\b/.test(n)) return I.lens;
+  if (/note ?pad|\bpad\b/.test(n)) return I.notepad;
+  if (/printed card/.test(n)) return I.printed;
+  if (/fold-?in/.test(n)) return I.foldIn;
   if (/ticket|stub|\bpass\b/.test(n)) return I.ticket;
   if (/letter|envelope|telegram|\bmail\b/.test(n)) return I.letter;
   if (/photo|picture|postcard|polaroid|snapshot|portrait/.test(n)) return I.photo;
@@ -60,6 +76,20 @@ export const isUvLight = (item: Pick<ItemDef, "archetype" | "variant">) => item.
 
 const MAX = 52;
 const GAP = 8;
+
+/**
+ * Telling a drag from a hold. A drag starts once the finger has moved `drag` points, however long it rested
+ * first. A hold is `ms` without moving that far; it examines the item only when the finger lifts without a
+ * drag having started (holdEnds), and it isn't called off by movement until `slack` points, well past where
+ * the drag takes over.
+ */
+export const HOLD = { ms: 450, drag: 8, slack: 28 } as const;
+
+/** What a hold comes to when it ends: a look closer, unless the item was dragged meanwhile (or it never was a hold). */
+export function holdEnds(held: boolean, dragged: boolean): "examine" | "nothing" {
+  "worklet";
+  return held && !dragged ? "examine" : "nothing";
+}
 
 /** How far above the finger a carried item rides (its centre), by its size: high enough to be seen past the finger. */
 export const holdFor = (size: number) => size * 0.6 + 10;
@@ -94,6 +124,7 @@ export function ItemTray({ items, shown, equipped, carry, width, onTap, onExamin
   const size = Math.max(28, Math.min(MAX, Math.floor((room - GAP * Math.max(0, count - 1)) / Math.max(1, count))));
   return (
     <View style={[styles.row, { gap: GAP, minHeight: MAX }]} testID="v2-tray">
+      <TrayWells count={count} size={size} gap={GAP} />
       {items.map((item) => (
         <TrayIcon
           key={item.id}
@@ -127,15 +158,23 @@ function TrayIcon({ item, size, on, uv, carry, onTap, onExamine, onDragStart, on
   const { grab, move, release, tx, ty, id: carried } = carry;
   const dragging = useSharedValue(false);
   const dropped = useSharedValue(false);
+  // This touch: held still long enough to be a hold, and whether it became a drag (both reset as a finger lands).
+  const held = useSharedValue(false);
+  const dragged = useSharedValue(false);
+  // Held: the item lifts in its well (let go, it's looked at; moved, it comes away in the hand).
+  const lift = useSharedValue(0);
+  const feedback = useFeedback();
   const hold = holdFor(size);
   const pan = usePanGesture({
-    minDistance: 8,
+    minDistance: HOLD.drag,
     maxPointers: 1,
     testID: `v2-item-pan-${id}`,
     onActivate: (e) => {
       "worklet";
       dragging.set(true);
+      dragged.set(true);
       dropped.set(false);
+      lift.set(withTiming(0, { duration: 90 }));
       // Out of its slot (where the touch landed in it tells where the slot is), up above the finger.
       grab(id, e.absoluteX - e.x + size / 2, e.absoluteY - e.y + size / 2, e.absoluteX, e.absoluteY, 0, -hold);
       scheduleOnRN(onDragStart, id, size);
@@ -167,13 +206,32 @@ function TrayIcon({ item, size, on, uv, carry, onTap, onExamine, onDragStart, on
     },
   });
   const press = useLongPressGesture({
-    minDuration: 450,
+    minDuration: HOLD.ms,
+    maxDistance: HOLD.slack,
+    testID: `v2-item-hold-${id}`,
+    onBegin: () => {
+      "worklet";
+      held.set(false);
+      dragged.set(false);
+    },
     onActivate: () => {
       "worklet";
-      scheduleOnRN(onExamine, id);
+      if (dragged.get()) return;
+      held.set(true);
+      lift.set(withSpring(1, { mass: 0.5, damping: 10, stiffness: 320 }));
+      scheduleOnRN(feedback.tick);
+    },
+    onFinalize: () => {
+      "worklet";
+      if (holdEnds(held.get(), dragged.get()) === "examine") scheduleOnRN(onExamine, id);
+      held.set(false);
+      lift.set(withTiming(0, { duration: 120 }));
     },
   });
-  const gesture = useCompetingGestures(pan, press, tap);
+  // The drag and the hold run side by side (a hold never calls a drag off); a tap is whichever of them didn't happen.
+  const moving = useSimultaneousGestures(pan, press);
+  const gesture = useCompetingGestures(moving, tap);
+  const lifted = useAnimatedStyle(() => ({ transform: [{ translateY: -3 * lift.get() }, { scale: 1 + 0.1 * lift.get() }] }));
   // While it's in hand (or on its way back) its slot holds a faint ghost of it.
   const ghost = useAnimatedStyle(() => ({ opacity: carried.get() === id ? 0.22 : 1 }));
   return (
@@ -193,48 +251,49 @@ function TrayIcon({ item, size, on, uv, carry, onTap, onExamine, onDragStart, on
         style={ghost}
       >
         <View ref={register} collapsable={false}>
-          <ItemFace item={item} size={size} on={on} uv={uv} />
+          <Animated.View style={lifted}>
+            <ItemFace item={item} size={size} on={on} uv={uv} />
+          </Animated.View>
         </View>
       </Animated.View>
     </GestureDetector>
   );
 }
 
-/** The UV light in use: its slot lit violet, glowing, a lit pip in its corner. */
+/** The UV light in use: its well lit violet, glowing, a lit pip in its corner. */
 const UV_ON = { tile: "rgba(126,84,255,0.38)", edge: "rgb(196,168,255)", glow: "rgb(150,110,255)", pip: "rgb(236,226,255)" };
 
-/** An item as the tray draws it: its icon on a raised tile (the UV light in use: lit violet, its beam out). */
-function ItemFace({ item, size, on, uv }: { item: ItemDef; size: number; on: boolean; uv: boolean }) {
-  const theme = useModeTheme();
+/**
+ * An item as the tray draws it: the thing itself lying in its well, a soft shadow under it. Tapped (`on`), it
+ * lifts a little in a ring of brass; the UV light in use: its well lit violet, its beam out. `loose`: in hand,
+ * out of its well (no ring, no well's shadow).
+ */
+function ItemFace({ item, size, on, uv, loose = false }: { item: ItemDef; size: number; on: boolean; uv: boolean; loose?: boolean }) {
+  const r = Math.min(10, size * 0.2);
   return (
-    <View
-      testID={uv ? "v2-item-in-use" : undefined}
-      style={[
-        styles.icon,
-        {
-          width: size, height: size, borderRadius: size * 0.28,
-          backgroundColor: uv ? UV_ON.tile : theme.raised,
-          borderColor: on ? (uv ? UV_ON.edge : theme.ink) : theme.rim,
-          borderWidth: on ? 2 : StyleSheet.hairlineWidth,
-        },
-        uv ? { shadowColor: UV_ON.glow, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 } : null,
-      ]}
-    >
-      <ItemIcon item={item} size={size * ICON_FILL} lit={uv} />
+    <View testID={uv ? "v2-item-in-use" : undefined} style={[styles.icon, { width: size, height: size }]}>
+      {uv ? (
+        <View
+          style={[
+            styles.ring,
+            { borderRadius: r, backgroundColor: UV_ON.tile, borderColor: UV_ON.edge, shadowColor: UV_ON.glow, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 },
+          ]}
+        />
+      ) : on && !loose ? (
+        <View style={[styles.ring, { borderRadius: r, borderColor: BRASS.sheen, backgroundColor: "rgba(247, 230, 184, 0.12)" }]} />
+      ) : null}
+      {loose ? null : <GroundShadow width={size * 0.66} height={size * 0.2} style={{ bottom: size * 0.07 }} />}
+      <View style={on && !loose && !uv ? { transform: [{ translateY: -size * 0.06 }, { scale: 1.06 }] } : null}>
+        <ItemIcon item={item} size={size * ICON_FILL} lit={uv} />
+      </View>
       {uv ? <View style={[styles.pip, { backgroundColor: UV_ON.pip, shadowColor: UV_ON.glow }]} /> : null}
     </View>
   );
 }
 
-/** An empty hotbar slot: recessed, waiting. */
+/** An empty hotbar slot: its well, waiting (the wells are drawn behind the row). */
 function EmptySlot({ size }: { size: number }) {
-  const theme = useModeTheme();
-  return (
-    <View
-      accessible={false}
-      style={[styles.icon, { width: size, height: size, borderRadius: size * 0.28, backgroundColor: theme.ground, borderColor: theme.rim, borderWidth: StyleSheet.hairlineWidth }]}
-    />
-  );
+  return <View accessible={false} style={{ width: size, height: size }} />;
 }
 
 /** The item in hand, lifted out of its slot: drawn over everything, following the carry. `origin`: the player's place in the window. */
@@ -242,7 +301,7 @@ export function CarriedItem({ item, size, carry, origin, uv }: { item: ItemDef; 
   return (
     <CarryBody carry={carry} size={size} origin={origin} style={styles.carried} testID="v2-drag">
       {/* Drawn as its slot draws it, so it settles back in without a change. */}
-      <ItemFace item={item} size={size} on={uv} uv={uv} />
+      <ItemFace item={item} size={size} on={uv} uv={uv} loose={!uv} />
     </CarryBody>
   );
 }
@@ -250,6 +309,7 @@ export function CarriedItem({ item, size, carry, origin, uv }: { item: ItemDef; 
 const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "center", alignItems: "center", flexWrap: "nowrap" },
   icon: { alignItems: "center", justifyContent: "center" },
+  ring: { ...StyleSheet.absoluteFill, borderWidth: 2 },
   pip: {
     position: "absolute", top: 4, right: 4, width: 6, height: 6, borderRadius: 3,
     shadowOpacity: 1, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },

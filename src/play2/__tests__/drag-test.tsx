@@ -1,8 +1,9 @@
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { createGestureController } from "react-native-gesture-handler/jest-utils";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import type { ActionResult, ItemDef } from "@/engine/v2";
 import { CARRY, dropOutcome, tiltFor, useCarry } from "../Carry";
-import { ItemTray } from "../ItemTray";
+import { HOLD, holdEnds, ItemTray } from "../ItemTray";
 import { lensPoint, Magnifier, TOOL } from "../Tools";
 
 const items: ItemDef[] = [
@@ -56,6 +57,61 @@ describe("the tray", () => {
     expect(onExamine).toHaveBeenCalledWith("half_a");
     expect(screen.queryByText("Fit together")).toBeNull();
     expect(screen.getByTestId("v2-item-uv").props.accessibilityHint).toMatch(/onto your flashlight/);
+  });
+});
+
+describe("a hold and a drag on a held item", () => {
+  it("a hold looks closer only when it ends without a drag: a press that pauses, then drags onto its neighbour, is a drag", () => {
+    expect(holdEnds(true, false)).toBe("examine");
+    expect(holdEnds(true, true)).toBe("nothing");
+    expect(holdEnds(false, true)).toBe("nothing");
+    expect(holdEnds(false, false)).toBe("nothing");
+  });
+
+  it("lets the drag take over well before movement would call the hold off", () => {
+    // A neighbouring slot is 60 points away: the drag has long begun by then, and the hold hasn't been cancelled into a look.
+    expect(HOLD.drag).toBeLessThan(HOLD.slack);
+    expect(HOLD.slack).toBeLessThan(60);
+    expect(HOLD.ms).toBeGreaterThanOrEqual(400);
+  });
+
+  it("drops a held item where it's let go after a pause, without examining it", async () => {
+    const onExamine = jest.fn();
+    const onDrop = jest.fn();
+    const onDragStart = jest.fn();
+    await render(<GestureHandlerRootView><Tray onExamine={onExamine} onDrop={onDrop} onDragStart={onDragStart} /></GestureHandlerRootView>);
+    // The finger lands and rests past the hold's time, then creeps across to the next slot and lets go.
+    const hold = createGestureController("v2-item-hold-half_a");
+    const pan = createGestureController("v2-item-pan-half_a");
+    hold.begin();
+    pan.begin({ x: 20, y: 20, absoluteX: 40, absoluteY: 800 });
+    hold.activate();
+    pan.activate({ x: 30, y: 20, absoluteX: 50, absoluteY: 800 });
+    pan.update({ x: 80, y: 20, absoluteX: 100, absoluteY: 800 });
+    pan.end({ x: 80, y: 20, absoluteX: 100, absoluteY: 800 });
+    hold.end();
+    // The callbacks come back from the UI thread a moment later.
+    await act(async () => {});
+    expect(onDragStart).toHaveBeenCalledWith("half_a", expect.any(Number));
+    expect(onDrop).toHaveBeenCalledTimes(1);
+    expect(onDrop.mock.calls[0][0]).toBe("half_a");
+    expect(onExamine).not.toHaveBeenCalled();
+  });
+
+  it("examines a held item that's held still and let go", async () => {
+    const onExamine = jest.fn();
+    const onDrop = jest.fn();
+    await render(<GestureHandlerRootView><Tray onExamine={onExamine} onDrop={onDrop} /></GestureHandlerRootView>);
+    const hold = createGestureController("v2-item-hold-half_b");
+    hold.begin();
+    hold.activate();
+    // Nothing yet: it's looked at when it's let go.
+    await act(async () => {});
+    expect(onExamine).not.toHaveBeenCalled();
+    hold.end();
+    await act(async () => {});
+    expect(onExamine).toHaveBeenCalledWith("half_b");
+    expect(onDrop).not.toHaveBeenCalled();
   });
 });
 

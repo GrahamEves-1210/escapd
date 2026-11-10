@@ -7,11 +7,20 @@
 //   mirror: a scrap in mirror writing, dropped on the room's mirror. The scrap is held above an arched
 //           wall mirror; drag it down to the glass and its reflection comes clear, reading the right
 //           way round, in the glass's silvery tint.
+//   rub:    a spiral notepad whose top sheet was torn off. Rub the pencil over the page: graphite goes
+//           down where the finger rubs and the dents of what was written show through it pale
+//           (RubSheet.tsx).
+//   lens:   a printed card, a jumble of red over a pale blue-green line. Slide the red gel in its brass
+//           ring across it: the red is gone inside the gel and the line reads dark (LensSheet.tsx).
+//   fold:   a typed page, each line of the message cut in two either side of filler. Drag the right of
+//           it in until B meets A: the middle pleats away and the lines read across the join
+//           (FoldSheet.tsx).
 //
 // The card is already in the casebook when this opens (the engine showed it): this is the moment of
 // reading it. Under reduced motion, or for a screen reader (activate), it reads at once. Paper from
-// the letters (Paper.tsx: grain, a fold, a torn edge), writing in the hand face, line art inked like
-// the journal's; the room dimmed in the mode's ground behind.
+// the letters (Paper.tsx: grain, a fold, a torn edge) or drawn the same way on a canvas (ink.tsx),
+// writing in the hand face (a typewriter's for the printed page), line art inked like the journal's;
+// the room dimmed in the mode's ground behind.
 import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
@@ -22,15 +31,31 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { scheduleOnRN } from "react-native-worklets";
 import { useFeedback } from "@/game/feedback";
+import { CloseStud } from "../hud/Table";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { alpha, mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
 import { Paper } from "../letters/Paper";
 
-import { handLayout, HOLD_AT, isShort, progressFor, REACH, type HandWord, type RevealKind, splitCard } from "./revealText";
+import { FoldSheet } from "./FoldSheet";
+import { LensSheet } from "./LensSheet";
+import { RubSheet } from "./RubSheet";
+import type { SheetProps } from "./sheet";
+import { warmFaces } from "./ink";
+import { handLayout, HOLD_AT, isShort, progressFor, REACH, revealOf as findReveal, sizeFor, SYMBOL, type HandWord, type RevealKind, splitCard } from "./revealText";
 
-export { revealOf, type RevealKind } from "./revealText";
+export type { RevealKind } from "./revealText";
+
+/**
+ * The card a result showed that reads with a tool, as the sheet opens it (revealText.ts); asked after
+ * every action, so the first ask also starts reading the drawn sheets' faces: by the time one opens,
+ * its writing is there.
+ */
+export function revealOf(...args: Parameters<typeof findReveal>): ReturnType<typeof findReveal> {
+  warmFaces();
+  return findReveal(...args);
+}
 
 /** The pen's ink: the line art's outlines. */
 const INK = "#1E1418";
@@ -81,7 +106,10 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   const finish = () => {
     if (done) return;
     setDone(true);
-    feedback.paper();
+    // The lens settles on the line with a clean click; the fold creases; paper for the rest.
+    if (kind === "lens") feedback.snap();
+    else if (kind === "fold") feedback.paperFold();
+    else feedback.paper();
   };
   useEffect(() => {
     if (reducedMotion) shown.set(1);
@@ -119,12 +147,12 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   };
 
   const pageStyle = useAnimatedStyle(() => ({ transform: [{ translateY: drag.get() }] }));
-  const hint = kind === "heat" ? "Hold it up to the lamp's warmth" : "Hold it up to the mirror";
+  const hint = HINT[kind];
   const page = {
     style: pageStyle,
     accessible: true,
     accessibilityRole: "button" as const,
-    accessibilityLabel: done ? `${title}: ${text}` : kind === "heat" ? `${title}: hold it to the warm bulb to read it` : `${title}: hold it to the mirror to read it`,
+    accessibilityLabel: done ? `${title}: ${text}` : `${title}: ${HOW[kind]}`,
     accessibilityActions: [{ name: "activate" }],
     onAccessibilityAction: readNow,
     testID: "v2-reveal-page",
@@ -171,6 +199,11 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
           </GestureDetector>
           {caption}
         </View>
+      ) : kind === "rub" || kind === "lens" || kind === "fold" ? (
+        <View style={[styles.scene, { width: screenW }]} pointerEvents="box-none">
+          <Drawn kind={kind} text={text} title={title} width={screenW} height={screenH} shown={shown} done={done} reduced={reducedMotion} onRead={finish} feedback={feedback} ground={theme.ground} labels={{ label: page.accessibilityLabel }} />
+          {caption}
+        </View>
       ) : (
         <View style={[styles.scene, { width: screenW }]} pointerEvents="box-none">
           <GestureDetector gesture={pan}>
@@ -187,22 +220,34 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
           {caption}
         </View>
       )}
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={done ? "Done" : "Put it away"}
-        hitSlop={12}
-        style={({ pressed }) => [styles.close, { top: insets.top + 14, backgroundColor: alpha(theme.raised, 0.9), borderColor: theme.rim, opacity: pressed ? 0.7 : 1 }]}
-        testID="v2-reveal-close"
-      >
-        <InkCross color={theme.ink} />
-      </Pressable>
+      {/* The same brass stud that closes a close-up. */}
+      <View style={[styles.close, { top: insets.top + 14 }]}>
+        <CloseStud onPress={onClose} label={done ? "Done" : "Put it away"} testID="v2-reveal-close" />
+      </View>
     </View>
   );
 }
 
-/** A short line (a digit, a symbol) is written large, as a person would; a note at a reading size. */
-const sizeFor = (text: string) => (isShort(text) ? 46 : text.length > 70 ? 20 : 22);
+/** The tiny hint under each object until it's read, and how the screen reader is told to read it. */
+const HINT: Record<RevealKind, string> = {
+  heat: "Hold it up to the lamp's warmth",
+  mirror: "Hold it up to the mirror",
+  rub: "Rub the pencil over the page",
+  lens: "Slide the red lens over the card",
+  fold: "Fold the page so A meets B",
+};
+const HOW: Record<RevealKind, string> = {
+  heat: "hold it to the warm bulb to read it",
+  mirror: "hold it to the mirror to read it",
+  rub: "rub the pencil over the page to read it",
+  lens: "slide the red lens over it to read it",
+  fold: "fold it so its two strips meet to read it",
+};
+
+/** The sheets drawn on a canvas, each its own object and gesture. */
+function Drawn({ kind, ...props }: SheetProps & { kind: "rub" | "lens" | "fold" }) {
+  return kind === "rub" ? <RubSheet {...props} /> : kind === "lens" ? <LensSheet {...props} /> : <FoldSheet {...props} />;
+}
 
 /** Words laid out as written: each its own tilt and lift, wrapping like a line of handwriting. */
 function Hand({ lines, font, size, color, word }: { lines: HandWord[][]; font: string; size: number; color: string; word?: (w: HandWord, style: TextStyle, key: string) => ReactNode }) {
@@ -225,19 +270,6 @@ function Hand({ lines, font, size, color, word }: { lines: HandWord[][]; font: s
     </View>
   );
 }
-
-/**
- * The door's wheel symbols, drawn by hand (the hand face has none of its own): a 24-point box each,
- * the outline a little off true, as a pen would fill it in.
- */
-const SYMBOL: Record<string, string> = {
-  "▲": "M12.3 3.2 C15.4 8.6 18.6 14.4 21.4 20.2 C15.4 20.9 8.6 20.4 2.8 20.8 C5.8 14.8 9 8.8 12.3 3.2 Z",
-  "●": "M12 3.4 C17.2 3.1 20.9 7.2 20.7 12.3 C20.5 17.4 16.6 21 11.6 20.7 C6.7 20.5 3.1 16.7 3.3 11.8 C3.5 7 7.1 3.6 12 3.4 Z",
-  "◆": "M12.1 2.6 C15 5.8 18 9 21 12.1 C18 15.3 14.9 18.5 11.8 21.5 C8.9 18.3 5.9 15.1 3 11.9 C6 8.8 9.1 5.7 12.1 2.6 Z",
-  "■": "M4.2 4.5 C9.4 3.9 14.8 4.3 19.9 4 C20.3 9.4 19.9 14.7 20.2 19.9 C14.9 20.4 9.3 19.8 3.9 20.2 C4.3 15 3.7 9.7 4.2 4.5 Z",
-  "★": "M12 2.8 L14.6 9.2 L21.3 9.5 L16.1 13.8 L17.9 20.6 L12.1 16.8 L6.2 20.7 L8 13.9 L2.8 9.6 L9.5 9.1 Z",
-  "✚": "M9.4 3.2 C11.1 3 12.9 3.1 14.6 3.2 L14.5 9.4 L20.8 9.5 C21 11.2 20.9 12.9 20.8 14.6 L14.6 14.5 L14.7 20.8 C12.9 21 11.1 20.9 9.4 20.8 L9.5 14.6 L3.2 14.7 C3 12.9 3.1 11.1 3.2 9.4 L9.5 9.5 Z",
-};
 
 /** One drawn symbol, sitting on the line like a written character. */
 function Glyph({ d, size, color, style }: { d: string; size: number; color: string; style?: TextStyle }) {
@@ -570,16 +602,6 @@ function Mirror({ width, text, shown, near, children }: { width: number; text: s
   );
 }
 
-/** The close mark: an × in two quick pen strokes. */
-function InkCross({ color }: { color: string }) {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16">
-      <Path d="M3 3.4 C6 6.2 9.6 9.8 13 12.8" stroke={color} strokeWidth={2} strokeLinecap="round" fill="none" />
-      <Path d="M12.6 3 C9.6 6.4 6.6 9.4 3.2 13" stroke={color} strokeWidth={2} strokeLinecap="round" fill="none" />
-    </Svg>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { alignItems: "center", justifyContent: "center", zIndex: 90 },
   scene: { alignItems: "center" },
@@ -602,5 +624,5 @@ const styles = StyleSheet.create({
   glass: { position: "absolute", overflow: "hidden", borderBottomLeftRadius: 3, borderBottomRightRadius: 3 },
   reflectWrap: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   caption: { marginTop: 22, paddingHorizontal: 40, minHeight: 44 },
-  close: { position: "absolute", right: 16, width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center", zIndex: 4 },
+  close: { position: "absolute", right: 16, zIndex: 4 },
 });

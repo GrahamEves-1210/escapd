@@ -268,7 +268,7 @@ Deno.test("planner: UV traces sit on the photo by a real object, and the torch t
     }
   }
   // UV is one tool among several now: some rooms have traces, most use something else.
-  assert(rooms >= 8 && rooms <= 30, `${rooms} of 54 rooms have UV traces`);
+  assert(rooms >= 3 && rooms <= 20, `${rooms} of 54 rooms have UV traces`);
 });
 
 // ---------------------------------------------------------------------------

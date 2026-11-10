@@ -92,6 +92,11 @@ export const ItemIcons = {
   box: make("box"),
   bottle: make("bottle"),
   watch: make("watch"),
+  pencil: make("pencil"),
+  lens: make("lens"),
+  notepad: make("notepad"),
+  printed: make("printed"),
+  foldIn: make("foldIn"),
 } satisfies Record<string, ItemGlyph>;
 
 /** What an icon in the tray draws at, as a share of its tile (the art leaves its own margin in its grid). */

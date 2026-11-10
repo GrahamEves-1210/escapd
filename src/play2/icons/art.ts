@@ -43,6 +43,13 @@ export const C = {
   glass: "#9CC9C1",
   glassDark: "#5F918B",
   spark: "#FFF6DC",
+  pencil: "#E2B23C",
+  pencilLight: "#F6DC94",
+  pencilDark: "#A9792A",
+  gel: "#D2374A",
+  gelLight: "#FF9AA5",
+  gelDark: "#8E1F30",
+  printBlue: "#3B6FB5",
 } as const;
 
 /** One drawn mark. `ink`: outlined in the house line (on top of any fill), gone over twice. */
@@ -87,7 +94,8 @@ const tape = (x: number, y: number, w: number, h: number, rot: number, fill: str
 
 export type IconName =
   | "key" | "note" | "letter" | "tornLeft" | "tornRight" | "taped" | "uvLight" | "uvLightOn" | "torch" | "photo" | "ticket"
-  | "map" | "scroll" | "ring" | "book" | "coin" | "matchbook" | "wheel" | "box" | "bottle" | "watch";
+  | "map" | "scroll" | "ring" | "book" | "coin" | "matchbook" | "wheel" | "box" | "bottle" | "watch"
+  | "pencil" | "lens" | "notepad" | "printed" | "foldIn";
 
 // A skeleton key, bow to the lower left, turned on the diagonal.
 const key: Shape[] = [
@@ -347,8 +355,85 @@ const watch: Shape[] = [
   { t: "circle", cx: 24, cy: 27, r: 1.3, fill: C.wax },
 ];
 
+// A soft pencil, worn down to a stub and chewed at the end: yellow paint, a brass ferrule, a pink rubber, a blunt lead.
+const pencil: Shape[] = [
+  g("translate(24 24) scale(1.16) translate(-24 -24) rotate(-42 24 24)", [
+    // The rubber, the ferrule, the barrel, the cut wood and the lead (pointing right).
+    path("M5.4 19.4 C4 19.6 3.4 21.4 3.4 24 C3.4 26.6 4 28.4 5.4 28.6 L9.6 28.6 L9.6 19.4 Z", { fill: C.rose, ink: true }),
+    { t: "rect", x: 9.2, y: 18.8, width: 5.4, height: 10.4, rx: 0.8, fill: C.brass, ink: true },
+    line("M11 19.6 L11 28.4 M12.9 19.6 L12.9 28.4", C.brassDark, 0.9, 0.8),
+    path("M14.4 19.2 L33.6 19.2 L33.6 28.8 L14.4 28.8 Z", { fill: C.pencil, ink: true }),
+    path("M14.6 22.4 L33.4 22.4", { stroke: C.pencilLight, w: 1.4 }),
+    path("M14.6 26.2 L33.4 26.2", { stroke: C.pencilDark, w: 1.1, o: 0.8 }),
+    // Chewed: a few bites out of the paint near the ferrule.
+    path("M16.6 19.4 L17.6 21 L18.8 19.4 M20.6 28.6 L21.6 27 L22.8 28.6 M24 19.4 L24.8 20.6 L25.8 19.4", { stroke: C.woodLight, w: 1.5 }),
+    path("M33.6 19.2 L42 22.6 L42 25.4 L33.6 28.8 C34.6 27.2 32.6 25.6 33.9 24 C32.6 22.4 34.6 20.8 33.6 19.2 Z", { fill: C.paper, ink: true }),
+    path("M40.6 22.2 L45 24 L40.6 25.8 Z", { fill: C.ink, ink: true, w: 1.2 }),
+  ]),
+];
+
+// A red lens: a round gel of red film in a card frame with a handle, a glint on it, what's behind it tinted.
+const lens: Shape[] = [
+  g("rotate(-14 24 24)", [
+    path("M20.8 36.4 L27.2 36.4 L26.6 45 C26.5 46.2 25.6 46.8 24 46.8 C22.4 46.8 21.5 46.2 21.4 45 Z", { fill: C.paper, ink: true }),
+    line("M22.8 38.4 L23 44.6", C.paperShade, 1.1),
+    { t: "circle", cx: 24, cy: 21.4, r: 16.6, fill: C.paper, ink: true },
+    { t: "circle", cx: 24, cy: 21.4, r: 12.2, fill: C.gel, ink: true },
+    path("M14.2 21 C14.4 16 17.6 12.4 22.2 11.4", { stroke: C.gelLight, w: 2.2, o: 0.9 }),
+    path("M30.6 29.6 C32.8 27.8 34 25.2 34.2 22.6", { stroke: C.gelDark, w: 1.6, o: 0.8 }),
+    line("M9.6 17 C10.6 13 13 9.6 16.6 7.6", C.paperLight, 1.4),
+    line("M35.4 32.6 C37.6 30.4 39 27.6 39.4 24.6", C.paperShade, 1.2),
+  ]),
+  spark(38.6, 8.4, 2.6),
+];
+
+// A notepad: a small pad bound along the top in cloth tape, a torn stub left in the binding, the top sheet faintly dented.
+const notepad: Shape[] = [
+  g("rotate(5 24 24)", [
+    path("M10.8 13.2 L37.6 13.2 L38.4 41.6 L10.2 42 Z", { fill: C.paperShade, ink: true }),
+    path("M10.6 11.6 L37.4 11.6 L37.8 39.8 L10.2 40.2 Z", { fill: C.paperLight, ink: true }),
+    // The page before, torn out: its ragged stub proud of the binding.
+    path("M12.4 13.6 L14.6 16.2 L17.2 14.2 L19.8 17 L22.6 14.6 L25.4 16.8 L28 14.2 L30.8 16.6 L33.4 14.4 L35.6 16.4 L35.6 12 L12.4 12 Z", { fill: C.paper, ink: true, w: 1.2 }),
+    { t: "rect", x: 9.6, y: 6.4, width: 28.8, height: 7.4, rx: 1.2, fill: C.cloth, ink: true },
+    line("M12.4 8.6 L35.4 8.6", "#B24A58", 1, 0.9),
+    path("M14 10.4 L14 12.6 M19 10.4 L19 12.6 M24 10.4 L24 12.6 M29 10.4 L29 12.6 M34 10.4 L34 12.6", { stroke: C.clothDark, w: 1 }),
+    // What the last hand pressed into it: dents, not ink.
+    line("M14.6 23.4 C17.4 22.4 19.6 24 22.4 23 C25 22.2 27.4 23.6 31.6 22.8", C.paperShade, 1.3),
+    line("M14.8 29 C17.6 28.2 20 29.6 22.6 28.8 C25.2 28 27 29.2 29.6 28.6", C.paperShade, 1.3),
+    line("M15 34.6 C17.6 34 19.8 35.2 23.2 34.4", C.paperShade, 1.3),
+  ]),
+];
+
+// A printed card: two messages printed over each other, one in red and one in blue, a jumble until a lens sorts them.
+const printed: Shape[] = [
+  g("rotate(-6 24 24)", [
+    { t: "rect", x: 6.4, y: 11.4, width: 35.2, height: 25.6, rx: 1.6, fill: C.paperLight, ink: true },
+    { t: "rect", x: 9.2, y: 14.2, width: 29.6, height: 20, rx: 0.8, fill: "none", stroke: C.paperShade, w: 1 },
+    path("M11.6 19 L15.4 23.6 M15.6 18.8 L11.4 23.8 M18.6 18.8 L18.6 23.8 L22 23.8 M25 18.8 L25 23.8 M25 18.8 L28.4 18.8 M25 21.2 L27.8 21.2 M31.4 23.8 L33.4 18.8 L35.6 23.8 M32.2 22 L34.8 22", { stroke: C.gel, w: 1.5 }),
+    path("M11.2 21.4 C13 18.6 15.4 18.6 16.4 21.2 C17.2 23.6 19.6 24 21 21.6 C22.2 19.4 24.8 19.2 26 21.4 C27.2 23.8 29.6 23.8 31 21.4 C32.2 19.2 34.6 19.4 36.4 21.6", { stroke: C.printBlue, w: 1.5, o: 0.9 }),
+    path("M11.8 27.4 L11.8 31.8 M11.8 27.4 L14.8 27.4 M11.8 29.6 L14.2 29.6 M18 27.4 L18 31.8 L21 31.8 M24.4 27.2 L27.6 32 M27.8 27.2 L24.2 32 M31 27.4 L31 31.8 M31 27.4 L34 27.4 M31 29.6 L33.6 29.6 M31 31.8 L34 31.8", { stroke: C.gel, w: 1.5 }),
+    path("M11.2 30 C12.8 27.4 15 27.6 16.2 29.8 C17.4 32 19.6 32.2 21 30 C22.4 27.8 24.6 27.6 26 29.8 C27.4 32 29.8 32 31.2 29.8 C32.4 27.8 34.6 27.8 36.4 30", { stroke: C.printBlue, w: 1.5, o: 0.9 }),
+  ]),
+];
+
+// A fold-in page: a printed page with two fold lines down it and a little arrow at each, to be folded so the edges meet.
+const foldIn: Shape[] = [
+  g("rotate(4 24 24)", [
+    path("M7.6 9.6 L40.4 9 L41 39.4 L8.2 40 Z", { fill: C.paper, ink: true }),
+    // The middle panel lies a shade back: it folds away.
+    path("M18.4 9.4 L29.6 9.2 L30.2 39.6 L19 39.8 Z", { fill: C.paperShade, o: 0.75 }),
+    path("M18.4 9.6 L19 39.6 M29.6 9.4 L30.2 39.4", { stroke: C.inkSoft, w: 1.2, dash: "2.4 2" }),
+    line("M10.6 17 C12.4 16.2 14 17.2 16 16.6 M10.8 22.4 C12.6 21.8 14.2 22.8 16.2 22.2 M11 27.8 C12.8 27.2 14.2 28 16.2 27.6 M11.2 33.2 C12.6 32.8 13.8 33.4 15.4 33", C.inkSoft, 1.2),
+    line("M32.4 16.6 C34.2 16 36 17 38 16.4 M32.6 22 C34.4 21.4 36 22.4 38 21.8 M32.8 27.4 C34.4 27 36 27.8 38 27.2 M33 32.8 C34.4 32.4 35.6 33 37.2 32.6", C.inkSoft, 1.2),
+    line("M21.4 18 C23 17.4 24.8 18.2 27.2 17.8 M21.6 25 C23.2 24.4 24.8 25.2 27.2 24.8 M21.8 32 C23.2 31.6 24.6 32.2 26.6 31.8", C.inkSoft, 1, 0.55),
+    // The fold marks: an arrow in at the head of each line.
+    path("M14.6 5.6 L18.2 5.6 M16.6 4 L18.4 5.6 L16.6 7.2 M33.4 5.4 L29.8 5.4 M31.4 3.8 L29.6 5.4 L31.4 7", { stroke: C.wax, w: 1.5 }),
+  ]),
+];
+
 export const ART: Record<IconName, Shape[]> = {
   key, note, letter, taped, photo, ticket, map, scroll, ring, book, coin, matchbook, wheel, box, bottle, watch,
+  pencil, lens, notepad, printed, foldIn,
   tornLeft: torn,
   // The other half: the same page mirrored, so the two halves in the tray look as if they'd fit.
   tornRight: [g("translate(48 0) scale(-1 1)", torn)],

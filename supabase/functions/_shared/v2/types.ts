@@ -68,8 +68,15 @@ export interface ItemDef {
   card?: Id;                           // what examining it shows
 }
 
-/** How a card's writing comes to light, for the app to play: warmed at a lamp (lemon juice), read in a mirror. */
-export const REVEALS = ["heat", "mirror"] as const;
+/**
+ * How a card's writing comes to light, for the app to play (the card's text is what is revealed):
+ *   heat    a blank letter in lemon juice, warmed at a lamp that's on;
+ *   mirror  a note in mirror writing, held to the room's mirror;
+ *   rub     a notepad whose top sheet was torn off, rubbed over with a pencil: the dents show white;
+ *   lens    a card printed in a jumble of red and blue, read through a red lens;
+ *   fold    a page whose two outer strips fold to meet, lining two halves of writing up into one line.
+ */
+export const REVEALS = ["heat", "mirror", "rub", "lens", "fold"] as const;
 export type Reveal = typeof REVEALS[number];
 
 export interface CardDef {
@@ -186,7 +193,10 @@ export type MotifId =
   | "split" | "set_state" | "cross_reference" | "decode" | "tool_reveal" | "room_change"
   | "ordering" | "contain_lock" | "story_fragment" | "contain" | "read" | "finale"
   // A found note that only reads with something in the room: lemon juice warmed at a lit lamp; mirror writing held to a mirror.
-  | "warm_reveal" | "mirror_reveal";
+  | "warm_reveal" | "mirror_reveal"
+  // Hands-on reveals that need nothing in the room: a pencil rubbed over a dented notepad; a red lens over a card
+  // printed in red and blue; a page folded so its two edges meet.
+  | "rub_reveal" | "lens_reveal" | "fold_reveal";
 
 export interface StepDef {
   id: Id;

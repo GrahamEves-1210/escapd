@@ -21,7 +21,7 @@ import type { Mode, OrderRule, SlotKind, TraceKind } from "./types.ts";
 export type Pick = <T>(xs: readonly T[]) => T;
 
 /** Where a card's writing was found, which decides how it reads. */
-export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror";
+export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror" | "rub" | "lens" | "fold";
 
 export interface Frame { title: string; lead: string }
 const f = (title: string, lead: string): Frame => ({ title, lead });
@@ -121,6 +121,9 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "Line up the ring and the gibberish turns plain: {v}")],
     heat: [f("Lemon-juice letter", "Held to the warm bulb, brown letters creep up out of the blank paper, an old spy's trick: {v}")],
     mirror: [f("Mirror writing", "In the glass the backwards hand turns plain, and somebody's careful secret with it: {v}")],
+    rub: [f("Pencil rubbing", "Shaded over with the pencil, the dents of the torn-off sheet stand out white in the grey: {v}")],
+    lens: [f("Through the red lens", "Through the red gel the red letters wash away, and what's left reads: {v}")],
+    fold: [f("Folded page", "Folded so A meets B, the two edges make one line: {v}")],
   },
   crime_scene: {
     found: [
@@ -141,6 +144,9 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "With the ring set, the cipher resolves: {v}")],
     heat: [f("Lemon-juice note", "Warmed at the lamp, writing somebody kept from prying eyes browns into view: {v}")],
     mirror: [f("Mirror writing", "Held up to the mirror, the backwards note reads plainly: {v}")],
+    rub: [f("Pencil rubbing", "Under the graphite, what was written on the missing sheet comes up white: {v}")],
+    lens: [f("Through the red lens", "Under the red filter the overprint drops out, leaving one clear line: {v}")],
+    fold: [f("Folded page", "Folded so A meets B, the half-words close up into one line: {v}")],
   },
   paranormal: {
     found: [
@@ -161,6 +167,9 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself: {v}")],
     heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret letters brown in, one by one: {v}")],
     mirror: [f("Mirror writing", "In the glass the child's back-to-front letters come right: {v}")],
+    rub: [f("Pencil rubbing", "Under the soft pencil, small pressed letters come up white, one by one: {v}")],
+    lens: [f("Through the red lens", "Through the red glass the tangle clears, and the letters that stay say: {v}")],
+    fold: [f("Folded page", "Folded so A meets B, the broken letters join: {v}")],
   },
 };
 
@@ -332,6 +341,9 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "Plain at last:")],
     heat: [f("Lemon-juice letter", "Held to the warm bulb, brown writing creeps up out of the blank paper:")],
     mirror: [f("Mirror writing", "In the glass the backwards hand turns plain:")],
+    rub: [f("Pencil rubbing", "Shaded over, the dents of the torn-off sheet stand out white in the grey:")],
+    lens: [f("Through the red lens", "Through the red gel the red letters wash away, and what's left reads:")],
+    fold: [f("Folded page", "Folded so A meets B, the two edges make one message:")],
   },
   crime_scene: {
     found: [
@@ -348,6 +360,9 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "With the ring set, the coded notes read:")],
     heat: [f("Lemon-juice note", "Warmed at the lamp, the inspector's private copy of the file browns into view, written in lemon juice so no suspect could read it over his shoulder:")],
     mirror: [f("Mirror writing", "Held up to the mirror, the inspector's backwards notes read plainly, his habit for anything a suspect might glimpse:")],
+    rub: [f("Pencil rubbing", "Under the graphite, the inspector's notes from the missing sheet come up white:")],
+    lens: [f("Through the red lens", "Under the red filter the overprint drops out, leaving the inspector's own notes:")],
+    fold: [f("Folded page", "Folded so A meets B, the half-words close up into the inspector's notes:")],
   },
   paranormal: {
     found: [
@@ -366,6 +381,9 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself:")],
     heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret writing browns in:")],
     mirror: [f("Mirror writing", "In the glass the back-to-front letters come right:")],
+    rub: [f("Pencil rubbing", "Under the soft pencil, small pressed letters come up white:")],
+    lens: [f("Through the red lens", "Through the red glass the tangle clears, and the letters that stay say:")],
+    fold: [f("Folded page", "Folded so A meets B, the broken letters join:")],
   },
 };
 
@@ -390,22 +408,37 @@ export function writeCard(
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
-export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame }> = {
+export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame; pad: Frame; pencil: Frame; printed: Frame; lens: Frame; fold: Frame }> = {
   noir: {
     key: "Brass key", halves: ["Torn note (left)", "Torn note (right)"], joined: "Taped note", torch: "UV flashlight", wheel: "Cipher wheel",
     // What each says when found is the clue to how it reads (no value on it yet).
     letter: f("Blank letter", "Good notepaper, folded twice, with nothing written on it. It smells faintly of lemons."),
     backwards: f("Backwards note", "One line in a looping hand, every letter written back to front. You can't read it straight."),
+    pad: f("Notepad", "A hotel notepad, the top sheet torn clean off. The page beneath looks blank, but tilt it and the dents of somebody's hard pen catch the light. Soft pencil rubbed over them would bring them up."),
+    pencil: f("Soft pencil", "A soft pencil, chewed at one end and worn to a stub. Good for shading over paper somebody else's pen has dented."),
+    printed: f("Printed card", "A novelty card from a spy kit, printed in a jumble of red and blue letters that spell nothing. The small print says: see it through red."),
+    lens: f("Red lens", "A square of red gel in a cardboard frame, from the same sort of spy kit. Held over red-and-blue print, it washes the red away."),
+    fold: f("Fold-in page", "A page torn from a magazine, with half a line of writing down each edge and two small marks, A and B. The caption says: fold so A meets B."),
   },
   crime_scene: {
     key: "Small key", halves: ["Torn statement (left)", "Torn statement (right)"], joined: "Taped statement", torch: "UV flashlight", wheel: "Cipher wheel",
     letter: f("Blank letter", "A sheet of good paper, blank, but stiff in places, as if something clear dried on it. It smells of lemons."),
     backwards: f("Backwards note", "Somebody wrote this backwards, letter by letter, as if it was only ever meant to be read in a mirror."),
+    pad: f("Notepad", "The telephone pad, its top sheet torn off. The next page looks blank, but it is dented where a pen pressed through. A soft pencil shaded over it would show what was written."),
+    pencil: f("Soft pencil", "A soft pencil stub. Shaded lightly over dented paper, it shows what a pen wrote on the sheet above."),
+    printed: f("Printed card", "An index card overprinted in red and blue type, one line on top of another, impossible to read. Somebody meant it to be read through a red filter."),
+    lens: f("Red lens", "A red filter from a photographer's kit. Laid over print in red and blue, it drops the red out and leaves the rest."),
+    fold: f("Fold-in page", "A sheet of typing paper with half-words down both edges, one edge pencilled A and the other B. Folded so A meets B, the halves should join."),
   },
   paranormal: {
     key: "Iron key", halves: ["Torn page (left)", "Torn page (right)"], joined: "Mended page", torch: "UV flashlight", wheel: "Cipher wheel",
     letter: f("Blank page", "A page from a child's exercise book, empty, the paper stiff where something was painted on and dried. It smells of lemons."),
     backwards: f("Backwards note", "Small letters, every one back to front, the way a child writes when she's playing at secrets."),
+    pad: f("Notepad", "A child's drawing pad, the top sheet torn away. The page left behind looks blank, but it was pressed hard: you can feel letters with a fingertip. A soft pencil rubbed across it would show them."),
+    pencil: f("Soft pencil", "A stub of soft drawing pencil, the kind for shading. Rubbed over dented paper it leaves the dents white."),
+    printed: f("Printed card", "A magic-lantern card printed in red and blue, the letters tangled together so nothing can be read. Along its edge: look through the red glass."),
+    lens: f("Red lens", "A round of red glass from a magic lantern, chipped at the rim. Whatever is printed in red vanishes behind it."),
+    fold: f("Fold-in page", "A page from a child's puzzle book, with broken letters down each side, one edge marked A and the other B. Fold it so A meets B and the letters should join."),
   },
 };
 

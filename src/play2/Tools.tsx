@@ -5,11 +5,14 @@
 // (drawn to match it, scripts/brand/flashlight.py), fixed in its corner and
 // turning on its handle to aim at its beam; with the UV light on, its lens
 // glows violet (assets/brand/flashlight-uv.png) and so does its beam (Stage).
+// Each stands on the shelf's back edge: a soft shadow where it rests (the
+// magnifier's stays while it's in hand: where it goes back to).
 import { Image, StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CarryBody, type Carry } from "./Carry";
+import { GroundShadow } from "./hud/materials";
 
 /** The tools' size (points): big enough to read as the brass heirlooms they are, clear of the cat and the tray. */
 export const TOOL = 88;
@@ -80,6 +83,7 @@ export function Magnifier({ at, lifted = false, carry, onDragStart, onDrop }: {
   return (
     <GestureDetector gesture={pan}>
       <View style={[styles.tool, lifted && styles.lifted, at]} accessible accessibilityRole="button" accessibilityLabel="Magnifier: drag onto something to look closer" testID="v2-lens">
+        <GroundShadow width={TOOL * 0.62} height={16} opacity={0.7} style={styles.restLens} />
         <CarryBody carry={carry} size={TOOL} origin={null} grow={GROW}>
           <Image source={MAGNIFIER} style={styles.art} resizeMode="contain" />
         </CarryBody>
@@ -109,6 +113,7 @@ export function Flashlight({ at, beamX, beamY, frame, uv }: {
   });
   return (
     <View pointerEvents="none" style={[styles.tool, at]} testID="v2-flashlight">
+      <GroundShadow width={TOOL * 0.5} height={16} opacity={0.7} style={styles.restLight} />
       <Animated.View style={[styles.pivot, style]}>
         <Image source={uv ? FLASHLIGHT_UV : FLASHLIGHT} style={styles.art} resizeMode="contain" />
       </Animated.View>
@@ -121,4 +126,7 @@ const styles = StyleSheet.create({
   lifted: { zIndex: 60 },
   pivot: { width: TOOL, height: TOOL, transformOrigin: "50% 85%" },
   art: { width: TOOL, height: TOOL },
+  // Where each stands: under the magnifier's handle (low left), under the flashlight's cap (its pivot).
+  restLens: { left: TOOL * 0.02, bottom: -5 },
+  restLight: { left: TOOL * 0.25, bottom: -5 },
 });
