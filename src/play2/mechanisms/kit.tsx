@@ -1,7 +1,7 @@
 // Shared parts for the mechanisms: the stage, buttons and lines, accessibility
 // helpers, the rattle, and the pull-to-commit drag that drawers, cloths and
 // frames share. Mode colours only (useModeTheme); sizes from `ref`.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useState, type ReactNode } from "react";
 import { StyleSheet, Text, View, type AccessibilityActionEvent, type StyleProp, type ViewStyle } from "react-native";
 import { usePanGesture } from "react-native-gesture-handler";
 import Animated, {
@@ -11,10 +11,12 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { RingPressable } from "@/render/parts";
 import { useTheme } from "@/theme/ThemeProvider";
 import { motion, ref } from "@/theme/tokens";
 import type { ControlDomain } from "@/engine/v2";
+import { BRASS, INK, STEEL, Screw, useGradId } from "./materials";
 import type { MechanismTarget } from "./types";
 
 /** The height a mechanism's drawing gets; its readout or button sits under it. */
@@ -100,20 +102,22 @@ export function readoutText(ink: string) {
   return [styles.readout, { color: ink }];
 }
 
-/** A button: the mode's accent (primary) or a raised square (secondary, for steppers). */
+/**
+ * A button, as a thing on the mechanism: an engraved brass plaque held by two screws (primary), or a small
+ * blued-steel key (secondary, for steppers). It sinks a point when pressed.
+ */
 export function MechButton({
   label, onPress, disabled = false, tone = "primary", accessibilityLabel, testID, compact = false,
 }: {
   label: string; onPress: () => void; disabled?: boolean; tone?: "primary" | "secondary";
   accessibilityLabel?: string; testID?: string; compact?: boolean;
 }) {
-  const theme = useModeTheme();
   const feedback = useFeedback();
   const primary = tone === "primary";
   return (
     <RingPressable
       ring={compact ? "control" : "pill"}
-      radius={compact ? ref.radius.square : undefined}
+      radius={compact ? ref.radius.square : 10}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled }}
@@ -125,15 +129,49 @@ export function MechButton({
       testID={testID}
       style={({ pressed }) => [
         compact ? styles.compact : styles.button,
-        {
-          backgroundColor: primary ? theme.accent : theme.raised,
-          borderColor: theme.rim,
-          opacity: disabled ? ref.button.disabledOpacity.pill : pressed ? 0.8 : 1,
-        },
+        { opacity: disabled ? 0.5 : 1, transform: [{ translateY: pressed ? 1.5 : 0 }] },
       ]}
     >
-      <Text style={[styles.buttonLabel, { color: primary ? theme.accentInk : theme.ink }]}>{label}</Text>
+      <Plaque primary={primary} compact={compact} />
+      <Text style={[styles.buttonLabel, primary ? styles.engraved : styles.struck]}>{label}</Text>
     </RingPressable>
+  );
+}
+
+/** The plaque under a button's label: brass (or blued steel), lit from above, inked round, a screw at each end. */
+const Plaque = memo(function Plaque({ primary, compact }: { primary: boolean; compact: boolean }) {
+  const g = useGradId()("pl");
+  const metal = primary ? BRASS : STEEL;
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.plaque, { borderRadius: compact ? ref.radius.square : 10, borderColor: INK, backgroundColor: metal.mid }]} pointerEvents="none">
+      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <LinearGradient id={g.id} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={metal.sheen} />
+            <Stop offset="0.12" stopColor={metal.light} />
+            <Stop offset="0.55" stopColor={metal.mid} />
+            <Stop offset="1" stopColor={primary ? BRASS.shade : STEEL.deep} />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={g.url} />
+      </Svg>
+      {/* A line cut round its face, a screw at each end. */}
+      <View style={[styles.plaqueLine, { borderColor: metal.deep, borderRadius: compact ? 6 : 6 }]} />
+      {compact ? null : (
+        <View style={styles.screws}>
+          <ScrewHead />
+          <ScrewHead />
+        </View>
+      )}
+    </View>
+  );
+});
+
+function ScrewHead() {
+  return (
+    <Svg width={9} height={9} viewBox="0 0 9 9">
+      <Screw cx={4.5} cy={4.5} r={3.2} turn={-28} />
+    </Svg>
   );
 }
 
@@ -176,6 +214,11 @@ export function justGave(key: string | undefined, now = Date.now()): boolean {
   if (!key) return false;
   const at = tried.get(key);
   tried.delete(key);
+  return at !== undefined && now - at < JUST_GAVE_MS;
+}
+/** Whether the thing keyed `key` was tried just now, without forgetting it (for a part drawn round the one that asks with justGave). */
+export function gaveNow(key: string | undefined, now = Date.now()): boolean {
+  const at = key ? tried.get(key) : undefined;
   return at !== undefined && now - at < JUST_GAVE_MS;
 }
 /** The key a target's tries are kept under. */
@@ -451,22 +494,18 @@ const styles = StyleSheet.create({
   readout: { ...ref.type.counter, fontVariant: ["tabular-nums"], textAlign: "center" },
   button: {
     minHeight: ref.hit.min,
-    minWidth: 160,
-    paddingHorizontal: ref.space.xl,
-    borderRadius: ref.radius.round,
-    borderWidth: StyleSheet.hairlineWidth,
+    minWidth: 172,
+    paddingHorizontal: ref.space.xl + 6,
+    paddingBottom: 2,
     alignItems: "center",
     justifyContent: "center",
-    ...ref.curve,
   },
-  compact: {
-    width: ref.hit.min,
-    height: ref.hit.min,
-    borderRadius: ref.radius.square,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-    ...ref.curve,
-  },
-  buttonLabel: { ...ref.type.headline, textAlign: "center" },
+  compact: { width: ref.hit.min, height: ref.hit.min, alignItems: "center", justifyContent: "center" },
+  buttonLabel: { ...ref.type.headline, textAlign: "center", letterSpacing: 0.4 },
+  // Cut into brass: dark in the cut, a line of light on its lower lip.
+  engraved: { color: "#2A1A0C", textShadowColor: "rgba(255, 244, 214, 0.55)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0 },
+  struck: { color: STEEL.sheen, textShadowColor: "rgba(0, 0, 0, 0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0 },
+  plaque: { borderWidth: 1.8, overflow: "hidden" },
+  plaqueLine: { position: "absolute", left: 3, right: 3, top: 3, bottom: 3, borderWidth: 1, opacity: 0.5 },
+  screws: { ...StyleSheet.absoluteFill, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 8 },
 });

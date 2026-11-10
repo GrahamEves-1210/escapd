@@ -4,6 +4,7 @@ import { ARCHETYPES, normalize, variantSpec, type ArchetypeId, type ControlDomai
 import { Text } from "react-native";
 import { Mechanism } from "../mechanisms";
 import { GIVE_AT, REACH_AT } from "../mechanisms/kit";
+import { liftKind } from "../mechanisms/LiftUnder";
 import type { MechanismProps, MechanismTarget } from "../mechanisms/types";
 
 const target = (archetype: ArchetypeId | null, variant?: string, label = "Thing"): MechanismTarget => {
@@ -91,6 +92,29 @@ describe("mechanisms", () => {
     // It gives early (what's inside comes with it), and can be taken before it's all the way out.
     expect(GIVE_AT).toBeLessThan(REACH_AT);
     expect(REACH_AT).toBeLessThan(1);
+  });
+
+  it("draws a lifted thing as what it's called: a rug rolls back, the rest lift off their place", async () => {
+    expect(["Rug", "throw blanket", "bath mat"].map(liftKind)).toEqual(["rug", "rug", "rug"]);
+    expect(["Cushion", "pillow", "Book", "wooden box", "Plant pot", "vase"].map(liftKind)).toEqual(["cushion", "cushion", "book", "box", "pot", "pot"]);
+    // The line under it says how.
+    const rug = await mount(target("LiftUnder", "lift", "Rug"));
+    expect(screen.getByText("Peel it back")).toBeTruthy();
+    await rug.view.unmount();
+    const vase = await mount(target("LiftUnder", "lift", "Vase"));
+    expect(screen.getByText("Lift it up")).toBeTruthy();
+    await vase.view.unmount();
+  });
+
+  it("a padlock's shackle is in its body while it's locked and sprung once it's open", async () => {
+    const t = target("CombinationLock", "digits");
+    const shut = await mount(t);
+    expect(screen.getByTestId("mech-shackle")).toBeTruthy();
+    expect(screen.queryByTestId("mech-shackle-open")).toBeNull();
+    await shut.view.unmount();
+    await mount(t, { state: { open: true, locked: false } });
+    expect(screen.getByTestId("mech-shackle-open")).toBeTruthy();
+    expect(screen.getByTestId("mech-solved")).toBeTruthy();
   });
 
   it("turns straight to a page with the number wheels, which stand at the page it's open at", async () => {

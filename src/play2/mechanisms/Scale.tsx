@@ -1,18 +1,21 @@
-// A horizontal scale under a fixed needle: the radio's band and the book's
-// pages. Drag it: it follows the finger, flings a little, and seats on the
+// A horizontal scale under a fixed needle: the radio's band, drawn as the
+// dial it is: a strip of printed card lit amber from behind, dark at its ends
+// where the glass curves away, in a brass-rimmed window, the needle a red
+// hairline with its shadow on the card. Drag it: it follows the finger, flings a little, and seats on the
 // nearest step. A tick every `tickEvery` steps passed. Controlled: `value` is
 // the step in view (the parent's, which `onLive` updates during a drag);
 // `onCommit` runs on release and on each accessibility step.
 import { memo, useCallback, useEffect } from "react";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
-import Animated, { cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useFeedback } from "@/game/feedback";
-import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { adjustable, clamp, settle } from "./kit";
+import { BRASS, ENAMEL, INK, useGradId } from "./materials";
 
 export interface ScaleProps {
   count: number;
@@ -32,6 +35,8 @@ export interface ScaleProps {
   valueText: (step: number) => string;
   disabled?: boolean;
   testID?: string;
+  /** Where the scale stands, shared (a knob that turns with it): the caller's, else the scale's own. */
+  position?: SharedValue<number>;
 }
 
 const HEIGHT = 76;
@@ -39,12 +44,12 @@ const FLING = 0.12;
 
 export function Scale({
   count, value, spacing, majorEvery, labelEvery, label, tickEvery, width, onLive, onCommit, accessibilityLabel, valueText,
-  disabled = false, testID,
+  disabled = false, testID, position,
 }: ScaleProps) {
-  const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
-  const pos = useSharedValue(value);
+  const own = useSharedValue(value);
+  const pos = position ?? own;
   const start = useSharedValue(0);
   const live = useSharedValue(false);
   const reduced = useSharedValue(reducedMotion);
@@ -114,16 +119,70 @@ export function Scale({
       <View
         {...adjustable(accessibilityLabel, valueText(value), step)}
         testID={testID}
-        style={[styles.window, { width, backgroundColor: theme.surface, borderColor: theme.rim }]}
+        style={[styles.window, { width }]}
       >
+        <Backlight w={width} />
         <Animated.View style={[styles.strip, { width: count * spacing }, stripStyle]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-          <Ticks count={count} spacing={spacing} majorEvery={majorEvery} labelEvery={labelEvery} label={label} ink={theme.ink} muted={theme.inkMuted} />
+          <Ticks count={count} spacing={spacing} majorEvery={majorEvery} labelEvery={labelEvery} label={label} ink={ENAMEL.ink} muted="#5A4326" />
         </Animated.View>
-        <View pointerEvents="none" style={[styles.needle, { left: width / 2 - 1, backgroundColor: theme.stamp }]} />
+        {/* The needle and its shadow on the card, then the glass over it all. */}
+        <View pointerEvents="none" style={[styles.needleShadow, { left: width / 2 + 2 }]} />
+        <View pointerEvents="none" style={[styles.needle, { left: width / 2 - 1 }]} />
+        <DialGlass w={width} />
       </View>
     </GestureDetector>
   );
 }
+
+/** The card behind the scale, lit from behind: brightest in the middle. */
+const Backlight = memo(function Backlight({ w }: { w: number }) {
+  const g = useGradId()("bl");
+  return (
+    <Svg width={w} height={HEIGHT} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <LinearGradient id={g.id} x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#B9812F" />
+          <Stop offset="0.3" stopColor="#EBC272" />
+          <Stop offset="0.5" stopColor="#FBE3A4" />
+          <Stop offset="0.7" stopColor="#EBC272" />
+          <Stop offset="1" stopColor="#B9812F" />
+        </LinearGradient>
+      </Defs>
+      <Rect width={w} height={HEIGHT} fill={g.url} />
+    </Svg>
+  );
+});
+
+/** The window's glass and rim: dark where it curves away at the ends, a streak of light along its top, brass round it. */
+const DialGlass = memo(function DialGlass({ w }: { w: number }) {
+  const g = useGradId();
+  const [ends, top] = [g("ge"), g("gt")];
+  return (
+    <Svg width={w} height={HEIGHT} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <LinearGradient id={ends.id} x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#1A0E04" stopOpacity={0.75} />
+          <Stop offset="0.14" stopColor="#1A0E04" stopOpacity={0} />
+          <Stop offset="0.86" stopColor="#1A0E04" stopOpacity={0} />
+          <Stop offset="1" stopColor="#1A0E04" stopOpacity={0.75} />
+        </LinearGradient>
+        <LinearGradient id={top.id} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#1A0E04" stopOpacity={0.5} />
+          <Stop offset="0.16" stopColor="#FFFFFF" stopOpacity={0.22} />
+          <Stop offset="0.34" stopColor="#FFFFFF" stopOpacity={0} />
+          <Stop offset="0.85" stopColor="#1A0E04" stopOpacity={0} />
+          <Stop offset="1" stopColor="#1A0E04" stopOpacity={0.45} />
+        </LinearGradient>
+      </Defs>
+      <Rect width={w} height={HEIGHT} fill={ends.url} />
+      <Rect width={w} height={HEIGHT} fill={top.url} />
+      <Rect x={1.5} y={1.5} width={w - 3} height={HEIGHT - 3} rx={9} fill="none" stroke={BRASS.mid} strokeWidth={3} />
+      <Rect x={1} y={1} width={w - 2} height={HEIGHT - 2} rx={9.5} fill="none" stroke={INK} strokeWidth={1.6} />
+      <Rect x={3.6} y={3.6} width={w - 7.2} height={HEIGHT - 7.2} rx={7} fill="none" stroke={INK} strokeOpacity={0.7} strokeWidth={1} />
+      <Path d={`M12 3H${w - 12}`} stroke={BRASS.sheen} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" />
+    </Svg>
+  );
+});
 
 const Ticks = memo(function Ticks({ count, spacing, majorEvery, labelEvery, label, ink, muted }: {
   count: number; spacing: number; majorEvery: number; labelEvery: number; label: (step: number) => string; ink: string; muted: string;
@@ -140,15 +199,10 @@ const Ticks = memo(function Ticks({ count, spacing, majorEvery, labelEvery, labe
 });
 
 const styles = StyleSheet.create({
-  window: {
-    height: HEIGHT,
-    borderRadius: ref.radius.tag,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
-    ...ref.curve,
-  },
+  window: { height: HEIGHT, borderRadius: 10, overflow: "hidden", backgroundColor: "#EBC272" },
   strip: { position: "absolute", left: 0, top: 0, bottom: 0 },
-  tick: { position: "absolute", top: ref.space.sm, width: 1 },
-  label: { ...ref.type.meta, position: "absolute", top: 36, width: 48, textAlign: "center", fontVariant: ["tabular-nums"] },
-  needle: { position: "absolute", top: 0, bottom: 0, width: 2 },
+  tick: { position: "absolute", top: ref.space.sm + 2, width: 1.2 },
+  label: { ...ref.type.meta, position: "absolute", top: 38, width: 48, textAlign: "center", fontVariant: ["tabular-nums"], fontWeight: "600" },
+  needle: { position: "absolute", top: 3, bottom: 3, width: 2, backgroundColor: "#B5261E" },
+  needleShadow: { position: "absolute", top: 5, bottom: 3, width: 2, backgroundColor: "rgba(60, 30, 0, 0.28)" },
 });

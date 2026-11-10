@@ -1,10 +1,15 @@
 // Combination wheels for any alphabet (digits, letters, the six symbols): a
-// row of vertical tumblers and a submit. Each wheel rolls with the finger and
+// row of vertical tumblers and a submit, drawn as the lock they are: brass
+// drums engraved with their symbols, round under the light (bright across the
+// middle, falling away dark above and below), in an iron housing held by four
+// screws, an index mark either side of the row that counts; the submit an
+// engraved brass plaque, and once it gives an inked stamp. Each wheel rolls with the finger and
 // seats on a symbol with a tick per symbol passed; tapping above or below
 // steps one. CodeWheel (src/render) is digits-only and sized for the v1 pad,
 // so this is its general sibling.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
   Easing, ReduceMotion, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSequence, withSpring, withTiming,
@@ -17,6 +22,7 @@ import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { Glint, Line, MechButton, adjustable, cooldownText, justGave, markTry, mod, settle, tryKey, useKept } from "./kit";
+import { BRASS, INK, Ink, Screw, inkRect, useGradId } from "./materials";
 import type { MechanismTarget } from "./types";
 
 export const ALPHABET: Record<WheelAlphabet, readonly string[]> = {
@@ -115,19 +121,17 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled, done }:
         {...adjustable(`Wheel ${index + 1}`, symbols[value], step)}
         accessibilityState={{ disabled }}
         testID={`mech-wheel-${index}`}
-        style={[styles.wheel, { width, backgroundColor: theme.ground, borderColor: theme.rim }]}
+        style={[styles.wheel, { width }]}
       >
         <Animated.View style={[styles.column, columnStyle]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           {column.map((s, k) => (
             <View key={k} style={styles.cell}>
-              <Text style={[styles.symbol, { color: theme.ink }]}>{s}</Text>
+              <Text style={styles.symbol}>{s}</Text>
             </View>
           ))}
         </Animated.View>
-        {/* The window: the middle row lit, its neighbours under a shade. */}
-        <View pointerEvents="none" style={[styles.shade, styles.top, { backgroundColor: theme.ground }]} />
-        <View pointerEvents="none" style={[styles.shade, styles.bottom, { backgroundColor: theme.ground }]} />
-        <View pointerEvents="none" style={[styles.window, done && styles.windowDone, { borderColor: done ? theme.stamp : theme.accent }]} />
+        {/* The drum's roundness over its symbols: the middle row in the light, its neighbours turning away. */}
+        <Drum w={width} mark={done ? theme.stamp : INK} />
         <Pressable accessible={false} style={[styles.tap, styles.top]} onPress={() => step(-1)} testID={`mech-wheel-${index}-prev`} />
         <Pressable accessible={false} style={[styles.tap, styles.bottom]} onPress={() => step(1)} testID={`mech-wheel-${index}-next`} />
       </View>
@@ -141,7 +145,7 @@ function SymbolWheel({ index, symbols, value, onChange, width, disabled, done }:
  * right one (`done`) leaves them on the answer, held, with the submit swapped
  * for a solved stamp.
  */
-export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, doneLabel = "Open", onSubmit, onChange, marks, keep, start }: {
+export function WheelBank({ alphabet, count, width, busy, cooldown, done, submitLabel, doneLabel = "Open", onSubmit, onChange, marks, keep, start, status = true }: {
   alphabet: WheelAlphabet; count: number; width: number; busy: boolean; cooldown: number; done: boolean;
   submitLabel: string; onSubmit: (symbols: string[]) => void;
   /** What the solved stamp says. */
@@ -154,6 +158,8 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
   keep?: MechanismTarget;
   /** Where the wheels stand to begin with, and go when it changes (a book's page): over what was kept. */
   start?: readonly string[];
+  /** The line under the submit (a cooldown's seconds): off where there's never one (a book's pages). */
+  status?: boolean;
 }) {
   const symbols = ALPHABET[alphabet];
   const indexOf = (s: string | undefined) => Math.max(0, s === undefined ? 0 : symbols.indexOf(s));
@@ -184,12 +190,13 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
     // Once, on the mount just after the code was tried.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const wheelW = Math.min(60, Math.floor((width - (count - 1) * GAP - 2 * ref.space.lg) / count));
+  const wheelW = Math.min(58, Math.floor((width - (count - 1) * GAP - 2 * ref.space.lg - 2 * PAD) / count));
   const waiting = cooldownText(cooldown);
   const blocked = busy || cooldown > 0;
   return (
     <View style={styles.bank}>
-      <View style={styles.row}>
+      <View style={styles.housing}>
+        <Housing />
         {values.map((v, i) => (
           <View key={i} style={styles.marked}>
             {marks ? <Text style={styles.mark} accessibilityLabel={`Wheel marked ${marks[i]}`}>{marks[i]}</Text> : null}
@@ -212,10 +219,56 @@ export function WheelBank({ alphabet, count, width, busy, cooldown, done, submit
           testID="mech-submit"
         />
       )}
-      <Line text={waiting && !done ? waiting : " "} tone={waiting ? "stamp" : "muted"} testID="mech-status" />
+      {status ? <Line text={waiting && !done ? waiting : " "} tone={waiting ? "stamp" : "muted"} testID="mech-status" /> : null}
     </View>
   );
 }
+
+/** A drum's shading and furniture, over its symbols: round under the light, a flange each side, an index mark either side of the row in play. */
+const Drum = memo(function Drum({ w, mark }: { w: number; mark: string }) {
+  const g = useGradId()("dr");
+  const h = ROW * 3;
+  const edge = useMemo(() => inkRect(1, 1, w - 2, h - 2, 8, 401 + w, 0.4), [w, h]);
+  const mid = h / 2;
+  return (
+    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <LinearGradient id={g.id} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#120A04" stopOpacity={0.92} />
+          <Stop offset="0.2" stopColor="#120A04" stopOpacity={0.5} />
+          <Stop offset="0.35" stopColor="#120A04" stopOpacity={0} />
+          <Stop offset="0.45" stopColor="#FFFFFF" stopOpacity={0.3} />
+          <Stop offset="0.56" stopColor="#FFFFFF" stopOpacity={0} />
+          <Stop offset="0.66" stopColor="#120A04" stopOpacity={0} />
+          <Stop offset="0.82" stopColor="#120A04" stopOpacity={0.55} />
+          <Stop offset="1" stopColor="#120A04" stopOpacity={0.94} />
+        </LinearGradient>
+      </Defs>
+      <Rect width={w} height={h} rx={8} fill={g.url} />
+      {/* Flanges. */}
+      <Rect x={0} y={0} width={3.5} height={h} fill={BRASS.deep} fillOpacity={0.7} />
+      <Rect x={w - 3.5} y={0} width={3.5} height={h} fill={BRASS.deep} fillOpacity={0.7} />
+      <Path d={`M4.2 ${ROW * 0.6}V${h - ROW * 0.6}`} stroke={BRASS.sheen} strokeOpacity={0.35} strokeWidth={1} />
+      {/* The index: a notch either side of the row that counts. */}
+      <Path d={`M3.5 ${mid - 5}L9 ${mid}L3.5 ${mid + 5}ZM${w - 3.5} ${mid - 5}L${w - 9} ${mid}L${w - 3.5} ${mid + 5}Z`} fill={mark} />
+      <Ink d={edge} w={1.8} />
+    </Svg>
+  );
+});
+
+/** The iron the drums sit in: dark, a line of light along its top, a brass screw in each corner. */
+const Housing = memo(function Housing() {
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.iron]} pointerEvents="none">
+      <View style={styles.ironLight} />
+      {[styles.tl, styles.tr, styles.bl, styles.br].map((at, i) => (
+        <Svg key={i} width={8} height={8} viewBox="0 0 8 8" style={[styles.corner, at]}>
+          <Screw cx={4} cy={4} r={2.8} turn={[20, -40, 70, -15][i]} />
+        </Svg>
+      ))}
+    </View>
+  );
+});
 
 /** A lock's final click: when the first wheel seats, and how far apart the rest follow (ms). */
 export const CLICK = { firstMs: 60, staggerMs: 75, drop: 4 } as const;
@@ -244,43 +297,52 @@ function Solved({ label, stampAt = null }: { label: string; stampAt?: number | n
   }, [stampAt, k]);
   const style = useAnimatedStyle(() => {
     const p = k.get();
-    return { opacity: Math.min(1, p * 2), transform: [{ scale: 1.45 - 0.45 * p }, { rotate: `${(1 - p) * -6}deg` }] };
+    return { opacity: Math.min(1, p * 2), transform: [{ scale: 1.45 - 0.45 * p }, { rotate: `${-3 + (1 - p) * -6}deg` }] };
   });
+  // A rubber stamp's mark: a doubled frame, its capitals in the mode's book face, never quite square on.
   return (
     <Animated.View style={[styles.solved, { borderColor: theme.stamp }, style]} accessible accessibilityRole="text" accessibilityLabel={label} testID="mech-solved">
-      <CheckIcon size={18} weight="bold" color={theme.stamp} />
-      <Text style={[styles.solvedLabel, { color: theme.stamp }]}>{label}</Text>
-      {stampAt === null ? null : <Glint delay={stampAt + 160} radius={ref.radius.round} />}
+      <View style={[styles.solvedInner, { borderColor: theme.stamp }]}>
+        <CheckIcon size={17} weight="bold" color={theme.stamp} />
+        <Text style={[styles.solvedLabel, { color: theme.stamp, fontFamily: theme.display.fontFamily }]}>{label}</Text>
+      </View>
+      {stampAt === null ? null : <Glint delay={stampAt + 160} radius={6} />}
     </Animated.View>
   );
 }
 
+/** The housing's padding round the drums. */
+const PAD = 9;
+
 const styles = StyleSheet.create({
-  bank: { alignItems: "center", gap: ref.space.lg },
-  row: { flexDirection: "row", gap: GAP, justifyContent: "center" },
+  bank: { alignItems: "center", gap: ref.space.plate },
+  housing: { flexDirection: "row", gap: GAP, justifyContent: "center", padding: PAD, paddingHorizontal: PAD + 4 },
+  iron: { backgroundColor: "#1B161D", borderRadius: 13, borderWidth: 1.8, borderColor: INK },
+  ironLight: { position: "absolute", left: 10, right: 10, top: 1.5, height: 1.5, borderRadius: 1, backgroundColor: "rgba(255, 240, 220, 0.16)" },
+  corner: { position: "absolute" },
+  tl: { left: 2.5, top: 2.5 },
+  tr: { right: 2.5, top: 2.5 },
+  bl: { left: 2.5, bottom: 2.5 },
+  br: { right: 2.5, bottom: 2.5 },
   marked: { alignItems: "center", gap: ref.space.xs },
-  mark: { ...ref.type.headline, color: ref.color.textSecondary, textAlign: "center" },
-  wheel: { height: ROW * 3, borderRadius: ref.radius.tag, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", ...ref.curve },
+  // Cut into the iron over its drum, filled with brass.
+  mark: { ...ref.type.headline, color: BRASS.light, textAlign: "center" },
+  wheel: { height: ROW * 3, borderRadius: 8, overflow: "hidden", backgroundColor: BRASS.mid },
   column: { position: "absolute", left: 0, right: 0, top: 0 },
-  cell: { height: ROW, alignItems: "center", justifyContent: "center" },
-  symbol: { ...ref.type.counter, fontVariant: ["tabular-nums"], textAlign: "center" },
-  shade: { position: "absolute", left: 0, right: 0, height: ROW, opacity: 0.62 },
+  // Each symbol on its own facet: a fine groove between them.
+  cell: { height: ROW, alignItems: "center", justifyContent: "center", borderBottomWidth: 1, borderBottomColor: "rgba(70, 44, 10, 0.45)" },
+  // Engraved: dark in the cut, a line of light on its lower lip.
+  symbol: {
+    ...ref.type.counter, fontVariant: ["tabular-nums"], textAlign: "center", color: "#2A1A0C",
+    textShadowColor: "rgba(255, 244, 214, 0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0,
+  },
   top: { top: 0 },
   bottom: { bottom: 0 },
-  window: { position: "absolute", left: 2, right: 2, top: ROW, height: ROW, borderTopWidth: 1, borderBottomWidth: 1 },
-  windowDone: { borderTopWidth: 2, borderBottomWidth: 2 },
   tap: { position: "absolute", left: 0, right: 0, height: ROW },
-  solved: {
-    minHeight: ref.hit.min,
-    minWidth: 160,
-    paddingHorizontal: ref.space.xl,
-    borderRadius: ref.radius.round,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: ref.space.sm,
-    ...ref.curve,
+  solved: { minHeight: ref.hit.min, minWidth: 150, borderRadius: 7, borderWidth: 2.4, padding: 3, ...ref.curve },
+  solvedInner: {
+    flex: 1, borderRadius: 4, borderWidth: 1, paddingHorizontal: ref.space.lg,
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: ref.space.sm,
   },
-  solvedLabel: { ...ref.type.headline, textAlign: "center" },
+  solvedLabel: { fontSize: 17, lineHeight: 22, letterSpacing: 2.4, textTransform: "uppercase", textAlign: "center" },
 });

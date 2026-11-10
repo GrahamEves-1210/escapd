@@ -8,10 +8,15 @@
 // the engine has shown the decoded note, the line is stamped "It reads" at that
 // setting. Offset 1..max; onSet("offset", "3") on release. It never knows the
 // answer: the reading is the player's.
+//
+// Drawn as the thing in the hand: a brass wheel, its plain alphabet engraved
+// round the rim, an enamel disc turning in it with the cipher alphabet in ink,
+// a knurled brass boss to turn it by, and an index bracket at twelve.
 import { memo, useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { FadeIn, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from "react-native-svg";
 import { scheduleOnRN } from "react-native-worklets";
 import { ArrowsClockwiseIcon } from "phosphor-react-native";
 import { useFeedback } from "@/game/feedback";
@@ -21,6 +26,7 @@ import { ref } from "@/theme/tokens";
 import { handType, journalPalette } from "../journal/palette";
 import { useCipher } from "./cipher";
 import { Stage, adjustable, domainOf, mod, settle } from "./kit";
+import { BRASS, ENAMEL, INK, useGradId } from "./materials";
 import type { MechanismProps } from "./types";
 
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -167,17 +173,16 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
           <View
             {...adjustable("Cipher ring", `Ring at plus ${k}: A reads as ${under}`, step)}
             testID="mech-decoder"
-            style={[styles.ring, { width: D, height: D, borderRadius: R, backgroundColor: theme.surface, borderColor: theme.rim }]}
+            style={[styles.ring, { width: D, height: D, borderRadius: R }]}
           >
-            <OuterRing size={D} lit={lit} numeric={numeric} ink={theme.ink} muted={theme.inkMuted} accent={theme.accent} />
-            <Animated.View style={[styles.disc, { width: inner, height: inner, borderRadius: inner / 2, backgroundColor: theme.raised, borderColor: theme.rim }, discStyle]}>
-              <InnerRing size={inner} marked={places} ink={theme.stamp} mark={theme.accent} markInk={theme.accentInk} />
-              {/* Grip notches: it's a thing to turn. */}
-              <View pointerEvents="none" style={[styles.grip, { width: inner * 0.34, height: inner * 0.34, borderRadius: inner * 0.17, borderColor: theme.rim }]} />
+            <WheelFace size={D} />
+            <OuterRing size={D} lit={lit} numeric={numeric} ink={ENGRAVED} muted="#4A3413" accent={LIT} />
+            <Animated.View style={[styles.disc, { width: inner, height: inner, borderRadius: inner / 2 }, discStyle]}>
+              <DiscFace size={inner} />
+              <InnerRing size={inner} marked={places} ink={ENAMEL.ink} mark={theme.accent} markInk={theme.accentInk} />
             </Animated.View>
             {/* The index at twelve: plain A over the letter it becomes. */}
-            <View pointerEvents="none" style={[styles.window, { borderColor: theme.accent, height: band + 22 }]} />
-            <View pointerEvents="none" style={[styles.hub, { backgroundColor: theme.accent, borderColor: theme.ground }]} />
+            <View pointerEvents="none" style={[styles.window, { height: band + 22 }]} />
           </View>
         </GestureDetector>
         {/* The setting, written the way the clue writes it. */}
@@ -256,6 +261,65 @@ function readChar(c: string, k: number, numeric: boolean) {
 }
 const decodeLine = (coded: string, k: number, numeric: boolean) => [...coded].map((c) => (/[A-Za-z]/.test(c) ? readChar(c, k, numeric) : c)).join("");
 
+/** Engraved in brass, and a letter in play picked out in oxblood. */
+const ENGRAVED = "#2A1A0C";
+const LIT = "#7A1420";
+
+/** The wheel: turned brass, lit from the upper left, a bead inside its rim, its shadow under it. */
+const WheelFace = memo(function WheelFace({ size }: { size: number }) {
+  const g = useGradId()("wf");
+  const r = size / 2;
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <LinearGradient id={g.id} x1="0.12" y1="0" x2="0.88" y2="1">
+          <Stop offset="0" stopColor={BRASS.sheen} />
+          <Stop offset="0.3" stopColor={BRASS.light} />
+          <Stop offset="0.62" stopColor={BRASS.mid} />
+          <Stop offset="1" stopColor={BRASS.shade} />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={r} cy={r} r={r - 1.2} fill={g.url} stroke={INK} strokeWidth={2} />
+      <Circle cx={r} cy={r} r={r - 4} fill="none" stroke={BRASS.deep} strokeOpacity={0.55} strokeWidth={1} />
+    </Svg>
+  );
+});
+
+/** The turning disc: cream enamel, dark where it sits down into the wheel, a knurled brass boss at its middle to turn it by. */
+const DiscFace = memo(function DiscFace({ size }: { size: number }) {
+  const g = useGradId();
+  const [face, boss] = [g("df"), g("db")];
+  const r = size / 2, b = size * 0.17;
+  let knurl = "";
+  for (let i = 0; i < 24; i++) {
+    const a = (i * 15 * Math.PI) / 180;
+    knurl += `M${(r + Math.sin(a) * (b - 4)).toFixed(1)} ${(r - Math.cos(a) * (b - 4)).toFixed(1)}L${(r + Math.sin(a) * b).toFixed(1)} ${(r - Math.cos(a) * b).toFixed(1)}`;
+  }
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <RadialGradient id={face.id} cx="42%" cy="38%" rx="70%" ry="70%">
+          <Stop offset="0" stopColor={ENAMEL.light} />
+          <Stop offset="0.75" stopColor={ENAMEL.mid} />
+          <Stop offset="1" stopColor={ENAMEL.shade} />
+        </RadialGradient>
+        <RadialGradient id={boss.id} cx="38%" cy="32%" rx="72%" ry="72%">
+          <Stop offset="0" stopColor={BRASS.sheen} />
+          <Stop offset="0.5" stopColor={BRASS.mid} />
+          <Stop offset="1" stopColor={BRASS.deep} />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={r + 0.6} cy={r + 1.6} r={r} fill="#000000" fillOpacity={0.3} />
+      <Circle cx={r} cy={r} r={r - 1} fill={face.url} stroke={INK} strokeWidth={1.8} />
+      <Circle cx={r} cy={r} r={r - 21} fill="none" stroke={ENAMEL.ink} strokeOpacity={0.3} strokeWidth={0.8} />
+      <Circle cx={r + 1} cy={r + 2} r={b + 1} fill="#000000" fillOpacity={0.25} />
+      <Circle cx={r} cy={r} r={b} fill={boss.url} stroke={INK} strokeWidth={1.6} />
+      <Path d={knurl} stroke={BRASS.deep} strokeOpacity={0.8} strokeWidth={1.3} />
+      <Circle cx={r} cy={r} r={b * 0.42} fill={BRASS.light} stroke={INK} strokeWidth={1.1} />
+    </Svg>
+  );
+});
+
 /** The plain alphabet round the rim, upright at its own angle as a printed wheel; A..J carry 0..9 for a code. */
 const OuterRing = memo(function OuterRing({ size, lit, numeric, ink, muted, accent }: { size: number; lit: Set<number>; numeric: boolean; ink: string; muted: string; accent: string }) {
   return (
@@ -295,17 +359,16 @@ const styles = StyleSheet.create({
   stage: { gap: ref.space.sm },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
   side: { width: SIDE, alignItems: "center", justifyContent: "center", gap: 2 },
-  ring: { borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
-  disc: { position: "absolute", borderWidth: StyleSheet.hairlineWidth, alignItems: "center", justifyContent: "center" },
-  grip: { position: "absolute", borderWidth: 2, borderStyle: "dashed" },
+  ring: { alignItems: "center", justifyContent: "center" },
+  disc: { position: "absolute", alignItems: "center", justifyContent: "center" },
   spoke: { position: "absolute", alignItems: "center" },
   letter: { ...ref.type.label, fontVariant: ["tabular-nums"] },
   lit: { fontWeight: "800", transform: [{ scale: 1.25 }] },
   digit: { fontSize: 9, lineHeight: 11, fontWeight: "700", marginTop: 1 },
   innerLetter: { fontSize: 12, lineHeight: 15, fontWeight: "600" },
   innerCell: { marginTop: 3, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  window: { position: "absolute", top: 1, width: 26, borderWidth: 1.5, borderRadius: ref.radius.tag },
-  hub: { position: "absolute", width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
+  // The index bracket: an oxblood line round the pair that reads.
+  window: { position: "absolute", top: 1, width: 26, borderWidth: 2, borderRadius: ref.radius.tag, borderColor: LIT },
   setting: { fontFamily: ref.font.typewriterBold, fontSize: 30, lineHeight: 36 },
   under: { fontFamily: ref.font.typewriterBold, fontSize: 15, lineHeight: 18 },
   slip: {
