@@ -18,6 +18,7 @@ style (no samples, nothing downloaded; docs/AUDIO.md):
 
     python3 scripts/audio/foley.py                 # every cue
     python3 scripts/audio/foley.py drawer purr     # just these
+    python3 scripts/audio/foley.py pencil-rub      # a cue's numbered variants (pencil-rub-1, -2, -3)
     WAV_DIR=/tmp/wavs python3 scripts/audio/foley.py   # also keep the 16-bit WAVs
     python3 scripts/audio/contact_sheet.py /tmp/wavs     # waveforms + spectrograms PNG
 
@@ -634,6 +635,98 @@ def mug_break(rng):
     return room(out, rng, rt60=0.4, wet=0.2, tone=5000)
 
 
+# One back-and-forth stroke each: (forth s, back s, back's level, brightness, the turn's depth).
+PENCIL_STROKES = [(0.19, 0.2, 0.85, 1.0, 0.22), (0.17, 0.21, 0.95, 1.08, 0.3), (0.22, 0.2, 0.78, 0.93, 0.18)]
+
+
+def pencil_rub(rng, variant=0):
+    """Soft graphite shading on paper: one back-and-forth stroke of the side of a pencil lead.
+
+    Graphite on paper is friction noise: dry and breathy, its loudness and brightness following the
+    hand's speed (two swells, forth and back, easing through the turn without stopping), its grain
+    the paper's tooth (ragged little stick-slip bursts, a few hundred a second) with the odd fibre the
+    lead catches (a tiny tick). The sheet on the desk gives it a little papery body around 500 Hz.
+    Wide, flat bands only: no narrow resonance, so no squeak. It starts and ends on nothing, so it
+    can be retriggered while the player rubs; three variants keep a run of them from sounding stamped.
+    """
+    forth, back, back_gain, bright, turn = PENCIL_STROKES[variant]
+    total = forth + back
+    n = n_of(total)
+    t = times(n)
+    # The hand's speed: a swell forth, a dip at the turn (never to zero: the lead stays down), a swell back.
+    a = np.sin(np.pi * np.clip(t / forth, 0, 1)) ** 1.3
+    b = np.sin(np.pi * np.clip((t - forth) / back, 0, 1)) ** 1.3 * back_gain
+    speed = lp(np.maximum(a, 0) + np.maximum(b, 0) + turn * bell_env(n, forth) ** 0.5, 30, 2)
+    speed *= bell_env(n, forth) ** 0.35  # both ends ease from and to nothing
+    # The paper's tooth: the lead sticks and slips over it, so the friction comes in ragged little
+    # bursts (a few hundred a second, no steady rate: nothing to hear as a pitch).
+    rough = np.abs(lp(rng.standard_normal(n), 420, 2))
+    rough = (rough / rough.mean()) ** 1.6
+    grain = 0.3 + 0.7 * np.minimum(rough, 4.0) / 1.6
+    # The friction itself: noise through a wide band that brightens with speed, a little air over it.
+    noise = rng.standard_normal(n)
+    centre = (1100 + 1300 * speed) * bright
+    scratch = svf_bandpass(noise * grain, centre, 0.7)
+    hiss = bp(rng.standard_normal(n) * grain, 3500, 7500, 1) * 0.07
+    # The sheet on the desk: a soft papery body, wide, low in the mix.
+    body = bp(noise * grain, 330, 760, 1) * 0.35
+    x = (scratch + hiss + body) * speed ** 1.2
+    # The lead catching the paper's tooth: a few tiny, dull ticks, only while it's moving.
+    ticks = np.zeros(n)
+    for _ in range(rng.integers(5, 9)):
+        at = rng.uniform(0.03, total - 0.05)
+        d = rng.uniform(0.0006, 0.0018)
+        g = rng.uniform(0.4, 0.9) * speed[n_of(at)]
+        tick = bp(rng.standard_normal(n_of(d)), 1500, 5200, 1) * np.hanning(n_of(d))
+        place(ticks, tick, at, g)
+    x += ticks * 0.55
+    x = lp(hp(x, 250, 2), 5200, 2)
+    # A soft lead never spikes: round off the few sharpest grains, so the three variants level alike.
+    ceiling = 4.5 * np.sqrt(np.mean(x**2))
+    x = ceiling * np.tanh(x / ceiling)
+    return room(x, rng, rt60=0.12, wet=0.04)
+
+
+def paper_fold(rng):
+    """A sheet of paper folded over, creased and pressed flat: a short rustle into a soft, crisp crease.
+
+    The sheet comes over (a rustle, 0 to 150 ms), the fold is pinched (the crease: a dense little
+    run of fibre cracks at 160 ms, the haptic's beat, with the soft pat of paper on paper), then a
+    fingertip runs along it, pressing it flat (a short, falling swipe with a few last cracks).
+    """
+    out = silence(0.56)
+    # The sheet coming over: a soft band of noise rising 700 Hz to 2.2 kHz, a few light fibre cracks.
+    n = n_of(0.17)
+    over = svf_bandpass(rng.standard_normal(n), np.linspace(700, 2200, n), 1.0) * bell_env(n, 0.1) ** 1.2
+    place(out, over, 0.0, 0.2)
+    for _ in range(22):
+        d = rng.uniform(0.0008, 0.003)
+        lo = rng.uniform(1800, 4200)
+        grain = bp(rng.standard_normal(n_of(d)) * np.hanning(n_of(d)), lo, lo * 1.9)
+        place(out, grain, 0.02 + 0.13 * rng.random() ** 0.7, min(rng.pareto(2.6) * 0.06 + 0.02, 0.09))
+    # The crease: fibres giving along the fold, densest at 160 ms and thinning over 60 ms.
+    for _ in range(46):
+        at = 0.16 + 0.07 * rng.random() ** 2.2
+        d = rng.uniform(0.0005, 0.0022)
+        lo = rng.uniform(2200, 5200)
+        grain = bp(rng.standard_normal(n_of(d)) * np.hanning(n_of(d)), lo, lo * 1.8)
+        place(out, grain, at, min(rng.pareto(2.2) * 0.25 + 0.1, 0.5) * (1 - (at - 0.16) / 0.09))
+    # Paper meeting paper as it's pinched: a soft, dull pat, no ring.
+    pat = lp(rng.standard_normal(n_of(0.03)), 1400) * env(n_of(0.03), 0.0015, 0.006)
+    place(out, pat + 0.5 * hit([(340, 0.009, 1.0), (760, 0.006, 0.5)], 0.03, 0.0025), 0.158, 0.4)
+    # Pressed flat: a fingertip along the crease, the band falling 2.6 kHz to 1.3 kHz, a few last cracks.
+    n = n_of(0.27)
+    press_ = svf_bandpass(rng.standard_normal(n), np.geomspace(2600, 1300, n), 0.9) * bell_env(n, 0.08) ** 1.1
+    place(out, press_, 0.21, 0.11)
+    for _ in range(10):
+        d = rng.uniform(0.0006, 0.002)
+        lo = rng.uniform(2400, 4800)
+        grain = bp(rng.standard_normal(n_of(d)) * np.hanning(n_of(d)), lo, lo * 1.8)
+        place(out, grain, 0.24 + 0.17 * rng.random() ** 1.4, rng.uniform(0.02, 0.07))
+    out = lp(out, 9000)
+    return room(out, rng, rt60=0.16, wet=0.07)
+
+
 # name: (builder, seed, output file)
 CUES = {
     "press": (press, 11, "press.m4a"),
@@ -653,6 +746,10 @@ CUES = {
     "lens-down": (lens_down, 25, "lens-down.m4a"),
     "purr": (purr, 26, "purr.m4a"),
     "mug-break": (mug_break, 27, "mug-break.m4a"),
+    "pencil-rub-1": (lambda rng: pencil_rub(rng, 0), 28, "pencil-rub-1.m4a"),
+    "pencil-rub-2": (lambda rng: pencil_rub(rng, 1), 29, "pencil-rub-2.m4a"),
+    "pencil-rub-3": (lambda rng: pencil_rub(rng, 2), 30, "pencil-rub-3.m4a"),
+    "paper-fold": (paper_fold, 31, "paper-fold.m4a"),
 }
 
 
@@ -720,7 +817,9 @@ def build(name: str, work: Path) -> None:
 
 
 def main(argv: list[str]) -> None:
-    names = argv or list(CUES)
+    # A name is a cue, or a set of numbered variants ("pencil-rub" builds pencil-rub-1, -2 and -3).
+    variants = lambda name: [c for c in CUES if c.rpartition("-")[0] == name and c.rpartition("-")[2].isdigit()]  # noqa: E731
+    names = [c for name in argv for c in ([name] if name in CUES else variants(name) or [name])] or list(CUES)
     unknown = [n for n in names if n not in CUES]
     if unknown:
         sys.exit(f"no cue called {', '.join(unknown)}; have {', '.join(CUES)}")

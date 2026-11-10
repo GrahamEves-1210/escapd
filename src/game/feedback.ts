@@ -39,6 +39,11 @@
 // - mugBreak: the mug the cat knocks off home's window sill hitting the floor
 //   off-screen. Sound only (it isn't the player's touch): a distant ceramic
 //   crack and a few shards skittering.
+// - pencilRub: graphite shaded over paper, one back-and-forth stroke. Sound
+//   only (the rubbing sheet gives its own ticks), quiet, made to be called
+//   again and again as the player rubs: each call plays one of three strokes.
+// - paperFold: a sheet folded over and creased. The tick haptic as it comes
+//   over, a light tap at the crease; a short rustle into a soft, crisp crease.
 // - shutter: the camera taking a photo. A thud and a mechanical shutter.
 // - typewriter: text typing itself out in a game moment. Sound only, no
 //   haptic: a short run of keys.
@@ -48,7 +53,7 @@ import { usePreferences } from "./preferences";
 import { playSound, preloadSounds, type SoundName } from "./sound";
 
 /** The beats of the patterns, in ms after the first. The sounds are cut to the same beats. */
-const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170 } as const;
+const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170, crease: 160 } as const;
 
 export function useFeedback() {
   const { haptics_enabled, sound_enabled } = usePreferences();
@@ -155,6 +160,12 @@ export function useFeedback() {
         sound("purr");
       },
       mugBreak: () => sound("mugBreak"),
+      pencilRub: () => sound("pencilRub"),
+      paperFold: () => {
+        tick();
+        later(PATTERN.crease, () => impact(Haptics.ImpactFeedbackStyle.Light));
+        sound("paperFold");
+      },
     };
   }, [haptics_enabled, sound_enabled]);
 }

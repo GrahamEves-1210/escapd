@@ -36,13 +36,17 @@ export type SoundName =
   | "lensUp"
   | "lensDown"
   | "purr"
-  | "mugBreak";
+  | "mugBreak"
+  | "pencilRub"
+  | "paperFold";
 
 // The interaction foley (scripts/audio/foley.py) is levelled to one loudness
 // (-18 LUFS momentary, peaks capped at -1.5 dBTP), so these volumes are the
 // mix: soft and close, the small things quietest, the big moments a little
 // over. The shutter and typewriter (scripts/audio/generate.mjs) are peak-normalized.
-const EFFECTS: Record<SoundName, { source: number; volume: number }> = {
+// A cue that fires over and over (the pencil's rub) has a few variants as its
+// source: each play picks one at random, never the one before.
+const EFFECTS: Record<SoundName, { source: number | readonly number[]; volume: number }> = {
   // A soft fingertip tap, kept quiet so buttons never clatter.
   press: { source: require("../../assets/audio/press.m4a"), volume: 0.25 },
   // A wooden block set down on a cloth-topped table.
@@ -81,6 +85,19 @@ const EFFECTS: Record<SoundName, { source: number; volume: number }> = {
   // The mug the cat knocked off home's window sill, breaking on the floor just off-screen: a ceramic
   // crack, the pieces parting, a few shards skittering (0.9 s). Distant, so no louder than a click.
   mugBreak: { source: require("../../assets/audio/mug-break.m4a"), volume: 0.55 },
+  // Soft graphite shading on paper, one back-and-forth stroke (0.4 s, faded at both ends). It fires
+  // again and again while the player rubs, so it's quiet (about the music's level) and has three
+  // variants: a run never repeats one, and the stroke before rings out under the next.
+  pencilRub: {
+    source: [
+      require("../../assets/audio/pencil-rub-1.m4a"),
+      require("../../assets/audio/pencil-rub-2.m4a"),
+      require("../../assets/audio/pencil-rub-3.m4a"),
+    ],
+    volume: 0.2,
+  },
+  // A sheet folded over, creased (at 160 ms, the haptic's beat) and pressed flat. A little under `paper`.
+  paperFold: { source: require("../../assets/audio/paper-fold.m4a"), volume: 0.3 },
 };
 
 // Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).
@@ -159,15 +176,20 @@ export function load(source: number): AudioPlayer | null {
   }
 }
 
-const players: Partial<Record<SoundName, AudioPlayer | null>> = {};
+/** A cue's players, one per variant. null marks a failed load: it stays silent rather than retrying on every cue. */
+const players: Partial<Record<SoundName, (AudioPlayer | null)[]>> = {};
+/** The variant each cue played last, so a run of one cue never plays the same variant twice running. */
+const lastVariant: Partial<Record<SoundName, number>> = {};
 
 /** Load every effect once, ahead of its first play. Safe to call often. */
 export function preloadSounds() {
   if (!supported) return;
   configure();
   for (const name of Object.keys(EFFECTS) as SoundName[]) {
-    // null marks a failed load: it stays silent rather than retrying on every cue.
-    if (!(name in players)) players[name] = load(EFFECTS[name].source);
+    if (name in players) continue;
+    const source = EFFECTS[name].source;
+    const sources: readonly number[] = Array.isArray(source) ? source : [source as number];
+    players[name] = sources.map(load);
   }
 }
 
@@ -189,7 +211,13 @@ export function canSeek(player: AudioPlayer): boolean {
 export function playSound(name: SoundName) {
   if (!supported) return;
   preloadSounds();
-  const player = players[name];
+  const loaded = (players[name] ?? []).flatMap((p, i) => (p ? [i] : []));
+  if (loaded.length === 0) return;
+  // One of its variants, at random, but not the one it played last (when there's another).
+  const fresh = loaded.length > 1 ? loaded.filter((i) => i !== lastVariant[name]) : loaded;
+  const variant = fresh[Math.floor(Math.random() * fresh.length)] ?? fresh[0];
+  lastVariant[name] = variant;
+  const player = players[name]?.[variant];
   if (!player) return;
   quietly(() => {
     player.volume = EFFECTS[name].volume;
@@ -285,9 +313,10 @@ export function setRoomToneDucked(ducked: boolean) {
 
 /** Forget every player. For tests. */
 export function resetSoundsForTests() {
-  for (const p of Object.values(players)) quietly(() => p?.remove());
+  for (const set of Object.values(players)) for (const p of set ?? []) quietly(() => p?.remove());
   for (const t of Object.values(tones)) quietly(() => t?.player.remove());
   for (const k of Object.keys(players)) delete players[k as SoundName];
+  for (const k of Object.keys(lastVariant)) delete lastVariant[k as SoundName];
   for (const k of Object.keys(tones)) delete tones[k as Genre];
   if (ticker) clearInterval(ticker);
   ticker = null;

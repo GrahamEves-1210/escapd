@@ -41,6 +41,10 @@ jest.mock("../../../assets/audio/drawer.m4a", () => "drawer.m4a");
 jest.mock("../../../assets/audio/detent.m4a", () => "detent.m4a");
 jest.mock("../../../assets/audio/purr.m4a", () => "purr.m4a");
 jest.mock("../../../assets/audio/mug-break.m4a", () => "mug-break.m4a");
+jest.mock("../../../assets/audio/pencil-rub-1.m4a", () => "pencil-rub-1.m4a");
+jest.mock("../../../assets/audio/pencil-rub-2.m4a", () => "pencil-rub-2.m4a");
+jest.mock("../../../assets/audio/pencil-rub-3.m4a", () => "pencil-rub-3.m4a");
+jest.mock("../../../assets/audio/paper-fold.m4a", () => "paper-fold.m4a");
 jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
 jest.mock("../../../assets/audio/room-paranormal.m4a", () => "room-paranormal.m4a");
 const SOURCE = {
@@ -51,6 +55,7 @@ const SOURCE = {
   detent: "detent.m4a",
   purr: "purr.m4a",
   mugBreak: "mug-break.m4a",
+  paperFold: "paper-fold.m4a",
   noir: "room-noir.m4a",
   paranormal: "room-paranormal.m4a",
 };
@@ -58,7 +63,7 @@ const SOURCE = {
 // Every cue with a sound (tick, tap and the outcomes are silent).
 const INTERACTION_CUES = [
   "press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter",
-  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak",
+  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak", "pencilRub", "paperFold",
 ] as const;
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
@@ -114,7 +119,7 @@ describe("cues with sound", () => {
     jest.runAllTimers();
     expect(audio.createAudioPlayer).not.toHaveBeenCalled();
     expect(played()).toEqual([]);
-    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 3);
+    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 4);
   });
 
   it("every interaction cue plays one sound of its own", async () => {
@@ -167,6 +172,62 @@ describe("cues with sound", () => {
     const { result } = await renderHook(() => useFeedback());
     result.current.purr();
     expect(playerFor(SOURCE.purr)!.volume).toBeLessThanOrEqual(0.25);
+  });
+
+  it("the pencil's rub is sound only and quiet: each stroke one of three variants, never the same twice running", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    const rubs = audio.__players.filter((p) => String(p.source).startsWith("pencil-rub-"));
+    expect(rubs.map((p) => p.source).sort()).toEqual(["pencil-rub-1.m4a", "pencil-rub-2.m4a", "pencil-rub-3.m4a"]);
+    const loaded = audio.createAudioPlayer.mock.calls.length;
+    const order: unknown[] = [];
+    for (let i = 0; i < 60; i++) {
+      const before = rubs.map((p) => p.play.mock.calls.length);
+      result.current.pencilRub();
+      const now = rubs.filter((p, j) => p.play.mock.calls.length > before[j]);
+      expect(now).toHaveLength(1);
+      // Each stroke starts from its top, at the cue's level.
+      expect(now[0].seekTo).toHaveBeenLastCalledWith(0);
+      expect(now[0].volume).toBeLessThanOrEqual(0.25);
+      order.push(now[0].source);
+    }
+    for (let i = 1; i < order.length; i++) expect(order[i]).not.toBe(order[i - 1]);
+    expect(new Set(order).size).toBe(3);
+    // Only its own players, no new loads, no haptic (the sheet gives its own).
+    expect(played().every((p) => rubs.includes(p))).toBe(true);
+    expect(audio.createAudioPlayer).toHaveBeenCalledTimes(loaded);
+    expect(haptics()).toBe(0);
+  });
+
+  it("a rub variant that failed to load is skipped; the others still play", async () => {
+    // As if the second file never loaded.
+    const real = audio.createAudioPlayer.getMockImplementation()!;
+    audio.createAudioPlayer.mockImplementation((source: unknown) => {
+      if (source === "pencil-rub-2.m4a") throw new Error("missing");
+      return real(source);
+    });
+    try {
+      const { result } = await renderHook(() => useFeedback());
+      expect(() => {
+        for (let i = 0; i < 20; i++) result.current.pencilRub();
+      }).not.toThrow();
+      expect(new Set(played().map((p) => p.source))).toEqual(new Set(["pencil-rub-1.m4a", "pencil-rub-3.m4a"]));
+      expect(played().reduce((n, p) => n + p.play.mock.calls.length, 0)).toBe(20);
+    } finally {
+      audio.createAudioPlayer.mockImplementation(real);
+    }
+  });
+
+  it("the fold's light tap lands on the crease, 160 ms into its sound", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    result.current.paperFold();
+    const fold = playerFor(SOURCE.paperFold)!;
+    expect(fold.play).toHaveBeenCalledTimes(1);
+    expect(played()).toEqual([fold]);
+    expect(fold.volume).toBeLessThan(0.45);
+    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(160);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
   });
 
   it("haptics off leaves the sound on", async () => {
