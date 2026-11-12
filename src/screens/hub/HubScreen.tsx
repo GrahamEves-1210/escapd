@@ -45,8 +45,10 @@ import { ModeCard } from "./ModeCard";
 import { ResumeSheet } from "./ResumeSheet";
 import { SettingsSheet, type SettingsRoute } from "./SettingsSheet";
 import { useHubData } from "./useHubData";
-import { WindowBackdrop, windowGeometry } from "./WindowBackdrop";
-import { CAT, COVER, FALL } from "./art/nook";
+import { WindowBackdrop, WindowForeground, windowGeometry } from "./WindowBackdrop";
+import { CAT, COVER, FALL, MUG_REST, PARALLAX } from "./art/nook";
+import { useParallax } from "./parallax/ParallaxLayer";
+import { useTilt, type TiltValues } from "./parallax/useTilt";
 import { LogoSparkle } from "./LogoSparkle";
 import { focusForAccessibility } from "@/lib/a11y";
 
@@ -123,6 +125,10 @@ export function HubScreen() {
       return () => setSillVisit((v) => ({ ...v, active: false }));
     }, []),
   );
+
+  // The set's layers slide with the phone's tilt while home is in front (never under reduced motion).
+  const tilt = useTilt(sillVisit.active && !reducedMotion);
+  const logoSlide = useParallax(tilt, PARALLAX.depth.logo);
 
   // Leaving home drops a late result (nothing navigates a player who has
   // gone), returns a busy card to idle, closes the prompt and clears the
@@ -346,8 +352,8 @@ export function HubScreen() {
 
   return (
     <View style={styles.root}>
-      {/* A rainy night through the window, the frame round the screen. */}
-      <WindowBackdrop />
+      {/* A rainy night through the window, the frame round the screen: the set's layers, sliding with the tilt. */}
+      <WindowBackdrop tilt={tilt} />
       {/* Everything behind a sheet: hidden from TalkBack while it is open (VoiceOver is trapped by the sheet). */}
       <View
         style={styles.screen}
@@ -363,10 +369,10 @@ export function HubScreen() {
           </View>
           {/* The ESCAPD logo, large and centred: the brand art's cream letters with the lit keyhole, keyed onto the black. */}
           <Animated.View style={[styles.titleGroup, logoIn]}>
-            <View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={[styles.lift, { shadowColor: shell.ground }]}>
+            <Animated.View accessible accessibilityRole="header" accessibilityLabel="ESCAPD" testID="hub-logo" style={[styles.lift, { shadowColor: shell.ground }, logoSlide]}>
               <Image source={WORDMARK} style={styles.logo} resizeMode="contain" accessibilityIgnoresInvertColors />
               <LogoSparkle color={shell.glow} />
-            </View>
+            </Animated.View>
           </Animated.View>
           <View style={[styles.lift, { shadowColor: shell.ground }]}>
           <Chip
@@ -394,8 +400,9 @@ export function HubScreen() {
             <FallIn
               key={genre}
               index={i + 1}
-              tilt={deckTilt(i)}
+              turn={deckTilt(i)}
               shadow={modeThemes[genre].ground}
+              tilt={tilt}
               testID={`hub-card-${genre}-deal`}
               style={{ marginTop: i === 0 ? 0 : -deck.overlap }}
             >
@@ -423,9 +430,11 @@ export function HubScreen() {
         {catWidth > 0 ? (
           <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
             <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill"
-              mug={{ visit: sillVisit.n, active: sillVisit.active, base: CAT.sink }} />
+              mug={{ visit: sillVisit.n, active: sillVisit.active, base: CAT.sink - MUG_REST }} />
           </View>
         ) : null}
+        {/* The curtains' edges, nearest of all: over the sill and the cat, under the cards and the header (styles.column, styles.header). */}
+        <WindowForeground tilt={tilt} />
 
         {/* Always mounted: Android speaks a polite live region when its content changes, never one that has just mounted. Over the last card's foot, clear of the cat on the sill. */}
         <View
@@ -469,14 +478,19 @@ function useFallIn(index: number) {
 }
 
 /**
- * A card falling into the deck. The tilt is on a still wrapper: the fall's
- * animated transform (translateY) would replace a rotate in the same style.
+ * A card falling into the deck. Its turn is on a still wrapper: the fall's
+ * animated transform (translateY) would replace a rotate in the same style
+ * (and so would the slide with the phone's tilt, on a wrapper of its own).
  */
-function FallIn({ index, tilt, shadow, style, testID, children }: { index: number; tilt: number; shadow: string; style: ViewStyle; testID: string; children: ReactNode }) {
+function FallIn({ index, turn, shadow, tilt, style, testID, children }: { index: number; turn: number; shadow: string; tilt: TiltValues; style: ViewStyle; testID: string; children: ReactNode }) {
   const fall = useFallIn(index);
+  // Held in the hand, in front of the window: each card slides a little against the tilt, the upper cards of the deck more.
+  const slide = useParallax(tilt, PARALLAX.depth.card + (index - 1) * PARALLAX.depth.cardStep);
   return (
-    <View style={[style, { transform: [{ rotate: `${tilt}deg` }] }]} testID={testID}>
-      <Animated.View style={[styles.card, { shadowColor: shadow }, fall]}>{children}</Animated.View>
+    <View style={[style, { transform: [{ rotate: `${turn}deg` }] }]} testID={testID}>
+      <Animated.View style={slide}>
+        <Animated.View style={[styles.card, { shadowColor: shadow }, fall]}>{children}</Animated.View>
+      </Animated.View>
     </View>
   );
 }
@@ -489,15 +503,19 @@ const styles = StyleSheet.create({
   lift: { shadowOpacity: COVER.shadow.opacity, shadowRadius: COVER.shadow.radius / 2, shadowOffset: { width: 0, height: COVER.shadow.y / 2 } },
   card: { shadowOpacity: COVER.shadow.opacity, shadowRadius: COVER.shadow.radius, shadowOffset: { width: 0, height: COVER.shadow.y }, elevation: COVER.shadow.elevation },
   screen: { ...StyleSheet.absoluteFill },
+  // Over the curtains' edges (WindowForeground), as the cards are.
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: ref.space.lg - CHIP_PAD,
+    zIndex: 1,
   },
   // Centred between the two 48 slots, so on the screen's axis.
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
   logo: { height: H.header.logo, width: H.header.logo * H.header.logoAspect },
-  column: { flex: 1 },
-  cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge },
-  noticeSlot: { position: "absolute", left: M.edge + M.pad, right: M.edge + M.pad, alignItems: "center" },
+  // Over the curtains' edges too; only the cards themselves take touches, so the cat under the deck (and under
+  // the curtains) can still be petted.
+  column: { flex: 1, zIndex: 1, pointerEvents: "box-none" },
+  cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge, pointerEvents: "box-none" },
+  noticeSlot: { position: "absolute", left: M.edge + M.pad, right: M.edge + M.pad, alignItems: "center", zIndex: 2 },
 });

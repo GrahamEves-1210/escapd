@@ -1,39 +1,57 @@
-# Home's backdrop (docs/ART_DIRECTION.md, "velvet & ink"): her reading nook on
-# a rainy night. A four-pane window fills the phone, its frame and sill on the
-# screen's edges and a cross of mullions, the wood painted a deep plum-brown
-# and warmed by candlelight from the sill. Behind the glass: a midnight-indigo
-# sky going plum toward a dusky mauve horizon under a low, rainy overcast: a
-# full moon in the lower right pane, veiled by thin cloud (a soft corona
-# through it, a band of cloud across its face), over a soft treeline (the cat
-# sits on the sill beside it, its head over the moon's edge), only a few
-# stars in the gaps, all seen through wet glass, beaded with rain. On the sill at the left, a
-# little stack of books with a lit candle on top; its light pools on the sill
-# and the frame. The app draws the mug of tea by the cat (it can knock it off),
-# and animates the flame's glow,
-# the rain on the glass (round the things on the sill), clouds drifting over
-# the moon, steam off the tea and the fairy lights over it
-# (src/screens/hub/WindowBackdrop.tsx).
+# Home's set (docs/ART_DIRECTION.md, "velvet & ink"): her reading nook's window
+# on a rainy night, as depth layers the app slides against each other when the
+# phone tilts (src/screens/hub/WindowBackdrop.tsx, src/screens/hub/parallax).
 #
-# Usage: python3 scripts/brand/window.py assets/backdrop/window.jpg
-# The geometry (F, SILL, M, MY, the candle's flame, the moon) is mirrored as fractions in
-# src/screens/hub/art/nook.ts: change both together.
-import sys, numpy as np
+# The set is built and rendered in Blender (scripts/blender/props/home_set.py:
+# the far and near pines, the window's frame, the sill and its still life, the
+# curtains; one camera, one lighting). This script finishes it:
+# - paints the set's backcloth to the same camera's framing: a midnight-indigo
+#   sky going plum toward a dusky mauve horizon under a low, rainy overcast, a
+#   full moon low on the right veiled by thin cloud, a few stars in the gaps;
+# - paints the wet glass: beads and runs of rain (lavender, catching the room's
+#   warm light on their lower rims), the frame's shadow at each pane's top and
+#   left, a faint sheen across it, the candle's flame mirrored in it;
+# - softens what is far away or very near (seen through wet glass; out of focus);
+# - trims each layer, writes it under assets/home/set/ (the sky a JPEG, the
+#   soft layers at half size, the rest palette PNGs where that doesn't band),
+#   and writes set.json: where each layer lies on the art, the moon, the flame.
+#
+# Every layer has `bleed` pixels of picture beyond the art (1290 x 2796) on all
+# sides, so it can slide without showing an edge.
+#
+# Usage: <python with numpy, Pillow> scripts/brand/window.py <dir of rendered layers>
+#   (home_set.py runs it; needs that dir's far.png, near.png, frame.png, sill.png,
+#   fore-left.png, fore-right.png and set_raw.json)
+import json
+import os
+import sys
+
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-W, H = 1290, 2796
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(REPO, "scripts", "blender"))
+import export  # noqa: E402
+
+src = sys.argv[1]
+raw = json.load(open(os.path.join(src, "set_raw.json")))
+W, H = raw["canvas"]["art"]
+B = raw["canvas"]["bleed"]
+CW, CH = W + 2 * B, H + 2 * B
 rng = np.random.default_rng(11)
-F = 64            # frame on the sides and top (px)
+F = 64            # frame on the sides and top (art px), as home_set.py
 SILL = 150        # the sill at the foot
 M = 46            # mullion width
-MY = int(H * 0.50)  # the cross's height
-SILL_TOP = H - SILL
-CX = W // 2
-# The candle on the sill (its flame's centre), and the moon behind the lower right pane.
-FLAME = (290, SILL_TOP - 270)
+MY = H // 2       # the cross's height
+# The moon behind the lower right pane (art px): centre and radius.
 MOON = (868, 2254, 84)
+FLAME = raw["anchors"]["flame"]
+DEST = os.path.join(REPO, "assets", "home", "set")
+os.makedirs(DEST, exist_ok=True)
 
-yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-v = yy / H
+# Canvas coordinates: art px + B.
+yy, xx = np.mgrid[0:CH, 0:CW].astype(np.float32)
+v = (yy - B) / H
 
 
 def ramp(t, stops):
@@ -50,9 +68,9 @@ def ramp(t, stops):
     return out
 
 
-def noise(scale, seed_rng=rng):
-    small = seed_rng.random((H // scale + 2, W // scale + 2))
-    return np.array(Image.fromarray((small * 255).astype(np.uint8)).resize((W, H), Image.BICUBIC)).astype(np.float32) / 255.0
+def noise(scale):
+    small = rng.random((CH // scale + 2, CW // scale + 2))
+    return np.array(Image.fromarray((small * 255).astype(np.uint8)).resize((CW, CH), Image.BICUBIC)).astype(np.float32) / 255.0
 
 
 def soft_disc(cx, cy, r, power=2.0):
@@ -60,7 +78,12 @@ def soft_disc(cx, cy, r, power=2.0):
     return np.clip(1 - d, 0, 1) ** power
 
 
-# 1. The sky: midnight indigo at the top, plum through the middle, a dusky mauve glow low behind the trees.
+def clear():
+    return Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
+
+
+# ---------------------------------------------------------------- the sky
+
 sky = ramp(v, [
     (0.0, (14, 13, 38)),
     (0.35, (26, 19, 52)),
@@ -71,99 +94,71 @@ sky = ramp(v, [
 ])
 # A low, rainy overcast: soft cloud everywhere, thicker in long drifting bands.
 clouds = np.clip((0.55 * noise(300) + 0.3 * noise(120) + 0.15 * noise(40) - 0.36) * 1.7, 0, 1)
-sky += clouds[..., None] * np.array([40, 28, 54], np.float32) * (0.45 + 0.55 * v[..., None])
+sky += clouds[..., None] * np.array([40, 28, 54], np.float32) * (0.45 + 0.55 * np.clip(v, 0, 1)[..., None])
+mx, my, mr = MOON[0] + B, MOON[1] + B, MOON[2]
 # The moon's light through the cloud: a wide, soft corona, lighting the cloud round it most.
-halo = soft_disc(MOON[0], MOON[1], MOON[2] * 6.5, 1.8)
+halo = soft_disc(mx, my, mr * 6.5, 1.8)
 sky += halo[..., None] * np.array([46, 38, 70], np.float32) * (0.6 + 0.8 * clouds[..., None])
 img = Image.fromarray(np.clip(sky, 0, 255).astype(np.uint8)).convert("RGBA")
-d = ImageDraw.Draw(img)
 
-# 2. The moon: a soft full moon, faint maria, a bright rim.
-mx, my, mr = MOON
-moon = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-md = ImageDraw.Draw(moon)
-md.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(236, 224, 222, 230))
-marks = Image.new("L", (W, H), 0)
+# The moon: a soft full moon, faint maria, a bright rim.
+moon = clear()
+ImageDraw.Draw(moon).ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=(236, 224, 222, 230))
+marks = Image.new("L", (CW, CH), 0)
 mk = ImageDraw.Draw(marks)
 for (ox, oy, rr) in [(-30, -24, 34), (22, 10, 26), (-8, 38, 20), (40, -36, 14), (-46, 22, 12)]:
     mk.ellipse([mx + ox - rr, my + oy - rr, mx + ox + rr, my + oy + rr], fill=60)
 marks = marks.filter(ImageFilter.GaussianBlur(9))
-shade = Image.new("RGBA", (W, H), (196, 170, 196, 0))
+shade = Image.new("RGBA", (CW, CH), (196, 170, 196, 0))
 shade.putalpha(marks)
-moon = Image.alpha_composite(moon, Image.composite(shade, Image.new("RGBA", (W, H), (0, 0, 0, 0)), moon.getchannel("A")))
-glow = moon.filter(ImageFilter.GaussianBlur(22)); glow.putalpha(glow.getchannel("A").point(lambda a: int(a * 0.6)))
+moon = Image.alpha_composite(moon, Image.composite(shade, clear(), moon.getchannel("A")))
+glow = moon.filter(ImageFilter.GaussianBlur(22))
+glow.putalpha(glow.getchannel("A").point(lambda a: int(a * 0.6)))
 img = Image.alpha_composite(img, glow)
 img = Image.alpha_composite(img, moon.filter(ImageFilter.GaussianBlur(2.5)))
 # The veil: thin cloud across the moon's face, lit silver where it crosses it, plum away from it.
-veil = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+veil = clear()
 vd = ImageDraw.Draw(veil)
-# A bank across its lower half, a thin streak over its top, wisps trailing off either side.
 for (ox, oy, rx, ry, a) in [(-60, 52, 300, 44, 225), (90, 30, 220, 26, 170), (-30, -34, 230, 14, 150), (150, -58, 150, 10, 110),
                             (-280, 70, 220, 26, 120), (260, 6, 200, 16, 100)]:
     vd.ellipse([mx + ox - rx, my + oy - ry, mx + ox + rx, my + oy + ry], fill=(128, 100, 146, a))
 veil = veil.filter(ImageFilter.GaussianBlur(14))
-lit_veil = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+lit_veil = clear()
 ImageDraw.Draw(lit_veil).ellipse([mx - mr * 1.6, my - mr * 1.6, mx + mr * 1.6, my + mr * 1.6], fill=(255, 255, 255, 255))
 lit_veil = lit_veil.filter(ImageFilter.GaussianBlur(40)).getchannel("A")
 va = np.asarray(veil).astype(np.float32)
 k = (np.asarray(lit_veil).astype(np.float32) / 255.0)[..., None]
 va[..., :3] = va[..., :3] * (1 - k) + np.array([206, 190, 220], np.float32) * k
 img = Image.alpha_composite(img, Image.fromarray(np.clip(va, 0, 255).astype(np.uint8), "RGBA"))
-
-# 3. The treeline: two soft rows of pines low across the panes, the far row hazed plum.
-d = ImageDraw.Draw(img)
-
-
-def pine(cx, base, h, w, colour):
-    tiers = 6
-    for t in range(tiers):
-        top = base - h + t * h / tiers * 0.9
-        bot = top + h / tiers * 1.6
-        half = w * (t + 1) / tiers / 2
-        d.polygon([(cx, top), (cx - half, bot), (cx + half, bot)], fill=colour)
-    d.rectangle([cx - w * 0.04, base - h * 0.12, cx + w * 0.04, base + 40], fill=colour)
-
-
-for base, colour, n, hmin, hmax in [
-    (int(H * 0.925), (56, 36, 74), 18, 70, 210),
-    (int(H * 0.945), (28, 18, 38), 14, 100, 240),
-]:
-    for _ in range(n):
-        cx = int(rng.integers(-60, W + 60))
-        h = int(rng.integers(hmin, hmax))
-        pine(cx, base, h, h * 0.44, colour)
-    d.rectangle([0, base, W, H], fill=colour)
-img = img.filter(ImageFilter.GaussianBlur(7))   # seen through wet glass
-
+img = img.filter(ImageFilter.GaussianBlur(6))   # seen through wet glass
 # A few stars, only high up and only in the gaps of the cloud (it's a rainy night): tiny, dim.
-stars = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+stars = clear()
 sd = ImageDraw.Draw(stars)
-for _ in range(120):
-    x, y = float(rng.uniform(0, W)), float(rng.uniform(0, H * 0.8) ** 1.0)
+for _ in range(140):
+    x, y = float(rng.uniform(0, CW)), float(rng.uniform(0, CH * 0.8))
     if rng.random() < 0.5:
         y *= 0.55
     r = float(rng.choice([1.5, 2, 2.5, 3.5], p=[.4, .3, .2, .1]))
-    gap = 1 - clouds[min(H - 1, int(y)), min(W - 1, int(x))]
-    if y > H * 0.45 or gap < 0.75:
+    gap = 1 - clouds[min(CH - 1, int(y)), min(CW - 1, int(x))]
+    if y > CH * 0.45 or gap < 0.75:
         continue
-    a = int(rng.uniform(90, 170) * (1 - y / H) * gap)
+    a = int(rng.uniform(90, 170) * (1 - y / CH) * gap)
     sd.ellipse([x - r, y - r, x + r, y + r], fill=(255, 238, 228, a))
-img = img.convert('RGBA')
 img = Image.alpha_composite(img, stars.filter(ImageFilter.GaussianBlur(1.2)))
-img = Image.alpha_composite(img, stars)
+sky_layer = Image.alpha_composite(img, stars)
 
+# ---------------------------------------------------------------- the glass
 
-# 4. Rain on the glass: fewer, softer beads (lavender, catching the warm room light on their lower rims) and a few runs.
-glass = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+glass = clear()
 g = ImageDraw.Draw(glass)
-for _ in range(900):
-    cx, cy = int(rng.integers(0, W)), int(rng.integers(0, H))
+for _ in range(980):
+    cx, cy = int(rng.integers(0, CW)), int(rng.integers(0, CH))
     r = float(rng.choice([2, 3, 4, 5, 6, 8, 11], p=[.24, .24, .2, .13, .09, .07, .03]))
     g.ellipse([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], fill=(200, 186, 236, 28))
     g.arc([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], 15, 165, fill=(255, 226, 212, 120), width=max(1, int(r / 2.5)))
     g.arc([cx - r, cy - r * 1.15, cx + r, cy + r * 1.15], 195, 345, fill=(12, 8, 26, 80), width=max(1, int(r / 3)))
-for _ in range(22):
-    cx = int(rng.integers(0, W)); y0 = int(rng.integers(0, H - 300)); L = int(rng.integers(140, 640))
+for _ in range(24):
+    cx = int(rng.integers(0, CW)); y0 = int(rng.integers(0, CH - 300)); L = int(rng.integers(140, 640))
     amp = rng.uniform(2, 12); per = rng.uniform(20, 60); ph = rng.uniform(0, 6); wdt = int(rng.integers(3, 6))
     pts = [(cx + amp * np.sin(t / per + ph), y0 + t) for t in range(0, L, 5)]
     g.line(pts, fill=(214, 200, 246, 52), width=wdt)
@@ -171,115 +166,105 @@ for _ in range(22):
     ex, ey = pts[-1]; r = wdt + 3
     g.ellipse([ex - r, ey - r * 1.2, ex + r, ey + r * 1.2], fill=(214, 200, 246, 70))
     g.arc([ex - r, ey - r * 1.2, ex + r, ey + r * 1.2], 15, 165, fill=(255, 238, 228, 170), width=2)
-img = Image.alpha_composite(img.convert("RGBA"), glass)
-
-# 5. The window: painted plum-brown wood round the screen, a cross of mullions, a deep sill at the foot.
-frame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-f = ImageDraw.Draw(frame)
-dark, mid, lit = (26, 16, 24), (54, 34, 44), (104, 70, 74)
-
-
-def bar(x0, y0, x1, y1):
-    f.rectangle([x0, y0, x1, y1], fill=mid)
-    # A rounded profile: lit on the top/left edge, dark on the bottom/right.
-    if x1 - x0 > y1 - y0:
-        f.rounded_rectangle([x0, y0 + 1, x1, y0 + 7], 3, fill=lit)
-        f.line([(x0, y1 - 3), (x1, y1 - 3)], fill=dark, width=6)
-    else:
-        f.rounded_rectangle([x0 + 1, y0, x0 + 7, y1], 3, fill=lit)
-        f.line([(x1 - 3, y0), (x1 - 3, y1)], fill=dark, width=6)
-
-
-bar(0, 0, W, F); bar(0, 0, F, H); bar(W - F, 0, W, H)
-bar(CX - M // 2, F, CX + M // 2, SILL_TOP); bar(F, MY - M // 2, W - F, MY + M // 2)
-# The sill: a deeper ledge, its lip catching the candle.
-f.rectangle([0, SILL_TOP, W, H], fill=mid)
-f.rectangle([0, SILL_TOP, W, SILL_TOP + 28], fill=(78, 50, 58))
-f.line([(0, SILL_TOP + 2), (W, SILL_TOP + 2)], fill=(150, 104, 100), width=5)
-f.rectangle([0, SILL_TOP + 28, W, SILL_TOP + 38], fill=dark)
-img = Image.alpha_composite(img, frame)
-# The frame's shadow on the glass, round each pane.
-shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0)); sh = ImageDraw.Draw(shadow)
+# A faint sheen across the panes: the room, dimly, in the glass.
+sheen = clear()
+sh = ImageDraw.Draw(sheen)
+for (x0, wide, a) in [(-200, 150, 16), (60, 60, 11), (760, 210, 14), (1080, 70, 10)]:
+    lean = CH * 0.36
+    sh.polygon([(x0 + lean, 0), (x0 + lean + wide, 0), (x0 + wide, CH), (x0, CH)], fill=(226, 214, 255, a))
+haze = sheen.filter(ImageFilter.GaussianBlur(26))   # the soft things on the glass are a layer of their own (small: they have no edges)
+# The frame's shadow on the glass, at each pane's top and left.
+shadow = clear()
+sh = ImageDraw.Draw(shadow)
+CX, SILL_TOP = W // 2, H - SILL
 for (x0, y0, x1, y1) in [(F, F, CX - M // 2, MY - M // 2), (CX + M // 2, F, W - F, MY - M // 2),
                          (F, MY + M // 2, CX - M // 2, SILL_TOP), (CX + M // 2, MY + M // 2, W - F, SILL_TOP)]:
-    sh.rectangle([x0, y0, x1, y0 + 26], fill=(10, 4, 16, 120)); sh.rectangle([x0, y0, x0 + 20, y1], fill=(10, 4, 16, 90))
-img = Image.alpha_composite(img, shadow.filter(ImageFilter.GaussianBlur(14)))
+    sh.rectangle([x0 + B - 30, y0 + B - 30, x1 + B, y0 + B + 26], fill=(10, 4, 16, 120))
+    sh.rectangle([x0 + B - 30, y0 + B - 30, x0 + B + 20, y1 + B], fill=(10, 4, 16, 90))
+haze = Image.alpha_composite(haze, shadow.filter(ImageFilter.GaussianBlur(14)))
+# The candle in the glass: its flame mirrored a little above itself, and a warm bloom on the wet pane round it.
+fx, fy = FLAME[0] + B, FLAME[1] + B
+warm = clear()
+wd = ImageDraw.Draw(warm)
+wd.ellipse([fx - 230, fy - 300, fx + 230, fy + 150], fill=(255, 176, 110, 34))
+wd.ellipse([fx - 90, fy - 150, fx + 90, fy + 40], fill=(255, 190, 120, 46))
+haze = Image.alpha_composite(haze, warm.filter(ImageFilter.GaussianBlur(60)))
+ghost = clear()
+gd = ImageDraw.Draw(ghost)
+gd.ellipse([fx - 12, fy - 56 - 26, fx + 12, fy - 56 + 20], fill=(255, 200, 130, 70))
+gd.ellipse([fx - 5, fy - 56 - 14, fx + 5, fy - 56 + 12], fill=(255, 236, 200, 90))
+haze = Image.alpha_composite(haze, ghost.filter(ImageFilter.GaussianBlur(7)))
 
-# 6. On the sill, at the left: two books, the candle on top in a little brass dish (the mug is the app's: src/play2/cat/Mug.tsx).
-props = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-p = ImageDraw.Draw(props)
-fx, fy = FLAME
-base = SILL_TOP + 6
-# Two books lying spine-out: the bottom one plum, the top one teal and a little shorter,
-# each with gilt bands and a foil title plate, their page edges just showing on top.
-GILT = (226, 182, 128)
-
-
-def book(x0, x1, top, bottom, cover, shade):
-    p.rectangle([x0 + 8, top - 6, x1 - 10, top + 4], fill=(236, 220, 198))
-    for k in range(3):
-        p.line([(x0 + 10, top - 4 + k * 3), (x1 - 12, top - 4 + k * 3)], fill=(204, 182, 160), width=1)
-    p.rounded_rectangle([x0, top, x1, bottom], 9, fill=cover)
-    p.rounded_rectangle([x0, bottom - 10, x1, bottom], 6, fill=shade)
-    for gx in (x0 + 26, x0 + 36, x1 - 36, x1 - 26):
-        p.line([(gx, top + 8), (gx, bottom - 8)], fill=GILT, width=3)
-    mid_x = (x0 + x1) // 2
-    p.rounded_rectangle([mid_x - 62, top + (bottom - top) // 2 - 9, mid_x + 62, top + (bottom - top) // 2 + 9], 4, outline=GILT, width=3)
-    p.line([(mid_x - 40, top + (bottom - top) // 2), (mid_x + 40, top + (bottom - top) // 2)], fill=GILT, width=4)
+# ---------------------------------------------------------------- the rendered layers
 
 
-b1 = (fx - 160, base - 58, fx + 160, base)
-book(b1[0], b1[2], b1[1], b1[3], (98, 44, 86), (70, 28, 62))
-b2 = (fx - 132, b1[1] - 52, fx + 138, b1[1] - 4)
-book(b2[0], b2[2], b2[1], b2[3], (28, 80, 88), (18, 56, 64))
-# The dish and the candle: a warm cream pillar, a couple of drips, a dark wick.
-dish_y = b2[1] - 4
-p.ellipse([fx - 62, dish_y - 16, fx + 62, dish_y + 8], fill=(176, 124, 84))
-p.ellipse([fx - 56, dish_y - 18, fx + 56, dish_y - 2], fill=(222, 170, 118))
-cw, ch = 34, 128
-ctop = dish_y - 8 - ch
-p.rounded_rectangle([fx - cw, ctop, fx + cw, dish_y - 6], 10, fill=(236, 212, 184))
-p.ellipse([fx - cw, ctop - 9, fx + cw, ctop + 9], fill=(246, 228, 204))
-for (dx, L) in [(-20, 40), (14, 24), (26, 54)]:
-    p.rounded_rectangle([fx + dx - 5, ctop, fx + dx + 5, ctop + L], 5, fill=(246, 228, 204))
-p.line([(fx, ctop - 2), (fx + 1, ctop - 18)], fill=(40, 26, 30), width=4)
-# Shading on the candle: dark on the right, away from the room's light.
-cs = Image.new("L", (W, H), 0)
-ImageDraw.Draw(cs).rectangle([fx + 8, ctop, fx + cw, dish_y - 6], fill=90)
-cs = cs.filter(ImageFilter.GaussianBlur(10))
-props_alpha = props.getchannel("A")
-shade_l = Image.composite(cs, Image.new("L", (W, H), 0), props_alpha)
-props = Image.alpha_composite(props, Image.merge("RGBA", (Image.new("L", (W, H), 70), Image.new("L", (W, H), 30), Image.new("L", (W, H), 50), shade_l)))
-# The books' shadow on the sill.
-bs = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-ImageDraw.Draw(bs).ellipse([fx - 200, base - 18, fx + 340, base + 22], fill=(12, 4, 14, 150))
-img = Image.alpha_composite(img, bs.filter(ImageFilter.GaussianBlur(12)))
-img = Image.alpha_composite(img, props)
+def rendered(name, blur=0.0):
+    """A rendered layer on the full canvas (it was rendered in a box of it)."""
+    im = Image.open(os.path.join(src, name + ".png")).convert("RGBA")
+    full = clear()
+    full.paste(im, tuple(raw[name]))
+    if blur:
+        full = full.convert("RGBa").filter(ImageFilter.GaussianBlur(blur)).convert("RGBA")   # premultiplied: no dark fringe
+    return full
 
-# 7. The candlelight: a warm pool over the sill, the books and the frame round the candle, falling off up the screen.
-rgb = np.asarray(img.convert("RGB")).astype(np.float32)
-warm = np.array([255, 190, 130], np.float32) / 255.0
-reach = soft_disc(fx, fy, 1500, 1.7)
-near = soft_disc(fx, fy, 420, 1.4)
-rgb = rgb * (1 + (warm[None, None, :] - 0.35) * (0.55 * reach + 0.9 * near)[..., None])
-rgb += np.array([255, 196, 140], np.float32)[None, None, :] * (0.14 * near + 0.04 * reach)[..., None]
-# The room's corners fall away into plum.
-corner = np.clip((np.sqrt(((xx - W / 2) / (W * 0.75)) ** 2 + ((yy - H * 0.62) / (H * 0.7)) ** 2) - 0.55) * 1.4, 0, 1)
-rgb = rgb * (1 - 0.45 * corner[..., None]) + np.array([24, 12, 30], np.float32) * (0.45 * corner[..., None])
-img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).convert("RGBA")
 
-# 8. The flame itself (the app lays a flickering glow over it): a bright core, a warm halo.
-fl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-fd = ImageDraw.Draw(fl)
-fd.ellipse([fx - 70, fy - 80, fx + 70, fy + 60], fill=(255, 200, 120, 90))
-fl = fl.filter(ImageFilter.GaussianBlur(30))
-img = Image.alpha_composite(img, fl)
-flame = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-fd = ImageDraw.Draw(flame)
-fd.polygon([(fx, fy - 46), (fx - 15, fy + 2), (fx - 12, fy + 14), (fx, fy + 20), (fx + 12, fy + 14), (fx + 15, fy + 2)], fill=(255, 176, 92, 255))
-fd.polygon([(fx, fy - 28), (fx - 8, fy + 4), (fx, fy + 14), (fx + 8, fy + 4)], fill=(255, 244, 214, 255))
-img = Image.alpha_composite(img, flame.filter(ImageFilter.GaussianBlur(2.2)))
+layers = [
+    # name, picture, the scale it is written at, its file's type, how far a 256-colour palette may stray (0: never one)
+    ("sky", sky_layer, 1.0, "jpg", 0),
+    ("far", rendered("far", 6.0), 0.5, "png", 9),
+    ("near", rendered("near", 3.5), 0.5, "png", 9),
+    ("haze", haze, 0.125, "png", 0),
+    ("glass", glass, 1.0, "png", 30),
+    ("frame", rendered("frame"), 1.0, "png", 26),
+    ("sill", rendered("sill"), 1.0, "png", 12),
+    ("fore-left", rendered("fore-left", 2.0), 0.5, "png", 9),
+    ("fore-right", rendered("fore-right", 2.0), 0.5, "png", 9),
+]
 
-img.convert("RGB").save(sys.argv[1], quality=88)
-img.convert("RGB").resize((W // 4, H // 4)).save(sys.argv[2] if len(sys.argv) > 2 else "preview.png")
-print("panes", F / W, F / H, SILL / H, M / W, MY / H, "flame", fx / W, fy / H, "moon", MOON[0] / W, MOON[1] / H, MOON[2] / W)
+# ---------------------------------------------------------------- write
+
+out = {"art": [W, H], "bleed": B, "moon": [MOON[0] / W, MOON[1] / H, MOON[2] / W], "flame": [FLAME[0] / W, FLAME[1] / H],
+       "wick": [raw["anchors"]["wick"][0] / W, raw["anchors"]["wick"][1] / H], "layers": {}}
+total = 0
+print("assets/home/set:")
+for name, im, scale, kind, stray in layers:
+    box = (0, 0, CW, CH) if kind == "jpg" else export.bounds(im, 3)
+    # Whole pixels at the written scale.
+    step = round(1 / scale)
+    box = (box[0] // step * step, box[1] // step * step, min(CW, -(-box[2] // step) * step), min(CH, -(-box[3] // step) * step))
+    cut = im.crop(box)
+    if scale != 1.0:
+        cut = export.resize(cut, (cut.width // step, cut.height // step))
+    path = os.path.join(DEST, f"{name}.{kind}")
+    if kind == "jpg":
+        cut.convert("RGB").save(path, quality=84, optimize=True, progressive=True)
+        how = "jpeg"
+    else:
+        data, how = export.encode(cut, quantise=stray > 0, max_error=stray)
+        open(path, "wb").write(data)
+    n = os.path.getsize(path)
+    print(f"  {os.path.relpath(path, REPO)}  {cut.width}x{cut.height}  {n / 1024:.1f} KB  ({how})")
+    total += n
+    out["layers"][name] = {"rect": [box[0] - B, box[1] - B, box[2] - box[0], box[3] - box[1]]}
+json.dump(out, open(os.path.join(DEST, "set.json"), "w"), indent=1)
+print(f"total {total / 1024:.0f} KB; set.json: flame {out['flame']}, moon {out['moon']}")
+
+
+def composite(shift=(0.0, 0.0)):
+    """The whole set as the app lays it, the layers slid by `shift` (-1..1 each way) times their depth (art px)."""
+    depth = {"sky": 21, "far": 16, "near": 12, "haze": 6, "glass": 6, "frame": 3.6, "sill": 0, "fore-left": -42, "fore-right": -42}
+    pic = Image.new("RGBA", (CW, CH), (0, 0, 0, 255))
+    for name, im, *_ in layers:
+        moved = clear()
+        moved.paste(im, (round(shift[0] * depth[name]), round(shift[1] * depth[name] * 0.6)))
+        pic = Image.alpha_composite(pic, moved)
+    return pic.crop((B, B, B + W, B + H)).convert("RGB")
+
+
+composite().save(os.path.join(src, "set_rest.jpg"), quality=90)
+tilts = [("left", (-1, 0)), ("right", (1, 0)), ("centre", (0, 0)), ("up", (0, -1)), ("down", (0, 1))]
+strip = Image.new("RGB", (5 * (W // 3) + 40, H // 3), (13, 9, 16))
+for i, (_, t) in enumerate(tilts):
+    strip.paste(composite(t).resize((W // 3, H // 3), Image.LANCZOS), (i * (W // 3 + 10), 0))
+strip.save(os.path.join(src, "set_tilts.jpg"), quality=88)
+print("previews", os.path.join(src, "set_rest.jpg"), os.path.join(src, "set_tilts.jpg"))

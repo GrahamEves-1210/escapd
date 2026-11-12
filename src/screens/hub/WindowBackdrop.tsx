@@ -1,40 +1,67 @@
 // Home's backdrop, her reading nook on a rainy night (docs/ART_DIRECTION.md,
-// the mystery-book core): a four-pane window filling the phone, its painted
-// plum-brown frame and sill on the screen's edges and a cross of mullions;
-// behind the glass a midnight-indigo sky going mauve under a low, rainy
-// overcast, a full moon veiled by thin cloud in the lower right pane over a
-// soft treeline, and on the sill a stack of books with a lit candle
-// (assets/backdrop/window.jpg, scripts/brand/window.py; the mug of tea is the
-// cat's, src/play2/cat/Mug.tsx, so it can knock it off). Over the art,
-// on one canvas:
-// - thin cloud keeps drifting across the glass, over the moon, lit silver as
-//   it passes in front of it, the moon's soft corona through it;
-// - rain keeps hitting the glass, softly: drops land, bead, then some run
-//   down leaving a trail. All of it stays on the glass: inside the four panes
-//   (clipped), so the frame and the sill stay solid, and round the books and
-//   the candle on the sill (PROPS), which stand in front of it (the cat and
-//   its mug, drawn over this canvas, too);
-// - the candle's flame breathes and flickers, a warm halo in the theme's glow;
-// - fairy lights strung across the top, in the theme's glow, sweet and foil,
-//   twinkling slowly.
-// Under reduced motion it is all still: the clouds hold their places (one
-// across the moon), no drops landing, the flame
-// and the lights steady. No lightning: the storm is a quiet one.
-import { useMemo, type ReactNode } from "react";
+// the mystery-book core): one 3D set (scripts/blender/props/home_set.py,
+// finished by scripts/brand/window.py into assets/home/set/), rendered from
+// one camera in depth layers that slide against each other as the phone
+// tilts (parallax/: useTilt, ParallaxLayer; PARALLAX.depth in art/nook.ts).
+// Back to front:
+// - the sky: midnight indigo going mauve under a low overcast, a full moon
+//   veiled by thin cloud low on the right;
+// - a far line of pines in the haze, a cottage with one window lit; a nearer,
+//   darker line;
+// - live, on a canvas: thin cloud drifting across the glass and over the moon,
+//   lit silver as it passes it, the moon's soft corona through it (they slide
+//   with the sky); rain hitting the glass, softly: drops land, bead, then some
+//   run down leaving a trail (they slide with the glass);
+// - the wet glass: a sheen, the frame's shadow and the candle's flame mirrored
+//   in it (soft: `haze`), beads and runs of rain (`glass`);
+// - the window: plum-stained wood with real depth, a brass latch on the middle
+//   bar, the window's key hung from it;
+// - the sill and the still life on it: three cloth-bound mysteries (one per
+//   mode), spectacles folded on top, a brass chamberstick and its candle. The
+//   sill is what everything turns about: it, the cat and the cat's mug
+//   (HubScreen draws them over this) never move;
+// - live again: the candle's flame (rendered frames, 12 fps) and its warm
+//   halo, breathing and flickering; fairy lights strung across the top in the
+//   theme's glow, sweet and foil, twinkling slowly (they slide with the frame).
+// Nearest of all, the curtains' edges (WindowForeground: HubScreen lays them
+// over the cat, under the cards). The rendered layers lie over the rain and
+// under the lights, so the rain stays on the glass: behind the frame, the
+// sill and everything standing on it.
+// Under reduced motion it is all still: no parallax, the clouds hold their
+// places (one across the moon), no drops landing, the flame and the lights
+// steady. No lightning: the storm is a quiet one.
+import { useEffect, useMemo } from "react";
 import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
-import { useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
+import Animated, { Easing, cancelAnimation, useAnimatedStyle, useDerivedValue, useSharedValue, withRepeat, withTiming, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurMask, Canvas, Circle, Group, Oval, Path, RadialGradient, Skia, useClock, vec, type SkPath } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, Circle, Group, Oval, Path, RadialGradient, Skia, useClock, vec } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, MS_TO_S, PROPS, RAIN, SHOWER, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
+import SET from "../../../assets/home/set/set.json";
+import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, FLAME, MS_TO_S, PARALLAX, RAIN, SHOWER, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
+import { ParallaxLayer } from "./parallax/ParallaxLayer";
+import { layerShift } from "./parallax/tilt";
+import type { TiltValues } from "./parallax/useTilt";
 
-const WINDOW = require("../../../assets/backdrop/window.jpg") as number;
+/** The set's layers (assets/home/set/, their places on the art in set.json). */
+const PICTURES = {
+  sky: require("../../../assets/home/set/sky.jpg") as number,
+  far: require("../../../assets/home/set/far.png") as number,
+  near: require("../../../assets/home/set/near.png") as number,
+  haze: require("../../../assets/home/set/haze.png") as number,
+  glass: require("../../../assets/home/set/glass.png") as number,
+  frame: require("../../../assets/home/set/frame.png") as number,
+  sill: require("../../../assets/home/set/sill.png") as number,
+  "fore-left": require("../../../assets/home/set/fore-left.png") as number,
+  "fore-right": require("../../../assets/home/set/fore-right.png") as number,
+} as const;
+type LayerName = keyof typeof PICTURES;
+const FLAME_SHEET = require("../../../assets/home/flame.png") as number;
 /** A clock in ms to seconds. */
 const PER_SECOND = MS_TO_S;
 const TURN = Math.PI * 2;
 
-/** Where the window art lies on a screen, and its sill. Points. */
+/** Where the set's art lies on a screen, and its sill. Points. */
 export interface WindowGeometry {
   left: number;
   top: number;
@@ -57,58 +84,73 @@ export function windowGeometry(screenWidth: number, screenHeight: number): Windo
   return { left: (screenWidth - width) / 2, top: screenHeight - height, width, height, sill: height * ART.sill };
 }
 
-export function WindowBackdrop() {
+/** A layer's box on the screen: its place on the art (set.json, art pixels; it may reach past the art, into its bleed). */
+export function layerBox(name: LayerName, art: WindowGeometry) {
+  const [x, y, w, h] = SET.layers[name].rect;
+  const k = art.width / ART.width;
+  return { left: art.left + x * k, top: art.top + y * k, width: w * k, height: h * k };
+}
+
+function Picture({ name, art, tilt, depth, turn }: { name: LayerName; art: WindowGeometry; tilt: TiltValues; depth: number; turn?: number }) {
+  return (
+    <ParallaxLayer tilt={tilt} depth={depth} turn={turn} style={StyleSheet.absoluteFill} testID={`hub-window-${name}`}>
+      <Image source={PICTURES[name]} style={[styles.picture, layerBox(name, art)]} resizeMode="stretch" accessibilityIgnoresInvertColors />
+    </ParallaxLayer>
+  );
+}
+
+export function WindowBackdrop({ tilt }: { tilt: TiltValues }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { reducedMotion } = useTheme();
   const theme = useModeTheme();
   const art = windowGeometry(width, height);
-  // The glass: inside the frame, above the sill; split into four panes by the mullions.
-  const left = art.left + art.width * ART.frameX;
-  const top = art.top + art.height * ART.frameY;
-  const w = art.width * (1 - 2 * ART.frameX);
-  const h = art.height * (1 - ART.frameY - ART.sill);
-  const mullion = art.width * ART.mullion;
-  const crossY = art.top + art.height * ART.cross;
-  const midX = art.left + art.width / 2;
-  const panes = useMemo(() => {
-    const b = Skia.PathBuilder.Make();
-    const half = mullion / 2;
-    b.addRect(Skia.XYWHRect(left, top, midX - half - left, crossY - half - top));
-    b.addRect(Skia.XYWHRect(midX + half, top, left + w - midX - half, crossY - half - top));
-    b.addRect(Skia.XYWHRect(left, crossY + half, midX - half - left, top + h - crossY - half));
-    b.addRect(Skia.XYWHRect(midX + half, crossY + half, left + w - midX - half, top + h - crossY - half));
-    return b.build();
-  }, [left, top, w, h, mullion, crossY, midX]);
-  // The things on the sill, in front of the glass: the glass's layers go round them.
-  const props = useMemo(() => {
-    const b = Skia.PathBuilder.Make();
-    const sx = art.width / ART.width;
-    const sy = art.height / ART.height;
-    for (const p of PROPS) {
-      const rect = Skia.XYWHRect(art.left + p.x0 * sx, art.top + p.y0 * sy, (p.x1 - p.x0) * sx, (p.y1 - p.y0) * sy);
-      if (p.oval) b.addOval(rect);
-      else b.addRRect(Skia.RRectXY(rect, p.r * sx, p.r * sy));
-    }
-    return b.build();
-  }, [art.left, art.top, art.width, art.height]);
-  const flame = vec(art.left + art.width * ART.flame.x, art.top + art.height * ART.flame.y);
-  const sky: Sky = {
-    art,
-    glass: { left, top, width: w, height: h },
-    moon: { x: art.left + art.width * ART.moon.x, y: art.top + art.height * ART.moon.y, r: art.width * ART.moon.r },
+  const D = PARALLAX.depth;
+  // The glass: inside the frame, above the sill (the rain lands on it).
+  const glass = {
+    left: art.left + art.width * ART.frameX,
+    top: art.top + art.height * ART.frameY,
+    width: art.width * (1 - 2 * ART.frameX),
+    height: art.height * (1 - ART.frameY - ART.sill),
   };
-  const nook: NookProps = { panes, props, sky, flame, glow: theme.glow, width, top: insets.top, colors: [theme.glow, theme.sweet, theme.foil] };
+  const sky: Sky = { art, glass, moon: { x: art.left + art.width * SET.moon[0], y: art.top + art.height * SET.moon[1], r: art.width * SET.moon[2] } };
+  const flame = vec(art.left + art.width * SET.flame[0], art.top + art.height * SET.flame[1]);
+  const wick = { x: art.left + art.width * SET.wick[0], y: art.top + art.height * SET.wick[1] };
+  const colors = useMemo(() => [theme.glow, theme.sweet, theme.foil], [theme.glow, theme.sweet, theme.foil]);
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window">
-      <Image
-        source={WINDOW}
-        style={{ position: "absolute", left: art.left, top: art.top, width: art.width, height: art.height }}
-        resizeMode="stretch"
-        accessibilityIgnoresInvertColors
-      />
-      <Canvas style={StyleSheet.absoluteFill}>{reducedMotion ? <StillNook {...nook} /> : <LiveNook {...nook} />}</Canvas>
+      <Picture name="sky" art={art} tilt={tilt} depth={D.sky} />
+      <Picture name="far" art={art} tilt={tilt} depth={D.far} />
+      <Picture name="near" art={art} tilt={tilt} depth={D.near} />
+      {/* Behind the glass's own picture, the frame and the sill: the cloud, and the rain on the glass. */}
+      <Canvas style={StyleSheet.absoluteFill} testID="hub-window-weather">
+        {reducedMotion ? <StillWeather sky={sky} /> : <LiveWeather sky={sky} tilt={tilt} />}
+      </Canvas>
+      <Picture name="haze" art={art} tilt={tilt} depth={D.glass} />
+      <Picture name="glass" art={art} tilt={tilt} depth={D.glass} />
+      <Picture name="frame" art={art} tilt={tilt} depth={D.frame} />
+      <Picture name="sill" art={art} tilt={tilt} depth={D.sill} />
+      <CandleFlame wick={wick} scale={art.width / ART.width} still={reducedMotion} />
+      <Canvas style={StyleSheet.absoluteFill} testID="hub-window-lights">
+        {reducedMotion ? (
+          <StillLights flame={flame} glow={theme.glow} width={width} top={insets.top} colors={colors} />
+        ) : (
+          <LiveLights flame={flame} glow={theme.glow} width={width} top={insets.top} colors={colors} tilt={tilt} />
+        )}
+      </Canvas>
+    </View>
+  );
+}
+
+/** The curtains' edges, nearest of all: over the sill and the cat, under the cards (HubScreen). They slide the other way, furthest. */
+export function WindowForeground({ tilt }: { tilt: TiltValues }) {
+  const { width, height } = useWindowDimensions();
+  const art = windowGeometry(width, height);
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window-fore">
+      <Picture name="fore-left" art={art} tilt={tilt} depth={PARALLAX.depth.fore} turn={PARALLAX.turn} />
+      <Picture name="fore-right" art={art} tilt={tilt} depth={PARALLAX.depth.fore} turn={PARALLAX.turn} />
     </View>
   );
 }
@@ -120,12 +162,7 @@ interface Sky {
   moon: { x: number; y: number; r: number };
 }
 
-interface NookProps {
-  /** The four panes, the clip for everything behind the glass. */
-  panes: SkPath;
-  /** What stands on the sill in front of the glass: cut out of that clip. */
-  props: SkPath;
-  sky: Sky;
+interface LightsProps {
   flame: { x: number; y: number };
   glow: string;
   /** The screen's width, and the safe top the fairy lights hang under. */
@@ -134,52 +171,91 @@ interface NookProps {
   colors: readonly string[];
 }
 
-/** On the glass only: inside the panes, and never over what stands on the sill in front of it. */
-function Glass({ panes, props, children }: { panes: SkPath; props: SkPath; children: ReactNode }) {
+/** A layer's slide as a Skia transform. */
+function useSlide(tilt: TiltValues, depth: number) {
+  return useDerivedValue(() => {
+    const shift = layerShift({ x: tilt.x.value, y: tilt.y.value }, depth);
+    return [{ translateX: shift.x }, { translateY: shift.y }];
+  });
+}
+
+/** Reduced motion: the clouds hold their places; no rain. */
+function StillWeather({ sky }: { sky: Sky }) {
+  const clouds = useSharedValue(0);
+  return <Clouds sky={sky} clock={clouds} />;
+}
+
+function LiveWeather({ sky, tilt }: { sky: Sky; tilt: TiltValues }) {
+  const clock = useClock();
+  const { glass } = sky;
+  const far = useSlide(tilt, PARALLAX.depth.sky);
+  const near = useSlide(tilt, PARALLAX.depth.rain);
   return (
-    <Group clip={panes}>
-      <Group clip={props} invertClip>
-        {children}
+    <>
+      <Group transform={far}>
+        <Clouds sky={sky} clock={clock} />
       </Group>
-    </Group>
+      <Group transform={near}>
+        <Group transform={[{ translateX: glass.left }, { translateY: glass.top }]}>
+          {SHOWER.map((d, i) => (
+            <Drop key={i} spec={d} clock={clock} width={glass.width} height={glass.height} />
+          ))}
+        </Group>
+      </Group>
+    </>
   );
 }
 
-/** Reduced motion: the clouds, the candle and the lights, all still; no rain. */
-function StillNook({ panes, props, sky, flame, glow, width, top, colors }: NookProps) {
+/** Reduced motion: the candle and the lights, steady. */
+function StillLights({ flame, glow, width, top, colors }: LightsProps) {
   const halo = useSharedValue<number>(CANDLE.rest);
   const lit = useSharedValue<number>(FAIRY.rest);
-  const clouds = useSharedValue(0);
   return (
     <>
-      <Glass panes={panes} props={props}>
-        <Clouds sky={sky} clock={clouds} />
-      </Glass>
       <Flame at={flame} glow={glow} opacity={halo} />
       <FairyLights width={width} top={top} colors={colors} clock={lit} />
     </>
   );
 }
 
-function LiveNook({ panes, props, sky, flame, glow, width, top, colors }: NookProps) {
+function LiveLights({ flame, glow, width, top, colors, tilt }: LightsProps & { tilt: TiltValues }) {
   const clock = useClock();
   const halo = useDerivedValue(() => {
     return CANDLE.rest + CANDLE.flicker * flicker(clock.value * PER_SECOND);
   });
-  const { glass } = sky;
+  const hung = useSlide(tilt, PARALLAX.depth.lights);
   return (
     <>
-      <Glass panes={panes} props={props}>
-        <Clouds sky={sky} clock={clock} />
-        <Group transform={[{ translateX: glass.left }, { translateY: glass.top }]}>
-          {SHOWER.map((d, i) => (
-            <Drop key={i} spec={d} clock={clock} width={glass.width} height={glass.height} />
-          ))}
-        </Group>
-      </Glass>
       <Flame at={flame} glow={glow} opacity={halo} />
-      <FairyLights width={width} top={top} colors={colors} clock={clock} />
+      <Group transform={hung}>
+        <FairyLights width={width} top={top} colors={colors} clock={clock} />
+      </Group>
     </>
+  );
+}
+
+/**
+ * The candle's flame itself: FLAME.frames rendered frames in a row
+ * (assets/home/flame.png), the wick's tip at `wick` on the screen, stepped at
+ * FLAME.fps like the cat. `still`: its first frame.
+ */
+function CandleFlame({ wick, scale, still }: { wick: { x: number; y: number }; scale: number; still: boolean }) {
+  const w = FLAME.width * scale;
+  const h = FLAME.height * scale;
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (still) return;
+    t.set(withRepeat(withTiming(FLAME.frames, { duration: (FLAME.frames / FLAME.fps) / PER_SECOND, easing: Easing.linear }), -1, false));
+    return () => {
+      cancelAnimation(t);
+      t.set(0);
+    };
+  }, [still, t]);
+  const strip = useAnimatedStyle(() => ({ transform: [{ translateX: -Math.min(FLAME.frames - 1, Math.floor(t.get())) * w }] }));
+  return (
+    <View style={[styles.flame, { left: wick.x - w / 2, top: wick.y - h * FLAME.foot, width: w, height: h }]} testID="hub-window-flame">
+      <Animated.Image source={FLAME_SHEET} style={[{ width: w * FLAME.frames, height: h }, strip]} resizeMode="stretch" accessibilityIgnoresInvertColors />
+    </View>
   );
 }
 
@@ -233,7 +309,7 @@ function Cloud({ spec, sky, clock }: { spec: (typeof CLOUDS.list)[number]; sky: 
   );
 }
 
-/** The candle's flame: a warm halo over the painted flame, and a brighter core. */
+/** The candle's light: a warm halo round the flame, and a brighter core. */
 function Flame({ at, glow, opacity }: { at: { x: number; y: number }; glow: string; opacity: SharedValue<number> }) {
   const core = useDerivedValue(() => Math.min(1, opacity.value * 2));
   return (
@@ -255,7 +331,8 @@ function Flame({ at, glow, opacity }: { at: { x: number; y: number }; glow: stri
 /**
  * Fairy lights: FAIRY.swags loops of dark wire across the top of the screen,
  * a bulb every FAIRY.pitch along them, in the given colours in turn, each
- * with a soft glow, twinkling on `clock` (in ms; a value of 1 or less holds them still at it).
+ * with a soft glow, twinkling on `clock` (in ms; a value of 1 or less holds
+ * them still at it). The wire runs PARALLAX.bleed past each side (it slides).
  */
 function FairyLights({ width, top, colors, clock }: { width: number; top: number; colors: readonly string[]; clock: SharedValue<number> }) {
   const { wire, bulbs } = useMemo(() => {
@@ -267,17 +344,19 @@ function FairyLights({ width, top, colors, clock }: { width: number; top: number
       return y0 + FAIRY.sag * sag(k);
     };
     const b = Skia.PathBuilder.Make();
-    b.moveTo(0, y0);
-    for (let i = 0; i < FAIRY.swags; i += 1) {
+    b.moveTo(-span, y0);
+    for (let i = -1; i <= FAIRY.swags; i += 1) {
       const x0 = i * span;
       // A quad's control point sits at twice the sag it reaches.
       b.quadTo(x0 + span / 2, y0 + FAIRY.sag * 2, x0 + span, y0);
     }
     const count = Math.floor(width / FAIRY.pitch);
     const offset = (width - (count - 1) * FAIRY.pitch) / 2;
-    const list = Array.from({ length: count }, (_, i) => {
+    const spare = Math.ceil(PARALLAX.bleed / FAIRY.pitch);
+    const list = Array.from({ length: count + 2 * spare }, (_, n) => {
+      const i = n - spare;
       const x = offset + i * FAIRY.pitch;
-      return { x, y: at(x) + FAIRY.bulb, color: colors[i % colors.length], phase: (i * BULB_PHASE) % TURN };
+      return { x, y: at(x) + FAIRY.bulb, color: colors[(((i % colors.length) + colors.length) % colors.length)], phase: (((i * BULB_PHASE) % TURN) + TURN) % TURN };
     });
     return { wire: b.build(), bulbs: list };
   }, [width, top, colors]);
@@ -347,4 +426,6 @@ function Drop({ spec, clock, width, height }: { spec: DropSpec; clock: SharedVal
 
 const styles = StyleSheet.create({
   clip: { overflow: "hidden" },
+  picture: { position: "absolute" },
+  flame: { position: "absolute", overflow: "hidden" },
 });

@@ -16,7 +16,7 @@ import { RESUME_COPY, SERIES } from "@/screens/mode/copy";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref, shellTheme } from "@/theme/tokens";
 import * as nook from "../art/nook";
-import { CAT, COVER, DECK, PROPS, SETTINGS, WINDOW_ART } from "../art/nook";
+import { CAT, COVER, DECK, PARALLAX, SETTINGS, WINDOW_ART } from "../art/nook";
 import { deckLayout, deckTilt, homeDeck, tiltOverhang } from "../deck";
 import { HubScreen } from "../HubScreen";
 import { windowGeometry } from "../WindowBackdrop";
@@ -947,24 +947,73 @@ describe("01 · Home and the mode intros: tokens only", () => {
 });
 
 describe("01 · Home: the window", () => {
-  it("keeps the rain on the glass: round the books and the candle on the sill, which stand in front of it (the mug is the cat's, drawn over it)", () => {
-    const art = { w: WINDOW_ART.width, h: WINDOW_ART.height };
-    const sillTop = art.h * (1 - WINDOW_ART.sill);
-    // Every shape is on the lower left pane (inside the frame, left of the mullion), down to the sill.
-    for (const p of PROPS) {
-      expect(p.x0).toBeGreaterThan(art.w * WINDOW_ART.frameX - 1);
-      expect(p.x1).toBeLessThan(art.w * (0.5 - WINDOW_ART.mullion / 2) + 10);
-      expect(p.y0).toBeGreaterThan(art.h * WINDOW_ART.cross);
-      expect(p.y1).toBeLessThanOrEqual(sillTop + 12);
+  it("is one set in depth layers: each has its place on the art and picture to spare beyond the screen for its slide", () => {
+    const set = JSON.parse(fs.readFileSync(path.join(ROOT, "assets/home/set/set.json"), "utf8")) as {
+      art: number[]; bleed: number; moon: number[]; flame: number[]; wick: number[]; layers: Record<string, { rect: number[] }>;
+    };
+    expect(set.art).toEqual([WINDOW_ART.width, WINDOW_ART.height]);
+    expect(Object.keys(set.layers)).toEqual(["sky", "far", "near", "haze", "glass", "frame", "sill", "fore-left", "fore-right"]);
+    for (const name of Object.keys(set.layers)) expect(fs.existsSync(path.join(ROOT, "assets/home/set", `${name}.${name === "sky" ? "jpg" : "png"}`))).toBe(true);
+    // The bleed (art px) covers the furthest slide (points) on the narrowest phone the art is scaled down to, with room to spare.
+    const D = PARALLAX.depth;
+    const furthest = Math.max(...Object.values(D).map(Math.abs));
+    expect(set.bleed / WINDOW_ART.density).toBeGreaterThanOrEqual(PARALLAX.bleed);
+    expect(PARALLAX.bleed).toBeGreaterThanOrEqual(furthest + 1);
+    const { rect } = set.layers.sky;
+    expect(rect).toEqual([-set.bleed, -set.bleed, WINDOW_ART.width + 2 * set.bleed, WINDOW_ART.height + 2 * set.bleed]);
+    // What crosses the whole window reaches into the bleed on both sides; the sill and the ground outside run off the foot,
+    // and the frame runs down behind the sill (it slides a little against it).
+    const sillTop = WINDOW_ART.height * (1 - WINDOW_ART.sill);
+    for (const name of ["far", "near", "haze", "glass", "frame", "sill"]) {
+      const [x, y, w, h] = set.layers[name].rect;
+      expect(x).toBeLessThanOrEqual(-set.bleed + 8);
+      expect(x + w).toBeGreaterThanOrEqual(WINDOW_ART.width + set.bleed - 8);
+      expect(y + h).toBeGreaterThanOrEqual(name === "frame" ? sillTop + PARALLAX.bleed : WINDOW_ART.height + set.bleed - 8);
     }
-    // They cover the candle's flame; no mug is painted in the art any more (the cat's mug is drawn by it, so it can fall).
-    const covers = (x: number, y: number) => PROPS.some((p) => x >= p.x0 && x <= p.x1 && y >= p.y0 && y <= p.y1);
-    expect(covers(WINDOW_ART.flame.x * art.w, WINDOW_ART.flame.y * art.h)).toBe(true);
+    expect(set.layers.sill.rect[1]).toBeLessThan(sillTop);
+    // The curtains hang past the screen's sides, top and foot.
+    expect(set.layers["fore-left"].rect[0]).toBeLessThanOrEqual(-set.bleed + 2);
+    expect(set.layers["fore-right"].rect[0] + set.layers["fore-right"].rect[2]).toBeGreaterThanOrEqual(WINDOW_ART.width + set.bleed - 2);
+    // The candle stands on the sill in the lower left pane, its flame over its wick; the moon is in the lower right pane.
+    expect(set.flame[0]).toBeGreaterThan(WINDOW_ART.frameX);
+    expect(set.flame[0]).toBeLessThan(0.5 - WINDOW_ART.mullion / 2);
+    expect(set.flame[1]).toBeGreaterThan(WINDOW_ART.cross);
+    expect(set.flame[1]).toBeLessThan(set.wick[1]);
+    expect(set.wick[1]).toBeLessThan(1 - WINDOW_ART.sill);
+    expect(set.moon[0]).toBeGreaterThan(0.5);
+    expect(set.moon[1]).toBeGreaterThan(WINDOW_ART.cross);
+  });
+
+  it("slides by depth about the sill: the further behind it the further with the eye, the curtains and the cards against it, the cat's sill never", () => {
+    const D = PARALLAX.depth;
+    expect(D.sky).toBeGreaterThan(D.far);
+    expect(D.far).toBeGreaterThan(D.near);
+    expect(D.near).toBeGreaterThan(D.rain);
+    expect(D.rain).toBeGreaterThanOrEqual(D.glass);
+    expect(D.glass).toBeGreaterThan(D.frame);
+    expect(D.frame).toBeGreaterThan(D.sill);
+    expect(D.sill).toBe(0);
+    expect(D.fore).toBeLessThan(-12);
+    expect(D.card).toBeLessThan(0);
+    expect(D.cardStep).toBeLessThan(0);
+    expect(D.logo).toBeLessThan(0);
+    // The cards and the logo are held in the hand: they move least.
+    expect(Math.abs(D.card + 2 * D.cardStep)).toBeLessThan(D.near);
     expect(WINDOW_ART).not.toHaveProperty("mug");
-    // The rain and the clouds are drawn inside that clip; the cat, on the sill, is drawn over the whole canvas.
+  });
+
+  it("keeps the rain on the glass: the glass, the frame and the sill's still life lie over the weather; the lights, the cat and the curtains over them", () => {
     const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
-    expect(source).toMatch(/<Group clip=\{props\} invertClip>/);
-    expect(source.match(/<Glass /g)).toHaveLength(2);
+    const order = ['name="sky"', 'name="far"', 'name="near"', 'testID="hub-window-weather"', 'name="haze"', 'name="glass"', 'name="frame"', 'name="sill"', "<CandleFlame", 'testID="hub-window-lights"'];
+    const places = order.map((mark) => source.indexOf(`<Picture ${mark}`) >= 0 ? source.indexOf(`<Picture ${mark}`) : source.indexOf(mark));
+    expect(places.every((at) => at > 0)).toBe(true);
+    expect([...places].sort((a, b) => a - b)).toEqual(places);
+    // The sill turns nothing: the cat and its mug, drawn over it by home, sit still on it at every tilt.
+    expect(source).toMatch(/<Picture name="sill" art=\{art\} tilt=\{tilt\} depth=\{D\.sill\} \/>/);
+    // Home lays the curtains over the cat, and the header and the cards over the curtains.
+    const home = fs.readFileSync(path.join(ROOT, "src/screens/hub/HubScreen.tsx"), "utf8");
+    expect(home.indexOf("<WindowForeground")).toBeGreaterThan(home.indexOf("<SittingCat"));
+    expect(home).toMatch(/column: \{ flex: 1, zIndex: 1, pointerEvents: "box-none" \}/);
   });
 
   it("has no lightning: no flashes in the window, just the rain, the clouds, the moon, the candle and the lights", () => {

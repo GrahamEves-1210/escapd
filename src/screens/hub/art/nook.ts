@@ -6,39 +6,64 @@
 // the clouds, the moon's light through them, the tea's steam), which no theme names. Kept here, beside the art, so the
 // screens' source stays tokens-only (hub-test).
 
-/** The window art's geometry as fractions (scripts/brand/window.py): frame, sill, mullion, the cross's height. */
+/**
+ * The set's geometry as fractions of its art (scripts/blender/props/home_set.py
+ * builds it, scripts/brand/window.py finishes it and writes
+ * assets/home/set/set.json: each layer's place on the art, the moon, the
+ * candle's flame): the frame at the sides and the top, the sill's height at
+ * the foot (its back edge, where the glass meets it), the bars between the
+ * panes and the cross's height.
+ */
 export const WINDOW_ART = {
   frameX: 0.0496,
   frameY: 0.0229,
   sill: 0.0536,
   mullion: 0.0357,
   cross: 0.5,
-  /** The art's size in pixels. */
+  /** The art's size in pixels: three to a point on the phone it was drawn for. */
   width: 1290,
   height: 2796,
-  /** The candle's flame on the sill (window.py's FLAME), as shares of the art. */
-  flame: { x: 0.2248, y: 0.8498 },
-  /** The moon (window.py's MOON): its centre as shares of the art, its radius as a share of the art's width. */
-  moon: { x: 0.6729, y: 0.8062, r: 0.0651 },
+  density: 3,
 } as const;
 
 /**
- * What stands on the sill in front of the glass (window.py's books, dish,
- * candle, flame and mug, a few pixels outside each), in the art's pixels
- * (WINDOW_ART.width x height): boxes with corner radius `r` (`oval`: an
- * ellipse in the box). The rain and the clouds on the glass are drawn round
- * them, never over them.
+ * Home's motion parallax (parallax/tilt.ts, useTilt, ParallaxLayer): the set
+ * is rendered in depth layers that slide against each other as the phone
+ * tilts, turning about the sill (the cat's place: it never moves).
+ * `depth`: each layer's slide in points at full tilt: what lies behind the
+ * sill follows the eye (+), further for what is further; what is nearer than
+ * the sill goes the other way (-); the cards and the logo are held in the
+ * hand, in front of it all, each card a little nearer than the one under it.
+ * Up and down they slide `vertical` of that. `turn`: the curtains lean this
+ * many degrees at full tilt as they slide.
+ * Full tilt is `range` radians from however the phone is being held: that
+ * rest pose follows the phone with a time constant of `recentre` seconds.
+ * The layers glide to the tilt on a critically damped spring (`glide`: no
+ * overshoot, no ringing), and hold still while it stays inside `dead` of
+ * where they are headed (a still hand, a still picture). The sensor is read
+ * every `interval` ms; under `minGravity` (m/s²) there is no tilt to read.
+ * Every layer has `bleed` points of picture to spare beyond the screen.
  */
-export const PROPS: readonly { x0: number; y0: number; x1: number; y1: number; r: number; oval?: boolean }[] = [
-  // The two books, their page edges on top.
-  { x0: 126, y0: 2584, x1: 454, y1: 2656, r: 12 },
-  { x0: 154, y0: 2532, x1: 432, y1: 2594, r: 12 },
-  // The brass dish, the candle and its top, the flame.
-  { x0: 224, y0: 2518, x1: 356, y1: 2550, r: 0, oval: true },
-  { x0: 252, y0: 2389, x1: 328, y1: 2536, r: 12 },
-  { x0: 284, y0: 2380, x1: 296, y1: 2400, r: 0 },
-  { x0: 268, y0: 2322, x1: 312, y1: 2402, r: 0, oval: true },
-];
+export const PARALLAX = {
+  depth: { sky: 7, far: 5.4, near: 4, rain: 2.4, glass: 2, frame: 1.2, lights: 1.2, sill: 0, fore: -14, logo: -2.4, card: -1.2, cardStep: -0.9 },
+  vertical: 0.6,
+  turn: 0.5,
+  range: 0.24,
+  recentre: 5,
+  glide: { stiffness: 170, damping: 26, mass: 1, overshootClamping: true },
+  dead: 0.006,
+  interval: 33,
+  minGravity: 1,
+  bleed: 18,
+} as const;
+
+/**
+ * The candle's flame (assets/home/flame.png, home_set.py --flame): `frames`
+ * rendered frames in a row, played at `fps` (the cat's stop-motion), each
+ * `width` x `height` art pixels, the wick's tip `foot` of the way down a
+ * frame, in its middle. Under reduced motion it holds its first frame.
+ */
+export const FLAME = { frames: 8, fps: 12, width: 39, height: 72, foot: 0.92 } as const;
 
 /**
  * Thin rain cloud drifting across the glass, left to right, most of it in a
@@ -75,7 +100,7 @@ export const CLOUDS = {
 } as const;
 
 /**
- * Steam off the tea in the mug by the cat (src/play2/cat/Mug.tsx draws the
+ * Steam off the coffee in the mug by the cat (src/play2/cat/Mug.tsx shows the
  * mug and its steam): `wisps` thin curls rising `rise` mug-widths from the
  * mug's mouth, swaying `amp` mug-widths as waves travel up them (`waves`
  * along each, `speed` radians a second), fading in just over the rim and out
@@ -137,7 +162,7 @@ export const RAIN = {
   trailWidth: 1.5,
 } as const;
 
-/** The candle's flame light over the art: a warm halo that breathes and flickers. */
+/** The candle's light over the set: a warm halo round its flame that breathes and flickers. */
 export const CANDLE = {
   /** The halo's radius (points), and the core's. */
   halo: 64,
@@ -186,6 +211,9 @@ export const DECK = { peek: 24 } as const;
  * at least `gap` clear of the deck; `right` from the screen's right edge.
  */
 export const CAT = { width: 104, minWidth: 56, aspect: 640 / 444, sink: 6, gap: 6, right: 30 } as const;
+
+/** The cat's mug stands this far (points) in from the sill's back edge, on its top (the cat's feet are CAT.sink in). */
+export const MUG_REST = 4;
 
 /** Home's elements arrive a beat after the window: they fall into place (fade only under reduced motion). */
 export const FALL = { delay: 1000, stagger: 120, from: -70, duration: 620, reducedDuration: 200, back: 1.1, fade: 1.6, /** The cat pops up after the logo and the three cards. */ cat: 4 } as const;

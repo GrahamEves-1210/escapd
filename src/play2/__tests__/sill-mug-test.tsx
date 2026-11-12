@@ -4,6 +4,7 @@
 import { act, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { MUG, SittingCat } from "../SittingCat";
+import { KNOCK, TUMBLE, tumbleFrame } from "../cat/Mug";
 
 const mockMugBreak = jest.fn();
 jest.mock("@/game/feedback", () => {
@@ -81,6 +82,32 @@ describe("the mug on home's sill", () => {
     expect(paw()).toBeNull();
     expect(mockMugBreak).not.toHaveBeenCalled();
     await still.unmount();
+  });
+
+  it("falls as a real thing: the rendered tumble follows the cat's nudge, frame by frame, and a pat only rocks the still mug", () => {
+    const size = 104 * MUG.size;
+    const w = 104;
+    // At rest, and rocked by a pat (a few degrees either way): the still picture, frame 0.
+    expect(tumbleFrame([0, 0, 0], size)).toBe(0);
+    expect(tumbleFrame([0, 0, 8], size)).toBe(0);
+    expect(tumbleFrame([0, 0, -5], size)).toBe(0);
+    // The nudge, as SittingCat plays it: the slide (to -0.12 then -0.2 of the cat's width), the tip (to -80 degrees), the drop (1.2 widths).
+    const along = [[-w * 0.03, 0, 0], [-w * 0.09, 0, 0], [-w * 0.12, 0, -2], [-w * 0.13, w * 0.03, -16], [-w * 0.15, w * 0.15, -42], [-w * 0.17, w * 0.36, -80], [-w * 0.19, w * 0.65, -80], [-w * 0.2, w * 1.02, -80], [-w * 0.2, w * 1.2, -80]];
+    const frames = along.map((f) => tumbleFrame(f, size));
+    // Never backwards, never skipping more than two, from the first frames to the last.
+    for (let i = 1; i < frames.length; i += 1) {
+      expect(frames[i]).toBeGreaterThanOrEqual(frames[i - 1]);
+      expect(frames[i] - frames[i - 1]).toBeLessThanOrEqual(2);
+    }
+    expect(frames[0]).toBeLessThanOrEqual(1);
+    expect(frames[frames.length - 1]).toBe(TUMBLE.count - 1);
+    expect(new Set(frames).size).toBeGreaterThanOrEqual(7);
+    // The sheet holds every frame, and the nudge's shares add up to its last one.
+    expect(TUMBLE.columns * TUMBLE.rows).toBe(TUMBLE.count);
+    expect(KNOCK.shove + KNOCK.tip + KNOCK.fall).toBe(TUMBLE.count - 1);
+    // The mug's size and its nudge are SittingCat's.
+    expect(KNOCK.slide).toBeCloseTo(0.12 / MUG.size, 6);
+    expect(KNOCK.drop).toBeCloseTo(1.2 / MUG.size, 6);
   });
 
   it("is only on home: no mug without one", async () => {
