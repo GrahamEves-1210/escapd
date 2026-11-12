@@ -4,26 +4,27 @@
 // paper's tooth) and the dents show through it pale, a darker lip where the lead caught their edge.
 // A stub of pencil lies under the pad and comes to the finger. Read once most of the writing has been
 // shaded over; at once for a screen reader's activate or under reduced motion (shaded in for them).
+//
+// The page, the rules, the graphite and the dents are drawn live; the wire coil with the torn stub
+// and the pencil are rendered pictures (props.ts), the first laid over the page's top, the second
+// carried by its point.
 import { useEffect, useMemo, useRef } from "react";
 import { View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { Easing, ReduceMotion, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
-import { BlurMask, Canvas, ColorMatrix, FractalNoise, Group, Line, Paint, Path, Rect, RoundedRect, Shadow, Skia, vec } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, ColorMatrix, FractalNoise, Group, Image, Line, Paint, Path, Rect, RoundedRect, Shadow, Skia, vec } from "@shopify/react-native-skia";
 import { scheduleOnRN } from "react-native-worklets";
 import { alpha } from "@/theme/payoff";
 
-import { once, Sheet, useWriting, Written } from "./ink";
+import { Sheet, SMOOTH, useArt, useWriting, Written } from "./ink";
+import { BINDING, PENCIL } from "./props";
 import { cover, hatch, isShort, samplesOf, sizeFor } from "./revealText";
 import type { SheetProps } from "./sheet";
 
-const INK = "#1E1418";
 const PAGE = "#F4EEDD";
-const STUB = "#F8F2E3";
 const GRAPHITE = { soft: "#4B4D58", dark: "#26272E" } as const;
-const WIRE = { metal: "#A6A7B0", light: "#F1F1F6" } as const;
-const PENCIL = { lead: "#2B2B30", wood: "#E0B88A", woodShade: "#C59A68", paint: "#7A2433", paintLight: "#9B3A4A", paintDeep: "#571824", brass: "#B28A45", brassLight: "#E9CD8A", rubber: "#B49086" } as const;
 
-/** The band at the pad's top the wire runs through, and how far the pad sits down the canvas. */
+/** The band at the pad's top the wire runs through (the binding's picture covers it), and how far the pad sits down the canvas. */
 const BIND = 34;
 const TOP = 26;
 /** The side of the lead: how wide a stroke of shading is, and how near a stroke must pass a letter to shade it. */
@@ -179,11 +180,13 @@ export function RubSheet({ text, title, width, shown, reduced, onRead, feedback,
   // Shading builds: darker as more of the page has been gone over, and the dents sharper once it's read.
   const build = useDerivedValue(() => 0.74 + 0.26 * Math.min(1, amount.get() * 1.2));
   const dent = useDerivedValue(() => 0.66 + 0.3 * shown.get());
-  const pencil = useDerivedValue(() => [{ translateX: tipX.get() }, { translateY: tipY.get() }, { rotate: lean.get() }, { scale: 1.18 }]);
+  const pencil = useDerivedValue(() => [{ translateX: tipX.get() }, { translateY: tipY.get() }, { rotate: lean.get() }]);
 
   const centre = { x: width / 2, y: TOP + padH / 2 };
-  const ART = pencilArt();
-  const art = useMemo(() => padArt(ox, TOP, padW, padH, title), [ox, padW, padH, title]);
+  const binding = useArt(BINDING.art);
+  const pencilArt = useArt(PENCIL.art);
+  // The binding's picture is for a pad BINDING.padW wide: a narrower pad scales it.
+  const k = padW / BINDING.padW;
   const page = Skia.XYWHRect(ox, TOP + BIND - 6, padW, padH - BIND + 6);
   const rules: number[] = [];
   for (let y = Math.round(wy + size + 5 - ruleGap * 3); y < TOP + padH - 14; y += ruleGap) if (y > TOP + BIND + 22) rules.push(y + 0.5);
@@ -250,81 +253,18 @@ export function RubSheet({ text, title, width, shown, reduced, onRead, feedback,
               </>
             ) : null}
           </Group>
-          {/* The sheet above, torn off: its stub still in the wire. */}
-          <Path path={art.stub} color={STUB}>
-            <Shadow dx={0} dy={1.6} blur={2.2} color={alpha("#2A1C24", 0.32)} />
-          </Path>
-          <Path path={art.stub} style="stroke" strokeWidth={0.8} color={alpha("#2A1C24", 0.16)} />
-          <Path path={art.holes} color={alpha("#231A20", 0.9)} />
-          <Path path={art.wire} style="stroke" strokeWidth={4.4} strokeCap="round" color={INK} />
-          <Path path={art.wire} style="stroke" strokeWidth={2.7} strokeCap="round" color={WIRE.metal} />
-          <Path path={art.wire} style="stroke" strokeWidth={0.9} strokeCap="round" color={WIRE.light} opacity={0.85} transform={[{ translateX: -0.6 }, { translateY: -0.5 }]} />
+          {/* The sheet above, torn off: its stub still in the wire coil (over the page and the shading). */}
+          {binding ? <Image image={binding} x={ox - BINDING.pad.x * k} y={TOP - BINDING.pad.y * k} width={BINDING.w * k} height={BINDING.h * k} fit="fill" sampling={SMOOTH} /> : null}
           </Group>
-          {/* The pencil stub. */}
+          {/* The pencil stub: its point at the finger, its shadow on the page. */}
           <Group transform={pencil}>
-            <Path path={ART.body} color={alpha("#000000", 0.32)} transform={[{ translateX: 3 }, { translateY: 6 }]}>
+            <RoundedRect x={12} y={-9} width={PENCIL.w - PENCIL.tip.x - 16} height={18} r={8} color={alpha("#000000", 0.36)} transform={[{ translateX: 3 }, { translateY: 6 }]}>
               <BlurMask blur={4} style="normal" />
-            </Path>
-            <Path path={ART.wood} color={PENCIL.wood} />
-            <Path path={ART.woodShade} color={PENCIL.woodShade} />
-            <Path path={ART.lead} color={PENCIL.lead} />
-            <Rect x={30} y={-9} width={72} height={18} color={PENCIL.paint} />
-            <Rect x={30} y={-9} width={72} height={5.5} color={PENCIL.paintLight} />
-            <Rect x={30} y={3.5} width={72} height={5.5} color={PENCIL.paintDeep} />
-            <Path path={ART.scallop} color={PENCIL.wood} />
-            <Rect x={102} y={-9.6} width={14} height={19.2} color={PENCIL.brass} />
-            <Rect x={102} y={-9.6} width={14} height={5} color={PENCIL.brassLight} />
-            <Path path={ART.ridges} style="stroke" strokeWidth={1} color={alpha(INK, 0.55)} />
-            <RoundedRect x={116} y={-8.6} width={11} height={17.2} r={3.5} color={PENCIL.rubber} />
-            <Path path={ART.body} style="stroke" strokeWidth={1.7} strokeJoin="round" color={INK} />
+            </RoundedRect>
+            {pencilArt ? <Image image={pencilArt} x={-PENCIL.tip.x} y={-PENCIL.tip.y} width={PENCIL.w} height={PENCIL.h} fit="fill" sampling={SMOOTH} /> : null}
           </Group>
         </Canvas>
       </View>
     </GestureDetector>
   );
-}
-
-/** The pencil, its point at the origin, lying along +x: a short stub, sharpened by knife. */
-const pencilArt = once(() => ({
-  body: Skia.Path.MakeFromSVGString("M0 0 L9 -3.4 L30 -9 L116 -9.6 L123 -8.6 Q127 -8.6 127 -5 L127 5 Q127 8.6 123 8.6 L116 9.6 L30 9 L9 3.4 Z")!,
-  lead: Skia.Path.MakeFromSVGString("M0 0 L9.5 -3.5 L10.5 0 L9.5 3.5 Z")!,
-  wood: Skia.Path.MakeFromSVGString("M9 -3.4 L30 -9 L30 9 L9 3.4 Z")!,
-  woodShade: Skia.Path.MakeFromSVGString("M9 3.4 L30 9 L30 3 L10 1 Z")!,
-  scallop: Skia.Path.MakeFromSVGString("M29.5 -9 Q34 -6 29.5 -3 Q35 0 29.5 3 Q34 6 29.5 9 Z")!,
-  ridges: Skia.Path.MakeFromSVGString("M105.5 -9.4 V9.4 M109 -9.5 V9.5 M112.5 -9.6 V9.6")!,
-}));
-
-/** The pad's binding: the torn stub's ragged edge, the punched holes, the wire through them (seeded: the same pad each time). */
-function padArt(ox: number, top: number, w: number, h: number, seed: string) {
-  let n = 7;
-  for (const ch of seed) n = (n * 31 + ch.charCodeAt(0)) % 9973;
-  const r = () => {
-    n = (n * 9301 + 49297) % 233280;
-    return n / 233280;
-  };
-  // The stub: straight along the top, torn along its foot (long shallow rips, a few sharp teeth).
-  const stub = Skia.PathBuilder.Make();
-  stub.moveTo(ox, top);
-  stub.lineTo(ox + w, top);
-  const foot = top + BIND + 2;
-  let x = ox + w;
-  stub.lineTo(x, foot + r() * 5);
-  while (x > ox + 4) {
-    x -= 3 + r() * 9;
-    stub.lineTo(Math.max(ox, x), foot + (r() < 0.2 ? -4 - r() * 5 : r() * 7));
-  }
-  stub.lineTo(ox, foot + 2);
-  stub.close();
-  const holes = Skia.PathBuilder.Make();
-  const wire = Skia.PathBuilder.Make();
-  const count = Math.floor((w - 20) / 17);
-  const step = (w - 20) / count;
-  for (let i = 0; i < count; i++) {
-    const cx = ox + 10 + step * (i + 0.5);
-    holes.addRRect(Skia.RRectXY(Skia.XYWHRect(cx - 2.6, top + 12, 5.2, 7.5), 2, 2));
-    wire.moveTo(cx + 0.6, top + 17);
-    wire.cubicTo(cx - 6, top + 7, cx - 5.5, top - 9, cx + 1.4, top - 9);
-    wire.cubicTo(cx + 7, top - 9, cx + 6.4, top + 2, cx + 4.4, top + 9);
-  }
-  return { stub: stub.detach(), holes: holes.detach(), wire: wire.detach() };
 }

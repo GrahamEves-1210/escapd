@@ -4,26 +4,29 @@
 // blue-green line has no red in it and reads dark and clear. The player slides the lens over the card;
 // once it has passed over most of the line the line is read (it stays: the jumble pales, the line
 // darkens). At once for a screen reader's activate or under reduced motion.
+//
+// The card, its print and the red filter are drawn live; the lens itself is a rendered picture
+// (props.ts): the brass ring and pull, and a gel that is see-through, laid over the filtered card
+// so the gel's middle is the picture's.
 import { useMemo } from "react";
 import { View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { Easing, ReduceMotion, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
-import { BlurMask, Canvas, Circle, ColorMatrix, Group, Paint, Path, Rect, Skia, SweepGradient, Text, rect, rrect, vec, type SkFont } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, Circle, ColorMatrix, Group, Image, Paint, Path, Rect, Skia, Text, rect, rrect, type SkFont } from "@shopify/react-native-skia";
 import { scheduleOnRN } from "react-native-worklets";
 import { alpha } from "@/theme/payoff";
 
-import { once, Sheet, useWriting, Written } from "./ink";
+import { Sheet, SMOOTH, useArt, useWriting, Written } from "./ink";
+import { LENS } from "./props";
 import { cover, isShort, READ_AT, samplesOf, sizeFor, type Setting } from "./revealText";
 import type { SheetProps } from "./sheet";
 
-const INK = "#1E1418";
 const CARD = "#F6F1E6";
 /** The hidden line's ink (almost no red in it) and the jumble's (all red: through the gel it is the paper). */
 const LINE = "#84DCE0";
 const NOISE = "#F2473B";
 /** The line as it stays once read. */
 const READ = "#1F2A33";
-const BRASS = { deep: "#5E4116", mid: "#B28A45", light: "#E9CD8A", sheen: "#F7E6B8" } as const;
 
 /**
  * Through the gel only the red of a thing gets through. First every colour becomes how much red it has,
@@ -44,9 +47,12 @@ const GEL = [
 ];
 
 const TOP = 34;
-/** The gel's radius, and its brass ring's width. */
+/** The gel's radius, and its brass ring's width (as the lens's picture has them: scripts/blender/props/reveal_lens.py). */
 const R = 56;
 const RING = 9;
+/** Picked up, the lens comes this much nearer (larger) and this far up off the card. */
+const NEARER = 0.05;
+const RISE = 5;
 /** The card lies a little crooked (radians). */
 const TILT = 0.024;
 
@@ -120,19 +126,23 @@ export function LensSheet({ text, title, width, shown, reduced, onRead, feedback
     },
   });
 
-  // The gel's window, in the card's own (turned) space; the lens itself, where the finger has it.
+  // The gel's window, in the card's own (turned) space: exactly the picture's gel, lifted and all.
+  // The lens itself, where the finger has it.
   const gel = useDerivedValue(() => {
-    const px = cx + (lx.get() - cx) * COS + (ly.get() - cy) * SIN;
-    const py = cy - (lx.get() - cx) * SIN + (ly.get() - cy) * COS;
-    return rrect(rect(px - R, py - R, 2 * R, 2 * R), R, R);
+    const x = lx.get();
+    const y = ly.get() - RISE * lift.get();
+    const r = R * (1 + NEARER * lift.get());
+    const px = cx + (x - cx) * COS + (y - cy) * SIN;
+    const py = cy - (x - cx) * SIN + (y - cy) * COS;
+    return rrect(rect(px - r, py - r, 2 * r, 2 * r), r, r);
   });
-  const lens = useDerivedValue(() => [{ translateX: lx.get() }, { translateY: ly.get() - 5 * lift.get() }, { scale: 1 + 0.05 * lift.get() }]);
+  const lens = useDerivedValue(() => [{ translateX: lx.get() }, { translateY: ly.get() - RISE * lift.get() }, { scale: 1 + NEARER * lift.get() }]);
   const lensShade = useDerivedValue(() => [{ translateX: lx.get() + 3 + 4 * lift.get() }, { translateY: ly.get() + 6 + 8 * lift.get() }]);
   const jumbleFade = useDerivedValue(() => 1 - 0.8 * shown.get());
   const readIn = useDerivedValue(() => shown.get());
   const handle = useAnimatedStyle(() => ({ transform: [{ translateX: lx.get() - R - 18 }, { translateY: ly.get() - R - 18 }] }));
 
-  const ART = lensArt();
+  const art = useArt(LENS.art);
   const card = rrect(rect(ox, TOP, cardW, cardH), 3, 3);
   // What's printed on the card, drawn twice: to the bare eye, and (inside the gel) through it.
   const printed = (through: boolean) => (
@@ -161,7 +171,9 @@ export function LensSheet({ text, title, width, shown, reduced, onRead, feedback
     <View style={{ width, height: sceneH }} pointerEvents="box-none">
       <Canvas style={{ width, height: sceneH }} pointerEvents="none">
         {/* The gel off the card: the desk through it, dark red. */}
-        <Circle cx={lx} cy={ly} r={R} color={alpha("#D2362D", 0.72)} />
+        <Group transform={lens}>
+          <Circle cx={0} cy={0} r={R} color={alpha("#D2362D", 0.72)} />
+        </Group>
         <Group origin={{ x: cx, y: cy }} transform={[{ rotate: TILT }]}>
           <Sheet x={ox} y={TOP} w={cardW} h={cardH} r={3} color={CARD} shade={alpha("#000000", 0.45)} lift={1.1} grain={0.4} seed={21}>
             {printed(false)}
@@ -173,30 +185,14 @@ export function LensSheet({ text, title, width, shown, reduced, onRead, feedback
             </Group>
           </Group>
         </Group>
-        {/* The lens: its shadow, the glass's shine, the brass ring and its pull, inked. */}
+        {/* The lens: its shadow on the card, then its picture (the ring, the pull, the gel's own glass), the gel's centre on the window's. */}
         <Group transform={lensShade}>
           <Circle cx={0} cy={0} r={R + RING / 2} style="stroke" strokeWidth={RING + 2} color={alpha("#000000", 0.4)}>
             <BlurMask blur={5} style="normal" />
           </Circle>
         </Group>
         <Group transform={lens}>
-          <Path path={ART.shine} style="stroke" strokeWidth={5} strokeCap="round" color={alpha("#FFFFFF", 0.26)}>
-            <BlurMask blur={1.5} style="normal" />
-          </Path>
-          <Path path={ART.glint} style="stroke" strokeWidth={2.2} strokeCap="round" color={alpha("#FFFFFF", 0.5)} />
-          <Circle cx={0} cy={0} r={R - 1} style="stroke" strokeWidth={5} color={alpha("#5A0F0C", 0.28)}>
-            <BlurMask blur={3} style="inner" />
-          </Circle>
-          <Path path={ART.pull} style="stroke" strokeWidth={8.4} strokeCap="round" color={INK} />
-          <Path path={ART.pull} style="stroke" strokeWidth={5.2} strokeCap="round" color={BRASS.mid} />
-          <Path path={ART.pull} style="stroke" strokeWidth={1.2} strokeCap="round" color={BRASS.sheen} opacity={0.75} transform={[{ translateX: -1 }, { translateY: -1 }]} />
-          <Circle cx={0} cy={0} r={R + RING / 2} style="stroke" strokeWidth={RING}>
-            <SweepGradient c={vec(0, 0)} colors={[BRASS.mid, BRASS.light, BRASS.sheen, BRASS.mid, BRASS.deep, BRASS.mid, BRASS.light, BRASS.deep, BRASS.mid]} />
-          </Circle>
-          <Circle cx={0} cy={0} r={R + RING / 2} style="stroke" strokeWidth={1} color={alpha(BRASS.deep, 0.7)} />
-          <Circle cx={0} cy={0} r={R + RING} style="stroke" strokeWidth={2} color={INK} />
-          <Circle cx={0} cy={0} r={R} style="stroke" strokeWidth={1.6} color={INK} />
-          <Circle cx={1} cy={0.8} r={R + RING} style="stroke" strokeWidth={0.9} color={alpha(INK, 0.3)} />
+          {art ? <Image image={art} x={-LENS.gel.x} y={-LENS.gel.y} width={LENS.w} height={LENS.h} fit="fill" sampling={SMOOTH} /> : null}
         </Group>
       </Canvas>
       {/* The card, for the screen reader: its activate reads the line at once. */}
@@ -220,18 +216,6 @@ export function LensSheet({ text, title, width, shown, reduced, onRead, feedback
     </View>
   );
 }
-
-/** The lens's fixed drawing about its centre: the glass's shine, and the ring-pull it's carried by. */
-const lensArt = once(() => ({
-  shine: Skia.Path.MakeFromSVGString(`M${-R * 0.72} ${-R * 0.2} A${R * 0.76} ${R * 0.76} 0 0 1 ${-R * 0.16} ${-R * 0.73}`)!,
-  glint: Skia.Path.MakeFromSVGString(`M${R * 0.5} ${R * 0.52} A${R * 0.74} ${R * 0.74} 0 0 0 ${R * 0.66} ${R * 0.3}`)!,
-  pull: (() => {
-    const b = Skia.PathBuilder.Make();
-    const d = (R + RING + 11) * Math.SQRT1_2;
-    b.addCircle(d, d, 10);
-    return b.detach();
-  })(),
-}));
 
 interface Noise {
   /** Rows of letters set across the card, on and between the writing's own lines. */

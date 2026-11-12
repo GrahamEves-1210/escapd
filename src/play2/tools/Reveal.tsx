@@ -20,15 +20,18 @@
 // reading it. Under reduced motion, or for a screen reader (activate), it reads at once. Paper from
 // the letters (Paper.tsx: grain, a fold, a torn edge) or drawn the same way on a canvas (ink.tsx),
 // writing in the hand face (a typewriter's for the printed page), line art inked like the journal's;
-// the room dimmed in the mode's ground behind.
+// the room dimmed in the mode's ground behind. The hard objects are rendered pictures (props.ts, from
+// scripts/blender/props/reveal_*.py): the brass lamp (off, and lit over it as it comes on), the mirror's
+// carved frame and what lies on its glass, the red lens, the pencil, the notepad's wire. Everything
+// written, shaded, reflected or folded is drawn live, under and around them.
 import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
-  Easing, ReduceMotion, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withRepeat, withTiming, type SharedValue,
+  Easing, ReduceMotion, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming, type SharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Rect, Stop } from "react-native-svg";
 import { scheduleOnRN } from "react-native-worklets";
 import { useFeedback } from "@/game/feedback";
 import { CloseStud } from "../hud/Table";
@@ -43,22 +46,37 @@ import { LensSheet } from "./LensSheet";
 import { RubSheet } from "./RubSheet";
 import type { SheetProps } from "./sheet";
 import { warmFaces } from "./ink";
+import { LAMP, MIRROR } from "./props";
 import { handLayout, HOLD_AT, isShort, progressFor, REACH, revealOf as findReveal, sizeFor, SYMBOL, type HandWord, type RevealKind, splitCard } from "./revealText";
 
 export type { RevealKind } from "./revealText";
 
 /**
  * The card a result showed that reads with a tool, as the sheet opens it (revealText.ts); asked after
- * every action, so the first ask also starts reading the drawn sheets' faces: by the time one opens,
- * its writing is there.
+ * every action, so the first ask also starts reading the drawn sheets' faces and every sheet's pictures:
+ * by the time one opens, its writing and its props are there.
  */
 export function revealOf(...args: Parameters<typeof findReveal>): ReturnType<typeof findReveal> {
   warmFaces();
+  warmPictures();
   return findReveal(...args);
 }
 
-/** The pen's ink: the line art's outlines. */
-const INK = "#1E1418";
+let warmed = false;
+/** Fetches the lamp's and the mirror's pictures ahead (once): from a dev server they would otherwise arrive a beat after the sheet. */
+function warmPictures(): void {
+  if (warmed) return;
+  warmed = true;
+  for (const source of [LAMP.off, LAMP.lit, MIRROR.frame, MIRROR.glass]) {
+    try {
+      const uri = Image.resolveAssetSource?.(source)?.uri;
+      if (uri) Image.prefetch?.(uri)?.catch?.(() => {});
+    } catch {
+      // No such cache here: the picture loads when the sheet opens.
+    }
+  }
+}
+
 /** Lemon juice as it scorches: first a pale straw, then brown, darker the nearer the heat. */
 const JUICE = { faint: "rgba(214, 176, 112, 0)", straw: "rgba(196, 146, 74, 0.55)", light: "#A8702F", dark: "#55300F" } as const;
 /** The lemon-juice letter's writing paper, and the scrap the backwards note is on. */
@@ -69,13 +87,11 @@ const REFLECTED = "#DDD9CD";
 /** The backwards note's ink, and the same ink as the glass gives it back. */
 const NOTE_INK = "#2C2438";
 const GLASS_INK = "#232C36";
-const BRASS = { deep: "#5E4116", mid: "#B28A45", light: "#E9CD8A", sheen: "#F7E6B8" } as const;
-const WOOD = { deep: "#24160F", mid: "#4A2E1F", light: "#6B4530" } as const;
 const SILVER = { light: "#DCE3E4", mid: "#A7B4BA", deep: "#6F7E88" } as const;
 const WARM = { core: "#FFF7DF", bulb: "#FFE7AE", glow: "#FFCF85", amber: "#E09A3A" } as const;
 const hidden = { accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" as const };
 
-/** The lamp's drawing: its height, and where its bulb hangs (its centre and lowest point). */
+/** The lamp in the scene: the room it has, and where its bulb hangs in that (its centre; its radius, as in the lamp's picture). */
 const LAMP_H = 150;
 const BULB_Y = 118;
 const BULB_R = 17;
@@ -114,6 +130,16 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   useEffect(() => {
     if (reducedMotion) shown.set(1);
   }, [reducedMotion, shown]);
+  // The lamp comes on as the letter is brought to it (0 off .. 1 lit): a beat dark, a catch, then steady.
+  const lamp = useSharedValue(reducedMotion || kind !== "heat" ? 1 : 0);
+  useEffect(() => {
+    if (kind !== "heat" || reducedMotion) {
+      lamp.set(1);
+      return;
+    }
+    const to = (v: number, ms: number) => withTiming(v, { duration: ms, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never });
+    lamp.set(withDelay(260, withSequence(to(0.7, 70), to(0.3, 90), to(1, 380))));
+  }, [kind, reducedMotion, lamp]);
 
   const pan = usePanGesture({
     enabled: !done,
@@ -173,10 +199,10 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
       {done ? <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} testID="v2-reveal-away" /> : null}
       {kind === "heat" ? (
         <View style={[styles.scene, { width: screenW }]} pointerEvents="box-none">
-          <Glow width={screenW} near={near} />
+          <Glow width={screenW} near={near} lamp={lamp} />
           <View style={[styles.lamp, { width: screenW }]} pointerEvents="none" {...hidden}>
-            <Lamp width={screenW} />
-            <Shimmer near={near} reduced={reducedMotion} style={{ left: screenW / 2 - 60, top: BULB_Y + BULB_R - 2 }} />
+            <Lamp width={screenW} lamp={lamp} />
+            <Shimmer near={near} lamp={lamp} reduced={reducedMotion} style={{ left: screenW / 2 - 60, top: BULB_Y + BULB_R - 2 }} />
           </View>
           <GestureDetector gesture={pan}>
             <Animated.View {...page} style={[{ width: letterW, marginTop: LAMP_H - (BULB_Y + BULB_R) + PAGE_GAP }, styles.under, pageStyle]}>
@@ -192,7 +218,7 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
                 style={styles.letter}
                 padding={[styles.letterPad, { minHeight: letterH }]}
               >
-                <Warmth near={near} shown={shown} width={letterW} />
+                <Warmth near={near} lamp={lamp} shown={shown} width={letterW} />
                 <Writing text={text} seed={title} font={hand} shown={shown} />
               </Paper>
             </Animated.View>
@@ -315,8 +341,8 @@ function JuiceWord({ w, style, shown }: { w: HandWord; style: TextStyle; shown: 
 }
 
 /** The lamp's light on the sheet (stronger the nearer it's held), and the faint scorch it leaves at the edge. */
-function Warmth({ near, shown, width }: { near: SharedValue<number>; shown: SharedValue<number>; width: number }) {
-  const light = useAnimatedStyle(() => ({ opacity: 0.15 + 0.85 * near.get() }));
+function Warmth({ near, lamp, shown, width }: { near: SharedValue<number>; lamp: SharedValue<number>; shown: SharedValue<number>; width: number }) {
+  const light = useAnimatedStyle(() => ({ opacity: (0.15 + 0.85 * near.get()) * lamp.get() }));
   const scorch = useAnimatedStyle(() => ({ opacity: interpolate(shown.get(), [0.55, 1], [0, 1], "clamp") }));
   return (
     <View style={[StyleSheet.absoluteFill, styles.warmth]} pointerEvents="none" {...hidden}>
@@ -353,9 +379,9 @@ function Warmth({ near, shown, width }: { near: SharedValue<number>; shown: Shar
   );
 }
 
-/** The lamp's light falling over the desk: always on, brighter as the sheet is brought in. */
-function Glow({ width, near }: { width: number; near: SharedValue<number> }) {
-  const style = useAnimatedStyle(() => ({ opacity: 0.7 + 0.3 * near.get() }));
+/** The lamp's light falling over the desk (once it's on), brighter as the sheet is brought in. */
+function Glow({ width, near, lamp }: { width: number; near: SharedValue<number>; lamp: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => ({ opacity: (0.7 + 0.3 * near.get()) * lamp.get() }));
   const h = 620;
   return (
     <Animated.View style={[styles.glow, { width, height: h, top: BULB_Y - 180 }, style]} pointerEvents="none" {...hidden}>
@@ -380,75 +406,34 @@ function Glow({ width, near }: { width: number; near: SharedValue<number> }) {
   );
 }
 
-/** A brass desk lamp, its arm bent over from the right, the dome shade lit inside, the bulb hot. Inked. */
-function Lamp({ width }: { width: number }) {
-  const c = width / 2;
-  const rimY = 108;
-  const shade = `M${c - 13} 36 C${c - 20} 50 ${c - 56} 72 ${c - 72} ${rimY} C${c - 40} ${rimY + 12} ${c + 40} ${rimY + 12} ${c + 72} ${rimY} C${c + 56} 72 ${c + 20} 50 ${c + 13} 36 Z`;
-  const arm = `M${c} 30 C${c - 2} 10 ${c + 34} 4 ${c + 84} 9 S${c + 160} 22 ${width + 12} 6`;
+/**
+ * The brass gooseneck lamp (its picture: props.ts), its bulb's centre at the scene's: the lamp off, and
+ * the same lamp lit laid over it as it comes on. The neck runs off the screen's right edge.
+ */
+function Lamp({ width, lamp }: { width: number; lamp: SharedValue<number> }) {
+  const at = { position: "absolute" as const, left: width / 2 - LAMP.bulb.x, top: BULB_Y - LAMP.bulb.y, width: LAMP.w, height: LAMP.h };
+  const lit = useAnimatedStyle(() => ({ opacity: lamp.get() }));
   return (
-    <Svg width={width} height={LAMP_H} viewBox={`0 0 ${width} ${LAMP_H}`}>
-      <Defs>
-        <LinearGradient id="brass" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={BRASS.deep} />
-          <Stop offset="0.3" stopColor={BRASS.mid} />
-          <Stop offset="0.46" stopColor={BRASS.light} />
-          <Stop offset="0.62" stopColor={BRASS.mid} />
-          <Stop offset="1" stopColor={BRASS.deep} />
-        </LinearGradient>
-        <RadialGradient id="inside" cx="50%" cy="20%" r="80%">
-          <Stop offset="0" stopColor={WARM.core} />
-          <Stop offset="0.6" stopColor={WARM.bulb} />
-          <Stop offset="1" stopColor={WARM.amber} />
-        </RadialGradient>
-        <RadialGradient id="bulb" cx="45%" cy="40%" r="60%">
-          <Stop offset="0" stopColor="#FFFFFF" />
-          <Stop offset="0.7" stopColor={WARM.core} />
-          <Stop offset="1" stopColor={WARM.bulb} />
-        </RadialGradient>
-      </Defs>
-      {/* The arm: inked, brass, a line of sheen along it. */}
-      <Path d={arm} stroke={INK} strokeWidth={9} fill="none" strokeLinecap="round" />
-      <Path d={arm} stroke="url(#brass)" strokeWidth={6} fill="none" strokeLinecap="round" />
-      <Path d={arm} stroke={BRASS.sheen} strokeOpacity={0.6} strokeWidth={1.2} fill="none" strokeLinecap="round" transform="translate(0 -1.4)" />
-      {/* The shade's lit mouth, then the bulb hanging in it. */}
-      <Ellipse cx={c} cy={rimY + 3} rx={70} ry={11} fill="url(#inside)" />
-      <Circle cx={c} cy={BULB_Y} r={BULB_R} fill="url(#bulb)" stroke={INK} strokeOpacity={0.45} strokeWidth={1.4} />
-      <Path d={`M${c - 7} ${BULB_Y - 2} l3 4 l3 -5 l3 5 l3 -5 l2 3`} stroke={WARM.amber} strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      {/* The dome, over the bulb's top: brass, hatched on its shadowed side, gone over in ink twice. */}
-      <Path d={shade} fill="url(#brass)" />
-      <G stroke={INK} strokeOpacity={0.35} strokeWidth={1} strokeLinecap="round">
-        <Path d={`M${c - 46} 92 q4 -14 14 -26`} fill="none" />
-        <Path d={`M${c - 38} 98 q4 -16 14 -30`} fill="none" />
-        <Path d={`M${c - 54} 100 q3 -8 8 -16`} fill="none" />
-        <Path d={`M${c + 50} 96 q-3 -10 -9 -18`} fill="none" />
-      </G>
-      <Path d={`M${c + 6} 46 C${c + 22} 58 ${c + 34} 74 ${c + 40} 96`} stroke={BRASS.sheen} strokeOpacity={0.7} strokeWidth={2.2} fill="none" strokeLinecap="round" />
-      <Path d={shade} stroke={INK} strokeWidth={2.2} fill="none" strokeLinejoin="round" />
-      <Path d={shade} stroke={INK} strokeOpacity={0.3} strokeWidth={1} fill="none" transform="translate(1.2 0.8)" />
-      {/* The rolled rim, catching the light from under it. */}
-      <Path d={`M${c - 72} ${rimY} C${c - 40} ${rimY + 12} ${c + 40} ${rimY + 12} ${c + 72} ${rimY}`} stroke={BRASS.light} strokeWidth={3.2} fill="none" strokeLinecap="round" />
-      <Path d={`M${c - 73} ${rimY + 1.5} C${c - 40} ${rimY + 14} ${c + 40} ${rimY + 14} ${c + 73} ${rimY + 1.5}`} stroke={INK} strokeWidth={1.6} fill="none" strokeLinecap="round" />
-      {/* The knuckle where the arm holds it. */}
-      <Ellipse cx={c} cy={36} rx={14} ry={4} fill={BRASS.mid} stroke={INK} strokeWidth={1.8} />
-      <Circle cx={c} cy={29} r={5.5} fill={BRASS.light} stroke={INK} strokeWidth={1.8} />
-    </Svg>
+    <View style={[styles.lampArt, { width, height: BULB_Y - LAMP.bulb.y + LAMP.h }]}>
+      <Image source={LAMP.off} style={at} fadeDuration={0} testID="v2-reveal-lamp" />
+      <Animated.Image source={LAMP.lit} style={[at, lit]} fadeDuration={0} testID="v2-reveal-lamp-lit" />
+    </View>
   );
 }
 
 /** Heat coming off the bulb: a few faint wavering lines, stronger as the sheet nears (still under reduced motion). */
-function Shimmer({ near, reduced, style }: { near: SharedValue<number>; reduced: boolean; style: object }) {
+function Shimmer({ near, lamp, reduced, style }: { near: SharedValue<number>; lamp: SharedValue<number>; reduced: boolean; style: object }) {
   const clock = useSharedValue(0.25);
   useEffect(() => {
     if (!reduced) clock.set(withRepeat(withTiming(1.25, { duration: 1800, easing: Easing.linear }), -1, false));
   }, [reduced, clock]);
   const a = useAnimatedStyle(() => {
     const t = clock.get() % 1;
-    return { opacity: (0.3 + 0.7 * near.get()) * (0.12 + 0.3 * Math.sin(Math.PI * t)), transform: [{ translateX: Math.sin(t * Math.PI * 2) * 2.5 }, { scaleY: 0.92 + 0.12 * t }] };
+    return { opacity: lamp.get() * (0.3 + 0.7 * near.get()) * (0.12 + 0.3 * Math.sin(Math.PI * t)), transform: [{ translateX: Math.sin(t * Math.PI * 2) * 2.5 }, { scaleY: 0.92 + 0.12 * t }] };
   });
   const b = useAnimatedStyle(() => {
     const t = (clock.get() + 0.5) % 1;
-    return { opacity: (0.3 + 0.7 * near.get()) * (0.12 + 0.3 * Math.sin(Math.PI * t)), transform: [{ translateX: -Math.sin(t * Math.PI * 2) * 2.5 }, { scaleY: 0.92 + 0.12 * t }] };
+    return { opacity: lamp.get() * (0.3 + 0.7 * near.get()) * (0.12 + 0.3 * Math.sin(Math.PI * t)), transform: [{ translateX: -Math.sin(t * Math.PI * 2) * 2.5 }, { scaleY: 0.92 + 0.12 * t }] };
   });
   const wave = (x: number, h: number) => `M${x} 6 c-3 ${h * 0.16} 3 ${h * 0.3} 0 ${h * 0.46} s3 ${h * 0.3} 0 ${h * 0.46}`;
   return (
@@ -481,19 +466,19 @@ function Note({ text, seed, font, shade, ink = NOTE_INK, paper = SCRAP }: { text
 }
 
 /**
- * An arched wall mirror in a carved dark frame with a gilt bead, the glass silvered and a little foxed,
- * soft highlights, its edges darkening. The note's reflection comes up in it as the note is brought
- * close: the backwards writing reading the right way round, in the glass's tint.
+ * An arched wall mirror: a carved dark frame with a gilt bead (its picture, over everything), the glass
+ * silvered (drawn here: its tone, the room dim in it, the light off the note), and what lies on the glass
+ * (its picture: soft highlights, the bevel, foxed silvering) over the reflection. The note's reflection
+ * comes up in the glass as the note is brought close: the backwards writing reading the right way round,
+ * in the glass's tint.
  */
 function Mirror({ width, text, shown, near, children }: { width: number; text: string; shown: SharedValue<number>; near: SharedValue<number>; children: ReactNode }) {
   const height = Math.round(width * 1.12);
-  const F = 22;
+  // The pictures are for a mirror MIRROR.width wide: a narrower one scales them.
+  const k = width / MIRROR.width;
+  const F = MIRROR.inset * k;
   const gw = width - F * 2;
   const gh = height - F * 2;
-  const arch = (inset: number) => {
-    const r = (width - inset * 2) / 2;
-    return `M${inset} ${height - inset} V${inset + r} A${r} ${r} 0 0 1 ${width - inset} ${inset + r} V${height - inset} Z`;
-  };
   const reflection = useAnimatedStyle(() => {
     const s = shown.get();
     return {
@@ -504,32 +489,7 @@ function Mirror({ width, text, shown, near, children }: { width: number; text: s
   const lift = useAnimatedStyle(() => ({ opacity: 0.12 + 0.3 * near.get() }));
   return (
     <View style={[styles.mirror, { width, height }]} pointerEvents="none">
-      {/* The frame: carved dark wood, lit from the top left, a crest and two rosettes. */}
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        <Defs>
-          <LinearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0" stopColor={WOOD.light} />
-            <Stop offset="0.45" stopColor={WOOD.mid} />
-            <Stop offset="1" stopColor={WOOD.deep} />
-          </LinearGradient>
-        </Defs>
-        <Path d={arch(0)} fill="url(#wood)" stroke={INK} strokeWidth={2.4} strokeLinejoin="round" transform="translate(1 1) scale(0.994)" />
-        <Path d={arch(7)} fill="none" stroke={WOOD.light} strokeOpacity={0.55} strokeWidth={1.2} />
-        <G stroke={INK} strokeOpacity={0.35} strokeWidth={1} strokeLinecap="round" fill="none">
-          <Path d={`M8 ${height * 0.62} q2 18 0 36`} />
-          <Path d={`M${width - 9} ${height * 0.55} q-2 22 0 40`} />
-          <Path d={`M12 ${height * 0.8} q2 10 0 20`} />
-        </G>
-        {[F * 0.5, width - F * 0.5].map((x) => (
-          <G key={x}>
-            <Circle cx={x} cy={height - F * 0.5} r={6} fill={BRASS.mid} stroke={INK} strokeWidth={1.4} />
-            <Circle cx={x} cy={height - F * 0.5} r={2} fill={BRASS.deep} />
-          </G>
-        ))}
-        <Path d={`M${width / 2 - 16} 6 C${width / 2 - 10} -2 ${width / 2 - 4} 8 ${width / 2} 1 C${width / 2 + 4} 8 ${width / 2 + 10} -2 ${width / 2 + 16} 6 C${width / 2 + 8} 12 ${width / 2 - 8} 12 ${width / 2 - 16} 6 Z`}
-          fill={BRASS.mid} stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />
-      </Svg>
-      {/* The glass. */}
+      {/* The glass (its edge runs under the frame's gilt slip). */}
       <View style={[styles.glass, { left: F, top: F, width: gw, height: gh, borderTopLeftRadius: gw / 2, borderTopRightRadius: gw / 2 }]}>
         <Svg width={gw} height={gh} style={StyleSheet.absoluteFill}>
           <Defs>
@@ -544,8 +504,9 @@ function Mirror({ width, text, shown, near, children }: { width: number; text: s
             </LinearGradient>
           </Defs>
           <Rect x={0} y={0} width={gw} height={gh} fill="url(#silver)" />
-          {/* The room behind her, dim in the glass. */}
+          {/* The room behind her, dim in the glass; the glass's own cool tint. */}
           <Rect x={0} y={0} width={gw} height={gh} fill="url(#room)" />
+          <Rect x={0} y={0} width={gw} height={gh} fill="#6E8296" fillOpacity={0.16} />
         </Svg>
         <Animated.View style={[StyleSheet.absoluteFill, lift]} {...hidden}>
           {/* The light off the note, nearing. */}
@@ -565,39 +526,22 @@ function Mirror({ width, text, shown, near, children }: { width: number; text: s
             <View {...hidden}>{children}</View>
           </Animated.View>
         </View>
-        {/* The glass over it all: its cool tint, soft highlights, foxed silvering, the edges darkening. */}
-        <Svg width={gw} height={gh} style={StyleSheet.absoluteFill}>
-          <Defs>
-            <LinearGradient id="streak" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0" />
-              <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.3" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-            </LinearGradient>
-            <RadialGradient id="vignette" cx="50%" cy="50%" r="60%">
-              <Stop offset="0.55" stopColor="#141826" stopOpacity="0" />
-              <Stop offset="1" stopColor="#141826" stopOpacity="0.6" />
-            </RadialGradient>
-          </Defs>
-          <Rect x={0} y={0} width={gw} height={gh} fill="#6E8296" fillOpacity={0.16} />
-          <Path d={`M${gw * 0.08} ${gh * 0.62} L${gw * 0.5} ${gh * 0.06} L${gw * 0.62} ${gh * 0.06} L${gw * 0.2} ${gh * 0.62} Z`} fill="url(#streak)" />
-          <Path d={`M${gw * 0.3} ${gh * 0.7} L${gw * 0.74} ${gh * 0.12} L${gw * 0.78} ${gh * 0.12} L${gw * 0.34} ${gh * 0.7} Z`} fill="url(#streak)" opacity={0.7} />
-          <G fill="#3A3C44">
-            <Circle cx={gw * 0.06} cy={gh * 0.86} r={3} fillOpacity={0.25} />
-            <Circle cx={gw * 0.1} cy={gh * 0.92} r={1.6} fillOpacity={0.3} />
-            <Circle cx={gw * 0.93} cy={gh * 0.74} r={2.4} fillOpacity={0.22} />
-            <Circle cx={gw * 0.88} cy={gh * 0.95} r={4} fillOpacity={0.18} />
-            <Circle cx={gw * 0.04} cy={gh * 0.45} r={1.4} fillOpacity={0.25} />
-          </G>
-          <Rect x={0} y={0} width={gw} height={gh} fill="url(#vignette)" />
-        </Svg>
       </View>
-      {/* The gilt bead round the glass, and the ink line where frame meets glass. */}
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        <Path d={arch(F - 3)} fill="none" stroke={BRASS.light} strokeWidth={3} />
-        <Path d={arch(F - 3)} fill="none" stroke={BRASS.deep} strokeOpacity={0.8} strokeWidth={1} strokeDasharray="1.5 3.5" />
-        <Path d={arch(F)} fill="none" stroke={INK} strokeWidth={1.6} />
-        <Path d={arch(F - 6)} fill="none" stroke={INK} strokeOpacity={0.5} strokeWidth={1} />
-      </Svg>
+      {/* What lies on the glass, over the reflection; then the frame, over the glass's edge. */}
+      <Image
+        source={MIRROR.glass}
+        style={{ position: "absolute", left: F - MIRROR.bleed * k, top: F - MIRROR.bleed * k, width: MIRROR.glassW * k, height: MIRROR.glassH * k }}
+        fadeDuration={0}
+        testID="v2-reveal-mirror-glass"
+        {...hidden}
+      />
+      <Image
+        source={MIRROR.frame}
+        style={{ position: "absolute", left: -MIRROR.box.x * k, top: -MIRROR.box.y * k, width: MIRROR.w * k, height: MIRROR.h * k }}
+        fadeDuration={0}
+        testID="v2-reveal-mirror-frame"
+        {...hidden}
+      />
     </View>
   );
 }
@@ -606,6 +550,8 @@ const styles = StyleSheet.create({
   root: { alignItems: "center", justifyContent: "center", zIndex: 90 },
   scene: { alignItems: "center" },
   lamp: { height: LAMP_H, zIndex: 3 },
+  // The lamp's picture hangs below the lamp's room (its neck runs on down) and is cut at the screen's edges.
+  lampArt: { position: "absolute", left: 0, top: 0, overflow: "hidden" },
   glow: { position: "absolute", left: 0 },
   shimmer: { position: "absolute", width: 120, height: 72 },
   under: { zIndex: 1 },

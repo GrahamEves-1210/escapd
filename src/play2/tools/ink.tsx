@@ -1,11 +1,13 @@
 // Skia pieces the drawn reveal sheets share (the pencil rubbing, the red-lens card, the fold-in):
+// their rendered props' pictures (props.ts), read once and kept, and how they are sampled;
 // writing set by a face's own measure (revealText.ts, setHand) and drawn word by word, each a little
 // off true, with the door's wheel symbols drawn by hand; a sheet of paper with the letters' grain and
 // shadow (as letters/Paper.tsx draws it, here inside a canvas that has more to draw on it).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ColorMatrix, FractalNoise, Group, Path, Rect, Shadow, Skia, Text, loadData, type SkFont, type SkTypeface } from "@shopify/react-native-skia";
+import { ColorMatrix, FilterMode, FractalNoise, Group, MipmapMode, Path, Rect, Shadow, Skia, Text, loadData, type SkFont, type SkImage, type SkTypeface } from "@shopify/react-native-skia";
 import { alpha } from "@/theme/payoff";
 
+import { BINDING, LENS, PAPERWEIGHT, PENCIL } from "./props";
 import { handLayout, setHand, SYMBOL, type Placed, type Setting } from "./revealText";
 
 /** The hand face (Patrick Hand, as everything written in the world) and a typewriter's (a printed page). */
@@ -15,6 +17,9 @@ export const FACE = {
 } as const;
 
 export type Face = keyof typeof FACE;
+
+/** How a rendered prop's picture (props.ts) is sampled when a sheet turns or scales it: smoothly. */
+export const SMOOTH = { filter: FilterMode.Linear, mipmap: MipmapMode.Linear } as const;
 
 /** Made on first use, never at import (on the web Skia isn't there until CanvasKit has loaded). */
 export function once<T>(make: () => T): () => T {
@@ -39,11 +44,47 @@ function readFace(face: Face): Promise<SkTypeface | null> {
   ));
 }
 
-/** Starts reading both faces, so a sheet opened later has its writing at once. */
+// A prop's picture is decoded once and kept, like a face: a sheet opened later has its lens or its pencil at once.
+const pictures = new Map<number, SkImage>();
+const decoding = new Map<number, Promise<SkImage | null>>();
+function readArt(source: number): Promise<SkImage | null> {
+  let read = decoding.get(source);
+  if (!read) {
+    read = loadData(source, (data) => Skia.Image.MakeImageFromEncoded(data)).then(
+      (image) => {
+        if (image) pictures.set(source, image);
+        else decoding.delete(source);
+        return image;
+      },
+      () => {
+        decoding.delete(source);
+        return null;
+      },
+    );
+    decoding.set(source, read);
+  }
+  return read;
+}
+
+/** A rendered prop's picture (props.ts) for a canvas: null until it has been read (at once if it was warmed). */
+export function useArt(source: number): SkImage | null {
+  const [image, setImage] = useState<SkImage | null>(pictures.get(source) ?? null);
+  useEffect(() => {
+    let live = true;
+    if (!pictures.has(source)) readArt(source).then((read) => live && setImage(read));
+    return () => {
+      live = false;
+    };
+  }, [source]);
+  return pictures.get(source) ?? image;
+}
+
+/** Starts reading both faces and the canvas sheets' pictures, so a sheet opened later has its writing and its props at once. */
 export function warmFaces(): void {
   try {
     void readFace("hand");
     void readFace("typed");
+    for (const art of [LENS.art, PENCIL.art, BINDING.art, PAPERWEIGHT.art]) void readArt(art);
   } catch {
     // Skia not up yet (the web, before CanvasKit): the sheet reads them itself when it opens.
   }

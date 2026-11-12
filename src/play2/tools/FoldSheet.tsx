@@ -5,15 +5,19 @@
 // into a shadowed valley, the gripped edge curling up to show the paper's back, until B lies on A and
 // the halves meet: the line reads across the join. It snaps home with a paper sound. Let go early and
 // it springs flat again. At once for a screen reader's activate or under reduced motion.
+//
+// The page is drawn live (it folds). A brass paperweight (a rendered picture: props.ts) stands on its
+// top-left corner: what holds the left of the page still while the right is brought in.
 import { useMemo } from "react";
 import { View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { Easing, ReduceMotion, useDerivedValue, useSharedValue, withTiming } from "react-native-reanimated";
-import { Canvas, ColorMatrix, DashPathEffect, FractalNoise, Group, Line, LinearGradient, Path, Rect, Shadow, Skia, Text, rect, vec } from "@shopify/react-native-skia";
+import { Canvas, ColorMatrix, DashPathEffect, FractalNoise, Group, Image, Line, LinearGradient, Path, Rect, Shadow, Skia, Text, rect, vec } from "@shopify/react-native-skia";
 import { scheduleOnRN } from "react-native-worklets";
 import { alpha } from "@/theme/payoff";
 
-import { measureWith, once, useFace, useWriting, Written } from "./ink";
+import { measureWith, once, SMOOTH, useArt, useFace, useWriting, Written } from "./ink";
+import { PAPERWEIGHT } from "./props";
 import { filler, foldAt, foldProgress, isShort } from "./revealText";
 import type { SheetProps } from "./sheet";
 
@@ -26,6 +30,8 @@ const MARK = "#8A2B3D";
 const TOP = 30;
 /** Past this much of the way the fold snaps home. */
 const HOME_AT = 0.86;
+/** Where the paperweight stands on the page (its middle, from the page's top-left corner): on the corner, clear of the print. */
+const WEIGHT = { x: 15, y: 13 };
 /** The page lies a little crooked (radians). */
 const TILT = -0.02;
 const tooth = [0.55, 0, 0, 0, 0.725, 0.55, 0, 0, 0, 0.725, 0.55, 0, 0, 0, 0.725, 0, 0, 0, 0, 1];
@@ -124,6 +130,7 @@ export function FoldSheet({ text, title, width, shown, done, reduced, onRead, la
     });
   }, [small, title, W]);
   const ARROW = marks();
+  const weight = useArt(PAPERWEIGHT.art);
   const baseline = (row: number) => wy - TOP + size + row * lineHeight;
   // Everything printed on the page, in the page's own space; drawn once for each part, cut to it.
   const printed = (
@@ -243,6 +250,10 @@ export function FoldSheet({ text, title, width, shown, done, reduced, onRead, la
               </Group>
               <Line p1={vec(a, 0)} p2={vec(a, H)} color={alpha("#1A1014", 0.22)} strokeWidth={0.8} />
               <Line p1={vec(a - 1, 0)} p2={vec(a - 1, H)} color={alpha("#FFFFFF", 0.6)} strokeWidth={0.9} opacity={shade} />
+              {/* The paperweight on the corner of the strip that lies still. */}
+              {weight ? (
+                <Image image={weight} x={WEIGHT.x - PAPERWEIGHT.centre.x} y={WEIGHT.y - PAPERWEIGHT.centre.y} width={PAPERWEIGHT.w} height={PAPERWEIGHT.h} fit="fill" sampling={SMOOTH} />
+              ) : null}
             </Group>
           </Group>
         </Canvas>
