@@ -4,17 +4,20 @@
 // - her detective title on a little name card: the cat beside it (wearing
 //   what she picked), the title in the cover face, the cases she has closed
 //   and how many more to the next title, a gold-foil bar between;
-// - the board: a velvet pin board, a row per mode (its series line over its
-//   three charms); each charm she has earned is pinned on in its best finish
-//   with its name and three pips for the finishes she has of it (gold,
-//   silver, sticker); the ones she hasn't are soft silhouettes. A tap on an
-//   earned charm wiggles it and says what it is;
+// - the board: a velvet pin board (rendered velvet, lit from the upper left
+//   like everything on it), a row per mode (its series line over its three
+//   charms); each charm she has earned is pinned on in its best finish (an
+//   enamel pin in gold or silver, or a paper sticker: CharmArt) with its name
+//   and three pips for the finishes she has of it (gold, silver, sticker);
+//   the ones she hasn't are hollows pressed into the velvet, waiting. A tap
+//   on an earned charm wiggles it and says what it is;
 // - the cat's wardrobe: just the cat, or a bell collar, a knitted scarf,
-//   round spectacles, a deerstalker (a detective's cat), each unlocked by a
-//   title; the pick is kept for the cats to wear ("escapd.cat.accessory").
+//   round spectacles, a deerstalker (a detective's cat), each shown as the
+//   thing itself and unlocked by a title; the pick is kept for the cats to
+//   wear ("escapd.cat.accessory").
 // Opening it marks her charms as seen (home's chip loses its dot).
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,10 +50,15 @@ export const BOARD = {
   pad: 16,
   charm: 64,
   tile: 58,
+  /** An outfit's picture in its tile. */
+  wear: 40,
   cat: 74,
 } as const;
 
-/** The board's tones: a velvet a shade off the ground, a silhouette's soft shape on it. */
+/** The board's velvet (scripts/blender/props/charms_board.py), stretched over it. */
+const VELVET_ART = require("../../../assets/charms/board-velvet.jpg") as number;
+
+/** The board's tones: the velvet's middle tone (under its picture, and while it loads), a locked outfit's shape. */
 const VELVET = "#2A1D31";
 const SILHOUETTE = "#3D2D45";
 const STITCH = "rgba(217, 178, 106, 0.2)";
@@ -151,6 +159,7 @@ export function CollectionScreen() {
 
         {/* The board. */}
         <View style={[styles.board, { backgroundColor: VELVET, borderColor: S.rim }]} testID="collection-board">
+          <Image source={VELVET_ART} style={styles.velvet} resizeMode="cover" fadeDuration={0} accessible={false} testID="collection-velvet" />
           <View style={[styles.stitch, { borderColor: STITCH }]} pointerEvents="none" />
           {BOARD_MODES.map((genre) => (
             <View key={genre} style={styles.modeRow}>
@@ -189,7 +198,7 @@ export function CollectionScreen() {
                   style={styles.tileHit}
                 >
                   <View style={[styles.tile, { backgroundColor: on ? S.raised : S.surface, borderColor: on ? S.foil : S.rim, borderWidth: on ? 2 : 1 }]}>
-                    <AccessoryIcon accessory={a} size={38} muted={!open} tone={SILHOUETTE} />
+                    <AccessoryIcon accessory={a} size={BOARD.wear} muted={!open} tone={SILHOUETTE} />
                     {!open ? (
                       <View style={[styles.lock, { backgroundColor: S.raised, borderColor: S.rim }]}>
                         <LockMark size={11} color={S.inkMuted} />
@@ -214,7 +223,7 @@ function pickedLine(kind: CharmKind, h: CharmHeld): string {
   return `${CHARM_INFO[kind].name} · ${finishes.join(", ")} · ${h.cases} ${h.cases === 1 ? "case" : "cases"}`;
 }
 
-/** One charm on the board: pinned on in its best finish, or its soft silhouette. */
+/** One charm on the board: pinned on in its best finish, or its hollow in the velvet. */
 function CharmSlot({ kind, held, picked, onPress }: { kind: CharmKind; held?: CharmHeld; picked: boolean; onPress: () => void }) {
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
@@ -229,7 +238,7 @@ function CharmSlot({ kind, held, picked, onPress }: { kind: CharmKind; held?: Ch
   if (!held) {
     return (
       <View style={styles.slot} accessible accessibilityLabel={`${info.name}: not found yet`} testID={`collection-charm-${kind}`}>
-        <Charm kind={kind} size={BOARD.charm} silhouette tone={SILHOUETTE} />
+        <Charm kind={kind} size={BOARD.charm} silhouette testID={`collection-charm-${kind}-art`} />
         <Text style={[styles.slotName, { color: alpha(S.inkMuted, 0.7) }]} numberOfLines={1}>Not yet</Text>
         <View style={styles.pips} />
       </View>
@@ -247,7 +256,7 @@ function CharmSlot({ kind, held, picked, onPress }: { kind: CharmKind; held?: Ch
       style={styles.slot}
     >
       <Animated.View style={style}>
-        <Charm kind={kind} finish={held.best} size={BOARD.charm} />
+        <Charm kind={kind} finish={held.best} size={BOARD.charm} testID={`collection-charm-${kind}-art`} />
       </Animated.View>
       <Text style={[styles.slotName, { color: S.ink }]} numberOfLines={1}>{info.name}</Text>
       <View style={styles.pips} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -294,7 +303,8 @@ const styles = StyleSheet.create({
   title: { fontFamily: ref.font.cover, fontSize: 24, lineHeight: 30 },
   bar: { height: 6, borderRadius: 3, overflow: "hidden", marginTop: 2 },
   barFill: { height: 6, borderRadius: 3 },
-  board: { borderRadius: BOARD.radius, borderWidth: 1, paddingVertical: BOARD.pad, paddingHorizontal: 8, gap: 10, ...ref.curve },
+  board: { borderRadius: BOARD.radius, borderWidth: 1, paddingVertical: BOARD.pad, paddingHorizontal: 8, gap: 10, overflow: "hidden", ...ref.curve },
+  velvet: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" },
   stitch: { ...StyleSheet.absoluteFill, margin: 6, borderRadius: BOARD.radius - 6, borderWidth: 1, borderStyle: "dashed" },
   modeRow: { gap: 2, alignItems: "center" },
   series: { ...ref.type.series, fontSize: 15, lineHeight: 20, textAlign: "center" },

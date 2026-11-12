@@ -1,11 +1,11 @@
 // Home's charm chip (01 · Home's header, the left slot: home is the root, so
-// it's free): the hub's round chip with a little skeleton-key charm on its
-// jump ring, opening her charm board (/collection). A gold-foil dot while
+// it's free): the hub's round chip with a little brass skeleton key on its
+// jump ring (rendered: scripts/blender/props/charms_wardrobe.py), opening her
+// charm board (/collection). A gold-foil dot while
 // there's a charm she hasn't looked at yet. Its label says her
 // title and how many charms she has. Read again on every focus.
 import { useCallback, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
+import { Image, StyleSheet, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { ALL_CHARMS, titleFor } from "@/game/collection/charms";
 import { casesClosed, loadCollection, unseenCount } from "@/game/collection/store";
@@ -14,7 +14,9 @@ import { ref, shellTheme } from "@/theme/tokens";
 
 const C = ref.button.chip;
 const PAD = (C.hit - C.size) / 2;
-const GLYPH = ref.icon.chip;
+/** The key's height in the chip's 36 disc (a rendered thing reads smaller than a line glyph's 18). */
+export const KEY = 25;
+const KEY_ART = require("../../../assets/charms/chip-key.png") as number;
 
 export function charmChipLabel(closed: number, kinds: number): string {
   const charms = kinds === 0 ? "no charms yet" : `${kinds} of ${ALL_CHARMS.length} charms`;
@@ -49,18 +51,13 @@ export function CharmChip({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
-/** A little skeleton-key charm on its jump ring, drawn in the cat's pen (the chip's 18 glyph box). */
-export function CharmGlyph({ color = ref.color.textPrimary }: { color?: string }) {
-  return (
-    <Svg width={GLYPH} height={GLYPH} viewBox="0 0 18 18" pointerEvents="none">
-      <Circle cx={9} cy={2.6} r={1.5} fill="none" stroke={color} strokeWidth={1.3} />
-      <Circle cx={9} cy={7.2} r={3} fill="none" stroke={color} strokeWidth={1.7} />
-      <Path d="M9 10.2 V16.4 M9 13.4 H11.8 M9 15.8 H11.2" fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
+/** A little brass skeleton key on its jump ring (the chip's glyph). Decorative: the chip is labelled. */
+export function CharmGlyph() {
+  return <Image source={KEY_ART} style={styles.key} resizeMode="contain" fadeDuration={0} accessible={false} />;
 }
 
 const styles = StyleSheet.create({
   // On the disc's top right, ringed in the ground.
   dot: { position: "absolute", top: PAD - 1, right: PAD - 1, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
+  key: { width: KEY, height: KEY },
 });
