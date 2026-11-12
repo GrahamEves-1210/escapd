@@ -4,8 +4,9 @@
 // it back), then Begin. Held while busy or cooling down. Open once it is.
 // What was picked or dialled stays after a wrong try, to change one thing.
 //
-// Drawn as the door: its lock set in the door's own wood (a routed panel, the
-// grain running up it), the wheels' symbols cut into the iron above them. An
+// The door: its lock set in the door's own wood (a rendered stretch of it: a
+// routed panel, the grain running up it, a brass knob and keyhole plate), the
+// wheels' symbols cut into the iron above them. An
 // accusation is made with evidence tags (paper, a punched hole, the choice
 // ringed in the stamp's ink); a ritual with chalk rings on the floor, numbered
 // in order. Open, it stands ajar with the light of the way out behind it.
@@ -19,7 +20,8 @@ import { RingPressable } from "@/render/parts";
 import { mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
 import { Line, MechButton, Stage, cooldownText, useKept } from "./kit";
-import { BRASS, ENAMEL, INK, Ink, Wood, inkRect, useGradId, useMaterials, type Materials } from "./materials";
+import { ENAMEL, INK, inkRect, useGradId } from "./materials";
+import { ART, Sprite } from "./sprites";
 import { WheelBank } from "./Wheels";
 import { SYMBOLS } from "@/engine/v2";
 import type { MechanismProps } from "./types";
@@ -36,12 +38,12 @@ export function Door(props: MechanismProps) {
 
 /** The door's own lock: the wheels set in its wood. */
 function Combination({ target, busy, cooldown, onSubmit, onChange, width, count }: MechanismProps & { count: number }) {
-  const mat = useMaterials();
   const w = Math.min(width, 336);
   return (
     <Stage width={width} style={styles.flush}>
       <View style={[styles.doorPanel, { width: w, height: PANEL_H }]}>
-        <Wood w={w} h={PANEL_H} seed={83} tone={mat.wood} r={6} vertical panel={9} style={StyleSheet.absoluteFill} />
+        {/* The door itself: walnut, a routed panel, its brass lock set by the plaque. */}
+        <Sprite source={ART.doorPanel} w={w} h={PANEL_H} style={styles.fill} />
         <WheelBank
           alphabet="digits"
           count={count}
@@ -63,65 +65,47 @@ const PANEL_H = 282;
 
 function DoorOpen({ width }: { width: number }) {
   const theme = useModeTheme();
-  const mat = useMaterials();
   return (
     <Stage width={width}>
       <View testID="mech-door-open">
-        <Ajar mat={mat} glow={theme.glow} dark={theme.surface} />
+        <Ajar glow={theme.glow} dark={theme.surface} />
       </View>
       <Line text="The door is open" tone="stamp" />
     </Stage>
   );
 }
 
-/** The door standing ajar: its frame, the leaf swung in on its hinges, and the light of the way out, spilling over the sill. */
-const Ajar = memo(function Ajar({ mat, glow, dark }: { mat: Materials; glow: string; dark: string }) {
+/**
+ * The door standing ajar: the light of the way out (the mode's, drawn live: in the opening, spilling over
+ * the sill, wider as it comes toward you), and over it the rendered casing and the leaf swung in on its
+ * hinges (sprites.tsx; the opening is clear).
+ */
+const Ajar = memo(function Ajar({ glow, dark }: { glow: string; dark: string }) {
   const g = useGradId();
-  const [light, spill, leaf, frame] = [g("l"), g("s"), g("f"), g("fr")];
+  const [light, spill] = [g("l"), g("s")];
   const W = 250, H = 214;
-  // The opening, and the leaf seen nearly edge-on, hung on the left.
   const o = { x: 78, y: 16, w: 96, h: 160 };
-  const leafD = `M${o.x} ${o.y}L${o.x + 34} ${o.y + 15}V${o.y + o.h - 12}L${o.x} ${o.y + o.h}Z`;
-  const panel = (y0: number, y1: number) => `M${o.x + 7} ${y0 + 4}L${o.x + 27} ${y0 + 12}V${y1 - 8}L${o.x + 7} ${y1 - 2}Z`;
   const rays = [-34, -14, 8, 30].map((a) => `M${o.x + o.w / 2 + a * 0.5} ${o.y + o.h - 6}L${o.x + o.w / 2 + a * 2.6} ${H - 4}`).join("");
   return (
-    <Svg width={W} height={H}>
-      <Defs>
-        <RadialGradient id={light.id} cx="55%" cy="62%" rx="75%" ry="70%">
-          <Stop offset="0" stopColor="#FFFDF2" />
-          <Stop offset="0.35" stopColor={mix(glow, "#FFFFFF", 0.35)} />
-          <Stop offset="1" stopColor={mix(glow, dark, 0.45)} />
-        </RadialGradient>
-        <LinearGradient id={spill.id} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={glow} stopOpacity={0.55} />
-          <Stop offset="1" stopColor={glow} stopOpacity={0} />
-        </LinearGradient>
-        <LinearGradient id={leaf.id} x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={mat.wood.deep} />
-          <Stop offset="1" stopColor={mat.wood.mid} />
-        </LinearGradient>
-        <LinearGradient id={frame.id} x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={mat.carcass.light} />
-          <Stop offset="1" stopColor={mat.carcass.deep} />
-        </LinearGradient>
-      </Defs>
-      {/* The light across the floor, wider as it comes toward you. */}
-      <Path d={`M${o.x + 4} ${o.y + o.h}L${W * 0.06} ${H}H${W * 0.94}L${o.x + o.w - 4} ${o.y + o.h}Z`} fill={spill.url} />
-      {/* The frame, then the way out. */}
-      <Path d={`M${o.x - 14} ${o.y + o.h}V${o.y - 12}H${o.x + o.w + 14}V${o.y + o.h}Z`} fill={frame.url} />
-      <Rect x={o.x} y={o.y} width={o.w} height={o.h} fill={light.url} />
-      <Path d={rays} stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1.4} strokeLinecap="round" />
-      <Ink d={`M${o.x - 14} ${o.y + o.h}V${o.y - 12}H${o.x + o.w + 14}V${o.y + o.h}`} w={2} />
-      <Ink d={`M${o.x} ${o.y + o.h}V${o.y}H${o.x + o.w}V${o.y + o.h}`} w={1.6} />
-      {/* The leaf: dark against the light, two panels, its knob catching it. */}
-      <Path d={leafD} fill={leaf.url} />
-      <Path d={panel(o.y + 8, o.y + o.h * 0.48) + panel(o.y + o.h * 0.5, o.y + o.h - 12)} fill="none" stroke={mat.wood.deep} strokeWidth={1.6} strokeLinejoin="round" />
-      <Path d={`M${o.x + 34} ${o.y + 15}V${o.y + o.h - 12}`} stroke={mat.wood.sheen} strokeOpacity={0.9} strokeWidth={2.2} />
-      <Ink d={leafD} w={1.8} />
-      <Circle cx={o.x + 29} cy={o.y + o.h * 0.52} r={3.6} fill={BRASS.light} stroke={INK} strokeWidth={1.2} />
-      {/* Hinges on the frame. */}
-      {[o.y + 26, o.y + o.h - 34].map((y) => <Rect key={y} x={o.x - 3} y={y} width={6} height={13} rx={1.5} fill={BRASS.mid} stroke={INK} strokeWidth={1.1} />)}
-    </Svg>
+    <View style={{ width: W, height: H }}>
+      <Svg width={W} height={H} style={StyleSheet.absoluteFill}>
+        <Defs>
+          <RadialGradient id={light.id} cx="55%" cy="62%" rx="75%" ry="70%">
+            <Stop offset="0" stopColor="#FFFDF2" />
+            <Stop offset="0.35" stopColor={mix(glow, "#FFFFFF", 0.35)} />
+            <Stop offset="1" stopColor={mix(glow, dark, 0.45)} />
+          </RadialGradient>
+          <LinearGradient id={spill.id} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={glow} stopOpacity={0.55} />
+            <Stop offset="1" stopColor={glow} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <Path d={`M${o.x + 4} ${o.y + o.h}L${W * 0.06} ${H}H${W * 0.94}L${o.x + o.w - 4} ${o.y + o.h}Z`} fill={spill.url} />
+        <Rect x={o.x - 1} y={o.y - 1} width={o.w + 2} height={o.h + 1} fill={light.url} />
+        <Path d={rays} stroke="#FFFFFF" strokeOpacity={0.35} strokeWidth={1.4} strokeLinecap="round" />
+      </Svg>
+      <Sprite source={ART.doorAjar} w={W} h={H} style={styles.fill} />
+    </View>
   );
 });
 
@@ -286,6 +270,7 @@ const ChalkRing = memo(function ChalkRing({ n, lit, chalk, glow }: { n: number; 
 
 const styles = StyleSheet.create({
   flush: { paddingVertical: 0 },
+  fill: { position: "absolute", left: 0, top: 0 },
   doorPanel: { alignItems: "center", justifyContent: "center" },
   pickRow: { alignSelf: "stretch", gap: ref.space.xs },
   rowTitle: { ...ref.type.tag, paddingHorizontal: ref.space.xs },

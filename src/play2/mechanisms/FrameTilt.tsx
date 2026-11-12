@@ -4,9 +4,10 @@
 // there all along, slipping out from under its bottom edge as it swings, never
 // popping in at the end.
 //
-// Drawn as the picture on the wall: a gilt moulded frame round a small dark
-// landscape, hung by its wire from a brass nail on papered wall; where it has
-// hung the paper is fresher, a line of dust along where its edges were.
+// The picture on the wall: a rendered gilt moulded frame (sprites.tsx; its
+// middle is clear) round a small dark landscape drawn live, hung by its wire
+// from a brass nail on papered wall; where it has hung the paper is fresher,
+// a line of dust along where its edges were.
 import { memo, useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -17,7 +18,8 @@ import { useModeTheme } from "@/game/mode";
 import { mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
 import { GIVE_AT, Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
-import { BRASS, ENAMEL, INK, Ink, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
+import { ENAMEL, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
+import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
 
 const MAX_DEG = 17;
@@ -31,6 +33,8 @@ const TUCKED_H = 56;
 const SLIP = 56;
 /** The moulding's width. */
 const MOULD = 13;
+/** The frame's picture (mech_frame.py): its size, and where the frame's box starts in it (room for its shadow, and the wire above). */
+const GILT = { w: 192, h: 144, x: 6, y: 20 };
 
 export function FrameTilt({ target, state, onSet, busy, width, inside }: MechanismProps) {
   const theme = useModeTheme();
@@ -88,12 +92,12 @@ export function FrameTilt({ target, state, onSet, busy, width, inside }: Mechani
             testID="mech-frame"
             style={[styles.frame, { left, width: w, height: FRAME_H }, frameStyle]}
           >
-            {/* Its wire, up to the nail. */}
-            <View style={[styles.wire, { width: w }]} pointerEvents="none"><Wire w={w} /></View>
             <Picture w={w} h={FRAME_H} mat={mat} />
+            {/* The frame itself and its wire up to the nail, over the canvas. */}
+            <Sprite source={ART.frameGilt} w={GILT.w * (w / 180)} h={GILT.h} style={{ position: "absolute", left: -GILT.x * (w / 180), top: -GILT.y }} />
           </Animated.View>
         </GestureDetector>
-        <View style={[styles.nail, { left: width / 2 - 5 }]} pointerEvents="none"><Nail /></View>
+        <View style={[styles.nail, { left: width / 2 - 7 }]} pointerEvents="none"><Sprite source={ART.frameNail} w={14} h={14} /></View>
       </View>
       <Line text={tilted ? "Askew" : "Push it to one side"} />
     </Stage>
@@ -136,32 +140,10 @@ const Hung = memo(function Hung({ w, h, fresh, dust }: { w: number; h: number; f
   );
 });
 
-/** The picture wire: two strands from the frame's back up to the nail. */
-const Wire = memo(function Wire({ w }: { w: number }) {
-  const d = `M${w * 0.24} ${WIRE + 1}L${w / 2} 1.5L${w * 0.76} ${WIRE + 1}`;
-  return (
-    <Svg width={w} height={WIRE + 2}>
-      <Path d={d} stroke={INK} strokeWidth={2.4} fill="none" strokeLinejoin="round" />
-      <Path d={d} stroke="#B9B2A6" strokeWidth={1} fill="none" strokeLinejoin="round" />
-    </Svg>
-  );
-});
-
-/** A brass nail's head. */
-function Nail() {
-  return (
-    <Svg width={10} height={10} viewBox="0 0 10 10">
-      <Circle cx={5.6} cy={6.2} r={3.6} fill="#000000" fillOpacity={0.4} />
-      <Circle cx={5} cy={5} r={3.6} fill={BRASS.mid} stroke={INK} strokeWidth={1.2} />
-      <Circle cx={4} cy={3.9} r={1.3} fill={BRASS.sheen} />
-    </Svg>
-  );
-}
-
-/** The picture: a gilt frame (a bead, a hollow, a slip, its mitres), and in it a small night landscape under varnish. */
+/** The canvas in the frame: a small night landscape under varnish. */
 const Picture = memo(function Picture({ w, h, mat }: { w: number; h: number; mat: Materials }) {
   const g = useGradId();
-  const [gilt, sky, sheen, moon] = [g("g"), g("s"), g("v"), g("m")];
+  const [sky, sheen, moon] = [g("s"), g("v"), g("m")];
   const m = MOULD;
   const art = useMemo(() => {
     const rnd = rng(641);
@@ -175,20 +157,12 @@ const Picture = memo(function Picture({ w, h, mat }: { w: number; h: number; mat
     for (let i = 0; i < 9; i++) stars += `M${(m + 6 + rnd() * (iw - 12)).toFixed(1)} ${(m + 5 + rnd() * ih * 0.4).toFixed(1)}h0.01`;
     return {
       far: hill(ih * 0.62, 10), near: hill(ih * 0.8, 7), stars,
-      outer: inkRect(1, 1, w - 2, h - 2, 3, 643, 0.5), inner: inkRect(m, m, iw, ih, 1.5, 647, 0.4),
-      mitres: `M2 2L${m} ${m}M${w - 2} 2L${w - m} ${m}M2 ${h - 2}L${m} ${h - m}M${w - 2} ${h - 2}L${w - m} ${h - m}`,
     };
   }, [w, h, m]);
   const night = mix(mat.felt.deep, "#0B1024", 0.4);
   return (
     <Svg width={w} height={h}>
       <Defs>
-        <LinearGradient id={gilt.id} x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor={BRASS.sheen} />
-          <Stop offset="0.25" stopColor={BRASS.light} />
-          <Stop offset="0.55" stopColor={BRASS.mid} />
-          <Stop offset="1" stopColor={BRASS.deep} />
-        </LinearGradient>
         <LinearGradient id={sky.id} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={night} />
           <Stop offset="1" stopColor={mix(mat.cloth.mid, night, 0.35)} />
@@ -204,21 +178,15 @@ const Picture = memo(function Picture({ w, h, mat }: { w: number; h: number; mat
         </RadialGradient>
       </Defs>
       {/* Its shadow on the wall is the stage's; the moulding, then the canvas. */}
-      <Rect x={1} y={1} width={w - 2} height={h - 2} rx={3} fill={gilt.url} />
-      <Rect x={4.5} y={4.5} width={w - 9} height={h - 9} rx={1.5} fill="none" stroke={BRASS.deep} strokeOpacity={0.75} strokeWidth={2.2} />
-      <Rect x={7.4} y={7.4} width={w - 14.8} height={h - 14.8} rx={1} fill="none" stroke={BRASS.sheen} strokeOpacity={0.8} strokeWidth={1.2} />
-      <Path d={art.mitres} stroke={BRASS.deep} strokeOpacity={0.8} strokeWidth={1} />
-      <Rect x={m} y={m} width={w - 2 * m} height={h - 2 * m} fill={sky.url} />
+      <Rect x={m - 1} y={m - 1} width={w - 2 * m + 2} height={h - 2 * m + 2} fill={sky.url} />
       <Circle cx={w * 0.68} cy={m + (h - 2 * m) * 0.3} r={15} fill={moon.url} />
       <Circle cx={w * 0.68} cy={m + (h - 2 * m) * 0.3} r={5.5} fill={ENAMEL.light} />
       <Path d={art.stars} stroke={ENAMEL.light} strokeOpacity={0.8} strokeWidth={1.3} strokeLinecap="round" />
       <Path d={art.far} fill={mix(mat.cloth.deep, night, 0.3)} />
       <Path d={art.near} fill={mix(night, "#000000", 0.45)} />
       <Rect x={m} y={m} width={w - 2 * m} height={h - 2 * m} fill={sheen.url} />
-      {/* The slip's shadow on the canvas, and the pen. */}
+      {/* The slip's shadow on the canvas. */}
       <Path d={`M${m} ${h - m}V${m}H${w - m}`} stroke="#000000" strokeOpacity={0.5} strokeWidth={2.4} fill="none" />
-      <Ink d={art.inner} w={1.4} />
-      <Ink d={art.outer} w={2} />
     </Svg>
   );
 });
@@ -228,6 +196,5 @@ const styles = StyleSheet.create({
   patch: { position: "absolute", top: FRAME_TOP },
   tucked: { position: "absolute", left: 0, right: 0, height: TUCKED_H, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: ref.space.lg },
   frame: { position: "absolute", top: FRAME_TOP },
-  wire: { position: "absolute", left: 0, top: -WIRE - 1 },
-  nail: { position: "absolute", top: NAIL_Y - 5 },
+  nail: { position: "absolute", top: NAIL_Y - 7 },
 });

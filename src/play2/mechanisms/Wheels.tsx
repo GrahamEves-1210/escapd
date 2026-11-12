@@ -22,7 +22,8 @@ import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { Glint, Line, MechButton, adjustable, cooldownText, justGave, markTry, mod, settle, tryKey, useKept } from "./kit";
-import { BRASS, INK, Ink, Screw, inkRect, useGradId } from "./materials";
+import { BRASS, INK, Ink, inkRect, useGradId } from "./materials";
+import { ART, NineSlice } from "./sprites";
 import type { MechanismTarget } from "./types";
 
 export const ALPHABET: Record<WheelAlphabet, readonly string[]> = {
@@ -256,18 +257,9 @@ const Drum = memo(function Drum({ w, mark }: { w: number; mark: string }) {
   );
 });
 
-/** The iron the drums sit in: dark, a line of light along its top, a brass screw in each corner. */
+/** The iron the drums sit in: a rendered bed (sprites.tsx), dark inside its rim, a brass screw in each corner. */
 const Housing = memo(function Housing() {
-  return (
-    <View style={[StyleSheet.absoluteFill, styles.iron]} pointerEvents="none">
-      <View style={styles.ironLight} />
-      {[styles.tl, styles.tr, styles.bl, styles.br].map((at, i) => (
-        <Svg key={i} width={8} height={8} viewBox="0 0 8 8" style={[styles.corner, at]}>
-          <Screw cx={4} cy={4} r={2.8} turn={[20, -40, 70, -15][i]} />
-        </Svg>
-      ))}
-    </View>
-  );
+  return <NineSlice source={ART.lockBed} size={66} cap={22} />;
 });
 
 /** A lock's final click: when the first wheel seats, and how far apart the rest follow (ms). */
@@ -317,13 +309,6 @@ const PAD = 9;
 const styles = StyleSheet.create({
   bank: { alignItems: "center", gap: ref.space.plate },
   housing: { flexDirection: "row", gap: GAP, justifyContent: "center", padding: PAD, paddingHorizontal: PAD + 4 },
-  iron: { backgroundColor: "#1B161D", borderRadius: 13, borderWidth: 1.8, borderColor: INK },
-  ironLight: { position: "absolute", left: 10, right: 10, top: 1.5, height: 1.5, borderRadius: 1, backgroundColor: "rgba(255, 240, 220, 0.16)" },
-  corner: { position: "absolute" },
-  tl: { left: 2.5, top: 2.5 },
-  tr: { right: 2.5, top: 2.5 },
-  bl: { left: 2.5, bottom: 2.5 },
-  br: { right: 2.5, bottom: 2.5 },
   marked: { alignItems: "center", gap: ref.space.xs },
   // Cut into the iron over its drum, filled with brass.
   mark: { ...ref.type.headline, color: BRASS.light, textAlign: "center" },

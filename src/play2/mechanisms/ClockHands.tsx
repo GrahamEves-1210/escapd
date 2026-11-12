@@ -3,23 +3,24 @@
 // hour hand through the hours, a tick at each. onSet("time", "H:MM") on
 // release. Screen readers adjust the hour and the minutes in the readout.
 //
-// Drawn as the clock: an enamel dial in a brass bezel, its numerals in the
-// mode's book face, a minute track, blued-steel hands (a spade for the hours)
-// on a brass boss, the glass over it catching the light. Under the centre a
-// little hatch: shut, a fine line and a pin; once the clock gives up what's
-// behind it (`panel`), swung open on the dark inside.
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+// The clock, in rendered layers (sprites.tsx): an enamel dial in a brass bezel
+// with its minute track, blued-steel hands (a spade for the hours) each its
+// own picture turned about the arbor, and over them the brass boss and the
+// glass catching the light. Its numerals are drawn live in the mode's book
+// face. Under the centre a little hatch: shut, a fine line and a pin; once the
+// clock gives up what's behind it (`panel`), let down on the dark inside.
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from "react-native-svg";
 import { scheduleOnRN } from "react-native-worklets";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { Line, Stage, adjustable, mod, readoutText, settle } from "./kit";
-import { BRASS, ENAMEL, INK, STEEL, useGradId } from "./materials";
+import { ENAMEL } from "./materials";
+import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
 
 const DETENT = 30; // degrees: one hour, or five minutes
@@ -44,6 +45,8 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
 
   const D = Math.min(width - 2 * ref.space.lg, 196);
   const R = D / 2;
+  // The pictures are rendered for a 196-point clock: on a narrower screen they shrink with it.
+  const k = D / 196;
   const hourDeg = useSharedValue(h0 * DETENT);
   const minDeg = useSharedValue(m0 * DETENT);
   const which = useSharedValue<Hand>(0);
@@ -145,7 +148,7 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
   const panel = state.panel === true;
   const face = typeof theme.display.fontFamily === "string" ? theme.display.fontFamily : undefined;
   // Numerals round the dial, inside the minute track.
-  const numR = R - BEZEL - 21;
+  const numR = R - BEZEL * k - 21;
   return (
     <Stage width={width}>
       <GestureDetector gesture={pan}>
@@ -155,7 +158,8 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <Dial D={D} panel={panel} />
+          <Sprite source={ART.clockDial} w={D} h={D} style={styles.spoke} />
+          {panel ? <Sprite source={ART.clockHatch} w={HATCH.w * k} h={HATCH.h * k} style={[styles.spoke, { left: HATCH.x * k, top: HATCH.y * k }]} /> : null}
           {Array.from({ length: 12 }, (_, k) => {
             const a = (k * 30 * Math.PI) / 180;
             return (
@@ -169,12 +173,13 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
             );
           })}
           <Animated.View style={[styles.spoke, { width: D, height: D }, hourStyle]} pointerEvents="none">
-            <HandArt length={R * 0.5} at={R} hour />
+            <Sprite source={ART.clockHour} w={HOUR.w * k} h={HOUR.h * k} style={[styles.spoke, { left: R - HOUR.ax * k, top: R - HOUR.ay * k }]} />
           </Animated.View>
           <Animated.View style={[styles.spoke, { width: D, height: D }, minuteStyle]} pointerEvents="none">
-            <HandArt length={R * 0.74} at={R} />
+            <Sprite source={ART.clockMinute} w={MINUTE.w * k} h={MINUTE.h * k} style={[styles.spoke, { left: R - MINUTE.ax * k, top: R - MINUTE.ay * k }]} />
           </Animated.View>
-          <Glass D={D} />
+          {/* Over the hands: the brass boss they turn on, and the glass. */}
+          <Sprite source={ART.clockGlass} w={D} h={D} style={styles.spoke} />
         </View>
       </GestureDetector>
       <View style={styles.readout}>
@@ -201,123 +206,10 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
 
 /** The bezel's width. */
 const BEZEL = 9;
-/** A hand's width (its drawing's), and how far its tail runs past the centre. */
-const HAND_W = 18;
-const TAIL = 13;
-
-/** The dial: bezel, enamel, the minute track, the maker's two lines, the hatch under the centre. */
-const Dial = memo(function Dial({ D, panel }: { D: number; panel: boolean }) {
-  const g = useGradId();
-  const [enamel, brass, well] = [g("e"), g("b"), g("w")];
-  const R = D / 2, r = R - BEZEL;
-  const track = useMemo(() => {
-    let minor = "", major = "";
-    for (let i = 0; i < 60; i++) {
-      const a = (i * 6 * Math.PI) / 180, sx = Math.sin(a), cy = -Math.cos(a);
-      const five = i % 5 === 0;
-      const d = `M${(R + sx * (r - 3)).toFixed(1)} ${(R + cy * (r - 3)).toFixed(1)}L${(R + sx * (r - (five ? 9 : 6))).toFixed(1)} ${(R + cy * (r - (five ? 9 : 6))).toFixed(1)}`;
-      if (five) major += d;
-      else minor += d;
-    }
-    return { minor, major };
-  }, [R, r]);
-  // The hatch: a low arch under the centre.
-  const hw = 21, hy = R + r * 0.2, hh = 22;
-  const hatch = `M${R - hw} ${hy + hh}V${hy + 8}Q${R - hw} ${hy} ${R - hw + 8} ${hy}H${R + hw - 8}Q${R + hw} ${hy} ${R + hw} ${hy + 8}V${hy + hh}Z`;
-  return (
-    <Svg width={D} height={D} style={StyleSheet.absoluteFill}>
-      <Defs>
-        <RadialGradient id={enamel.id} cx="42%" cy="36%" rx="68%" ry="68%">
-          <Stop offset="0" stopColor={ENAMEL.light} />
-          <Stop offset="0.7" stopColor={ENAMEL.mid} />
-          <Stop offset="1" stopColor={ENAMEL.shade} />
-        </RadialGradient>
-        <LinearGradient id={brass.id} x1="0.15" y1="0" x2="0.85" y2="1">
-          <Stop offset="0" stopColor={BRASS.sheen} />
-          <Stop offset="0.3" stopColor={BRASS.mid} />
-          <Stop offset="0.55" stopColor={BRASS.light} />
-          <Stop offset="0.8" stopColor={BRASS.shade} />
-          <Stop offset="1" stopColor={BRASS.deep} />
-        </LinearGradient>
-        <LinearGradient id={well.id} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#000000" />
-          <Stop offset="1" stopColor="#3A2A22" />
-        </LinearGradient>
-      </Defs>
-      {/* The bezel: turned brass, inked either side, a fine bead inside it. */}
-      <Circle cx={R} cy={R} r={R - 1.2} fill={brass.url} stroke={INK} strokeWidth={2} />
-      <Circle cx={R} cy={R} r={r} fill={enamel.url} stroke={INK} strokeWidth={1.6} />
-      <Circle cx={R} cy={R} r={r - 1.6} fill="none" stroke="#000000" strokeOpacity={0.14} strokeWidth={3} />
-      <Path d={track.minor} stroke={ENAMEL.ink} strokeOpacity={0.55} strokeWidth={0.9} />
-      <Path d={track.major} stroke={ENAMEL.ink} strokeWidth={1.8} strokeLinecap="round" />
-      <Circle cx={R} cy={R} r={r - 11} fill="none" stroke={ENAMEL.ink} strokeOpacity={0.35} strokeWidth={0.7} />
-      {panel ? (
-        <>
-          {/* Open: the dark inside, its lip, and the little door let down on its hinge. */}
-          <Path d={hatch} fill={well.url} stroke={INK} strokeWidth={1.6} strokeLinejoin="round" />
-          <Path d={`M${R - hw + 3} ${hy + 9}Q${R - hw + 3} ${hy + 3} ${R - hw + 9} ${hy + 3}H${R + hw - 9}`} stroke="#000000" strokeOpacity={0.7} strokeWidth={3} fill="none" />
-          <Path d={`M${R - hw} ${hy + hh}H${R + hw}L${R + hw - 5} ${hy + hh + 9}H${R - hw + 5}Z`} fill={ENAMEL.shade} stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />
-          <Circle cx={R} cy={hy + hh + 5} r={1.8} fill={BRASS.mid} stroke={INK} strokeWidth={0.8} />
-        </>
-      ) : (
-        <>
-          <Path d={hatch} fill="#000000" fillOpacity={0.04} stroke={ENAMEL.ink} strokeOpacity={0.5} strokeWidth={1} strokeLinejoin="round" />
-          <Circle cx={R} cy={hy + 7} r={2} fill={BRASS.mid} stroke={INK} strokeWidth={0.9} />
-        </>
-      )}
-    </Svg>
-  );
-});
-
-/** A hand of blued steel, its shadow under it on the enamel: a spade for the hours, a slim lance for the minutes. Points up; turned by its spoke. */
-const HandArt = memo(function HandArt({ length, at, hour = false }: { length: number; at: number; hour?: boolean }) {
-  const g = useGradId()("h");
-  const w = HAND_W, c = w / 2, h = length + TAIL;
-  const d = hour
-    ? `M${c} 0C${c + 7.5} ${length * 0.2} ${c + 7} ${length * 0.34} ${c + 1.8} ${length * 0.42}L${c + 2.4} ${length}L${c + 3.2} ${h}H${c - 3.2}L${c - 2.4} ${length}L${c - 1.8} ${length * 0.42}C${c - 7} ${length * 0.34} ${c - 7.5} ${length * 0.2} ${c} 0Z`
-    : `M${c} 0L${c + 1.9} ${length * 0.82}L${c + 2.6} ${h}H${c - 2.6}L${c - 1.9} ${length * 0.82}Z`;
-  return (
-    <Svg width={w + 6} height={h + 6} style={{ position: "absolute", left: at - c, top: at - length }}>
-      <Defs>
-        <LinearGradient id={g.id} x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={STEEL.light} />
-          <Stop offset="0.45" stopColor={STEEL.mid} />
-          <Stop offset="1" stopColor={STEEL.deep} />
-        </LinearGradient>
-      </Defs>
-      <Path d={d} fill="#000000" fillOpacity={0.22} transform="translate(2.4 3.4)" />
-      <Path d={d} fill={g.url} stroke={STEEL.deep} strokeWidth={1} strokeLinejoin="round" />
-    </Svg>
-  );
-});
-
-/** Over the hands: the brass boss they turn on, and the glass (a soft bloom and a crescent of light, upper left). */
-const Glass = memo(function Glass({ D }: { D: number }) {
-  const g = useGradId();
-  const [boss, bloom] = [g("k"), g("s")];
-  const R = D / 2, r = R - BEZEL - 2;
-  return (
-    <Svg width={D} height={D} style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Defs>
-        <RadialGradient id={boss.id} cx="38%" cy="32%" rx="70%" ry="70%">
-          <Stop offset="0" stopColor={BRASS.sheen} />
-          <Stop offset="0.5" stopColor={BRASS.mid} />
-          <Stop offset="1" stopColor={BRASS.deep} />
-        </RadialGradient>
-        <RadialGradient id={bloom.id} cx="30%" cy="24%" rx="60%" ry="60%">
-          <Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.3} />
-          <Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Circle cx={R + 1} cy={R + 1.6} r={7.4} fill="#000000" fillOpacity={0.25} />
-      <Circle cx={R} cy={R} r={6.6} fill={boss.url} stroke={INK} strokeWidth={1.3} />
-      <Circle cx={R} cy={R} r={1.6} fill={BRASS.deep} />
-      <Circle cx={R} cy={R} r={r} fill={bloom.url} />
-      <Path d={`M${R - r * 0.78} ${R - r * 0.3}A${r * 0.84} ${r * 0.84} 0 0 1 ${R - r * 0.18} ${R - r * 0.8}`} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={3.2} fill="none" strokeLinecap="round" />
-      <Path d={`M${R + r * 0.5} ${R + r * 0.66}A${r * 0.84} ${r * 0.84} 0 0 0 ${R + r * 0.7} ${R + r * 0.44}`} stroke="#FFFFFF" strokeOpacity={0.22} strokeWidth={2.2} fill="none" strokeLinecap="round" />
-    </Svg>
-  );
-});
+/** The rendered layers' boxes on a 196-point clock (mech_clock.py): the open hatch's place on the dial; each hand's box and its arbor in it. */
+const HATCH = { x: 72, y: 112, w: 52, h: 40 };
+const HOUR = { w: 26, h: 71, ax: 13, ay: 52 };
+const MINUTE = { w: 26, h: 95, ax: 13, ay: 75.52 };
 
 /** Degrees clockwise from twelve, 0..360, of a point relative to the centre. */
 function angleAt(dx: number, dy: number) {

@@ -1,8 +1,9 @@
 // LiftUnder: lift the thing to see beneath it, drawn as what it is. A rug, a
 // blanket or a cloth rolls back from its near edge: the roll follows the
 // finger, pale woven underside out, fatter the more of it is rolled up, the
-// boards it covered coming into view. A cushion, a book, a box or a pot lifts off the
-// place it sat, its shadow thinning under it, a ring of dust where it was.
+// boards it covered coming into view (drawn live: it rolls). A cushion, a book, a box
+// or a pot (rendered: sprites.tsx) lifts off the place it sat, its shadow thinning
+// under it, a ring of dust where it was.
 //
 // The moment it gives (GIVE_AT) it's lifted: onSet("lifted", true), the finger
 // still on it, so what was under it is there, uncovered from its near edge as
@@ -11,12 +12,14 @@ import { memo, useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
-import Svg, { Circle, Defs, Ellipse, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { useFeedback } from "@/game/feedback";
+import { useModeTheme } from "@/game/mode";
 import { mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
 import { GIVE_AT, Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
-import { BRASS, Boards, CastShadow, INK, Ink, SoftShadow, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
+import { Boards, CastShadow, Ink, SoftShadow, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
+import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
 
 const RISE = 84;
@@ -40,6 +43,7 @@ export function liftKind(label: string): Kind {
 
 export function LiftUnder({ target, state, onSet, busy, width, inside }: MechanismProps) {
   const mat = useMaterials();
+  const genre = useModeTheme().genre ?? "noir";
   const feedback = useFeedback();
   const lifted = state.lifted === true;
   const kind = liftKind(target.label);
@@ -95,7 +99,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
           <Place w={thingW - (peel ? 12 : 30)} h={peel ? H - 8 : 48} round={!peel} light={mat.floor.sheen} />
         </Animated.View>
         {/* What was under it, there all along, uncovered as it rises; picked up once most of it shows. */}
-        {inside ? <View style={[styles.lying, { width: w * 0.8 }]} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
+        {inside ? <View style={[styles.lying, { width: w * 0.8, bottom: ref.space.lg + 3 + UNDER[kind] }]} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
         {peel ? null : (
           <Animated.View style={[styles.shadow, { width: thingW, bottom: ref.space.lg - 12 }, shadowStyle]} pointerEvents="none">
             <SoftShadow w={thingW} h={46} color={mat.shadow} strength={0.9} />
@@ -117,7 +121,8 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
             </Animated.View>
           ) : (
             <Animated.View {...activatable(label, "Looks underneath", lifted ? onUncommit : commitNow, busy)} testID="mech-lift" style={[{ width: thingW, height: H }, liftStyle]}>
-              {kind === "cushion" ? <Cushion w={thingW} h={H} tone={mat.cloth} /> : kind === "book" ? <Book w={thingW} h={H} mat={mat} /> : kind === "box" ? <Box w={thingW} h={H} mat={mat} /> : <Pot w={thingW} h={H} mat={mat} />}
+              {/* The thing itself, rendered (the cushion, the book and the pot in the mode's dye). */}
+              <Sprite source={kind === "box" ? ART.box : ART[kind][genre]} w={thingW} h={H} />
             </Animated.View>
           )}
         </GestureDetector>
@@ -128,6 +133,8 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
 }
 
 const FLOOR_H = 156;
+/** How far up from the near edge what's under a thing lies, so the thing covers all of it while it's down (the rendered ones' feet are rounder than a box). */
+const UNDER: Record<Kind, number> = { rug: 0, cushion: 10, book: 10, box: 10, pot: 7 };
 
 /** A sofa's seat from above: the same cloth a shade down, its weave, the seam where the seat meets the back. */
 const Seat = memo(function Seat({ w, h, tone }: { w: number; h: number; tone: Materials["cloth"] }) {
@@ -239,131 +246,11 @@ const RugUnder = memo(function RugUnder({ w, h, tone }: { w: number; h: number; 
   );
 });
 
-/** A plump cushion: piped all round, tufted to a button, its cloth in the mode's colour. */
-const Cushion = memo(function Cushion({ w, h, tone }: { w: number; h: number; tone: Materials["cloth"] }) {
-  const g = useGradId()("cu");
-  const c = { x: w / 2, y: h / 2 };
-  // Fat in the middle, pinched at the corners.
-  const body = `M10 14C${w * 0.3} 4 ${w * 0.7} 4 ${w - 10} 14C${w - 2} ${h * 0.35} ${w - 2} ${h * 0.65} ${w - 10} ${h - 12}C${w * 0.7} ${h - 3} ${w * 0.3} ${h - 3} 10 ${h - 12}C2 ${h * 0.65} 2 ${h * 0.35} 10 14Z`;
-  const tufts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => `M${c.x + sx * 7} ${c.y + sy * 5}Q${c.x + sx * w * 0.22} ${c.y + sy * h * 0.16} ${c.x + sx * w * 0.36} ${c.y + sy * h * 0.3}`).join("");
-  return (
-    <Svg width={w} height={h}>
-      <Defs>
-        <LinearGradient id={g.id} x1="0.1" y1="0" x2="0.6" y2="1">
-          <Stop offset="0" stopColor={tone.light} />
-          <Stop offset="0.5" stopColor={tone.mid} />
-          <Stop offset="1" stopColor={tone.deep} />
-        </LinearGradient>
-      </Defs>
-      <Path d={body} fill={g.url} />
-      <Path d={tufts} stroke={tone.deep} strokeOpacity={0.6} strokeWidth={1.6} fill="none" strokeLinecap="round" />
-      <Path d={tufts} stroke={tone.light} strokeOpacity={0.35} strokeWidth={1} fill="none" strokeLinecap="round" transform="translate(0 -1.6)" />
-      {/* Piping, a line of light on its shoulder, the button. */}
-      <Path d={body} fill="none" stroke={tone.trim} strokeWidth={3} strokeOpacity={0.9} />
-      <Path d={`M22 20C${w * 0.32} 12 ${w * 0.6} 11 ${w - 30} 18`} stroke="#FFFFFF" strokeOpacity={0.25} strokeWidth={3} fill="none" strokeLinecap="round" />
-      <Circle cx={c.x} cy={c.y} r={5} fill={tone.trim} stroke={INK} strokeWidth={1.4} />
-      <Circle cx={c.x - 1.4} cy={c.y - 1.6} r={1.6} fill={BRASS.sheen} fillOpacity={0.8} />
-      <Ink d={body} w={1.8} />
-    </Svg>
-  );
-});
-
-/** A book lying shut: cloth boards, a gilt frame and title bars, its pages' edge, a ribbon. */
-const Book = memo(function Book({ w, h, mat }: { w: number; h: number; mat: Materials }) {
-  const g = useGradId()("bk");
-  const x = 6, y = 16, bw = w - 12, bh = h - 28;
-  const cover = inkRect(x, y, bw, bh, 4, 311, 0.6);
-  let pages = "";
-  for (let i = 0; i < 4; i++) pages += `M${x + 8} ${y + bh + 2 + i * 1.8}H${x + bw - 3}`;
-  return (
-    <Svg width={w} height={h}>
-      <Defs>
-        <LinearGradient id={g.id} x1="0" y1="0" x2="0.4" y2="1">
-          <Stop offset="0" stopColor={mat.cloth.light} />
-          <Stop offset="0.5" stopColor={mat.cloth.mid} />
-          <Stop offset="1" stopColor={mat.cloth.deep} />
-        </LinearGradient>
-      </Defs>
-      {/* The pages under the cover, then the cover. */}
-      <Rect x={x + 5} y={y + bh - 2} width={bw - 6} height={11} rx={2} fill="#EFE3C6" stroke={INK} strokeWidth={1.4} />
-      <Path d={pages} stroke="#B9A57C" strokeWidth={0.8} />
-      <Path d={cover} fill={g.url} />
-      <Rect x={x} y={y} width={12} height={bh} rx={3} fill={mat.cloth.deep} fillOpacity={0.6} />
-      <Rect x={x + 20} y={y + 9} width={bw - 30} height={bh - 18} rx={2} fill="none" stroke={mat.cloth.trim} strokeWidth={1.4} />
-      <Path d={`M${x + 34} ${y + bh * 0.4}H${x + bw - 24}M${x + 46} ${y + bh * 0.4 + 9}H${x + bw - 36}`} stroke={mat.cloth.trim} strokeWidth={2.4} strokeLinecap="round" />
-      <Path d={`M${x + 16} ${y + 3}H${x + bw - 6}`} stroke="#FFFFFF" strokeOpacity={0.22} strokeWidth={1.6} strokeLinecap="round" />
-      <Path d={`M${x + bw - 26} ${y + bh + 6}l1 12l4 -3l4 3l-1 -12`} fill="#A8323F" stroke={INK} strokeWidth={1.2} strokeLinejoin="round" />
-      <Ink d={cover} w={1.8} />
-    </Svg>
-  );
-});
-
-/** A wooden box with a lid: boards, brass corners and a little clasp. */
-const Box = memo(function Box({ w, h, mat }: { w: number; h: number; mat: Materials }) {
-  const g = useGradId();
-  const [face, lid] = [g("bf"), g("bl")];
-  const x = 8, y = 14, bw = w - 16, bh = h - 22, lidH = 22;
-  return (
-    <Svg width={w} height={h}>
-      <Defs>
-        <LinearGradient id={face.id} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={mat.wood.mid} />
-          <Stop offset="1" stopColor={mat.wood.deep} />
-        </LinearGradient>
-        <LinearGradient id={lid.id} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={mat.wood.sheen} />
-          <Stop offset="1" stopColor={mat.wood.light} />
-        </LinearGradient>
-      </Defs>
-      <Rect x={x} y={y + lidH - 2} width={bw} height={bh - lidH + 2} rx={3} fill={face.url} />
-      <Path d={`M${x + 4} ${y + lidH + 14}H${x + bw - 4}M${x + 4} ${y + lidH + 30}H${x + bw - 4}`} stroke={mat.wood.deep} strokeOpacity={0.7} strokeWidth={1} />
-      <Rect x={x - 3} y={y} width={bw + 6} height={lidH} rx={4} fill={lid.url} />
-      <Path d={`M${x + 4} ${y + 3.5}H${x + bw - 4}`} stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={1.4} strokeLinecap="round" />
-      {/* Brass corners and the clasp. */}
-      {[x - 3, x + bw - 9].map((cx) => <Rect key={cx} x={cx} y={y} width={12} height={lidH} rx={3} fill={BRASS.mid} stroke={INK} strokeWidth={1.2} />)}
-      <Rect x={w / 2 - 8} y={y + lidH - 7} width={16} height={18} rx={3} fill={BRASS.light} stroke={INK} strokeWidth={1.4} />
-      <Circle cx={w / 2} cy={y + lidH + 4} r={2} fill={BRASS.deep} />
-      <Ink d={inkRect(x, y + lidH - 2, bw, bh - lidH + 2, 3, 331, 0.6)} w={1.8} />
-      <Ink d={inkRect(x - 3, y, bw + 6, lidH, 4, 337, 0.6)} w={1.8} />
-    </Svg>
-  );
-});
-
-/** A glazed pot with a fern in it: the thing on a shelf nobody looks under. */
-const Pot = memo(function Pot({ w, h, mat }: { w: number; h: number; mat: Materials }) {
-  const g = useGradId()("pt");
-  const c = w / 2, top = 44, bot = h - 6;
-  const body = `M${c - 34} ${top}C${c - 40} ${top + 26} ${c - 30} ${bot - 8} ${c - 22} ${bot}H${c + 22}C${c + 30} ${bot - 8} ${c + 40} ${top + 26} ${c + 34} ${top}Z`;
-  const leaf = (dx: number, dy: number, bend: number) => `M${c} ${top - 2}Q${c + dx * 0.4 + bend} ${top - dy * 0.7} ${c + dx} ${top - dy}Q${c + dx * 0.7 - bend} ${top - dy * 0.4} ${c} ${top - 2}Z`;
-  const leaves = [leaf(-44, 26, -6), leaf(44, 24, 6), leaf(-24, 40, -3), leaf(26, 38, 3), leaf(0, 42, 5)];
-  const green = mix("#4F7A4A", mat.shadow, 0.2), greenLight = mix("#86B36E", mat.shadow, 0.1);
-  return (
-    <Svg width={w} height={h}>
-      <Defs>
-        <LinearGradient id={g.id} x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor={mat.cloth.deep} />
-          <Stop offset="0.3" stopColor={mat.cloth.mid} />
-          <Stop offset="0.45" stopColor={mat.cloth.light} />
-          <Stop offset="0.7" stopColor={mat.cloth.mid} />
-          <Stop offset="1" stopColor={mat.cloth.deep} />
-        </LinearGradient>
-      </Defs>
-      {leaves.map((d, i) => <Path key={i} d={d} fill={i % 2 ? greenLight : green} stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />)}
-      <Path d={body} fill={g.url} />
-      <Ellipse cx={c} cy={top} rx={36} ry={7} fill={mat.cloth.deep} stroke={INK} strokeWidth={1.6} />
-      <Ellipse cx={c} cy={top + 1} rx={29} ry={4.4} fill="#2A1A14" />
-      <Path d={`M${c - 31} ${top + 16}Q${c} ${top + 24} ${c + 31} ${top + 16}`} stroke={mat.cloth.trim} strokeWidth={2} fill="none" strokeLinecap="round" />
-      <Path d={`M${c - 18} ${top + 12}Q${c - 22} ${top + 30} ${c - 14} ${bot - 8}`} stroke="#FFFFFF" strokeOpacity={0.28} strokeWidth={2.4} fill="none" strokeLinecap="round" />
-      <Ink d={body} w={1.8} />
-    </Svg>
-  );
-});
-
 const styles = StyleSheet.create({
   room: { justifyContent: "flex-end", alignItems: "center", paddingBottom: ref.space.lg },
   floor: { position: "absolute", bottom: 0, height: FLOOR_H, overflow: "hidden" },
   place: { position: "absolute" },
-  lying: { position: "absolute", bottom: ref.space.lg + 3, height: 56, alignItems: "center", justifyContent: "center" },
+  lying: { position: "absolute", height: 56, alignItems: "center", justifyContent: "center" },
   shadow: { position: "absolute", height: 46 },
   // A rug's flat part shows through a window that rides up with the fold.
   window: { position: "absolute", left: 0, top: 0, overflow: "hidden" },

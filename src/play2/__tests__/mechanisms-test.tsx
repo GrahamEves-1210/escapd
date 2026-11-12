@@ -1,6 +1,8 @@
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ARCHETYPES, normalize, variantSpec, type ArchetypeId, type ControlDomain, type FinaleDef, type StateValue } from "@/engine/v2";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 import { Text } from "react-native";
 import { Mechanism } from "../mechanisms";
 import { GIVE_AT, REACH_AT } from "../mechanisms/kit";
@@ -296,6 +298,44 @@ describe("mechanisms", () => {
     it("shows open once it is", async () => {
       await mount(door("combination"), { state: { open: true } });
       expect(screen.getByText("The door is open")).toBeTruthy();
+    });
+  });
+
+  describe("rendered parts", () => {
+    const source = readFileSync(join(__dirname, "../mechanisms/sprites.tsx"), "utf8");
+    const names = [...new Set([...source.matchAll(/assets\/mech\/([a-z0-9-]+)\.png/g)].map((m) => m[1]))];
+
+    type Node = { type: string; props: Record<string, unknown>; children: (Node | string)[] | null };
+    /** Every Image in a rendered tree. */
+    const pictureNodes = (node: Node | Node[] | string | null): Node[] =>
+      !node || typeof node === "string" ? [] : Array.isArray(node) ? node.flatMap(pictureNodes) : [...(/Image/.test(node.type) && node.props.source ? [node] : []), ...(node.children ?? []).flatMap(pictureNodes)];
+
+    it("has every picture the mechanisms ask for, at each scale", () => {
+      expect(names.length).toBeGreaterThan(30);
+      const missing = names.flatMap((n) =>
+        // The door's backdrop stops at 2x (it would be over the size budget at 3x).
+        ["", "@2x", ...(n === "door-panel" ? [] : ["@3x"])].map((scale) => `${n}${scale}.png`).filter((f) => !existsSync(join(__dirname, "../../../assets/mech", f))),
+      );
+      expect(missing).toEqual([]);
+    });
+
+    it("draws the mechanisms with them, and none is a thing a screen reader stops on", async () => {
+      for (const [t, state] of [
+        [target("Drawer", "drawer"), { open: false, locked: true }], [target("Drawer", "compartment"), { open: false, locked: true }],
+        [target("LiftUnder", "lift", "Cushion"), {}], [target("LiftUnder", "lift", "Box"), {}], [target("ClockHands", "hands"), { time: "3:15", panel: true }],
+        [target("TuningDial", "dial"), { freq: "96.3" }], [target("Light", "uv"), { on: true }], [target("FrameTilt", "tilt", "Painting"), {}],
+        [target("CombinationLock", "digits"), {}], [target("Door", "combination"), { open: true }],
+      ] as [MechanismTarget, Record<string, StateValue>][]) {
+        const { view } = await mount(t, { state });
+        const pictures = pictureNodes(view.toJSON() as Node | Node[] | null);
+        expect(pictures.length).toBeGreaterThan(0);
+        for (const picture of pictures) {
+          expect(picture.props.source).toBeTruthy();
+          expect(picture.props.accessible).toBe(false);
+          expect(picture.props.importantForAccessibility).toBe("no-hide-descendants");
+        }
+        await view.unmount();
+      }
     });
   });
 });

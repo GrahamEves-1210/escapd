@@ -1,12 +1,12 @@
 // A horizontal scale under a fixed needle: the radio's band, drawn as the
 // dial it is: a strip of printed card lit amber from behind, dark at its ends
-// where the glass curves away, in a brass-rimmed window, the needle a red
+// where the glass curves away, in a window (the cabinet's brass rim goes round it), the needle a red
 // hairline with its shadow on the card. Drag it: it follows the finger, flings a little, and seats on the
 // nearest step. A tick every `tickEvery` steps passed. Controlled: `value` is
 // the step in view (the parent's, which `onLive` updates during a drag);
 // `onCommit` runs on release and on each accessibility step.
 import { memo, useCallback, useEffect } from "react";
-import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
@@ -15,7 +15,7 @@ import { useFeedback } from "@/game/feedback";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
 import { adjustable, clamp, settle } from "./kit";
-import { BRASS, ENAMEL, INK, useGradId } from "./materials";
+import { ENAMEL, INK, useGradId } from "./materials";
 
 export interface ScaleProps {
   count: number;
@@ -153,7 +153,7 @@ const Backlight = memo(function Backlight({ w }: { w: number }) {
   );
 });
 
-/** The window's glass and rim: dark where it curves away at the ends, a streak of light along its top, brass round it. */
+/** The window's glass: dark where it curves away at the ends, a streak of light along its top. */
 const DialGlass = memo(function DialGlass({ w }: { w: number }) {
   const g = useGradId();
   const [ends, top] = [g("ge"), g("gt")];
@@ -176,10 +176,8 @@ const DialGlass = memo(function DialGlass({ w }: { w: number }) {
       </Defs>
       <Rect width={w} height={HEIGHT} fill={ends.url} />
       <Rect width={w} height={HEIGHT} fill={top.url} />
-      <Rect x={1.5} y={1.5} width={w - 3} height={HEIGHT - 3} rx={9} fill="none" stroke={BRASS.mid} strokeWidth={3} />
-      <Rect x={1} y={1} width={w - 2} height={HEIGHT - 2} rx={9.5} fill="none" stroke={INK} strokeWidth={1.6} />
-      <Rect x={3.6} y={3.6} width={w - 7.2} height={HEIGHT - 7.2} rx={7} fill="none" stroke={INK} strokeOpacity={0.7} strokeWidth={1} />
-      <Path d={`M12 3H${w - 12}`} stroke={BRASS.sheen} strokeOpacity={0.7} strokeWidth={1} strokeLinecap="round" />
+      {/* The window's edge under the cabinet's brass rim (rendered, round it). */}
+      <Rect x={0.6} y={0.6} width={w - 1.2} height={HEIGHT - 1.2} rx={9.6} fill="none" stroke={INK} strokeWidth={1.4} />
     </Svg>
   );
 });

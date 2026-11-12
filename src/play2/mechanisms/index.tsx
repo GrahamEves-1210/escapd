@@ -9,12 +9,19 @@ import { FrameTilt } from "./FrameTilt";
 import { LiftUnder } from "./LiftUnder";
 import { Light } from "./Light";
 import { Readable } from "./Readable";
+import { useEffect } from "react";
+import { warmSprites } from "./sprites";
 import { TuningDial } from "./TuningDial";
 import type { MechanismProps } from "./types";
 
 export type { MechanismProps, MechanismTarget } from "./types";
 
+// The mechanisms' rendered parts, read into memory a moment after the game's code loads (never in a test).
+if (process.env.NODE_ENV !== "test") setTimeout(warmSprites, 1200);
+
 export function Mechanism(props: MechanismProps) {
+  // (And at the first close-up, if that comes sooner.)
+  useEffect(warmSprites, []);
   switch (props.target.archetype) {
     case "Drawer": return <Drawer {...props} />;
     case "LiftUnder": return <LiftUnder {...props} />;
