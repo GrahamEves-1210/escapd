@@ -29,7 +29,7 @@ import { CARRY, dropOutcome, Sparkle, useCarry } from "./Carry";
 import { V2 } from "./layout";
 import type { MechanismTarget } from "./mechanisms/types";
 import { PeekingCat, type CatReaction } from "./PeekingCat";
-import { Flashlight, Magnifier, TOOL } from "./Tools";
+import { Flashlight, LIGHT_LENS_Y, Magnifier, TOOL } from "./Tools";
 import { Reveal, revealOf } from "./tools/Reveal";
 import { useCatCues } from "./useCatCues";
 import { TapAwayView } from "./TapAwayView";
@@ -565,7 +565,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     feedback.tick();
     setUvOn(false);
     for (const t of [hoverTimer, traceTimer]) if (t.current) clearTimeout(t.current);
-    if (toolsOut) sparkleAt(flashAt.left + root.x + TOOL / 2, flashAt.top + root.y + TOOL * 0.3);
+    if (toolsOut) sparkleAt(flashAt.left + root.x + TOOL / 2, flashAt.top + root.y + TOOL * LIGHT_LENS_Y);
   };
   /** A held item tapped: the UV light in use switches off; anything else says what it is. */
   const tapItem = (id: string) => {
@@ -669,7 +669,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     if (toolsOut && item && isUvLight(item) && over({ x: fx, y: fy, width: TOOL, height: TOOL }, x, y, below, 14)) {
       feedback.tick();
       setUvOn((on) => !on);
-      const at = { x: fx + TOOL / 2, y: fy + TOOL * 0.3 };
+      const at = { x: fx + TOOL / 2, y: fy + TOOL * LIGHT_LENS_Y };
       sparkleAt(at.x, at.y);
       carry.snap(at.x, at.y, "home", slotHome(itemId));
       return;
