@@ -412,6 +412,7 @@ export function HubScreen() {
                 cardRefs.current[genre] = node;
               }}
               genre={genre}
+              tilt={tilt}
               busy={busy === genre}
               disabled={busy !== null && busy !== genre}
               onPress={() => {

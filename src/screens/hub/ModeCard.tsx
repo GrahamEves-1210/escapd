@@ -7,8 +7,10 @@
 // soft light in the mode's glow on its face. Corners COVER.radius; the soft
 // shadow under it is the ground's colour (HubScreen). Before the series, a solid,
 // physical card in its mode's palette, not glass, dealt into home's deck
-// (HubScreen, deck.ts) so the next card lies over its foot. The mode's drawn
-// cover fills it (ModeCover), always: never a room photo. At its top, the part
+// (HubScreen, deck.ts) so the next card lies over its foot. Its cover is a
+// small rendered diorama of the mode (art/ModeScene: a noir desk, an evidence
+// table, a seance table) whose depth layers slide with the phone's tilt
+// inside the card's frame; never a room photo. At its top, the part
 // no card covers: the mode's name in its display face and its tagline on a
 // plate of the mode's ground that fades down to clear, with a small busy
 // capsule beside the tagline while the card's tap works. No status tag: the
@@ -31,9 +33,10 @@ import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { SERIES } from "@/screens/mode/copy";
 import { modeThemes, ref, type ModeTheme } from "@/theme/tokens";
-import { ModeCover } from "./art/ModeCover";
+import { ModeScene } from "./art/ModeScene";
 import { COVER, SPARK_PATH } from "./art/nook";
 import { modeCardLabel } from "./caseStatus";
+import type { TiltValues } from "./parallax/useTilt";
 
 const M = ref.layout.hub.modes;
 const EDGE = M.deck.edge;
@@ -47,13 +50,15 @@ export interface ModeCardProps {
   onPress: () => void;
   /** The words block's height (name, tagline, tag), for the deck's spacing. */
   onWordsLayout?: (height: number) => void;
+  /** The phone's tilt: the cover's diorama slides in its layers with it. */
+  tilt?: TiltValues;
   /** The deck's place: size, overlap and tilt (HubScreen). */
   style?: StyleProp<ViewStyle>;
   /** The button, for returning screen-reader focus to it. */
   ref?: Ref<HostInstance>;
 }
 
-export function ModeCard({ genre, busy = false, disabled = false, onPress, onWordsLayout, style, ref: buttonRef }: ModeCardProps) {
+export function ModeCard({ genre, busy = false, disabled = false, onPress, onWordsLayout, tilt, style, ref: buttonRef }: ModeCardProps) {
   const theme = modeThemes[genre];
   const focus = useFocusRing();
   const feedback = useFeedback();
@@ -75,7 +80,7 @@ export function ModeCard({ genre, busy = false, disabled = false, onPress, onWor
         style={[styles.card, { backgroundColor: theme.surface }]}
       >
         <View style={[styles.face, { backgroundColor: theme.surface, borderColor: theme.rim }]} testID={`${testID}-face`}>
-          <ModeCover genre={genre} style={StyleSheet.absoluteFill} testID={`${testID}-art`} />
+          <ModeScene genre={genre} tilt={tilt} style={StyleSheet.absoluteFill} testID={`${testID}-art`} />
           <Glow theme={theme} genre={genre} />
           <View
             style={styles.words}

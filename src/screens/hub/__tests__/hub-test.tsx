@@ -52,10 +52,13 @@ jest.mock("@/components/noir/TreatedImage", () => {
   };
 });
 // So is drawing the covers (src/screens/hub/art's tests): here it records which mode's cover shows.
-jest.mock("@/screens/hub/art/ModeCover", () => {
+jest.mock("@/screens/hub/art/ModeScene", () => {
   const { createElement } = jest.requireActual("react");
   const { View } = jest.requireActual("react-native");
-  return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
+  return {
+    ...jest.requireActual("@/screens/hub/art/ModeScene"),
+    ModeScene: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre }, tilted: props.tilt !== undefined }),
+  };
 });
 // The window (its rain, candle and fairy lights on a Skia canvas) is drawn, not tested, here: only its geometry is used.
 jest.mock("../WindowBackdrop", () => ({ ...jest.requireActual("../WindowBackdrop"), WindowBackdrop: () => null }));

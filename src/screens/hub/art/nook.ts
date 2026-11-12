@@ -224,6 +224,14 @@ export const DECK = { peek: 24, peekMin: 6, last: 12 } as const;
  */
 export const CAT = { width: 104, minWidth: 56, aspect: 640 / 444, sink: 6, gap: 6, right: 30 } as const;
 
+/**
+ * The mode cards' dioramas (art/ModeScene.tsx): each layer's slide in points
+ * at full tilt, inside the card's frame, about the table's things (`mid`
+ * barely moves): the wall behind follows the eye, the nearest thing goes the
+ * other way. Within the scenes' own bleed (assets/home/cards/cards.json).
+ */
+export const SCENE = { depth: { back: 4, mid: 1.2, front: -4 } } as const;
+
 /** The cat's mug stands this far (points) in from the sill's back edge, on its top (the cat's feet are CAT.sink in). */
 export const MUG_REST = 4;
 
