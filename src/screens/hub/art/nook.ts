@@ -45,7 +45,7 @@ export const WINDOW_ART = {
  * Every layer has `bleed` points of picture to spare beyond the screen.
  */
 export const PARALLAX = {
-  depth: { sky: 7, far: 5.4, near: 4, rain: 2.4, glass: 2, frame: 1.2, lights: 1.2, sill: 0, fore: -14, logo: -2.4, card: -1.2, cardStep: -0.9 },
+  depth: { sky: 7, far: 5.4, near: 4, rain: 2.4, glass: 2, frame: 1.2, lights: 0.8, sill: 0, fore: -14, logo: -2.4, card: -1.2, cardStep: -0.9 },
   vertical: 0.6,
   turn: 0.5,
   range: 0.24,
@@ -177,36 +177,48 @@ export const CANDLE = {
 } as const;
 
 /**
- * Fairy lights strung along the top of the window, in front of the glass:
- * `swags` loops of wire across the screen, each sagging `sag` points, `top`
- * below the safe top, a bulb every `pitch` points. Bulbs glow in the theme's
- * glow, sweet and foil in turn, and twinkle slowly (still under reduced motion).
+ * The string lights across the top of the window (StringLights.tsx; rendered
+ * by scripts/blender/props/home_lights.py): the lowest bulb's glass ends
+ * `foot` points under the safe top, clear of the wordmark and the corner
+ * buttons below it; the cord keeps `edge` under the screen's top where it
+ * can; with no room above (the web) its swags flatten to `flat` of their
+ * droop. Each bulb swings `sway` degrees at full tilt (less by up to
+ * `swayVary` of that, each its own). `twinkle`: each bulb's light breathes
+ * between `high` and its own low (from `low` up, by `shallow` of the way to
+ * `high`), over its own period (`period` ms plus up to `spread`), starting
+ * at its own moment: `down` of the period dimming, `hold` barely lifting
+ * (`lift` of the way back), `up` brightening; `rest` under reduced motion.
  */
-export const FAIRY = {
-  swags: 3,
-  sag: 26,
-  top: 2,
-  pitch: 30,
-  bulb: 3.2,
-  glow: 13,
-  wire: "rgba(20, 12, 24, 0.75)",
-  wireWidth: 1.1,
-  /** Twinkle: opacity rest, swing and speed (radians per second). */
-  rest: 0.78,
-  swing: 0.22,
-  speed: 1.3,
+export const LIGHTS = {
+  foot: 7,
+  edge: 2,
+  flat: 0.3,
+  sway: 9,
+  swayVary: 0.4,
+  twinkle: { low: 0.5, high: 1, shallow: 0.6, period: 3400, spread: 4800, rest: 0.92, down: 0.46, hold: 0.14, lift: 0.12, up: 0.4 },
+  /** Which of a bulb's own traits a scatter is for (scatter's `n`). */
+  trait: { pace: 1, depth: 2, moment: 3, swing: 4 },
+  percent: 100,
 } as const;
 
-/**
- * Home's deck leaves `peek` under each card's words before the next card
- * (less than ref.layout.hub.modes.deck.peek, the cards a little shorter, so
- * the sill cat has room under them).
- */
-export const DECK = { peek: 24 } as const;
+/** A fixed scatter, 0..1, for thing `i`'s `n`th trait (the same every launch): a cheap hash. */
+export function scatter(i: number, n: number): number {
+  const v = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453;
+  return v - Math.floor(v);
+}
 
 /**
- * The sill cat: `width` (the deck leaves room for it), never under
- * `minWidth` (else it's left out); its art's height / width
+ * Home's deck (deck.ts) leaves `peek` under each card's words before the
+ * next card (less than ref.layout.hub.modes.deck.peek, the cards a little
+ * shorter, so the sill cat has room under them); where room is tight (a
+ * small phone, large text) as little as `peekMin`, and `last` under the
+ * front card's words: home never scrolls, the cards shrink instead.
+ */
+export const DECK = { peek: 24, peekMin: 6, last: 12 } as const;
+
+/**
+ * The sill cat: `width` (the deck leaves room for it), on a small phone as
+ * little as `minWidth` (it is never left out); its art's height / width
  * (assets/characters/cat_sit.png); its feet `sink` below the sill's top edge;
  * at least `gap` clear of the deck; `right` from the screen's right edge.
  */
@@ -303,16 +315,6 @@ export function flicker(seconds: number): number {
   "worklet";
   return Math.sin(seconds * CANDLE.breath) * 0.5 + Math.sin(seconds * CANDLE.flutter) * 0.3 + Math.sin(seconds * CANDLE.wobble) * 0.2;
 }
-
-/** A swag's sag at `k` (0 to 1 along it): 0 at the anchors, 1 in the middle. */
-export function sag(k: number): number {
-  return 4 * k * (1 - k);
-}
-
-/** Each bulb's twinkle phase: the golden angle apart, so neighbours never pulse together. */
-export const BULB_PHASE = 2.399;
-/** The bulb's soft glow's opacity under its bulb. */
-export const BULB_GLOW = 0.55;
 
 /** A four-point sparkle in a -1..1 box: the house's little star (foil on the covers, the logo's glint). */
 export const SPARK_PATH = "M0 -1C0.12 -0.3 0.3 -0.12 1 0C0.3 0.12 0.12 0.3 0 1C-0.12 0.3 -0.3 0.12 -1 0C-0.3 -0.12 -0.12 -0.3 0 -1Z";

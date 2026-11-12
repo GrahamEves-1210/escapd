@@ -16,8 +16,9 @@ import { RESUME_COPY, SERIES } from "@/screens/mode/copy";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, ref, shellTheme } from "@/theme/tokens";
 import * as nook from "../art/nook";
-import { CAT, COVER, DECK, PARALLAX, SETTINGS, WINDOW_ART } from "../art/nook";
-import { deckLayout, deckTilt, homeDeck, tiltOverhang } from "../deck";
+import { CAT, COVER, DECK, LIGHTS, PARALLAX, SETTINGS, WINDOW_ART } from "../art/nook";
+import { stringLayout } from "../StringLights";
+import { deckLayout, deckNeeds, deckTilt, homeDeck, tiltOverhang } from "../deck";
 import { HubScreen } from "../HubScreen";
 import { windowGeometry } from "../WindowBackdrop";
 
@@ -195,7 +196,7 @@ describe("01 · Home: the deck of mode cards", () => {
     await act(async () => layoutColumn(600));
     // The deck fills the column down to the room the cat needs on the sill.
     const { width, height } = Dimensions.get("window");
-    const { deck } = homeDeck({ room: 600 - M.top - M.foot, top: M.top, sillTop: height - windowGeometry(width, height).sill, cardWidth: width - 2 * M.edge, words: 0, count: 3 });
+    const { deck } = homeDeck({ top: M.top, sillTop: height - windowGeometry(width, height).sill, cardWidth: width - 2 * M.edge, words: 0, count: 3 });
     const slots = GENRE_LIST.map(slot);
     const deals = GENRE_LIST.map((genre) => styleOf(screen.getByTestId(`hub-card-${genre}-deal`)));
     for (const [i, style] of deals.entries()) {
@@ -234,77 +235,102 @@ describe("01 · Home: the deck of mode cards", () => {
       expect(tagline.props.numberOfLines).toBeUndefined();
       expect(words.queryAll((node) => node === name || node === tagline)).toHaveLength(2);
     }
-    // Every card shows at least its words plus the deck's peek above the next card, on every phone.
+    // Every card shows at least its words and a little more above the next card, on every phone: the deck's peek where there's room.
     for (const [available, words] of [
-      [554, 114], // iPhone SE 375 x 667 (safe 20 / 0), noir's words with its rule
-      [666, 114], // 393 x 852
-      [746, 114], // Pro Max 430 x 932
-      [554, 300], // large text
+      [370, 114], // iPhone SE 375 x 667 (safe 20 / 0), above the cat
+      [470, 114], // 393 x 852
+      [560, 114], // Pro Max 430 x 932
+      [430, 134], // the web build's taller words on a small screen
     ]) {
       const deck = deckLayout(available, words, 3);
-      expect(deck.card - deck.overlap).toBeGreaterThanOrEqual(words + DECK.peek);
+      expect(deck.height).toBeLessThanOrEqual(available);
+      expect(deck.card - deck.overlap).toBeGreaterThanOrEqual(words + (available >= 560 ? DECK.peek : DECK.peekMin));
+      // The front card holds its own words whole.
+      expect(deck.card).toBeGreaterThanOrEqual(words + DECK.last);
       // A card's centre (where an accessibility tap lands) is on its own uncovered part.
       expect(deck.card / 2).toBeLessThan(deck.card - deck.overlap);
-      expect(deck.card).toBeGreaterThanOrEqual(M.minHeight);
     }
   });
 
-  it("fits all three on an iPhone SE at the default text size, and fills a tall phone; large text grows the cards and scrolls", () => {
-    // The column under the header, less the deck's top and foot: 667 - 20 - 65 - 16 - 12 on the SE.
-    const se = deckLayout(554, 114, 3);
-    expect(se.height).toBeLessThanOrEqual(554);
-    expect(se.height).toBeGreaterThan(554 - 3);
-    const max = deckLayout(746, 114, 3);
-    expect(max.height).toBeLessThanOrEqual(746);
-    expect(max.height).toBeGreaterThan(746 - 3);
-    // Large text: the cards grow, the same share covered, and the deck runs past the column (it scrolls).
-    const large = deckLayout(554, 300, 3);
-    expect(large.height).toBeGreaterThan(554);
-    expect(large.overlap).toBe(Math.round(large.card * M.deck.cover));
+  it("is one fixed screen: the deck never scrolls and is never taller than its room; a tall phone's cards fill it, a small one's shrink and lie closer", () => {
+    // No scroll view on home at all, and only the cards take touches in the deck's column (the cat under it is always reachable).
+    const home = fs.readFileSync(path.join(ROOT, "src/screens/hub/HubScreen.tsx"), "utf8");
+    expect(home).not.toMatch(/ScrollView|FlatList|scrollEnabled/);
+    for (const [room, words] of [[364, 114], [420, 134], [470, 114], [560, 114], [640, 114], [300, 114], [364, 300], [0, 114]]) {
+      const deck = deckLayout(room, words, 3);
+      expect(deck.height).toBeLessThanOrEqual(room);
+      expect(deck.height).toBeGreaterThan(room - 4);
+      expect(deck.card).toBeGreaterThanOrEqual(deck.overlap);
+    }
+    // Roomy: the deck's own cover, each card's words and the full peek clear.
+    const tall = deckLayout(560, 114, 3);
+    expect(tall.overlap).toBe(Math.round(tall.card * M.deck.cover));
+    expect(tall.card - tall.overlap).toBeGreaterThanOrEqual(114 + DECK.peek);
+    // Tight (an SE): shorter cards lying closer, the words still whole, less peek.
+    const small = deckLayout(deckNeeds(114, 3) + 9, 114, 3);
+    expect(small.card).toBeLessThan(tall.card);
+    expect(small.card - small.overlap).toBe(114 + DECK.peekMin + 3);
+    expect(small.card).toBeGreaterThanOrEqual(114 + DECK.last);
+    // The least a deck needs: every card's words, a sliver under each.
+    expect(deckNeeds(114, 3)).toBe(2 * (114 + DECK.peekMin) + 114 + DECK.last);
+    expect(DECK.peekMin).toBeLessThan(DECK.peek);
   });
 
-  it("leaves the cat its room on the sill under the deck, never touching the cards, and leaves it out when there's too little", () => {
+  it("always seats the cat on the sill under the deck, never touching the cards: full size where there's room, smaller on a small phone, never left out", () => {
     // The column under the header (65) and the safe areas; the words as a phone measures them (114) and as the web build does (134).
-    const phone = ({ width, height, top, bottom }: { width: number; height: number; top: number; bottom: number }, words: number) => {
+    const phone = ({ width, height, top }: { width: number; height: number; top: number; bottom: number }, words: number) => {
       const columnTop = top + 65;
       const sillTop = height - windowGeometry(width, height).sill;
-      return { sillTop, ...homeDeck({ room: height - columnTop - M.top - bottom - M.foot, top: columnTop + M.top, sillTop, cardWidth: width - 2 * M.edge, words, count: 3 }) };
+      return { sillTop, ...homeDeck({ top: columnTop + M.top, sillTop, cardWidth: width - 2 * M.edge, words, count: 3 }) };
     };
     const iphone = { width: 390, height: 844, top: 47, bottom: 34 };
     const web = { width: 390, height: 844, top: 0, bottom: 0 };
     const se = { width: 375, height: 667, top: 20, bottom: 0 };
+    const seWeb = { width: 375, height: 667, top: 0, bottom: 0 };
+    const mini = { width: 320, height: 568, top: 20, bottom: 0 };
     const max = { width: 430, height: 932, top: 59, bottom: 34 };
-    for (const [screenSize, words] of [[iphone, 114], [web, 134], [max, 114], [se, 114], [se, 134], [iphone, 300]] as const) {
+    for (const [screenSize, words] of [[iphone, 114], [web, 134], [max, 114], [se, 114], [seWeb, 134], [mini, 114], [iphone, 300]] as const) {
       const at = phone(screenSize, words);
-      expect(at.deck.card - at.deck.overlap).toBeGreaterThanOrEqual(words + DECK.peek);
-      if (at.cat > 0) {
-        expect(at.cat).toBeGreaterThanOrEqual(CAT.minWidth);
-        expect(at.cat).toBeLessThanOrEqual(CAT.width);
-        // The cat's head stays CAT.gap clear of the deck's turned corners.
-        expect(at.sillTop + CAT.sink - at.cat * CAT.aspect).toBeGreaterThanOrEqual(at.bottom + CAT.gap);
-        expect(at.bottom).toBe(M.top + screenSize.top + 65 + at.deck.height + tiltOverhang(screenSize.width - 2 * M.edge));
-      }
+      // The cat is always there.
+      expect(at.cat).toBeGreaterThanOrEqual(CAT.minWidth);
+      expect(at.cat).toBeLessThanOrEqual(CAT.width);
+      // Its ears stay CAT.gap clear of the deck's turned corners, and the deck's foot is where its cards end.
+      expect(at.sillTop + CAT.sink - at.cat * CAT.aspect).toBeGreaterThanOrEqual(at.bottom + CAT.gap);
+      expect(at.bottom).toBe(M.top + screenSize.top + 65 + at.deck.height + tiltOverhang(screenSize.width - 2 * M.edge));
+      // The whole of home is on the screen: the deck ends above the sill.
+      expect(at.bottom).toBeLessThan(at.sillTop);
     }
-    // A full-size cat on a 390 x 844 phone and the Pro Max, the deck filling the rest.
-    expect(phone(iphone, 114).cat).toBe(CAT.width);
-    // Where the words are taller (the web build's fonts) the cards win a few points and the cat gives them up.
-    expect(phone(web, 134).cat).toBeGreaterThan(CAT.width * 0.9);
-    expect(phone(max, 114).cat).toBe(CAT.width);
-    // The SE's deck takes the whole column: no room for the cat; large text scrolls the deck: no cat either.
-    expect(phone(se, 114).cat).toBe(0);
-    expect(phone(iphone, 300).fits).toBe(false);
-    expect(phone(iphone, 300).cat).toBe(0);
+    // A full-size cat on a 390 x 844 phone and the Pro Max, the deck filling the rest with its words and the full peek clear.
+    for (const [screenSize, words] of [[iphone, 114], [web, 134], [max, 114]] as const) {
+      const at = phone(screenSize, words);
+      expect(at.cat).toBe(CAT.width);
+      expect(at.deck.card - at.deck.overlap).toBeGreaterThanOrEqual(words + DECK.peek);
+    }
+    // An SE: the cards shrink first (their words still whole), then the cat a little; it is still most of its size.
+    for (const [screenSize, words] of [[se, 114], [seWeb, 134]] as const) {
+      const at = phone(screenSize, words);
+      expect(at.deck.card - at.deck.overlap).toBeGreaterThanOrEqual(words + DECK.peekMin);
+      expect(at.deck.card).toBeGreaterThanOrEqual(words + DECK.last);
+      expect(at.cat).toBeGreaterThan(CAT.width * 0.7);
+    }
+    // Very large text on a phone: the cat keeps its least size and the cards squeeze; nothing scrolls, nothing leaves the screen.
+    expect(phone(iphone, 300).cat).toBe(CAT.minWidth);
   });
 
-  it("grows every card together when large text makes one card's words taller", async () => {
+  it("keeps every card the same height when large text makes one card's words taller, and still fits the screen", async () => {
     await renderHub();
     await act(async () => layoutColumn(600));
     const before = slot("crime_scene").height as number;
     await act(async () => layoutWords("crime_scene", 320));
-    const after = deckLayout(600 - M.top - M.foot, 320, 3);
-    expect(after.card).toBeGreaterThan(before);
-    for (const genre of GENRE_LIST) expect(slot(genre).height).toBe(after.card);
-    expect(after.card - after.overlap).toBeGreaterThanOrEqual(320 + DECK.peek);
+    const { width, height } = Dimensions.get("window");
+    const { deck, bottom } = homeDeck({ top: M.top, sillTop: height - windowGeometry(width, height).sill, cardWidth: width - 2 * M.edge, words: 320, count: 3 });
+    for (const genre of GENRE_LIST) expect(slot(genre).height).toBe(deck.card);
+    expect(deck.card).not.toBe(before);
+    expect(bottom).toBeLessThan(height);
+    // The column is a plain view that passes touches through outside its cards.
+    const column = screen.getByTestId("hub-cards");
+    expect(column.props.pointerEvents).toBe("box-none");
+    expect(column.props.onScroll).toBeUndefined();
   });
 
   it("every card is tappable, overlap or not: each one's own tap runs its own mode", async () => {
@@ -1004,7 +1030,7 @@ describe("01 · Home: the window", () => {
 
   it("keeps the rain on the glass: the glass, the frame and the sill's still life lie over the weather; the lights, the cat and the curtains over them", () => {
     const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/WindowBackdrop.tsx"), "utf8");
-    const order = ['name="sky"', 'name="far"', 'name="near"', 'testID="hub-window-weather"', 'name="haze"', 'name="glass"', 'name="frame"', 'name="sill"', "<CandleFlame", 'testID="hub-window-lights"'];
+    const order = ['name="sky"', 'name="far"', 'name="near"', 'testID="hub-window-weather"', 'name="haze"', 'name="glass"', 'name="frame"', 'name="sill"', "<CandleFlame", 'testID="hub-window-lights"', "<StringLights"];
     const places = order.map((mark) => source.indexOf(`<Picture ${mark}`) >= 0 ? source.indexOf(`<Picture ${mark}`) : source.indexOf(mark));
     expect(places.every((at) => at > 0)).toBe(true);
     expect([...places].sort((a, b) => a - b)).toEqual(places);
@@ -1013,7 +1039,52 @@ describe("01 · Home: the window", () => {
     // Home lays the curtains over the cat, and the header and the cards over the curtains.
     const home = fs.readFileSync(path.join(ROOT, "src/screens/hub/HubScreen.tsx"), "utf8");
     expect(home.indexOf("<WindowForeground")).toBeGreaterThan(home.indexOf("<SittingCat"));
-    expect(home).toMatch(/column: \{ flex: 1, zIndex: 1, pointerEvents: "box-none" \}/);
+    expect(home).toMatch(/column: \{ flex: 1, zIndex: 1, /);
+  });
+
+  it("strings its lights across the top clear of the header: rendered cord and bulbs, the lowest bulb above the wordmark and the corner buttons on every phone", () => {
+    const set = JSON.parse(fs.readFileSync(path.join(ROOT, "assets/home/lights/lights.json"), "utf8")) as {
+      design: number; bleed: number; bulb: { hang: number }; bulbs: { x: number; y: number; colour: string }[];
+    };
+    // Rendered parts: the cord, and each colour's bulb cold and alight.
+    const colours = [...new Set(set.bulbs.map((b) => b.colour))].sort();
+    expect(colours).toEqual(["crime", "moonlit", "noir", "warm"]);
+    for (const file of ["cord.png", ...colours.flatMap((c) => [`bulb-${c}.png`, `bulb-${c}@3x.png`, `bulb-${c}-lit.png`, `bulb-${c}-lit@3x.png`])]) {
+      expect(fs.existsSync(path.join(ROOT, "assets/home/lights", file))).toBe(true);
+    }
+    // Warm white, with a few in the modes' colours, never two together.
+    const coloured = set.bulbs.map((b) => b.colour !== "warm");
+    expect(coloured.filter(Boolean).length).toBeGreaterThanOrEqual(3);
+    expect(coloured.filter(Boolean).length).toBeLessThanOrEqual(set.bulbs.length / 3);
+    for (let i = 1; i < coloured.length; i += 1) expect(coloured[i] && coloured[i - 1]).toBe(false);
+    // The string runs past both sides of the screen (it slides with the tilt).
+    expect(set.bulbs[0].x).toBeLessThanOrEqual(0);
+    expect(set.bulbs[set.bulbs.length - 1].x).toBeGreaterThanOrEqual(set.design);
+    expect(set.bleed).toBeGreaterThanOrEqual(PARALLAX.bleed);
+    for (const [width, top] of [[390, 47], [430, 59], [393, 59], [375, 20], [360, 24], [390, 0]]) {
+      const at = stringLayout(width, top);
+      // Every bulb's glass ends above the header's chips and wordmark (H.header.top under the safe top).
+      expect(at.foot).toBeLessThan(top + H.header.top);
+      for (const b of at.bulbs) expect(b.y + set.bulb.hang * at.k).toBeLessThanOrEqual(at.foot + 0.01);
+      // With a status bar's room the swags hang as rendered, the whole cord on the screen; with none (the web) they flatten, never past LIGHTS.flat.
+      expect(at.flat).toBeGreaterThanOrEqual(LIGHTS.flat);
+      expect(at.flat).toBeLessThanOrEqual(1);
+      if (top >= 44) {
+        expect(at.flat).toBe(1);
+        expect(at.cord.top).toBeGreaterThanOrEqual(LIGHTS.edge);
+      }
+      if (top === 0) expect(at.flat).toBe(LIGHTS.flat);
+    }
+    // They breathe slowly and unevenly, never off, never together; a touch of swing with the tilt, in front of the frame.
+    expect(LIGHTS.twinkle.low).toBeGreaterThanOrEqual(0.4);
+    expect(LIGHTS.twinkle.period).toBeGreaterThanOrEqual(3000);
+    expect(LIGHTS.twinkle.spread).toBeGreaterThan(LIGHTS.twinkle.period / 2);
+    expect(LIGHTS.sway).toBeLessThanOrEqual(12);
+    expect(PARALLAX.depth.lights).toBeLessThan(PARALLAX.depth.frame);
+    expect(PARALLAX.depth.lights).toBeGreaterThan(PARALLAX.depth.sill);
+    const source = fs.readFileSync(path.join(ROOT, "src/screens/hub/StringLights.tsx"), "utf8");
+    expect(source).not.toMatch(/setInterval/);
+    expect(source).toMatch(/if \(still\) \{\s+light\.set\(T\.rest\);/);
   });
 
   it("has no lightning: no flashes in the window, just the rain, the clouds, the moon, the candle and the lights", () => {

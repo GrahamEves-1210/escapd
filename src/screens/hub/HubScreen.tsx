@@ -4,7 +4,9 @@
 // deck of three solid mode cards, DETECTIVE NOIR, CRIME SCENE and PARANORMAL,
 // each in its own mode's palette (ModeCard), dealt down the screen so each
 // lies partly over the one above, turned a little, casting a soft shadow up
-// onto it (deck.ts). A short screen or large text scrolls them.
+// onto it (deck.ts). Home is one fixed screen: it never scrolls; on a short
+// screen or with large text the cards shrink and lie closer (deck.ts), so the
+// cat on the sill under them is always there to be petted.
 // A card's tap (one at a time):
 // - With a case to go back to in that mode (caseStatus.ts, caseToContinue):
 //   the continue prompt (ResumeSheet) over home in the mode's colours, even
@@ -22,7 +24,7 @@
 // goes busy while it waits for it. A failure shows the notice.
 // Home is the shell, so it clears the active mode each time it gains focus.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BackHandler, Image, ScrollView, StyleSheet, View, useWindowDimensions, type HostInstance, type ViewStyle } from "react-native";
+import { BackHandler, Image, StyleSheet, View, useWindowDimensions, type HostInstance, type ViewStyle } from "react-native";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -97,17 +99,15 @@ export function HubScreen() {
   const failures = useRef(0);
   const focusReturn = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The deck: the scroll view's top and height (measured; until then from the window), and each card's words.
-  const [viewport, setViewport] = useState<{ y: number; height: number } | null>(null);
+  // The deck: the column's top (measured; until then from the window), and each card's words.
+  const [columnY, setColumnY] = useState<number | null>(null);
   const [words, setWords] = useState<Partial<Record<Genre, number>>>({});
-  const columnTop = viewport?.y ?? insets.top + HEADER;
-  const column = viewport?.height ?? windowHeight - insets.top - HEADER;
+  const columnTop = columnY ?? insets.top + HEADER;
   // The deck fills the column down to the room the cat needs on the window's
-  // sill; the cat sits under it, never touching it, and is left out where
-  // there's too little room (or the deck scrolls).
+  // sill; the cat sits under it, never touching it. Where room is tight the
+  // cards shrink first, then the cat a little: it is never left out.
   const sillTop = windowHeight - windowGeometry(windowWidth, windowHeight).sill;
-  const { deck, fits, bottom: deckBottom, cat: catWidth } = homeDeck({
-    room: column - M.top - insets.bottom - M.foot,
+  const { deck, bottom: deckBottom, cat: catWidth } = homeDeck({
     top: columnTop + M.top,
     sillTop,
     cardWidth: windowWidth - 2 * M.edge,
@@ -386,12 +386,13 @@ export function HubScreen() {
           />
           </View>
         </View>
-        <ScrollView
+        {/* Not a scroll view: home is one fixed screen. Only the cards take touches here, so the cat under the deck is always reachable. */}
+        <View
           style={styles.column}
-          contentContainerStyle={[styles.cards, { paddingBottom: insets.bottom + M.foot }]}
+          pointerEvents="box-none"
           onLayout={(e) => {
-            const { y, height } = e.nativeEvent.layout;
-            setViewport((v) => (v && v.y === y && v.height === height ? v : { y, height }));
+            const { y } = e.nativeEvent.layout;
+            setColumnY((v) => (v === y ? v : y));
           }}
           testID="hub-cards"
         >
@@ -424,15 +425,13 @@ export function HubScreen() {
             />
             </FallIn>
           ))}
-        </ScrollView>
+        </View>
 
         {/* The cat, sitting on the window sill, watching the rain. Tap it. */}
-        {catWidth > 0 ? (
-          <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
-            <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill"
-              mug={{ visit: sillVisit.n, active: sillVisit.active, base: CAT.sink - MUG_REST }} />
-          </View>
-        ) : null}
+        <View style={[styles.sillCat, { right: CAT.right, bottom: windowHeight - sillTop - CAT.sink }]} pointerEvents="box-none">
+          <SittingCat width={catWidth} delay={FALL.delay + FALL.cat * FALL.stagger} label="The black cat, on the window sill"
+            mug={{ visit: sillVisit.n, active: sillVisit.active, base: CAT.sink - MUG_REST }} />
+        </View>
         {/* The curtains' edges, nearest of all: over the sill and the cat, under the cards and the header (styles.column, styles.header). */}
         <WindowForeground tilt={tilt} />
 
@@ -440,7 +439,7 @@ export function HubScreen() {
         <View
           accessibilityLiveRegion="polite"
           pointerEvents="box-none"
-          style={[styles.noticeSlot, { bottom: fits ? windowHeight - deckBottom + M.pad : insets.bottom + M.foot + M.pad }]}
+          style={[styles.noticeSlot, { bottom: windowHeight - deckBottom + M.pad }]}
           testID="hub-notice-slot"
         >
           {notice ? <HubNotice key={notice.id} offline={notice.offline} /> : null}
@@ -513,9 +512,8 @@ const styles = StyleSheet.create({
   // Centred between the two 48 slots, so on the screen's axis.
   titleGroup: { flex: 1, alignItems: "center", justifyContent: "center" },
   logo: { height: H.header.logo, width: H.header.logo * H.header.logoAspect },
-  // Over the curtains' edges too; only the cards themselves take touches, so the cat under the deck (and under
-  // the curtains) can still be petted.
-  column: { flex: 1, zIndex: 1, pointerEvents: "box-none" },
-  cards: { flexGrow: 1, paddingTop: M.top, paddingHorizontal: M.edge, pointerEvents: "box-none" },
+  // Over the curtains' edges too (zIndex); only the cards themselves take touches (box-none), so the cat under the
+  // deck (and under the curtains) can always be petted.
+  column: { flex: 1, zIndex: 1, paddingTop: M.top, paddingHorizontal: M.edge },
   noticeSlot: { position: "absolute", left: M.edge + M.pad, right: M.edge + M.pad, alignItems: "center", zIndex: 2 },
 });

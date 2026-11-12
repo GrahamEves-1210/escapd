@@ -21,8 +21,9 @@
 //   sill is what everything turns about: it, the cat and the cat's mug
 //   (HubScreen draws them over this) never move;
 // - live again: the candle's flame (rendered frames, 12 fps) and its warm
-//   halo, breathing and flickering; fairy lights strung across the top in the
-//   theme's glow, sweet and foil, twinkling slowly (they slide with the frame).
+//   halo, breathing and flickering; the string lights across the top
+//   (StringLights: a rendered cord and bulbs, each bulb's light breathing on
+//   its own; a layer of their own in front of the frame, swinging with the tilt).
 // Nearest of all, the curtains' edges (WindowForeground: HubScreen lays them
 // over the cat, under the cards). The rendered layers lie over the rain and
 // under the lights, so the rain stays on the glass: behind the frame, the
@@ -30,15 +31,16 @@
 // Under reduced motion it is all still: no parallax, the clouds hold their
 // places (one across the moon), no drops landing, the flame and the lights
 // steady. No lightning: the storm is a quiet one.
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { Image, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, { Easing, cancelAnimation, useAnimatedStyle, useDerivedValue, useSharedValue, withRepeat, withTiming, type SharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { BlurMask, Canvas, Circle, Group, Oval, Path, RadialGradient, Skia, useClock, vec } from "@shopify/react-native-skia";
+import { BlurMask, Canvas, Circle, Group, Oval, Path, RadialGradient, useClock, vec } from "@shopify/react-native-skia";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import SET from "../../../assets/home/set/set.json";
-import { BULB_GLOW, BULB_PHASE, CANDLE, CLOUDS, FAIRY, FLAME, MS_TO_S, PARALLAX, RAIN, SHOWER, WINDOW_ART as ART, flicker, sag, type DropSpec } from "./art/nook";
+import { CANDLE, CLOUDS, FLAME, MS_TO_S, PARALLAX, RAIN, SHOWER, WINDOW_ART as ART, flicker, type DropSpec } from "./art/nook";
+import { StringLights } from "./StringLights";
 import { ParallaxLayer } from "./parallax/ParallaxLayer";
 import { layerShift } from "./parallax/tilt";
 import type { TiltValues } from "./parallax/useTilt";
@@ -59,7 +61,6 @@ type LayerName = keyof typeof PICTURES;
 const FLAME_SHEET = require("../../../assets/home/flame.png") as number;
 /** A clock in ms to seconds. */
 const PER_SECOND = MS_TO_S;
-const TURN = Math.PI * 2;
 
 /** Where the set's art lies on a screen, and its sill. Points. */
 export interface WindowGeometry {
@@ -116,7 +117,6 @@ export function WindowBackdrop({ tilt }: { tilt: TiltValues }) {
   const sky: Sky = { art, glass, moon: { x: art.left + art.width * SET.moon[0], y: art.top + art.height * SET.moon[1], r: art.width * SET.moon[2] } };
   const flame = vec(art.left + art.width * SET.flame[0], art.top + art.height * SET.flame[1]);
   const wick = { x: art.left + art.width * SET.wick[0], y: art.top + art.height * SET.wick[1] };
-  const colors = useMemo(() => [theme.glow, theme.sweet, theme.foil], [theme.glow, theme.sweet, theme.foil]);
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.clip]} pointerEvents="none" testID="hub-window">
@@ -133,12 +133,9 @@ export function WindowBackdrop({ tilt }: { tilt: TiltValues }) {
       <Picture name="sill" art={art} tilt={tilt} depth={D.sill} />
       <CandleFlame wick={wick} scale={art.width / ART.width} still={reducedMotion} />
       <Canvas style={StyleSheet.absoluteFill} testID="hub-window-lights">
-        {reducedMotion ? (
-          <StillLights flame={flame} glow={theme.glow} width={width} top={insets.top} colors={colors} />
-        ) : (
-          <LiveLights flame={flame} glow={theme.glow} width={width} top={insets.top} colors={colors} tilt={tilt} />
-        )}
+        {reducedMotion ? <StillCandle flame={flame} glow={theme.glow} /> : <LiveCandle flame={flame} glow={theme.glow} />}
       </Canvas>
+      <StringLights tilt={tilt} width={width} top={insets.top} still={reducedMotion} />
     </View>
   );
 }
@@ -160,15 +157,6 @@ interface Sky {
   art: WindowGeometry;
   glass: { left: number; top: number; width: number; height: number };
   moon: { x: number; y: number; r: number };
-}
-
-interface LightsProps {
-  flame: { x: number; y: number };
-  glow: string;
-  /** The screen's width, and the safe top the fairy lights hang under. */
-  width: number;
-  top: number;
-  colors: readonly string[];
 }
 
 /** A layer's slide as a Skia transform. */
@@ -206,32 +194,18 @@ function LiveWeather({ sky, tilt }: { sky: Sky; tilt: TiltValues }) {
   );
 }
 
-/** Reduced motion: the candle and the lights, steady. */
-function StillLights({ flame, glow, width, top, colors }: LightsProps) {
+/** Reduced motion: the candle's halo, steady. */
+function StillCandle({ flame, glow }: { flame: { x: number; y: number }; glow: string }) {
   const halo = useSharedValue<number>(CANDLE.rest);
-  const lit = useSharedValue<number>(FAIRY.rest);
-  return (
-    <>
-      <Flame at={flame} glow={glow} opacity={halo} />
-      <FairyLights width={width} top={top} colors={colors} clock={lit} />
-    </>
-  );
+  return <Flame at={flame} glow={glow} opacity={halo} />;
 }
 
-function LiveLights({ flame, glow, width, top, colors, tilt }: LightsProps & { tilt: TiltValues }) {
+function LiveCandle({ flame, glow }: { flame: { x: number; y: number }; glow: string }) {
   const clock = useClock();
   const halo = useDerivedValue(() => {
     return CANDLE.rest + CANDLE.flicker * flicker(clock.value * PER_SECOND);
   });
-  const hung = useSlide(tilt, PARALLAX.depth.lights);
-  return (
-    <>
-      <Flame at={flame} glow={glow} opacity={halo} />
-      <Group transform={hung}>
-        <FairyLights width={width} top={top} colors={colors} clock={clock} />
-      </Group>
-    </>
-  );
+  return <Flame at={flame} glow={glow} opacity={halo} />;
 }
 
 /**
@@ -324,65 +298,6 @@ function Flame({ at, glow, opacity }: { at: { x: number; y: number }; glow: stri
           <RadialGradient c={vec(at.x, at.y)} r={CANDLE.core} colors={[glow, `${glow}00`]} />
         </Circle>
       </Group>
-    </Group>
-  );
-}
-
-/**
- * Fairy lights: FAIRY.swags loops of dark wire across the top of the screen,
- * a bulb every FAIRY.pitch along them, in the given colours in turn, each
- * with a soft glow, twinkling on `clock` (in ms; a value of 1 or less holds
- * them still at it). The wire runs PARALLAX.bleed past each side (it slides).
- */
-function FairyLights({ width, top, colors, clock }: { width: number; top: number; colors: readonly string[]; clock: SharedValue<number> }) {
-  const { wire, bulbs } = useMemo(() => {
-    const span = width / FAIRY.swags;
-    const y0 = top + FAIRY.top;
-    // Each swag a parabola from one anchor to the next.
-    const at = (x: number) => {
-      const k = (((x % span) + span) % span) / span;
-      return y0 + FAIRY.sag * sag(k);
-    };
-    const b = Skia.PathBuilder.Make();
-    b.moveTo(-span, y0);
-    for (let i = -1; i <= FAIRY.swags; i += 1) {
-      const x0 = i * span;
-      // A quad's control point sits at twice the sag it reaches.
-      b.quadTo(x0 + span / 2, y0 + FAIRY.sag * 2, x0 + span, y0);
-    }
-    const count = Math.floor(width / FAIRY.pitch);
-    const offset = (width - (count - 1) * FAIRY.pitch) / 2;
-    const spare = Math.ceil(PARALLAX.bleed / FAIRY.pitch);
-    const list = Array.from({ length: count + 2 * spare }, (_, n) => {
-      const i = n - spare;
-      const x = offset + i * FAIRY.pitch;
-      return { x, y: at(x) + FAIRY.bulb, color: colors[(((i % colors.length) + colors.length) % colors.length)], phase: (((i * BULB_PHASE) % TURN) + TURN) % TURN };
-    });
-    return { wire: b.build(), bulbs: list };
-  }, [width, top, colors]);
-  return (
-    <Group>
-      <Path path={wire} style="stroke" strokeWidth={FAIRY.wireWidth} color={FAIRY.wire} />
-      {bulbs.map((bulb, i) => (
-        <Bulb key={i} {...bulb} clock={clock} />
-      ))}
-    </Group>
-  );
-}
-
-function Bulb({ x, y, color, phase, clock }: { x: number; y: number; color: string; phase: number; clock: SharedValue<number> }) {
-  // A clock ticks in ms; a still value sits between 0 and 1 and is used as it is.
-  const opacity = useDerivedValue(() => {
-    const v = clock.value;
-    if (v <= 1) return v;
-    return FAIRY.rest + FAIRY.swing * Math.sin(v * PER_SECOND * FAIRY.speed + phase);
-  });
-  return (
-    <Group opacity={opacity}>
-      <Circle cx={x} cy={y} r={FAIRY.glow} color={color} opacity={BULB_GLOW}>
-        <BlurMask blur={FAIRY.glow / 2} style="normal" />
-      </Circle>
-      <Circle cx={x} cy={y} r={FAIRY.bulb} color={color} />
     </Group>
   );
 }
