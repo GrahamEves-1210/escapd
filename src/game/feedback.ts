@@ -44,13 +44,18 @@
 //   again and again as the player rubs: each call plays one of three strokes.
 // - paperFold: a sheet folded over and creased. The tick haptic as it comes
 //   over, a light tap at the crease; a short rustle into a soft, crisp crease.
+// - musicNote(i): a tooth of the music box's comb plucked, i = 0..5 from low to
+//   high (C5 D5 E5 G5 A5 C6, C major pentatonic). The tick haptic and the
+//   tooth's note; notes ring out over each other. Pass false as the second
+//   argument when the box plays by itself (no touch, so no haptic). An index
+//   outside 0..5 does nothing.
 // - shutter: the camera taking a photo. A thud and a mechanical shutter.
 // - typewriter: text typing itself out in a game moment. Sound only, no
 //   haptic: a short run of keys.
 import { useEffect, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import { usePreferences } from "./preferences";
-import { playSound, preloadSounds, type SoundName } from "./sound";
+import { MUSIC_NOTES, playSound, preloadSounds, type SoundName } from "./sound";
 
 /** The beats of the patterns, in ms after the first. The sounds are cut to the same beats. */
 const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170, crease: 160 } as const;
@@ -165,6 +170,13 @@ export function useFeedback() {
         tick();
         later(PATTERN.crease, () => impact(Haptics.ImpactFeedbackStyle.Light));
         sound("paperFold");
+      },
+      musicNote: (index: number, touched = true) => {
+        // Not one of the six teeth (out of range, a fraction, NaN): nothing.
+        const name = MUSIC_NOTES[index];
+        if (!name) return;
+        if (touched) tick();
+        sound(name);
       },
     };
   }, [haptics_enabled, sound_enabled]);

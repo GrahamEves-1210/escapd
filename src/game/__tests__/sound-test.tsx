@@ -45,6 +45,12 @@ jest.mock("../../../assets/audio/pencil-rub-1.m4a", () => "pencil-rub-1.m4a");
 jest.mock("../../../assets/audio/pencil-rub-2.m4a", () => "pencil-rub-2.m4a");
 jest.mock("../../../assets/audio/pencil-rub-3.m4a", () => "pencil-rub-3.m4a");
 jest.mock("../../../assets/audio/paper-fold.m4a", () => "paper-fold.m4a");
+jest.mock("../../../assets/audio/music-note-0.m4a", () => "music-note-0.m4a");
+jest.mock("../../../assets/audio/music-note-1.m4a", () => "music-note-1.m4a");
+jest.mock("../../../assets/audio/music-note-2.m4a", () => "music-note-2.m4a");
+jest.mock("../../../assets/audio/music-note-3.m4a", () => "music-note-3.m4a");
+jest.mock("../../../assets/audio/music-note-4.m4a", () => "music-note-4.m4a");
+jest.mock("../../../assets/audio/music-note-5.m4a", () => "music-note-5.m4a");
 jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
 jest.mock("../../../assets/audio/room-paranormal.m4a", () => "room-paranormal.m4a");
 const SOURCE = {
@@ -228,6 +234,67 @@ describe("cues with sound", () => {
     expect(Haptics.impactAsync).not.toHaveBeenCalled();
     jest.advanceTimersByTime(160);
     expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+  });
+
+  describe("the music box", () => {
+    const notePlayers = (i: number) => audio.__players.filter((p) => p.source === `music-note-${i}.m4a`);
+    const notePlays = (i: number) => notePlayers(i).reduce((n, p) => n + p.play.mock.calls.length, 0);
+
+    it("each of the six teeth plays its own file, low to high, with the tick haptic, at one gentle level", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      for (let i = 0; i < 6; i++) {
+        result.current.musicNote(i);
+        // Its own file and no other: every tooth so far has played once.
+        expect([0, 1, 2, 3, 4, 5].map(notePlays)).toEqual([0, 1, 2, 3, 4, 5].map((j) => (j <= i ? 1 : 0)));
+        expect(Haptics.selectionAsync).toHaveBeenCalledTimes(i + 1);
+      }
+      expect(played().every((p) => String(p.source).startsWith("music-note-"))).toBe(true);
+      const volumes = new Set(played().map((p) => p.volume));
+      expect(volumes.size).toBe(1);
+      expect([...volumes][0]).toBeGreaterThan(0.2);
+      expect([...volumes][0]).toBeLessThan(0.5);
+    });
+
+    it("ignores anything that isn't one of the six teeth: no sound, no haptic, no throw", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      expect(() => {
+        for (const i of [-1, 6, 7, 100, 1.5, NaN, Infinity]) result.current.musicNote(i);
+      }).not.toThrow();
+      expect(played()).toEqual([]);
+      expect(haptics()).toBe(0);
+    });
+
+    it("notes ring out: another tooth never touches the one still sounding, and the same tooth again takes its second voice", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      result.current.musicNote(0);
+      const first = played()[0];
+      first.seekTo.mockClear();
+      // A different tooth: a different player; the first is neither sought, paused nor replayed.
+      result.current.musicNote(3);
+      expect(first.play).toHaveBeenCalledTimes(1);
+      expect(first.seekTo).not.toHaveBeenCalled();
+      expect(first.pause).not.toHaveBeenCalled();
+      // The same tooth again: its other voice, so the first keeps ringing.
+      result.current.musicNote(0);
+      expect(notePlayers(0)).toHaveLength(2);
+      expect(notePlayers(0).map((p) => p.play.mock.calls.length)).toEqual([1, 1]);
+      expect(first.seekTo).not.toHaveBeenCalled();
+      // A run on one tooth alternates between its two voices.
+      for (let i = 0; i < 8; i++) result.current.musicNote(0);
+      expect(notePlayers(0).map((p) => p.play.mock.calls.length)).toEqual([5, 5]);
+    });
+
+    it("plays without a haptic when the box plays by itself, and not at all with sound off", async () => {
+      const { result, rerender } = await renderHook(() => useFeedback());
+      result.current.musicNote(2, false);
+      expect(notePlays(2)).toBe(1);
+      expect(haptics()).toBe(0);
+      mockPrefs.sound_enabled = false;
+      await rerender({});
+      result.current.musicNote(2);
+      expect(notePlays(2)).toBe(1);
+      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("haptics off leaves the sound on", async () => {

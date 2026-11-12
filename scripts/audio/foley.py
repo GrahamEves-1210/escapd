@@ -18,7 +18,7 @@ style (no samples, nothing downloaded; docs/AUDIO.md):
 
     python3 scripts/audio/foley.py                 # every cue
     python3 scripts/audio/foley.py drawer purr     # just these
-    python3 scripts/audio/foley.py pencil-rub      # a cue's numbered variants (pencil-rub-1, -2, -3)
+    python3 scripts/audio/foley.py pencil-rub      # a cue's numbered set (pencil-rub-1, -2, -3; music-note-0 to -5)
     WAV_DIR=/tmp/wavs python3 scripts/audio/foley.py   # also keep the 16-bit WAVs
     python3 scripts/audio/contact_sheet.py /tmp/wavs     # waveforms + spectrograms PNG
 
@@ -727,6 +727,56 @@ def paper_fold(rng):
     return room(out, rng, rt60=0.16, wet=0.07)
 
 
+# The music box's comb: six teeth, C major pentatonic from C5 to C6 (any of them, in any order, agree).
+MUSIC_NOTES = [("C5", 523.25), ("D5", 587.33), ("E5", 659.26), ("G5", 783.99), ("A5", 880.0), ("C6", 1046.5)]
+# The box the comb is screwed to: a small wooden case, knocked by every pluck.
+MUSIC_BOX = [(318, 0.022, 0.6), (545, 0.018, 1.0), (910, 0.012, 0.55), (1480, 0.007, 0.25)]
+
+
+def music_note(rng, index=0):
+    """One tooth of a music box's steel comb, plucked by a pin: a bright, bell-like ting that rings ~1.2 s.
+
+    A tooth is a steel bar clamped at one end, so its overtones aren't harmonics: they sit at 6.27
+    and 17.55 times the note (a clamped bar's modes), which is the glassy "ting" on top, gone in
+    a tenth of a second, while the note itself sings on. The pin lets go all at once (no mallet:
+    the attack is a few samples), a little off-centre (a faint twin a few cents sharp, so the note
+    shimmers instead of standing still), and the pluck knocks the wooden box the comb sits on (a
+    soft, short tock under it; the box also lends the note a breath of its octave).
+    """
+    _, f = MUSIC_NOTES[index]
+    total = 1.5
+    n = n_of(total)
+    t = times(n)
+    # The note rings longer on the long, low teeth: -60 dB after ~1.4 s (C5) to ~1.1 s (C6).
+    tau = 0.2 * (523.25 / f) ** 0.35
+    partials = [
+        (1.0, 1.0, tau),           # the note
+        (1.0028, 0.16, tau * 0.9), # its off-centre twin: a slow shimmer
+        (2.0, 0.07, tau * 0.45),   # the box's soundboard adding a breath of the octave
+        (6.267, 0.24, 0.05),       # the clamped bar's second mode: the ting
+        (17.55, 0.05, 0.014),      # and its third: the glint of the pin letting go
+    ]
+    y = np.zeros(n)
+    for ratio, g, d in partials:
+        fp = f * ratio
+        if fp >= 11000:
+            continue
+        y += g * np.sin(TAU * fp * t + rng.uniform(0, 0.4)) * np.exp(-t / d)
+    # The pin lets go: the tooth springs from bent to ringing in a third of a millisecond.
+    a = n_of(0.00035)
+    y[:a] *= 0.5 - 0.5 * np.cos(np.pi * np.arange(a) / a)
+    # It dies away rather than stopping.
+    fade = n // 3
+    y[-fade:] *= np.cos(0.5 * np.pi * np.arange(fade) / fade) ** 2
+    out = silence(total)
+    place(out, y, 0.0, 1.0)
+    # The pluck through the comb's bedplate into the box: a soft wooden tock, and the pin's tiny tick.
+    place(out, hit(MUSIC_BOX, 0.12, 0.0007), 0.0, 0.3)
+    place(out, hit([(4300, 0.0025, 1.0), (6100, 0.0018, 0.5)], 0.02, 0.0002), 0.0, 0.05)
+    out = lp(out, 9000, 2)
+    return room(out, rng, rt60=0.3, wet=0.1, tone=5000)
+
+
 # name: (builder, seed, output file)
 CUES = {
     "press": (press, 11, "press.m4a"),
@@ -750,6 +800,7 @@ CUES = {
     "pencil-rub-2": (lambda rng: pencil_rub(rng, 1), 29, "pencil-rub-2.m4a"),
     "pencil-rub-3": (lambda rng: pencil_rub(rng, 2), 30, "pencil-rub-3.m4a"),
     "paper-fold": (paper_fold, 31, "paper-fold.m4a"),
+    **{f"music-note-{i}": ((lambda rng, i=i: music_note(rng, i)), 32 + i, f"music-note-{i}.m4a") for i in range(6)},
 }
 
 

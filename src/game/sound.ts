@@ -38,7 +38,21 @@ export type SoundName =
   | "purr"
   | "mugBreak"
   | "pencilRub"
-  | "paperFold";
+  | "paperFold"
+  | "musicNote0"
+  | "musicNote1"
+  | "musicNote2"
+  | "musicNote3"
+  | "musicNote4"
+  | "musicNote5";
+
+/** The music box's six teeth, low to high: C5, D5, E5, G5, A5, C6 (C major pentatonic). feedback's musicNote(i) plays the i-th. */
+export const MUSIC_NOTES = ["musicNote0", "musicNote1", "musicNote2", "musicNote3", "musicNote4", "musicNote5"] as const satisfies readonly SoundName[];
+
+/** The six music-box notes share one level: clear over the music, never sharp. */
+const MUSIC_NOTE_VOLUME = 0.32;
+/** Two voices of one file: with two variants a cue alternates, so a replay never cuts the one still ringing. */
+const twice = (source: number): readonly number[] => [source, source];
 
 // The interaction foley (scripts/audio/foley.py) is levelled to one loudness
 // (-18 LUFS momentary, peaks capped at -1.5 dBTP), so these volumes are the
@@ -98,6 +112,16 @@ const EFFECTS: Record<SoundName, { source: number | readonly number[]; volume: n
   },
   // A sheet folded over, creased (at 160 ms, the haptic's beat) and pressed flat. A little under `paper`.
   paperFold: { source: require("../../assets/audio/paper-fold.m4a"), volume: 0.3 },
+  // The music box's comb, one plucked steel tooth each: C5, D5, E5, G5, A5, C6 (1.2 to 1.5 s). Clear
+  // over the music without being sharp. Each note has two voices (its file twice: plays alternate
+  // between them), so the same tooth plucked again rings over itself instead of being cut off;
+  // different notes are different players and always ring out.
+  musicNote0: { source: twice(require("../../assets/audio/music-note-0.m4a")), volume: MUSIC_NOTE_VOLUME },
+  musicNote1: { source: twice(require("../../assets/audio/music-note-1.m4a")), volume: MUSIC_NOTE_VOLUME },
+  musicNote2: { source: twice(require("../../assets/audio/music-note-2.m4a")), volume: MUSIC_NOTE_VOLUME },
+  musicNote3: { source: twice(require("../../assets/audio/music-note-3.m4a")), volume: MUSIC_NOTE_VOLUME },
+  musicNote4: { source: twice(require("../../assets/audio/music-note-4.m4a")), volume: MUSIC_NOTE_VOLUME },
+  musicNote5: { source: twice(require("../../assets/audio/music-note-5.m4a")), volume: MUSIC_NOTE_VOLUME },
 };
 
 // Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).
