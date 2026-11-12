@@ -3,10 +3,10 @@
 // two sheets built from views (the lamp, the mirror) still read to a screen reader with the pictures in.
 import fs from "fs";
 import path from "path";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Reveal } from "../Reveal";
+import { HINT_AFTER_MS, Reveal } from "../Reveal";
 import { BINDING, LAMP, LENS, MIRROR, PAPERWEIGHT, PENCIL } from "../props";
 
 const DIR = path.join(__dirname, "../../../../assets/reveal");
@@ -69,7 +69,8 @@ describe("the reveal props' pictures", () => {
 });
 
 describe.each(["heat", "mirror"] as const)("the %s sheet with its rendered prop", (kind) => {
-  const card = "Held up, the letters come: Never the last.";
+  // The card is only what's written (never a line of narration before it); a colon in it is part of the writing.
+  const card = "Never the last: the rug.";
   const open = () =>
     render(
       <GestureHandlerRootView>
@@ -95,12 +96,31 @@ describe.each(["heat", "mirror"] as const)("the %s sheet with its rendered prop"
     expect(page.props.accessibilityLabel).toMatch(/^Blank letter: hold it to the/);
   });
 
+  it("says nothing about how to read it until she's left it alone for five seconds, then a few words", async () => {
+    jest.useFakeTimers();
+    try {
+      await open();
+      expect(screen.queryByTestId("v2-reveal-hint")).toBeNull();
+      await act(async () => jest.advanceTimersByTime(HINT_AFTER_MS - 200));
+      expect(screen.queryByTestId("v2-reveal-hint")).toBeNull();
+      await act(async () => jest.advanceTimersByTime(400));
+      const hint = screen.getByTestId("v2-reveal-hint");
+      expect(String(hint.props.children).split(" ").length).toBeLessThanOrEqual(5);
+      // The screen reader's label always says how, in full.
+      expect(screen.getByTestId("v2-reveal-page").props.accessibilityLabel).toMatch(/^Blank letter: hold it to the/);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("still reads at once for a screen reader's activate", async () => {
     await open();
     await fireEvent(screen.getByTestId("v2-reveal-page"), "accessibilityAction", { nativeEvent: { actionName: "activate" } });
-    expect(screen.getByTestId("v2-reveal-page").props.accessibilityLabel).toBe("Blank letter: Never the last.");
-    expect(screen.getByTestId("v2-reveal-text").props.accessibilityLabel).toBe("Never the last.");
-    expect(screen.getByTestId("v2-reveal-lead")).toBeTruthy();
+    expect(screen.getByTestId("v2-reveal-page").props.accessibilityLabel).toBe("Blank letter: Never the last: the rug.");
+    expect(screen.getByTestId("v2-reveal-text").props.accessibilityLabel).toBe("Never the last: the rug.");
+    // Read: nothing is said under it (no narration, no hint).
+    expect(screen.queryByTestId("v2-reveal-lead")).toBeNull();
+    expect(screen.queryByTestId("v2-reveal-hint")).toBeNull();
     expect(screen.getByTestId("v2-reveal-close").props.accessibilityLabel).toBe("Done");
   });
 });

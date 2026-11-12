@@ -1,9 +1,9 @@
 // The little celebrations' rules (no drawing here): how big a moment is (a
-// clue or an item found, or a step solved), the word stamped over it (never
-// the same twice in a row), and the streak: finds in quick succession earn a
-// growing flourish.
+// clue or an item found, or a step solved), and the streak: finds in quick
+// succession earn a growing flourish. Nothing is said: no word is stamped
+// over a moment (show, never tell); the burst of inked sparks is the whole of
+// it.
 import type { ActionResult } from "@/engine/v2";
-import type { Genre } from "@/lib/puzzle-types";
 
 /** A find (a clue card arrived, an item turned up or was picked up) or a solved step (bigger). */
 export type Strength = "find" | "solve";
@@ -30,31 +30,4 @@ export function streakAfter(times: readonly number[], now: number): { times: num
   const count = kept.length;
   const level = count >= STREAK.from ? Math.min(STREAK.maxLevel, count - STREAK.from + 1) : 0;
   return { times: kept, count, level };
-}
-
-/** The words stamped over a moment, in each mode's voice: short, handwritten, delighted. */
-export const WORDS: Record<Genre, Record<Strength, readonly string[]>> = {
-  noir: {
-    find: ["Oh!", "Ooh!", "Hm!", "A lead!"],
-    solve: ["Aha!", "Got it!", "Elementary!", "That's it!"],
-  },
-  crime_scene: {
-    find: ["Oh!", "Ooh!", "Noted!", "A clue!"],
-    solve: ["Aha!", "Got it!", "Bingo!", "Cracked it!"],
-  },
-  paranormal: {
-    find: ["Oh!", "Ooh…", "Whoa!", "A sign!"],
-    solve: ["Aha!", "Got it!", "It answers!", "Yes!"],
-  },
-};
-
-/** The word on a roll: the roll itself gets a say now and then. */
-export const ROLL_WORD = "On a roll!";
-
-/** A word for a moment, never `last` (the one stamped before it). `rand` in [0, 1). */
-export function pickWord(genre: Genre, strength: Strength, last: string | null, level = 0, rand: () => number = Math.random): string {
-  // The roll's own word when it first starts (and at its height), unless it was just said.
-  if ((level === 1 || level === STREAK.maxLevel) && last !== ROLL_WORD && rand() < 0.6) return ROLL_WORD;
-  const list = WORDS[genre][strength].filter((w) => w !== last);
-  return list[Math.min(list.length - 1, Math.floor(rand() * list.length))];
 }

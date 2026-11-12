@@ -105,7 +105,7 @@ describe.each(STUDY_ROOMS)("The Study played on the device (%s)", (mode, roomId)
       // A card on an item: what its pieces say together, or how a thing reads with a tool (a notepad, a red lens,
       // a fold-in page), which never holds a value.
       const card = i.card ? definition.cards.find((c) => c.id === i.card) : undefined;
-      if (card) expect(i.kind === "assembled" || (i.kind === "prop" && !card.text.includes("{{"))).toBe(true);
+      if (card) expect(i.kind === "assembled" || (i.kind === "prop" && (!card.text.includes("{{") || card.look === "impression")) || i.archetype === "Balance").toBe(true);
     }
     expect(new Set(definition.items.map((i) => i.name)).size).toBe(definition.items.length);
     // A ritual line never points at the object its card was found at (a note in the drawer naming the drawer).

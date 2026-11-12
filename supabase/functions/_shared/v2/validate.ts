@@ -1,12 +1,12 @@
 // Static validator for schema v2 (shape, ids, references, host rules, the exit,
 // the removable object, no literal answers). The simulator (simulate.ts) proves
 // the dynamic properties. Returns a list of errors; empty means valid.
-import { ARCHETYPES, type ArchetypeId, type HostRule } from "./archetypes.ts";
+import { ARCHETYPES, type ArchetypeId, type HostRule, KEY_CUTS, KEY_DEPTHS } from "./archetypes.ts";
 import { categoryOf, isObjectType, isPortableType, type ObjectType } from "./taxonomy.ts";
 import { traceSiteOk } from "./traces.ts";
 import {
-  type Condition, type Effect, MODES, type ObjectDef, OVERLAYS, REVEALS, type RoomDefinitionV2, type RoomSecretV2,
-  TRACE_KINDS, type Trigger, type Value,
+  CARD_LOOKS, type Condition, type Effect, MODES, type ObjectDef, OVERLAYS, REVEALS, type RoomDefinitionV2, type RoomSecretV2,
+  TRACE_HANDS, TRACE_KINDS, TRACE_PATTERNS, TRACE_SIZES, TRACE_STAINS, TRACE_TREADS, type Trigger, type Value,
 } from "./types.ts";
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -27,7 +27,7 @@ export function wordClashes(def: RoomDefinitionV2, secret: RoomSecretV2): string
   const strip = (t: string) => t.replace(SLOT_REF, " ");
   const text = [
     def.title, def.objective, def.brief ?? "", def.intro ?? "",
-    ...def.objects.map((o) => o.label), ...def.items.map((i) => i.name), ...def.cards.flatMap((c) => [c.title, c.text]),
+    ...def.objects.flatMap((o) => [o.label, o.trace?.text ?? ""]), ...def.items.map((i) => i.name), ...def.cards.flatMap((c) => [c.title, c.text]),
     ...secret.steps.flatMap((s) => [s.title, ...s.hints]),
     ...secret.rules.flatMap((r) => r.effects.flatMap((e) => (e.do === "beat" ? [e.text] : e.do === "overlay" && e.text ? [e.text] : []))),
     secret.ending,
@@ -71,6 +71,14 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
       if (o.archetype !== null || o.controls.length || o.exit || o.removable || o.hidden || o.submit) err(`${o.id}: a trace has no archetype, controls or role`);
       const anchor = def.objects.find((x) => x.id === t?.anchor);
       if (anchor && (anchor.trace || anchor.photo_index !== o.photo_index)) err(`${o.id}: a trace's anchor is a real object on its photo`);
+      // What it shows is from the closed lists; public words hold no answer.
+      if (t) {
+        const bad = (xs: readonly string[], x: unknown) => x !== undefined && !(typeof x === "string" && xs.includes(x));
+        if (bad(TRACE_SIZES, t.size) || bad(TRACE_TREADS, t.tread) || bad(TRACE_PATTERNS, t.pattern) || bad(TRACE_STAINS, t.stain) || bad(TRACE_HANDS, t.hand) ||
+          (t.scar !== undefined && typeof t.scar !== "boolean") || (t.text !== undefined && (typeof t.text !== "string" || !t.text.trim() || t.text.includes("{{")))) {
+          err(`${o.id}: a trace shows only what the lists allow, and its public words hold no slot`);
+        }
+      }
       // Only where that kind of trace physically goes (footprints on floors and rugs, prints on hard things...).
       if (anchor && t && TRACE_KINDS.includes(t.kind) && !traceSiteOk(t.kind, t.surface, anchor.type)) err(`${o.id}: ${t.kind} can't be ${t.surface === "on" ? "on" : t.surface === "wall" ? "on the wall by" : "on the floor by"} a ${anchor.type}`);
     }
@@ -129,6 +137,9 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
     cards.add(c.id);
     if (!c.title?.trim() || typeof c.text !== "string") err(`${c.id}: title and text are required`);
     if (c.reveal !== undefined && !REVEALS.includes(c.reveal)) err(`${c.id}: unknown reveal ${c.reveal}`);
+    if (c.look !== undefined && !CARD_LOOKS.includes(c.look)) err(`${c.id}: unknown look ${c.look}`);
+    // A card the app draws from (a key's impression, a music box's run) is exactly its one slot.
+    if ((c.look === "impression" || c.reveal === "tune") && !/^\{\{[a-z0-9_]+\}\}$/.test(c.text)) err(`${c.id}: a drawn card's text is exactly one {{slot}}`);
   }
   for (const i of def.items) if (i.card && !cards.has(i.card)) err(`${i.id}: unknown card ${i.card}`);
 
@@ -151,6 +162,7 @@ function validateSecret(def: RoomDefinitionV2, secret: RoomSecretV2, targets: Ma
     if (!/^[a-z0-9_]+$/.test(name)) err(`slot ${name} is malformed`);
     if (typeof s.value !== "string" || !s.value) err(`slot ${name} has no value`);
     for (const f of s.from ?? []) if (!secret.slots[f]) err(`slot ${name}: unknown source ${f}`);
+    if (s.match && !objects.get(s.match.trace)?.trace) err(`slot ${name}: set against a trace that isn't in the room`);
   }
   for (const c of def.cards) for (const r of slotRefs(c.text)) {
     if (!secret.slots[r]) err(`${c.id}: unknown slot {{${r}}}`);
@@ -199,6 +211,47 @@ function validateSecret(def: RoomDefinitionV2, secret: RoomSecretV2, targets: Ma
     if (e.do === "show_card" && !cards.has(e.card)) err(`${where}: unknown card ${e.card}`);
     if (e.do === "overlay" && !OVERLAYS.includes(e.overlay)) err(`${where}: unknown overlay ${e.overlay}`);
   };
+
+  // The gadgets: what a lock takes and the answer it is given agree, and the answer is fair.
+  for (const r of secret.rules) {
+    if (r.trigger.on !== "submit") continue;
+    const dom = objects.get(r.trigger.object)?.submit;
+    const sub = r.when.find((c) => c.if === "submitted");
+    const answer = sub && "eq" in sub && "slot" in sub.eq ? secret.slots[sub.eq.slot] : undefined;
+    if (!dom || !answer) continue;
+    if (dom.kind === "dial") {
+      const n = answer.value.split("|").map(Number);
+      const apart = (a: number, b: number) => Math.min(Math.abs(a - b), dom.size - Math.abs(a - b)) >= 5;
+      if (n.length !== dom.count || n.some((x) => !Number.isInteger(x) || x < 0 || x >= dom.size) || new Set(n).size !== n.length || n.some((x, i) => i > 0 && !apart(x, n[i - 1]))) {
+        err(`rule ${r.id}: a dial's numbers are ${dom.count} of 0-${dom.size - 1}, none repeated, neighbours five apart`);
+      }
+    }
+    if (dom.kind === "keys") {
+      const keys = dom.bittings, right = answer.value;
+      const shape = new RegExp(`^[0-${KEY_DEPTHS - 1}]{${KEY_CUTS}}$`);
+      const unlike = (k: string) => { const d = [...k].map((c, i) => Math.abs(Number(c) - Number(right[i]))); return d.filter((x) => x > 0).length >= 2 && d.some((x) => x >= 2); };
+      if (keys.length !== 5 || new Set(keys).size !== 5 || keys.some((k) => !shape.test(k) || new Set(k).size < 2) || !keys.includes(right) || keys.some((k) => k !== right && !unlike(k))) {
+        err(`rule ${r.id}: a key ring is five different keys, one of them the answer, the others clearly unlike it`);
+      }
+      if (!def.cards.some((c) => c.look === "impression" && "slot" in sub!.eq && c.text === `{{${sub!.eq.slot}}}`)) err(`rule ${r.id}: the right key has no impression to find`);
+    }
+  }
+  for (const c of def.cards) {
+    if (c.reveal !== "tune") continue;
+    const run = secret.slots[slotRefs(c.text)[0]]?.text ?? "";
+    if (!/^[▲●◆■★✚]( [▲●◆■★✚]){3}$/.test(run)) err(`${c.id}: a music box's run is four marks, spaced`);
+  }
+  // A balance: its three weights are items, each of its own weight; what they weigh is the secret's alone.
+  for (const i of def.items) {
+    const pans = i.controls?.find((c) => c.domain.kind === "pans");
+    if (!pans || pans.domain.kind !== "pans") continue;
+    const of = pans.domain.of;
+    if (of.length !== 3 || new Set(of).size !== 3 || of.some((w) => !items.has(w))) err(`${i.id}: a balance compares three items`);
+    const w = of.map((id) => secret.weights?.[id]);
+    if (w.some((x) => typeof x !== "number") || new Set(w).size !== 3) err(`${i.id}: each weight has its own weight`);
+    if (!Object.values(secret.slots).some((s) => s.weigh === i.id)) err(`${i.id}: nothing is learned on the balance`);
+  }
+  for (const [name, s] of Object.entries(secret.slots)) if (s.weigh && !items.has(s.weigh)) err(`slot ${name}: learned on a balance that isn't in the room`);
 
   const ruleIds = new Set<string>();
   const grantedBy = new Map<string, number>();

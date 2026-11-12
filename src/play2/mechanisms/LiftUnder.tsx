@@ -17,7 +17,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
-import { GIVE_AT, Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
+import { GIVE_AT, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import { Boards, CastShadow, Ink, SoftShadow, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
@@ -127,7 +127,6 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
           )}
         </GestureDetector>
       </View>
-      <Line text={lifted ? "Lifted" : peel ? "Peel it back" : "Lift it up"} />
     </Stage>
   );
 }

@@ -16,7 +16,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { Line, STAGE, Stage, clamp, settle } from "./kit";
+import { STAGE, Stage, clamp, settle } from "./kit";
 import { Boards, SoftShadow, useMaterials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
@@ -135,7 +135,6 @@ function Lamp({ target, state, onSet, busy, width }: MechanismProps) {
           </GestureDetector>
         </View>
       </View>
-      <Line text={on ? (uv ? "Ultraviolet on" : "On") : "Pull the chain"} />
     </Stage>
   );
 }

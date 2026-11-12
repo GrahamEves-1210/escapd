@@ -17,7 +17,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { mix } from "@/theme/payoff";
 import { ref } from "@/theme/tokens";
-import { GIVE_AT, Line, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
+import { GIVE_AT, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import { ENAMEL, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
@@ -99,7 +99,6 @@ export function FrameTilt({ target, state, onSet, busy, width, inside }: Mechani
         </GestureDetector>
         <View style={[styles.nail, { left: width / 2 - 7 }]} pointerEvents="none"><Sprite source={ART.frameNail} w={14} h={14} /></View>
       </View>
-      <Line text={tilted ? "Askew" : "Push it to one side"} />
     </Stage>
   );
 }

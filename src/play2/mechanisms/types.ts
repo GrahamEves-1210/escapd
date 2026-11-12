@@ -48,3 +48,17 @@ export interface MechanismProps {
    */
   inside?: ReactNode;
 }
+
+/**
+ * What the gadgets take (the shared core's domains for them):
+ *   dial   a safe's combination dial: `count` numbers of 0..size-1, submitted as decimal strings;
+ *   keys   a ring of keys: each a bitting, five cut depths of 0..3 ("31021"); the submit is the one tried;
+ *   phone  a telephone number: `length` digits, set as one string on the control "number";
+ *   pans   a balance's two pans: "left|right", two different weights (item ids) of `of`.
+ */
+export type GadgetDomain = Extract<ControlDomain, { kind: "dial" | "keys" | "phone" | "pans" }>;
+
+/** A domain as one of the gadgets', or null. */
+export function gadgetDomain(domain: ControlDomain | undefined): GadgetDomain | null {
+  return domain && (domain.kind === "dial" || domain.kind === "keys" || domain.kind === "phone" || domain.kind === "pans") ? domain : null;
+}

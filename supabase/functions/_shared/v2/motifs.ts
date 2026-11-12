@@ -34,5 +34,8 @@ export const MOTIFS: Record<Exclude<MotifId, "finale">, MotifSpec> = {
   rub_reveal: { id: "rub_reveal", summary: "a notepad whose top sheet is gone and a pencil (found apart, or together in a short thread): rubbed over, the dents read", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.4, 1.5, 1.2) },
   lens_reveal: { id: "lens_reveal", summary: "a card printed in red over blue and a red lens (found apart, or together in a short thread): through the lens it reads", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.4, 1.2, 1.3) },
   fold_reveal: { id: "fold_reveal", summary: "a page whose two edges fold to meet, joining two halves of writing", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.3, 1.2, 1.4) },
+  tune_reveal: { id: "tune_reveal", summary: "a music box, cranked: the order of its notes is a four-wheel lock's", delivers: ["info"], minSteps: 2, archetypes: ["CombinationLock"], maxPerRoom: 1, weight: w(1.2, 1, 1.4) },
+  ribbon_reveal: { id: "ribbon_reveal", summary: "a typewriter ribbon pulled out: the last line typed is struck into it", delivers: ["info"], minSteps: 2, archetypes: [], maxPerRoom: 1, weight: w(1.4, 1.3, 1.1) },
+  weigh: { id: "weigh", summary: "three found weights compared on a pocket balance: their order, heaviest first, is a lock's", delivers: ["info"], minSteps: 3, archetypes: ["Balance", "CombinationLock"], maxPerRoom: 1, weight: w(1.2, 1.1, 1.2) },
   story_fragment: { id: "story_fragment", summary: "an optional prop that rewards looking", delivers: [], minSteps: 0, archetypes: ["Drawer", "LiftUnder", "FrameTilt"], weight: w(1, 1, 1) },
 };

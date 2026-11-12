@@ -17,7 +17,7 @@ import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import { useFeedback } from "@/game/feedback";
 import { ref } from "@/theme/tokens";
-import { GIVE_AT, Glint, LANDING, Line, STAGE, Stage, activatable, tryKey, useLockedLine, usePull, useRattle } from "./kit";
+import { GIVE_AT, Glint, LANDING, STAGE, Stage, activatable, tryKey, useLockedLine, usePull, useRattle } from "./kit";
 import { CastShadow, Felt, INK, Ink, useMaterials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
@@ -33,7 +33,7 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
   const open = state.open === true;
   const locked = state.locked === true;
   const { rattle, style: rattleStyle } = useRattle();
-  const { showLocked, markTried } = useLockedLine(locked);
+  const { markTried } = useLockedLine(locked);
 
   const onCommit = useCallback(() => {
     feedback.drawer();
@@ -155,9 +155,6 @@ export function Drawer({ target, state, onSet, busy, width, inside }: MechanismP
           </Animated.View>
         </GestureDetector>
       </View>
-      {showLocked ? <Line text="Locked" tone="stamp" testID="mech-locked" /> : (
-        <Line text={open ? "Open" : swing ? say.open : "Pull it toward you"} />
-      )}
     </Stage>
   );
 }

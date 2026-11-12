@@ -10,7 +10,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 import { ref } from "@/theme/tokens";
-import { Line, Stage } from "./kit";
+import { Stage } from "./kit";
 import { useGradId, useMaterials, type Materials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import { Scale } from "./Scale";
@@ -84,7 +84,6 @@ export function TuningDial({ state, onSet, busy, width }: MechanismProps) {
           </View>
         </View>
       </View>
-      <Line text="Slide the dial to tune" />
     </Stage>
   );
 }

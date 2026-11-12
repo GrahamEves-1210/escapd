@@ -61,6 +61,12 @@ export const ItemIcons = {
   notepad: make("notepad"),
   printed: make("printed"),
   foldIn: make("foldIn"),
+  soap: make("soap"),
+  wax: make("wax"),
+  balance: make("balance"),
+  weight: make("weight"),
+  musicBox: make("musicBox"),
+  ribbon: make("ribbon"),
 } satisfies Record<string, ItemGlyph>;
 
 /** What an icon in the tray draws at, as a share of its tile (each picture is its thing edge to edge, less a hair for its line). */

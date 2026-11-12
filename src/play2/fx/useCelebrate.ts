@@ -1,14 +1,15 @@
 // The player's moments of discovery, celebrated: each find or solved step makes
-// a burst at the thing on the photo (the Stage draws it, zoomed or not) or at a
-// point on screen (a slot in the tray), with a word stamped over it. A solved
-// step lands with a rubber stamp's thump; finds in quick succession put the
-// player on a roll, which rings the rising celesta shimmer instead.
+// a burst of inked sparks at the thing on the photo (the Stage draws it, zoomed
+// or not) or at a point on screen (a slot in the tray). No word is stamped over
+// it: the sparks are the whole of it. A solved step's is bigger and lands with
+// a thump; finds in quick succession put the player on a roll, which rings the
+// rising celesta shimmer instead.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ActionResult, Rect as Box } from "@/engine/v2";
 import type { Genre } from "@/lib/puzzle-types";
 import { useFeedback } from "@/game/feedback";
 import { BURST } from "./Burst";
-import { pickWord, strengthOf, streakAfter, type Strength } from "./celebrate";
+import { strengthOf, streakAfter, type Strength } from "./celebrate";
 
 /** Where a moment happened: an object in the room, or a point on screen (the player's root points). */
 export type Anchor = { object: string } | { x: number; y: number };
@@ -17,7 +18,8 @@ export interface BurstEvent {
   id: number;
   genre: Genre;
   strength: Strength;
-  word: string;
+  /** No longer set: nothing is stamped over a moment (kept so the Stage's burst still compiles). */
+  word?: undefined;
   level: number;
   count: number;
   seed: number;
@@ -38,15 +40,14 @@ export interface Celebrate {
   find: (anchor: Anchor | null) => void;
 }
 
-/** The thump lands with the stamped word; the roll's shimmer just after. */
-const SOUND_AT = { stamp: BURST.solve.wordAt + BURST.stampMs - 20, roll: 200 } as const;
+/** A solved step's thump lands as its sparks leave; the roll's shimmer just after. */
+const SOUND_AT = { stamp: BURST.solve.thumpAt, roll: 200 } as const;
 
 export function useCelebrate(genre: Genre | null, locate: (objectId: string) => Box | null): Celebrate {
   const feedback = useFeedback();
   const [stage, setStage] = useState<BurstEvent | null>(null);
   const [screen, setScreen] = useState<BurstEvent | null>(null);
   const times = useRef<number[]>([]);
-  const last = useRef<string | null>(null);
   const next = useRef(1);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -67,10 +68,8 @@ export function useCelebrate(genre: Genre | null, locate: (objectId: string) => 
     const now = Date.now();
     const roll = streakAfter(times.current, now);
     times.current = roll.times;
-    const word = pickWord(genre, strength, last.current, roll.level);
-    last.current = word;
     const id = next.current++;
-    const event: BurstEvent = { id, genre, strength, word, level: roll.level, count: roll.count, seed: (now ^ (id * 7919)) >>> 0 };
+    const event: BurstEvent = { id, genre, strength, level: roll.level, count: roll.count, seed: (now ^ (id * 7919)) >>> 0 };
     const box = anchor && "object" in anchor ? locateRef.current(anchor.object) : null;
     const ms = BURST[strength].ms + roll.level * 120 + 150;
     if (box) {

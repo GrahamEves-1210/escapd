@@ -48,6 +48,21 @@ export interface ObjectDef {
 export const TRACE_KINDS = ["prints", "palm", "writing", "stain", "footprints"] as const;
 export type TraceKind = typeof TRACE_KINDS[number];
 
+// What can be seen in a trace under the UV light. The app draws these and the player compares them with
+// other evidence (a boot's size and tread against a cobbler's ticket, a fingerprint's pattern against a
+// police ten-card, a hand against a handwriting sample). No report ever says what a trace means.
+export const TRACE_SIZES = ["small", "medium", "large"] as const;
+export type TraceSize = typeof TRACE_SIZES[number];
+/** A sole's pattern; "bare": bare feet (toes, no sole). */
+export const TRACE_TREADS = ["bars", "zigzag", "rings", "bare"] as const;
+export type TraceTread = typeof TRACE_TREADS[number];
+export const TRACE_PATTERNS = ["whorl", "loop", "arch"] as const;
+export type TracePattern = typeof TRACE_PATTERNS[number];
+export const TRACE_STAINS = ["wine", "coffee", "ink", "wax", "bourbon"] as const;
+export type TraceStain = typeof TRACE_STAINS[number];
+export const TRACE_HANDS = ["left-slant", "right-slant", "block"] as const;
+export type TraceHand = typeof TRACE_HANDS[number];
+
 export interface TraceSpec {
   kind: TraceKind;
   /** Where it lies: on the anchor object itself, on the wall beside it, or on the floor by it. */
@@ -56,6 +71,25 @@ export interface TraceSpec {
   anchor: Id;
   /** Seeds the procedural drawing (whorls, droplets, the stride), so it looks the same every time. */
   seed: number;
+  // What it looks like (all optional: rooms stored before these have none, and are drawn from `seed` alone).
+  /** footprints: how big the foot is. */
+  size?: TraceSize;
+  /** footprints: the sole's pattern, or bare feet. */
+  tread?: TraceTread;
+  /** prints, palm: the ridge pattern of the fingertips. */
+  pattern?: TracePattern;
+  /** prints, palm: a scar line across it. */
+  scar?: boolean;
+  /** stain: what was spilt. */
+  stain?: TraceStain;
+  /** writing: the hand it is written in. */
+  hand?: TraceHand;
+  /**
+   * writing: the words, when they hold no answer (a threat on a wall). Writing that holds an answer (a
+   * code, a ritual line) is never in the public definition: its words arrive when the UV light first
+   * finds it, as the glow mark's text (the action's `overlay` effect, kept in PlayState.overlays[].mark).
+   */
+  text?: string;
 }
 
 export interface ItemDef {
@@ -68,15 +102,25 @@ export interface ItemDef {
   card?: Id;                           // what examining it shows
 }
 
+export const CARD_LOOKS = ["impression"] as const;
+export type CardLook = typeof CARD_LOOKS[number];
+
 /**
  * How a card's writing comes to light, for the app to play (the card's text is what is revealed):
  *   heat    a blank letter in lemon juice, warmed at a lamp that's on;
  *   mirror  a note in mirror writing, held to the room's mirror;
  *   rub     a notepad whose top sheet was torn off, rubbed over with a pencil: the dents show white;
  *   lens    a card printed in a jumble of red and blue, read through a red lens;
- *   fold    a page whose two outer strips fold to meet, lining two halves of writing up into one line.
+ *   fold    a page whose two outer strips fold to meet, lining two halves of writing up into one line;
+ *   tune    a small music box, cranked: it plays a run of notes, and their order is the information. The
+ *           card's text is exactly the run: four marks from SYMBOLS ("▲ ● ◆ ■ ★ ✚", one per tooth of the
+ *           comb, low to high), separated by single spaces, e.g. "◆ ★ ▲ ●". It is the code of a lock whose
+ *           four wheels carry the same marks;
+ *   ribbon  a typewriter ribbon spool, pulled out: the last line typed is on it. The card's text is that
+ *           line as typed, left to right ("Never the first: what holds the light."); the app draws it on
+ *           the ribbon in mirror image, right to left.
  */
-export const REVEALS = ["heat", "mirror", "rub", "lens", "fold"] as const;
+export const REVEALS = ["heat", "mirror", "rub", "lens", "fold", "tune", "ribbon"] as const;
 export type Reveal = typeof REVEALS[number];
 
 export interface CardDef {
@@ -85,6 +129,11 @@ export interface CardDef {
   text: string;                        // may contain {{slot}}; values live in the secret
   /** Writing found with a tool (absent: just read): the app shows it coming up that way. */
   reveal?: Reveal;
+  /**
+   * Drawn, never printed. "impression": a key pressed into soap or wax; the card's text is exactly its
+   * {{slot}}, a key's cuts bow to tip ("20313", depths 0-3), and the app draws the impression from it.
+   */
+  look?: CardLook;
 }
 
 export interface AccuseOption { id: Id; name: string }
@@ -116,7 +165,9 @@ export interface RoomDefinitionV2 {
 // ---------------------------------------------------------------------------
 export type SlotKind =
   | "time" | "freq" | "page" | "offset" | "digits" | "letters" | "symbols" | "cipher"
-  | "option" | "object" | "code";
+  | "option" | "object" | "code"
+  // A telephone number (dialled on a rotary telephone).
+  | "phone";
 
 /**
  * Where a ritual fragment says its offering goes (paranormal), relative to a three-offering order:
@@ -138,6 +189,17 @@ export function orderHolds(rule: OrderRule, k: number, n: number): boolean {
   }
 }
 
+/**
+ * Crime scene: what one suspect's document states (a shoe size and sole, a fingerprint pattern, a hand),
+ * to be set against a trace on the photo that shows otherwise. Nothing says they differ: the player
+ * compares. `words`: the document's load-bearing words ("twelves", "whorls"), which a rewrite keeps.
+ */
+export interface TraceMatch {
+  trace: Id;
+  shows: { size?: TraceSize; tread?: TraceTread; pattern?: TracePattern; hand?: TraceHand };
+  words: string[];
+}
+
 export interface SlotValue {
   kind: SlotKind;
   value: string;                        // what rules compare ("7|2|9" for wheels)
@@ -145,6 +207,10 @@ export interface SlotValue {
   from?: string[];                      // derived: never shown; known once every source is known
   /** A ritual offering's slot: what its fragment says about its place in the order (absent on older rooms). */
   order?: OrderRule;
+  /** A ruled-out suspect's slot: its document rules them out only against this trace (crime scene). */
+  match?: TraceMatch;
+  /** An order learned on a balance (the item's id): known once the weighings done there settle it. Never on a card. */
+  weigh?: Id;
 }
 
 /** A literal or a slot reference. Minted answers are always slots. */
@@ -196,7 +262,11 @@ export type MotifId =
   | "warm_reveal" | "mirror_reveal"
   // Hands-on reveals that need nothing in the room: a pencil rubbed over a dented notepad; a red lens over a card
   // printed in red and blue; a page folded so its two edges meet.
-  | "rub_reveal" | "lens_reveal" | "fold_reveal";
+  | "rub_reveal" | "lens_reveal" | "fold_reveal"
+  // A music box cranked (its run of notes is a lock's order); a typewriter ribbon pulled out (the last line typed).
+  | "tune_reveal" | "ribbon_reveal"
+  // Three found weights compared on a small balance: their order, heaviest first, is a lock's.
+  | "weigh";
 
 export interface StepDef {
   id: Id;
@@ -218,6 +288,11 @@ export interface RoomSecretV2 {
   rules: Rule[];
   steps: StepDef[];
   ending: string;
+  /**
+   * What each weight weighs (item id -> any number; only the order matters), for a room with a balance.
+   * Server only: the player sees which pan dips, never a number.
+   */
+  weights?: Record<Id, number>;
   /** Facts the words must keep (crime scene: the time of death the alibis are read against): the
    *  author's objective and brief are kept only if they still state each one. */
   keep?: string[];

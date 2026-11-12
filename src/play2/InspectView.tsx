@@ -9,11 +9,16 @@
 // here." A drawer, a cushion or a frame has it inside, under or behind it all
 // along, uncovered as it's pulled (never popping in once it's open); the others
 // show it once they're open. Held items are icons along the foot to drag up
-// onto it, in the same felt-lined tray as the room's. Nothing scrolls. Tap
+// onto it, in the same felt-lined tray as the room's. Nothing is said about
+// it: no line of what just happened, no "Nothing here." (an empty drawer is
+// seen to be empty; a screen reader is still told), no caption of what to do.
+// If she does nothing for a few seconds in front of a kind of mechanism she
+// hasn't met, a ghost fingertip shows the gesture once (hud/Nudge.tsx).
+// Nothing scrolls. Tap
 // above the table, the stud or Android back to go. Reduced motion: no growing,
 // it is simply there.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import type { FinaleDef, ItemDef, StateValue } from "@/engine/v2";
@@ -21,12 +26,13 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { capitalise, isUvLight, ItemIcon } from "./ItemTray";
+import { capitalise, ItemIcon } from "./ItemTray";
 import { JournalCard, lookOf } from "./journal/JournalCard";
 import { handType, journalPalette, UV } from "./journal/palette";
 import { softShadow, Tape } from "./journal/Paper";
 import { V2 } from "./layout";
 import { GroundShadow, useHudMaterials } from "./hud/materials";
+import { Nudge, useNudge } from "./hud/Nudge";
 import { Press } from "./hud/Press";
 import { Shelf, SHELF_LIP } from "./hud/Shelf";
 import { CloseStud, NameLabel, PlateButton, TABLE_EDGE, TableTop } from "./hud/Table";
@@ -50,8 +56,10 @@ export interface InspectViewProps {
   state: Record<string, StateValue>;
   /** What it holds (shown once it's open). */
   contents: Content[];
-  /** A line under the title: what changed ("It's locked.", "The drawer slides out."). */
-  note: string | null;
+  /** The game (the room's id): a kind of mechanism is nudged once per game (hud/Nudge.tsx). */
+  game?: string;
+  /** No longer shown: nothing is said about what just happened (kept so older callers compile). */
+  note?: string | null;
   busy: boolean;
   cooldown: number;
   finale?: FinaleDef;
@@ -93,14 +101,13 @@ function showsInside(state: Record<string, StateValue>): boolean {
 }
 
 export function InspectView(props: InspectViewProps) {
-  const { target, state, contents, note, busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray, cat, item, onChange, from } = props;
+  const { target, state, contents, game = "", busy, cooldown, finale, ritualChoices, onSet, onSubmit, onTake, onPickUp, onClose, revision, tray, cat, item, onChange, from } = props;
   const theme = useModeTheme();
   const feedback = useFeedback();
   const { reducedMotion } = useTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [reading, setReading] = useState<FoundCard | null>(null);
-  const hand = handType(theme);
   // The table's height: as laid out (an estimate until then, for where it grows from).
   const [tableH, setTableH] = useState(V2.inspect.mechanismH + 140 + insets.bottom);
 
@@ -152,10 +159,14 @@ export function InspectView(props: InspectViewProps) {
   const lies = target.archetype !== null && (PULLS as readonly string[]).includes(target.archetype);
   const open = showsInside(state);
   const inside = open || lies ? contents : [];
-  // Opened (or there was nothing to open) and nothing in it: say so.
+  // Opened (or there was nothing to open) and nothing in it: that is seen, not said (a screen reader is told).
   const empty = open && contents.length === 0 && (target.archetype === null || CONTAINER_KEYS.some((k) => state[k] === true));
-  // Where "Nothing here." goes: in a drawer's or a cushion's own inside, else on the row above.
+  // Where that goes for a screen reader: in a drawer's or a cushion's own inside, else on the row above.
   const emptyInside = lies && target.archetype !== "FrameTilt";
+  // A mechanism she hasn't met, and nothing done for a while: a ghost fingertip shows the gesture, once.
+  const worked = CONTAINER_KEYS.some((k) => state[k] === true);
+  const nudge = useNudge(game, target, worked || busy || !mechanism);
+  const [band, setBand] = useState({ width: 0, height: 0 });
 
   // What it holds: tap a note to read it, an item to pick it up. A pulled thing lays it in its own inside
   // (and, by itself, lets it be picked up once most of it shows); any other mechanism, on a row above it.
@@ -185,7 +196,7 @@ export function InspectView(props: InspectViewProps) {
           </Press>
         );
       })}
-      {withEmpty && empty && !inside.length ? <Text style={[hand.body, { color: theme.inkMuted }]} testID="v2-empty">Nothing here.</Text> : null}
+      {withEmpty && empty && !inside.length ? <View accessible accessibilityRole="text" accessibilityLabel="Nothing here." style={styles.unsaid} testID="v2-empty" /> : null}
     </>
   ) : null);
   const items = found(true);
@@ -197,19 +208,26 @@ export function InspectView(props: InspectViewProps) {
       {/* The room stays in view above, dimmed; a tap there puts the thing back. */}
       <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Back to the room" testID="v2-inspect-away" />
       <Animated.View style={[StyleSheet.absoluteFill, styles.dim, { backgroundColor: theme.ground }, dimStyle]} pointerEvents="none" />
-      <Animated.View style={[styles.sheet, { paddingBottom: target.kind === "object" ? 0 : insets.bottom + ref.space.sm }, tableStyle]} onLayout={(e) => setTableH(e.nativeEvent.layout.height)}>
+      <Animated.View
+        style={[styles.sheet, { paddingBottom: target.kind === "object" ? 0 : insets.bottom + ref.space.sm }, tableStyle]}
+        onLayout={(e) => setTableH(e.nativeEvent.layout.height)}
+        // Any touch on the table: she's doing something (the nudge waits, or goes). Never taken: the touch goes on.
+        onStartShouldSetResponderCapture={() => {
+          nudge.touch();
+          return false;
+        }}
+      >
         <TableTop />
         {cat ? <View style={styles.cat} pointerEvents="box-none">{cat}</View> : null}
         <View style={styles.header}>
           <View style={styles.headerText}>
             <NameLabel name={capitalise(target.label)} />
-            {note ? <Text style={[hand.small, styles.note, { color: theme.ink }]} numberOfLines={2} testID="v2-inspect-note">{note}</Text> : null}
           </View>
           <CloseStud onPress={close} testID="v2-inspect-close" />
         </View>
 
         {target.kind === "item" && !mechanism ? (
-          // A held item, examined: the thing itself, large, and what it says or what it's for.
+          // A held item, examined: the thing itself, large, and what's written on it (if anything).
           <ItemDetail name={target.label} item={item} contents={contents} />
         ) : mechanism ? (
           <>
@@ -218,16 +236,23 @@ export function InspectView(props: InspectViewProps) {
             {above ? (
               <View style={styles.contentsRow} pointerEvents="box-none" testID="v2-contents">{above}</View>
             ) : null}
-            <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]} {...tapMark("object")}>
+            <View style={[styles.mechanism, { height: V2.inspect.mechanismH }]} {...tapMark("object")} onLayout={(e) => setBand({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
               <Mechanism
                 // Redrawn from the engine's state after every action; a pulled thing stays mounted through its
                 // own commit (its drag runs on through it) and settles to the state by itself.
                 key={lies ? "pull" : revision}
                 target={target}
                 state={state}
-                onSet={onSet}
+                onSet={(control, value) => {
+                  // Worked without being shown: this kind is never nudged.
+                  nudge.worked();
+                  onSet(control, value);
+                }}
                 onSubmit={onSubmit}
-                onChange={onChange}
+                onChange={() => {
+                  nudge.worked();
+                  onChange?.();
+                }}
                 busy={busy}
                 cooldown={cooldown}
                 finale={finale}
@@ -236,10 +261,11 @@ export function InspectView(props: InspectViewProps) {
                 inside={laid ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{laid}</View> : undefined}
               />
               {take}
+              {nudge.show && nudge.move ? <Nudge move={nudge.move} width={band.width || width} height={band.height || V2.inspect.mechanismH} onDone={nudge.over} /> : null}
             </View>
           </>
         ) : (
-          // Scenery: nothing to work, just what's there (or "Nothing here.").
+          // Scenery: nothing to work, just what's there (or nothing).
           <View style={styles.scenery}>
             {items ? <View style={styles.lying} pointerEvents="box-none" testID="v2-contents">{items}</View> : null}
             {take}
@@ -261,20 +287,7 @@ export function InspectView(props: InspectViewProps) {
   );
 }
 
-/** What a held item is for, when it has no card of its own to show: one short line. */
-function purpose(kind: ItemDef["kind"], item?: ItemDef): string {
-  if (item && isUvLight(item)) return "A UV light. Drag it onto your flashlight to switch it on; tap it to switch back.";
-  switch (kind) {
-    case "key": return "A key. Drag it onto what it opens.";
-    case "half": return "Half of something. Find what it fits, then fit them together.";
-    case "assembled": return "Pieced back together. Drag it onto where it's needed.";
-    case "taken": return "Taken from the room. Drag it onto where it belongs.";
-    case "decoder": return "Turn it to read what's hidden.";
-    default: return "Drag it onto something to use it.";
-  }
-}
-
-/** A held item, examined: its icon large, and its card (read in full) or what it's for. */
+/** A held item, examined: the thing itself large, and its card (read in full) if it has one. Never what it's for. */
 function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; contents: Content[] }) {
   const theme = useModeTheme();
   const m = useHudMaterials();
@@ -292,10 +305,7 @@ function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; co
         <View style={styles.detailPaper} testID={`v2-item-card-${card.id}`}>
           <JournalCard card={card} palette={journalPalette(theme)} hand={handType(theme)} index={0} />
         </View>
-      ) : (
-        // No card: its name is the sheet's title already; one line on what it's for, no empty paper.
-        <Text style={[handType(theme).body, styles.detailText, { color: theme.ink }]}>{purpose(kind, item)}</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -305,13 +315,13 @@ function ReadingNote({ card, onDone }: { card: FoundCard; onDone: () => void }) 
   const theme = useModeTheme();
   const p = journalPalette(theme);
   const hand = handType(theme);
+  // (No "tap anywhere to put it down" under it: a tap anywhere does.)
   return (
     <View style={styles.reading} testID="v2-reading-layer">
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }, styles.readingScrim]} onPress={onDone} accessibilityRole="button" accessibilityLabel="Put the note down" testID="v2-reading" />
       <View style={styles.readingPaper} pointerEvents="none">
         <JournalCard card={card} palette={p} hand={hand} index={0} large />
       </View>
-      <Text style={[hand.small, styles.readingHint, { color: theme.inkMuted }]} pointerEvents="none">tap anywhere to put it down</Text>
     </View>
   );
 }
@@ -353,7 +363,8 @@ const styles = StyleSheet.create({
   cat: { position: "absolute", left: ref.space.xl, top: 0, transform: [{ translateY: "-100%" }] },
   header: { flexDirection: "row", alignItems: "flex-start", paddingHorizontal: ref.space.lg, gap: ref.space.sm, minHeight: 48 },
   headerText: { flex: 1, gap: 3 },
-  note: { paddingLeft: 4 },
+  // Not said on screen (an empty drawer is seen to be empty): a point for a screen reader to land on.
+  unsaid: { width: 1, height: 1 },
   mechanism: { alignItems: "center", justifyContent: "center" },
   contentsRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg, paddingTop: ref.space.sm, minHeight: 56 + ref.space.sm },
   scenery: { minHeight: 140, alignItems: "center", justifyContent: "center", gap: ref.space.lg, paddingVertical: ref.space.lg },
@@ -361,7 +372,6 @@ const styles = StyleSheet.create({
   detailGlyph: { width: 120, height: 112, alignItems: "center", justifyContent: "center" },
   detailShadow: { bottom: 0 },
   detailPaper: { alignSelf: "stretch" },
-  detailText: { textAlign: "center", maxWidth: 320 },
   lying: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
   found: { width: 56, height: 56, alignItems: "center", justifyContent: "center" },
   mini: { width: 44, height: 52, borderRadius: 2, paddingTop: 14, paddingLeft: 7, gap: 6 },
@@ -375,5 +385,4 @@ const styles = StyleSheet.create({
   reading: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", padding: ref.space.xl, zIndex: 60 },
   readingScrim: { opacity: 0.86 },
   readingPaper: { maxWidth: 360, width: "100%", transform: [{ rotate: "-1.5deg" }] },
-  readingHint: { position: "absolute", bottom: 56, alignSelf: "center" },
 });

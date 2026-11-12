@@ -46,7 +46,8 @@ function Pages({ target, state, onSet, onChange, busy, width }: MechanismProps) 
           <OpenBook mat={mat} seed={n} />
           <Text style={[styles.folio, styles.folioLeft, { fontFamily: hand }]} {...hidden}>{left > 0 ? left : ""}</Text>
           <Text style={[styles.folio, styles.folioRight, { fontFamily: hand }]} {...hidden}>{right}</Text>
-          <Text style={[styles.at, { fontFamily: hand }]} accessibilityLiveRegion="polite" testID="mech-page-at">{`Open at page ${at}`}</Text>
+          {/* The page it's open at is on its folios; said only to a screen reader. */}
+          <View accessible accessibilityRole="text" accessibilityLabel={`Open at page ${at}`} accessibilityLiveRegion="polite" style={styles.unsaid} testID="mech-page-at" />
         </View>
         <WheelBank alphabet="digits" count={3} width={width} busy={busy} cooldown={0} done={false} submitLabel="Turn to page" onSubmit={turn} onChange={onChange} start={start} status={false} />
       </View>
@@ -108,7 +109,7 @@ const styles = StyleSheet.create({
   flush: { paddingVertical: 0 },
   col: { alignItems: "center", gap: ref.space.sm },
   // Where it's open, written across the head of the page.
-  at: { position: "absolute", left: 14, width: BOOK.w / 2 - 22, top: 9, textAlign: "center", fontSize: 15, lineHeight: 19, color: ENAMEL.ink },
+  unsaid: { position: "absolute", left: 14, top: 9, width: 1, height: 1 },
   folio: { position: "absolute", bottom: 10, fontSize: 15, lineHeight: 18, color: ENAMEL.ink, opacity: 0.75 },
   folioLeft: { left: 20 },
   folioRight: { right: 20 },

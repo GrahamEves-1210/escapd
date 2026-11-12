@@ -70,7 +70,6 @@ function DoorOpen({ width }: { width: number }) {
       <View testID="mech-door-open">
         <Ajar glow={theme.glow} dark={theme.surface} />
       </View>
-      <Line text="The door is open" tone="stamp" />
     </Stage>
   );
 }

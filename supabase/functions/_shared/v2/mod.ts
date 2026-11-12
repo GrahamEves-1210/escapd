@@ -8,7 +8,7 @@ export { applyAction, initialState, renderCard } from "./engine.ts";
 export { slotRefs, validateDefinition } from "./validate.ts";
 export { simulate, type SimMetrics, type SimOptions, type SimReport } from "./simulate.ts";
 export {
-  analyzeInventory, MAX_OBJECTS, MIN_POOL, MIN_SALIENCE, type PlanFailure, type PlanOptions, type PlanResult, planRoom, type PlanSummary,
+  analyzeInventory, type Gadget, GADGETS, MAX_OBJECTS, PLAYABLE, MIN_POOL, MIN_SALIENCE, type PlanFailure, type PlanOptions, type PlanResult, planRoom, type PlanSummary,
   seededRandom, STEP_BAND, THREE_THREAD_POOL, usableObjects,
 } from "./planner.ts";
 export {

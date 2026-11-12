@@ -49,6 +49,21 @@ describe("item icons", () => {
     expect(icon("Torn page")).toBe(ItemIcons.note);
   });
 
+  it("draw the gadgets' things as themselves: what a key was pressed into, the balance and its weights, a music box, a ribbon", () => {
+    expect(icon("Bar of soap")).toBe(ItemIcons.soap);
+    expect(icon("Lump of candle wax")).toBe(ItemIcons.wax);
+    expect(icon("Pocket balance", { kind: "tool", archetype: "Balance" })).toBe(ItemIcons.balance);
+    expect(icon("Pocket balance")).toBe(ItemIcons.balance);
+    for (const stamp of ["▲", "●", "◆", "★"]) expect(icon(`Brass weight ${stamp}`)).toBe(ItemIcons.weight);
+    // A music box is never the box a taken thing is kept in; a typewriter ribbon is never a note.
+    expect(icon("Music box")).toBe(ItemIcons.musicBox);
+    expect(icon("Typewriter ribbon")).toBe(ItemIcons.ribbon);
+    // Their neighbours keep their own.
+    expect(icon("Brass key", { kind: "key" })).toBe(ItemIcons.key);
+    expect(icon("Christening spoon", { kind: "taken" })).toBe(ItemIcons.box);
+    expect(icon("Wax-sealed letter")).toBe(ItemIcons.letter);
+  });
+
   it("has a picture for every icon in the set", async () => {
     for (const Glyph of Object.values(ItemIcons)) await render(<Glyph size={40} />);
   });

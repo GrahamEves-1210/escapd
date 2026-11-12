@@ -16,12 +16,12 @@
 //   - No digits outside {{slots}}: a stray number would read as a clue.
 //   - Choices are deterministic from the caller's `pick` (a seeded stream).
 import type { ObjectType } from "./taxonomy.ts";
-import type { Mode, OrderRule, SlotKind, TraceKind } from "./types.ts";
+import type { Mode, OrderRule, SlotKind, TraceHand, TraceKind, TracePattern, TraceSize, TraceTread } from "./types.ts";
 
 export type Pick = <T>(xs: readonly T[]) => T;
 
 /** Where a card's writing was found, which decides how it reads. */
-export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror" | "rub" | "lens" | "fold";
+export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror" | "rub" | "lens" | "fold" | "tune" | "ribbon" | "phone";
 
 export interface Frame { title: string; lead: string }
 const f = (title: string, lead: string): Frame => ({ title, lead });
@@ -43,7 +43,6 @@ export const MODE_COPY: Record<Mode, {
   objective: (exit: string) => string;
   briefs: ((f: BriefFacts) => string)[];
   endings: string[];
-  beat: string;
 }> = {
   noir: {
     series: "A Detective Noir Mystery",
@@ -56,7 +55,6 @@ export const MODE_COPY: Record<Mode, {
       "The last tumbler drops. Cold air, wet streets, a streetlight humming. Whoever locked you in is going to need a better lock.",
       "The lock gives with a tired click. You step out into the night and don't look back. Somebody owes you an explanation.",
     ],
-    beat: "The tumblers fall into line.",
   },
   crime_scene: {
     series: "A True Crime Club Mystery",
@@ -69,7 +67,6 @@ export const MODE_COPY: Record<Mode, {
       "The accusation holds. Every piece of evidence lines up behind it. Bag it, tag it, close the file.",
       "Motive, method, opportunity: it all fits, and only one way. The case is closed.",
     ],
-    beat: "The accusation holds.",
   },
   paranormal: {
     series: "A Moonlit Mystery",
@@ -82,7 +79,6 @@ export const MODE_COPY: Record<Mode, {
       "The last offering settles. The air warms, the whispering stops, and the way out opens as if it was never shut.",
       "Something sighs, very close, and then nothing. The room is only a room again. You're free to go.",
     ],
-    beat: "The air goes still.",
   },
 };
 
@@ -107,23 +103,26 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
       f("Betting slip", "A losing horse at long odds. Scrawled across the back: {v}"),
     ],
     read: [
-      f("Pencil note", "Somebody's been here before you. Underlined twice, in pencil: {v}"),
+      f("Pencil note", "Underlined twice, in soft pencil: {v}"),
       f("Margin note", "Between the printed lines, in a different hand: {v}"),
     ],
     pages: [
       f("Photograph", "Marking the place, a photograph, face down. On the back: {v}"),
       f("Bar bill", "Folded in at that page, a bar bill. Across the total, in pencil: {v}"),
     ],
-    lamp: [f("Writing in the light", "Writing that wasn't there a minute ago, raised in the glare: {v}")],
-    uv: [f("Invisible ink", "Somebody's invisible ink, glowing violet now: {v}")],
-    radio: [f("Radio", "Through the static, a man's voice repeats it, flat and tired: {v}")],
-    assembled: [f("Taped note", "Edge to edge, the two halves finally say something: {v}")],
-    decoded: [f("Decoded note", "Line up the ring and the gibberish turns plain: {v}")],
-    heat: [f("Lemon-juice letter", "Held to the warm bulb, brown letters creep up out of the blank paper, an old spy's trick: {v}")],
-    mirror: [f("Mirror writing", "In the glass the backwards hand turns plain, and somebody's careful secret with it: {v}")],
-    rub: [f("Pencil rubbing", "Shaded over with the pencil, the dents of the torn-off sheet stand out white in the grey: {v}")],
-    lens: [f("Through the red lens", "Through the red gel the red letters wash away, and what's left reads: {v}")],
-    fold: [f("Folded page", "Folded so A meets B, the two edges make one line: {v}")],
+    lamp: [f("Writing in the light", "{v}")],
+    uv: [f("Invisible ink", "{v}")],
+    radio: [f("Radio", "A man's voice through the static, flat and tired: {v}")],
+    assembled: [f("Taped note", "{v}")],
+    decoded: [f("Decoded note", "{v}")],
+    heat: [f("Lemon-juice letter", "{v}")],
+    mirror: [f("Mirror writing", "{v}")],
+    rub: [f("Pencil rubbing", "{v}")],
+    lens: [f("Through the red lens", "{v}")],
+    fold: [f("Folded page", "{v}")],
+    tune: [f("Music box", "{v}")],
+    ribbon: [f("Typewriter ribbon", "{v}")],
+    phone: [f("Telephone", "A woman's voice on the line, low and quick: {v}")],
   },
   crime_scene: {
     found: [
@@ -133,20 +132,23 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
       f("Index card", "Filed out of order. In the middle, in capitals: {v}"),
     ],
     read: [
-      f("Margin note", "Circled in red, as if someone wanted it found: {v}"),
+      f("Margin note", "Circled in red: {v}"),
       f("Margin note", "Pencilled in the margin and circled twice: {v}"),
     ],
     pages: [f("Dry-cleaning tag", "Pressed flat at that page, a dry-cleaning tag. Inked on it: {v}")],
-    lamp: [f("Indented writing", "Raking light picks out an indentation in the surface: {v}")],
-    uv: [f("Invisible ink", "Under UV a latent trace lights up, written in something clear: {v}")],
-    radio: [f("Police radio", "Between stations, the police band crackles. The dispatcher repeats: {v}")],
-    assembled: [f("Taped statement", "Fitted edge to edge, the torn statement gives a clean read: {v}")],
-    decoded: [f("Decoded note", "With the ring set, the cipher resolves: {v}")],
-    heat: [f("Lemon-juice note", "Warmed at the lamp, writing somebody kept from prying eyes browns into view: {v}")],
-    mirror: [f("Mirror writing", "Held up to the mirror, the backwards note reads plainly: {v}")],
-    rub: [f("Pencil rubbing", "Under the graphite, what was written on the missing sheet comes up white: {v}")],
-    lens: [f("Through the red lens", "Under the red filter the overprint drops out, leaving one clear line: {v}")],
-    fold: [f("Folded page", "Folded so A meets B, the half-words close up into one line: {v}")],
+    lamp: [f("Indented writing", "{v}")],
+    uv: [f("Invisible ink", "{v}")],
+    radio: [f("Police radio", "The police band, between stations. The dispatcher: {v}")],
+    assembled: [f("Taped statement", "{v}")],
+    decoded: [f("Decoded note", "{v}")],
+    heat: [f("Lemon-juice note", "{v}")],
+    mirror: [f("Mirror writing", "{v}")],
+    rub: [f("Pencil rubbing", "{v}")],
+    lens: [f("Through the red lens", "{v}")],
+    fold: [f("Folded page", "{v}")],
+    tune: [f("Music box", "{v}")],
+    ribbon: [f("Typewriter ribbon", "{v}")],
+    phone: [f("Telephone", "The exchange operator, reading back a message left for this number: {v}")],
   },
   paranormal: {
     found: [
@@ -157,19 +159,22 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     ],
     read: [
       f("Faded writing", "The ink has gone brown, but this much is still legible: {v}"),
-      f("Faded writing", "Words you're sure weren't there when you first looked: {v}"),
+      f("Faded writing", "In a small, careful hand, pressed hard: {v}"),
     ],
-    pages: [f("Pressed lily", "The pages fall open there by themselves. Beside a pressed lily, in the gutter: {v}")],
-    lamp: [f("Writing in the light", "When the light comes on, letters breathe up through the surface: {v}")],
-    uv: [f("Finger-writing", "Under the violet light, something traced by a fingertip: {v}")],
-    radio: [f("Radio", "Under the hiss, a child's voice, counting slowly: {v}")],
-    assembled: [f("Mended page", "Pressed together, the torn edges knit. It reads: {v}")],
-    decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself: {v}")],
-    heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret letters brown in, one by one: {v}")],
-    mirror: [f("Mirror writing", "In the glass the child's back-to-front letters come right: {v}")],
-    rub: [f("Pencil rubbing", "Under the soft pencil, small pressed letters come up white, one by one: {v}")],
-    lens: [f("Through the red lens", "Through the red glass the tangle clears, and the letters that stay say: {v}")],
-    fold: [f("Folded page", "Folded so A meets B, the broken letters join: {v}")],
+    pages: [f("Pressed lily", "Beside a pressed lily, in the gutter of the page: {v}")],
+    lamp: [f("Writing in the light", "{v}")],
+    uv: [f("Finger-writing", "{v}")],
+    radio: [f("Radio", "A child's voice under the hiss, counting slowly: {v}")],
+    assembled: [f("Mended page", "{v}")],
+    decoded: [f("Decoded note", "{v}")],
+    heat: [f("Lemon-juice page", "{v}")],
+    mirror: [f("Mirror writing", "{v}")],
+    rub: [f("Pencil rubbing", "{v}")],
+    lens: [f("Through the red lens", "{v}")],
+    fold: [f("Folded page", "{v}")],
+    tune: [f("Music box", "{v}")],
+    ribbon: [f("Typewriter ribbon", "{v}")],
+    phone: [f("Telephone", "A child's voice down the line, very far away: {v}")],
   },
 };
 
@@ -203,6 +208,10 @@ const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
     ],
     offset: [f("Pocket diary", "Every page blank but one, and on it, circled: {v}")],
     cipher: [f("Telegram", "Delivered, never opened until now. The whole message: {v}")],
+    phone: [
+      f("Matchbook", "From the Blue Lantern, two matches left. Inside the flap, in lipstick, a telephone number: {v}"),
+      f("Calling card", "No name on it, only a line of print: Night line {v}"),
+    ],
   },
   crime_scene: {
     freq: [
@@ -221,6 +230,10 @@ const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
     ],
     offset: [f("Diary page", "The victim's diary, one entry only, and only this: {v}")],
     cipher: [f("Postcard", "No picture, no signature. Just one line in capitals: {v}")],
+    phone: [
+      f("Message pad", "The pad kept by the telephone. The last message taken down: Please ring back, {v}"),
+      f("Address book", "The victim's, open at a page with one entry and no name: {v}"),
+    ],
   },
   paranormal: {
     freq: [
@@ -238,7 +251,27 @@ const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
     ],
     offset: [f("Diary page", "A girl's diary, one line on an empty page: {v}")],
     cipher: [f("Burnt letter", "Only one line survived the fire: {v}")],
+    phone: [
+      f("Visiting card", "Black-edged, the name rubbed away. Under it, in a child's pencil: {v}"),
+      f("Wall calendar leaf", "A torn-off day. On the back, in a round hand: ring {v}"),
+    ],
   },
+};
+
+/** Where a safe's three numbers are written down: by whoever couldn't trust their memory with them. */
+export const DIAL_DOCS: Record<Mode, Frame[]> = {
+  noir: [
+    f("Matchbook", "From the Blue Lantern. Inside the flap, three numbers in a careful hand: {v}"),
+    f("Betting slip", "A losing horse at long odds. Along the bottom edge, small and neat: {v}"),
+  ],
+  crime_scene: [
+    f("Diary page", "The victim's pocket diary, the last page. No words, only: {v}"),
+    f("Locksmith's card", "From the firm that fitted the safe. Pencilled on the back by the fitter: {v}"),
+  ],
+  paranormal: [
+    f("Flyleaf", "Torn from a prayer book. Inside the cover, in faded ink: {v}"),
+    f("Sampler", "A child's cross-stitch, unfinished. The last row, in black thread: {v}"),
+  ],
 };
 
 /**
@@ -287,46 +320,6 @@ export const DURATIONS: [number, string][] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Where a card was found: a sentence before it, by what held it
-// ---------------------------------------------------------------------------
-/** The object a card was found in, under, behind or on. */
-export interface Place { archetype: string; variant?: string; type: ObjectType; label: string }
-
-const PLACES: { when: (p: Place) => boolean; lines: string[] }[] = [
-  { when: (p) => p.archetype === "Drawer" && p.variant === "drawer", lines: ["Pushed to the back of the drawer.", "Under the drawer's paper lining.", "At the back of the drawer, under a tangle of string."] },
-  { when: (p) => p.archetype === "Drawer" && p.type === "wardrobe", lines: ["In the inside pocket of a coat hanging in the {l}.", "In a shoebox on the floor of the {l}."] },
-  { when: (p) => p.archetype === "Drawer" && ["cabinet", "sideboard", "tv_stand", "filing_cabinet"].includes(p.type), lines: ["Taped inside the door of the {l}.", "Behind everything on the bottom shelf of the {l}."] },
-  { when: (p) => p.archetype === "Drawer" && ["chest", "trunk", "suitcase", "box", "toolbox", "safe"].includes(p.type), lines: ["Under the lining of the {l}.", "At the bottom of the {l}, under everything else."] },
-  { when: (p) => p.archetype === "Drawer" || p.archetype === "CombinationLock", lines: ["The only thing inside the {l}.", "Inside the {l}, at the very back."] },
-  { when: (p) => p.archetype === "LiftUnder" && ["pillow", "cushion"].includes(p.type), lines: ["Under the {l}, flattened by its weight.", "Slipped under the {l}."] },
-  { when: (p) => p.archetype === "LiftUnder" && ["rug", "blanket", "towel", "curtain"].includes(p.type), lines: ["Flat under the {l}.", "Folded small under the {l}."] },
-  { when: (p) => p.archetype === "LiftUnder" && ["plant_pot", "potted_plant"].includes(p.type), lines: ["Under the {l}, stuck to the saucer.", "Under the {l}, in a ring of dried soil."] },
-  { when: (p) => p.archetype === "LiftUnder" && ["basket", "bag"].includes(p.type), lines: ["At the bottom of the {l}.", "Under everything in the {l}."] },
-  { when: (p) => p.archetype === "LiftUnder", lines: ["Folded small under the {l}.", "Under the {l}."] },
-  { when: (p) => p.archetype === "FrameTilt" && p.type === "mirror", lines: ["Wedged behind the {l}.", "Taped to the back of the {l}."] },
-  { when: (p) => p.archetype === "FrameTilt" && p.type === "poster", lines: ["Tucked behind the {l}.", "Taped behind the {l}, at the corner."] },
-  { when: (p) => p.archetype === "FrameTilt", lines: ["Taped to the back of the {l}.", "Tucked behind the {l}'s frame."] },
-  { when: (p) => p.archetype === "ClockHands", lines: ["Folded small behind the {l}'s face.", "Behind the {l}'s face, against the works."] },
-  { when: (p) => p.archetype === "Readable" && ["bookshelf", "shelf"].includes(p.type), lines: ["Tucked between two books on the {l}.", "Pushed in behind a row of books on the {l}."] },
-  { when: (p) => p.archetype === "Readable" && ["book", "book_stack", "magazine"].includes(p.type), lines: ["Slipped inside the cover of the {l}.", "Used as a bookmark in the {l}."] },
-  { when: (p) => p.archetype === "Readable" && p.type === "notebook", lines: ["Tucked into the back of the {l}.", "Between the last used pages of the {l}."] },
-  { when: (p) => p.archetype === "Readable" && ["calendar", "noticeboard"].includes(p.type), lines: ["Pinned to the {l}.", "Pinned to the {l}, half under another page."] },
-  { when: (p) => p.archetype === "Readable", lines: ["Tucked into the corner of the {l}.", "Pinned to the {l}."] },
-];
-
-/**
- * The sentence that says where a card was: "Pushed to the back of the drawer." `avoid`: labels a card
- * must not name (the objects its value is for): a place line that would is written without its label.
- */
-export function placeLine(p: Place, pick: Pick, avoid: string[] = []): string {
-  const line = pick(PLACES.find((x) => x.when(p))?.lines ?? [HIDDEN]);
-  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const names = avoid.some((a) => a && new RegExp(`\\b${esc(a)}\\b`, "i").test(p.label));
-  return line.includes("{l}") && names ? HIDDEN : line.replace(/\{l\}/g, p.label);
-}
-const HIDDEN = "Hidden where nobody would think to look.";
-
-// ---------------------------------------------------------------------------
 // Cards: several lines (crime-scene evidence, ritual fragments)
 // ---------------------------------------------------------------------------
 const LIST: Record<Mode, Record<Medium, Frame[]>> = {
@@ -334,16 +327,19 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     found: [f("Notes", "Somebody's notes, in a cramped hand:")],
     read: [f("Notes", "Between the printed lines, in a different hand:")],
     pages: [f("Folded sheet", "A folded sheet marks the place:")],
-    lamp: [f("Writing in the light", "Raised in the glare:")],
-    uv: [f("Invisible ink", "Glowing violet:")],
-    radio: [f("Radio", "Through the static:")],
-    assembled: [f("Taped note", "Edge to edge, the halves read:")],
-    decoded: [f("Decoded note", "Plain at last:")],
-    heat: [f("Lemon-juice letter", "Held to the warm bulb, brown writing creeps up out of the blank paper:")],
-    mirror: [f("Mirror writing", "In the glass the backwards hand turns plain:")],
-    rub: [f("Pencil rubbing", "Shaded over, the dents of the torn-off sheet stand out white in the grey:")],
-    lens: [f("Through the red lens", "Through the red gel the red letters wash away, and what's left reads:")],
-    fold: [f("Folded page", "Folded so A meets B, the two edges make one message:")],
+    lamp: [f("Writing in the light", "")],
+    uv: [f("Invisible ink", "")],
+    radio: [f("Radio", "A man's voice through the static:")],
+    assembled: [f("Taped note", "")],
+    decoded: [f("Decoded note", "")],
+    heat: [f("Lemon-juice letter", "")],
+    mirror: [f("Mirror writing", "")],
+    rub: [f("Pencil rubbing", "")],
+    lens: [f("Through the red lens", "")],
+    fold: [f("Folded page", "")],
+    tune: [f("Music box", "")],
+    ribbon: [f("Typewriter ribbon", "")],
+    phone: [f("Telephone", "A woman's voice on the line, low and quick:")],
   },
   crime_scene: {
     found: [
@@ -353,16 +349,19 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     ],
     read: [f("Inspector's notebook", "Notes from the first night's enquiries, in pencil:")],
     pages: [f("Case papers", "Folded in at that page, a few sheets from the case file:")],
-    lamp: [f("Indented writing", "Raking light raises writing pressed through from a sheet that's gone, the inspector's notes:")],
-    uv: [f("Invisible ink", "Under UV, notes in invisible ink light up, somebody's private copy of the file:")],
-    radio: [f("Police radio", "Between stations, the police band. The dispatcher reads out the night's checks:")],
-    assembled: [f("Taped statement", "Taped back together, the statement lists what was checked:")],
-    decoded: [f("Decoded note", "With the ring set, the coded notes read:")],
-    heat: [f("Lemon-juice note", "Warmed at the lamp, the inspector's private copy of the file browns into view, written in lemon juice so no suspect could read it over his shoulder:")],
-    mirror: [f("Mirror writing", "Held up to the mirror, the inspector's backwards notes read plainly, his habit for anything a suspect might glimpse:")],
-    rub: [f("Pencil rubbing", "Under the graphite, the inspector's notes from the missing sheet come up white:")],
-    lens: [f("Through the red lens", "Under the red filter the overprint drops out, leaving the inspector's own notes:")],
-    fold: [f("Folded page", "Folded so A meets B, the half-words close up into the inspector's notes:")],
+    lamp: [f("Inspector's notes, pressed through", "")],
+    uv: [f("Inspector's notes, pressed through", "")],
+    radio: [f("Police radio", "The police band, between stations. The dispatcher reads out the night's checks:")],
+    assembled: [f("Taped statement", "")],
+    decoded: [f("Decoded note", "")],
+    heat: [f("Lemon-juice note", "")],
+    mirror: [f("Mirror writing", "")],
+    rub: [f("Pencil rubbing", "")],
+    lens: [f("Through the red lens", "")],
+    fold: [f("Folded page", "")],
+    tune: [f("Music box", "")],
+    ribbon: [f("Typewriter ribbon", "")],
+    phone: [f("Telephone", "The exchange operator, reading back messages left for this number:")],
   },
   paranormal: {
     found: [
@@ -372,73 +371,91 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
       f("Diary page", "From a girl's diary: Mama says we must do it in the right order, or it won't rest. She wrote down what she knew:"),
       f("Séance notes", "Notes from a séance held in this room, the pencil shaking:"),
     ],
-    read: [f("Faded writing", "Words that weren't there when you first looked:")],
-    pages: [f("Pressed lily", "The pages fall open there by themselves. In the gutter:")],
-    lamp: [f("Writing in the light", "When the light comes on, words breathe up through the surface:")],
-    uv: [f("Finger-writing", "Under the violet light, something traced by a fingertip:")],
-    radio: [f("Radio", "Under the hiss, a child's voice, reciting:")],
-    assembled: [f("Mended page", "Pressed together, the torn edges knit. It reads:")],
-    decoded: [f("Decoded note", "Turn the ring and the nonsense rearranges itself:")],
-    heat: [f("Lemon-juice page", "Close to the warm bulb, a child's secret writing browns in:")],
-    mirror: [f("Mirror writing", "In the glass the back-to-front letters come right:")],
-    rub: [f("Pencil rubbing", "Under the soft pencil, small pressed letters come up white:")],
-    lens: [f("Through the red lens", "Through the red glass the tangle clears, and the letters that stay say:")],
-    fold: [f("Folded page", "Folded so A meets B, the broken letters join:")],
+    read: [f("Faded writing", "In a small, careful hand, pressed hard:")],
+    pages: [f("Pressed lily", "Beside a pressed lily, in the gutter of the page:")],
+    lamp: [f("Writing in the light", "")],
+    uv: [f("Finger-writing", "")],
+    radio: [f("Radio", "A child's voice under the hiss, reciting:")],
+    assembled: [f("Mended page", "")],
+    decoded: [f("Decoded note", "")],
+    heat: [f("Lemon-juice page", "")],
+    mirror: [f("Mirror writing", "")],
+    rub: [f("Pencil rubbing", "")],
+    lens: [f("Through the red lens", "")],
+    fold: [f("Folded page", "")],
+    tune: [f("Music box", "")],
+    ribbon: [f("Typewriter ribbon", "")],
+    phone: [f("Telephone", "A child's voice down the line, very far away:")],
   },
 };
 
 /**
  * A card's title and text: `values` are the value phrases (each with its {{slot}}); `kind`: a lone
- * value's kind; `doc`: the document a lone value is written on (a time's ticket); `place`: where it was
- * found, a sentence put first. A lone value of a kind with documents, found or read, is on one of them.
+ * value's kind; `doc`: the document a lone value is written on (a time's ticket). A lone value of a kind
+ * with documents, found or read, is on one of them. Writing that came to light (under a lamp, in a
+ * mirror, taped together) is only the writing: the player watched it appear.
  */
-export function writeCard(
-  mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind, doc?: Frame, place?: string,
-): { title: string; text: string } {
+export function writeCard(mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind, doc?: Frame): { title: string; text: string } {
   const docs = !list && (medium === "found" || medium === "read") ? (doc ? [doc] : kind ? DOCS[mode][kind as DocKind] ?? [] : []) : [];
   const frame = pick(docs.length ? docs : (list ? LIST : INLINE)[mode][medium]);
-  const at = place ? `${place} ` : "";
-  if (list) return { title: frame.title, text: `${at}${frame.lead}\n${values.join("\n")}` };
+  if (list) return { title: frame.title, text: [...(frame.lead ? [frame.lead] : []), ...values].join("\n") };
   const v = values.join(", ");
   // A full stop after the value only when the value ends the sentence ("MEET ME AT {v} STOP" needs none).
   const end = frame.lead.endsWith("{v}") && !/[.!?"]$/.test(v) ? "." : "";
-  return { title: frame.title, text: at + frame.lead.replace("{v}", `${v}${end}`) };
+  return { title: frame.title, text: frame.lead.replace("{v}", `${v}${end}`) };
 }
 
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
-export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame; pad: Frame; pencil: Frame; printed: Frame; lens: Frame; fold: Frame }> = {
+export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame; pad: Frame; pencil: Frame; printed: Frame; lens: Frame; fold: Frame;
+  musicBox: Frame; ribbon: Frame; soap: string; balance: Frame; weight: Frame }> = {
   noir: {
     key: "Brass key", halves: ["Torn note (left)", "Torn note (right)"], joined: "Taped note", torch: "UV flashlight", wheel: "Cipher wheel",
     // What each says when found is the clue to how it reads (no value on it yet).
     letter: f("Blank letter", "Good notepaper, folded twice, with nothing written on it. It smells faintly of lemons."),
-    backwards: f("Backwards note", "One line in a looping hand, every letter written back to front. You can't read it straight."),
-    pad: f("Notepad", "A hotel notepad, the top sheet torn clean off. The page beneath looks blank, but tilt it and the dents of somebody's hard pen catch the light. Soft pencil rubbed over them would bring them up."),
-    pencil: f("Soft pencil", "A soft pencil, chewed at one end and worn to a stub. Good for shading over paper somebody else's pen has dented."),
+    backwards: f("Backwards note", "One line in a looping hand, every letter written back to front."),
+    pad: f("Notepad", "A hotel notepad, the top sheet torn clean off. The page beneath looks blank, but tilt it and the dents of somebody's hard pen catch the light."),
+    pencil: f("Soft pencil", "A soft pencil, chewed at one end and worn to a stub."),
     printed: f("Printed card", "A novelty card from a spy kit, printed in a jumble of red and blue letters that spell nothing. The small print says: see it through red."),
-    lens: f("Red lens", "A square of red gel in a cardboard frame, from the same sort of spy kit. Held over red-and-blue print, it washes the red away."),
+    lens: f("Red lens", "A square of red gel in a cardboard frame, the kind that comes in a spy kit."),
     fold: f("Fold-in page", "A page torn from a magazine, with half a line of writing down each edge and two small marks, A and B. The caption says: fold so A meets B."),
+    // What each is; nothing about what to do with it.
+    musicBox: f("Music box", "A small music box with its lid gone, a brass cylinder under a comb of six teeth. Each tooth is stamped with a mark."),
+    ribbon: f("Typewriter ribbon", "A spool of black typewriter ribbon, run through once and wound back."),
+    soap: "Bar of soap",
+    balance: f("Pocket balance", "A jeweller's pocket balance in a worn case, two pans on a brass beam. Engraved inside the lid: the heaviest leads."),
+    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
   },
   crime_scene: {
     key: "Small key", halves: ["Torn statement (left)", "Torn statement (right)"], joined: "Taped statement", torch: "UV flashlight", wheel: "Cipher wheel",
     letter: f("Blank letter", "A sheet of good paper, blank, but stiff in places, as if something clear dried on it. It smells of lemons."),
-    backwards: f("Backwards note", "Somebody wrote this backwards, letter by letter, as if it was only ever meant to be read in a mirror."),
-    pad: f("Notepad", "The telephone pad, its top sheet torn off. The next page looks blank, but it is dented where a pen pressed through. A soft pencil shaded over it would show what was written."),
-    pencil: f("Soft pencil", "A soft pencil stub. Shaded lightly over dented paper, it shows what a pen wrote on the sheet above."),
-    printed: f("Printed card", "An index card overprinted in red and blue type, one line on top of another, impossible to read. Somebody meant it to be read through a red filter."),
-    lens: f("Red lens", "A red filter from a photographer's kit. Laid over print in red and blue, it drops the red out and leaves the rest."),
-    fold: f("Fold-in page", "A sheet of typing paper with half-words down both edges, one edge pencilled A and the other B. Folded so A meets B, the halves should join."),
+    backwards: f("Backwards note", "A line of capitals, every letter set down back to front, right to left."),
+    pad: f("Notepad", "The telephone pad, its top sheet torn off. The next page looks blank, but it is dented where a pen pressed through."),
+    pencil: f("Soft pencil", "A soft pencil stub from a desk tidy, the lead worn flat on one side."),
+    printed: f("Printed card", "An index card overprinted in red and blue type, one line on top of another."),
+    lens: f("Red lens", "A red filter from a photographer's kit, in its brass ring."),
+    fold: f("Fold-in page", "A sheet of typing paper with half-words down both edges, one edge pencilled A and the other B."),
+    musicBox: f("Music box", "A small music box from the mantel, a brass cylinder under a comb of six teeth. Each tooth is stamped with a mark."),
+    ribbon: f("Typewriter ribbon", "The ribbon from a portable typewriter, run through once and wound back to its start."),
+    soap: "Bar of soap",
+    balance: f("Pocket balance", "A chemist's pocket balance in its case, two pans on a brass beam. Engraved inside the lid: the heaviest leads."),
+    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
   },
   paranormal: {
     key: "Iron key", halves: ["Torn page (left)", "Torn page (right)"], joined: "Mended page", torch: "UV flashlight", wheel: "Cipher wheel",
     letter: f("Blank page", "A page from a child's exercise book, empty, the paper stiff where something was painted on and dried. It smells of lemons."),
     backwards: f("Backwards note", "Small letters, every one back to front, the way a child writes when she's playing at secrets."),
-    pad: f("Notepad", "A child's drawing pad, the top sheet torn away. The page left behind looks blank, but it was pressed hard: you can feel letters with a fingertip. A soft pencil rubbed across it would show them."),
-    pencil: f("Soft pencil", "A stub of soft drawing pencil, the kind for shading. Rubbed over dented paper it leaves the dents white."),
+    pad: f("Notepad", "A child's drawing pad, the top sheet torn away. The page left behind looks blank, but it was pressed hard: there are letters under a fingertip."),
+    pencil: f("Soft pencil", "A stub of soft drawing pencil, the kind for shading."),
     printed: f("Printed card", "A magic-lantern card printed in red and blue, the letters tangled together so nothing can be read. Along its edge: look through the red glass."),
-    lens: f("Red lens", "A round of red glass from a magic lantern, chipped at the rim. Whatever is printed in red vanishes behind it."),
-    fold: f("Fold-in page", "A page from a child's puzzle book, with broken letters down each side, one edge marked A and the other B. Fold it so A meets B and the letters should join."),
+    lens: f("Red lens", "A round of red glass from a magic lantern, chipped at the rim."),
+    fold: f("Fold-in page", "A page from a child's puzzle book, with broken letters down each side, one edge marked A and the other B. Printed underneath: fold A to B."),
+    musicBox: f("Music box", "A child's music box, the dancer snapped off its lid. Under the comb of six teeth, each stamped with a mark, the cylinder is still wound."),
+    ribbon: f("Typewriter ribbon", "A typewriter ribbon on its spool, dry as a leaf, run through once."),
+    soap: "Lump of candle wax",
+    balance: f("Pocket balance", "An apothecary's pocket balance in a cracked case, two pans on a brass beam. Scratched inside the lid: the heaviest leads."),
+    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
   },
 };
 
@@ -475,14 +492,13 @@ export const SUSPECTS = [
   "June Harrow", "Otto Brandt", "Mabel Quill", "Edmund Fairley",
 ];
 
-/** What rules one option out: a document, and the forensics reports on UV traces that could ({where}: where it was lifted). */
+/** What rules one option out: an in-world document that states facts and never a conclusion. */
 export interface Evidence {
   /** Alone on a card. */
   title: string;
   text: string;
   /** One line of a bundle (an evidence envelope, the inspector's notebook). */
   line: string;
-  traces: Partial<Record<TraceKind, string>>;
 }
 
 /** Alibis, read against the time of death ({{s}}: the suspect). */
@@ -510,61 +526,37 @@ export const PARTIAL_ALIBIS: Frame[] = [
 
 /** What narrows the time of death to before half past eleven: a fact added to another card, later. */
 export const NARROWED_DEATH: string[] = [
-  "Pinned on later, from the coroner: the victim's wristwatch smashed in the fall and stopped at twenty past eleven. \"Close to midnight\" was too generous.",
+  "Pinned on later, from the coroner: the victim's wristwatch smashed in the fall and stopped at twenty past eleven.",
   "Pinned on later, a neighbour's statement: she heard the fall through the wall at a quarter past eleven, just as the news ended, and nothing after it.",
   "Pinned on later, from the landlady: she heard the struggle and the fall at ten past eleven, as she wound the hall clock, and the house was silent after.",
 ];
 
-/** A partial alibi as evidence: the document, or the inspector's copy of it wiped off a surface (UV). */
+/** A partial alibi as evidence: the document. */
 export function partialEvidence(alibi: Frame): Evidence {
-  return {
-    title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}`,
-    traces: { writing: `Writing wiped off {where} but legible under UV: the inspector's own copy of the ${alibi.title.toLowerCase()}. ${alibi.lead}` },
-  };
+  return { title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}` };
 }
 
-/** Forensics on a UV trace that can't be a suspect's ({where}, {{s}}). */
-// Each says first why the trace is the killer's (made in the struggle, at the end), then why the
-// suspect can't have made it: two facts, so the suspect is crossed off by what the report states.
-const SUSPECT_TRACES: Partial<Record<TraceKind, string[]>> = {
-  prints: [
-    "The only fresh prints in the room, lifted from {where}: they were pressed into the face powder spilt in the struggle, so whoever made them was here at the end. A full right hand, every fingertip sharp, pressed down hard. Clipped to the report, a fracture clinic note: {{s}}'s right arm has been in plaster to the knuckles since the weekend.",
-  ],
-  footprints: [
-    "Footprints lifted from {where}, walked through the ink spilt in the struggle, so made by whoever was here at the end: big men's work boots, a long heavy stride, there and back. The shoes taken from {{s}} for comparison are barely half their length.",
-  ],
-  palm: [
-    "A palm print on {where}, in the hand cream knocked over in the struggle, so left by whoever was here at the end. It sits high, above a tall man's head. The statement sheet has {{s}} as the shortest of the three, who needs a stool to reach a top shelf.",
-  ],
-};
-
-export interface OptionEvidence { name: string; title: string; finding: string; traces: Partial<Record<TraceKind, string>> }
+export interface OptionEvidence { name: string; title: string; finding: string }
 
 /** Motives: a document that shows there was nothing to gain that way. */
 export const MOTIVES: OptionEvidence[] = [
   {
     name: "Inheritance", title: "Copy of the will", finding: "Witnessed in the spring, the whole estate goes to the Seamen's Mission. No family member or friend is named anywhere in it.",
-    traces: { writing: "Signed the new will. Every penny to the Seamen's Mission, and not a single name in it but theirs." },
   },
   {
     name: "Gambling debts", title: "Bank book", finding: "The victim's savings book, stamped last week: steady deposits, no loans, no large withdrawals. The bookmaker on the corner says the account was closed years ago, all square.",
-    traces: { writing: "Paid the last of it today and the bookmaker shook my hand. I owe nobody anything, at last." },
   },
   {
     name: "Jealousy", title: "Love letters", finding: "The letters from the wastepaper basket. Every one is signed by the victim's sister, about her own husband, and asks for advice.",
-    traces: { writing: "Told them all at dinner: the letters are my sister's, about her husband, and nothing to do with me." },
   },
   {
     name: "Blackmail", title: "Bank's letter", finding: "The safe-deposit box, opened by the bank this morning: empty but for dust. No photographs, no ledger, no letters, and the register shows nobody has opened it in years.",
-    traces: { writing: "Burned what was in the deposit box, all of it, years ago. Nobody has anything on anybody now." },
   },
   {
     name: "Revenge", title: "Court order", finding: "From years back, settling the old feud: both families signed it and the damages were paid the same week. A warm thank-you card from the other side is filed with it.",
-    traces: { writing: "Lunch with the other family again. The feud is long over; we signed the court's terms and meant every word." },
   },
   {
     name: "Insurance money", title: "Insurer's letter", finding: "The life policy, returned: lapsed last spring for want of a premium and never renewed. It pays nothing to anyone.",
-    traces: { writing: "Let the life policy lapse. Why pay every month for money nobody will ever see?" },
   },
 ];
 
@@ -572,135 +564,91 @@ export const MOTIVES: OptionEvidence[] = [
 export const METHODS: OptionEvidence[] = [
   {
     name: "Poison", title: "Toxicology report", finding: "Blood, stomach contents and the glass by the bed screened for the common poisons and sedatives. Nothing found above trace levels.",
-    traces: {
-      stain: "The splash dried across {where} glows under UV: the drink that was knocked over. Under the inspector's query, \"{{s}}?\", the lab notes it ran the residue twice and found tonic water, gin and nothing else.",
-      prints: "Prints lifted from {where}, where the glass stood: the victim's own, and the glass with them. Under the inspector's query, \"{{s}}?\", the lab has written: the dregs hold gin, tonic and nothing else.",
-    },
   },
   {
     name: "Strangling", title: "Coroner's note", finding: "No ligature furrow and no fingertip bruising at the neck. The hyoid bone is intact and the eyes show no pinpoint bleeding.",
-    traces: {
-      palm: "A palm print on {where}, the victim's own, where they steadied themselves. Clipped to it, the coroner's answer to the inspector's query, \"{{s}}?\": no bruising at the neck, the hyoid bone intact.",
-      prints: "Prints lifted from {where}: the victim's own fingertips, nobody else's. Clipped to them, the coroner's answer to the inspector's query, \"{{s}}?\": no ligature mark, no bruising at the neck, the hyoid bone intact.",
-    },
   },
   {
     name: "A blunt instrument", title: "Coroner's note", finding: "The skull is intact on the X-ray, with no scalp wound and no depressed fracture. The fire irons and the heavy ashtray were swabbed: no blood, hair or fibre.",
-    traces: {
-      prints: "Prints lifted from {where}: the cleaner's, days old, under an even film of dust. Clipped to them, the coroner's answer to the inspector's query, \"{{s}}?\": the skull intact on the X-ray, the scalp unbroken.",
-      stain: "The spatter on {where} glows the dull way spilt coffee does under UV, and the lab confirms coffee. Pinned to it, the coroner's answer to the inspector's query, \"{{s}}?\": the skull intact on the X-ray, no scalp wound anywhere.",
-    },
   },
   {
     name: "A blade", title: "Coroner's note", finding: "No stab or incised wound anywhere on the body. Every knife in the kitchen is accounted for and clean, and the dust in the knife block is undisturbed.",
-    traces: {
-      stain: "The dark spatter on {where} glows the dull way spilt wine does under UV, and the lab confirms red wine. Pinned to it, the coroner's answer to the inspector's query, \"{{s}}?\": no stab or incised wound anywhere on the body.",
-      prints: "Prints lifted from {where}: the cook's, smudged, the same as on the knife block, where the dust hasn't been broken in weeks. The coroner's answer to the inspector's query, \"{{s}}?\": no stab or incised wound anywhere on the body.",
-    },
   },
   {
     name: "A gunshot", title: "Lab report", finding: "No entry or exit wound. Swabs from the hands, the sill and the curtains are negative for firing residue, and the neighbours, up all night with a baby, heard nothing.",
-    traces: {
-      palm: "A palm print on {where}, the victim's, fresh. Swabbed against the inspector's query, \"{{s}}?\": no firing residue on it, on the victim's hands or anywhere in the room.",
-      prints: "Prints lifted from {where}, then swabbed against the inspector's query, \"{{s}}?\": no firing residue on them, on the sill or on the curtains, and no wound on the body that a shot could leave.",
-    },
   },
   {
     name: "A staged fall", title: "Coroner's note", finding: "No grazes, no broken bones, none of the bruising a fall leaves. The dust on the stair treads is unbroken from top to bottom.",
-    traces: {
-      footprints: "Footprints lifted from {where}: one line of slippered steps, unhurried and evenly spaced, with no slide or scuff where anyone lost their footing. The inspector has pencilled one query on the report: \"{{s}}?\"",
-      palm: "A palm print on {where}, flat and steady, nowhere near a fall. Clipped to it, the coroner's answer to the inspector's query, \"{{s}}?\": no grazes, no broken bones, none of the bruising a fall leaves.",
-    },
   },
 ];
 
-/** A suspect's evidence: an alibi document, or a physical mismatch found under UV. */
-export function suspectEvidence(alibi: Frame, pick: Pick): Evidence {
-  const traces = Object.fromEntries(Object.entries(SUSPECT_TRACES).map(([k, v]) => [k, pick(v!)])) as Partial<Record<TraceKind, string>>;
-  return { title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}`, traces };
+/** A suspect's alibi as evidence. */
+export function suspectEvidence(alibi: Frame): Evidence {
+  return { title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}` };
 }
 
 /** A motive's or method's evidence: the inspector's question on top, the finding beneath. */
 export function optionEvidence(o: OptionEvidence): Evidence {
   const lower = o.finding[0].toLowerCase() + o.finding.slice(1);
-  // Each report quotes the inspector's query, so the player knows which line of enquiry it answers.
-  const traces: Partial<Record<TraceKind, string>> = {};
-  for (const [k, t] of Object.entries(o.traces) as [TraceKind, string][]) {
-    traces[k] = k === "writing"
-      ? `Writing pressed through onto {where} from a sheet that's gone, legible under UV. In the victim's hand, under the heading "{{s}}?": ${t}`
-      : t;
-  }
   return {
     title: o.title,
     text: `The inspector's query, pencilled on top: "{{s}}?" ${o.finding}`,
     line: `${o.title}, with the inspector's query pencilled on top, "{{s}}?": ${lower}`,
-    traces,
   };
 }
 
 // ---------------------------------------------------------------------------
-// UV traces: what they're called, what the report on them says
+// Crime scene: a trace on the photo, compared with a document about a suspect
+// ---------------------------------------------------------------------------
+// The trace is drawn (footprints of a size and tread, fingerprints of a pattern, a threat on the wall in
+// a certain hand); the document states the same kind of fact about one suspect, and the two don't match.
+// Nothing says so: the player sets one beside the other. `words`: the document's load-bearing words,
+// which a rewrite must keep.
+const SIZE_WORDS: Record<TraceSize, [string, string]> = {
+  small: ["a narrow shoe, ladies' fours", "fours"], medium: ["men's eights", "eights"], large: ["a big boot, men's twelves", "twelves"],
+};
+const TREAD_WORDS: Record<Exclude<TraceTread, "bare">, [string, string]> = {
+  bars: ["ridged soles, the ridges running straight across", "ridges"], zigzag: ["rubber soles cut in a zigzag", "zigzag"],
+  rings: ["crepe soles stamped with rings", "rings"],
+};
+const PATTERN_WORDS: Record<TracePattern, [string, string]> = {
+  whorl: ["whorls on every finger, each a tight spiral", "whorls"], loop: ["plain loops on every finger, all opening the same way", "loops"],
+  arch: ["low arches on every finger, no loop or whorl among them", "arches"],
+};
+const HAND_WORDS: Record<TraceHand, [string, string]> = {
+  "left-slant": ["a joined hand that leans hard to the left", "left"], "right-slant": ["a joined hand that leans to the right", "right"],
+  block: ["upright capitals, each letter set down on its own", "capitals"],
+};
+
+/** What a comparison document says of a suspect: the attributes a trace of that kind shows. */
+export type Shows = { size?: TraceSize; tread?: TraceTread; pattern?: TracePattern; hand?: TraceHand };
+
+/** The document about a suspect ({{s}}) that a trace of `kind` is compared with, and the words it must keep. */
+export function comparisonDoc(kind: "footprints" | "prints" | "writing", shows: Shows): { evidence: Evidence; words: string[] } {
+  const doc = (title: string, text: string, words: string[]) => ({ evidence: { title, text, line: `${title}: ${text}` }, words });
+  if (kind === "footprints") {
+    const [size, sw] = SIZE_WORDS[shows.size ?? "medium"], [tread, tw] = TREAD_WORDS[(shows.tread === "bare" ? undefined : shows.tread) ?? "bars"];
+    return doc("Cobbler's ticket", `{{s}}, one pair left for resoling and collected the same week, the only outdoor pair on the account: ${size}, ${tread}.`, [sw, tw]);
+  }
+  if (kind === "prints") {
+    const [pattern, pw] = PATTERN_WORDS[shows.pattern ?? "arch"];
+    return doc("Police ten-card", `{{s}}, fingerprinted at the station that night. Both hands: ${pattern}.`, [pw]);
+  }
+  const [hand, hw] = HAND_WORDS[shows.hand ?? "block"];
+  return doc("Handwriting sample", `{{s}}, asked at the station to copy out a line: ${hand}, the same on every one of a dozen tries.`, [hw]);
+}
+
+/** What a threat on a crime-scene wall says (it holds no answer and names no motive): public, drawn in its hand. */
+export const THREATS = ["You were warned.", "Not another word.", "This is the last time.", "I told you I would come."];
+
+// ---------------------------------------------------------------------------
+// UV traces: what they're called (they're drawn, never reported on)
 // ---------------------------------------------------------------------------
 /** What the player calls a trace (plain words). */
 export const TRACE_LABELS: Record<Mode, Record<TraceKind, string>> = {
   noir: { prints: "Fingerprints", palm: "Handprint", writing: "Invisible writing", stain: "Bourbon stain", footprints: "Wet footprints" },
   crime_scene: { prints: "Fingerprints", palm: "Palm print", writing: "Wiped-off writing", stain: "Splash stain", footprints: "Footprints" },
   paranormal: { prints: "Fingermarks", palm: "Small handprints", writing: "Finger-writing", stain: "Wax drips", footprints: "Bare footprints" },
-};
-
-/** The report's title, by trace. */
-export const TRACE_REPORTS: Record<Mode, Record<TraceKind, string>> = {
-  noir: { prints: "Lab slip", palm: "Lab slip", writing: "Lab slip", stain: "Lab slip", footprints: "Lab slip" },
-  crime_scene: { prints: "Fingerprint report", palm: "Palm print report", writing: "Handwriting report", stain: "Stain analysis", footprints: "Footprint report" },
-  paranormal: { prints: "Fingermarks", palm: "Small handprints", writing: "Finger-writing", stain: "Wax drips", footprints: "Bare footprints" },
-};
-
-/** The beat when the UV light finds one ({where}). */
-export const TRACE_BEATS: Record<TraceKind, string> = {
-  prints: "Fingerprints glow on {where}.",
-  palm: "Handprints glow on {where}.",
-  writing: "Writing glows on {where}.",
-  stain: "A stain glows on {where}.",
-  footprints: "Footprints glow across {where}.",
-};
-
-/** Reports that carry values (noir, paranormal; a crime-scene lock code): a lead ending in ":" before the value. */
-export const TRACE_VALUE: Record<Mode, Partial<Record<TraceKind, string[]>>> = {
-  noir: {
-    writing: [
-      "Invisible ink on {where}, the drugstore kind that only shows under UV. A hurried hand, slanting left:",
-      "Written on {where} in something clear that dried invisible, glowing violet now. In capitals, pressed hard:",
-    ],
-    stain: ["A splash of bourbon dried on {where}, glowing under UV. Somebody wrote in it with a wet finger before it dried:"],
-    prints: ["Fingerprints in face powder on {where}, a woman's, small and quick. Drawn in the powder beside them with a fingertip:"],
-  },
-  crime_scene: {
-    writing: ["Writing wiped off {where} but legible under UV: the inspector's own note to the next officer on the case, pressed hard:"],
-    prints: ["Prints lifted from {where}, and beside them, drawn in the dust with a fingertip:"],
-  },
-  paranormal: {
-    palm: ["Small handprints on {where}, a child's, the fingers spread wide. Where the palms pressed hardest, the glow makes words:"],
-    footprints: ["Small bare footprints on {where}, walking slowly, as if counting. Where they stop, words glow in the dust:"],
-    writing: ["Traced on {where} by a fingertip, letters that weren't there in daylight:"],
-    stain: ["Candle wax dripped across {where}, glowing under UV. The drips run together into writing:"],
-  },
-};
-
-/** Traces that lead nowhere: a report with nothing in it but the room's story. */
-export const TRACE_HERRINGS: Record<Mode, Partial<Record<TraceKind, string>>> = {
-  noir: {
-    prints: "Prints lifted from {where}: smudged, overlapping, too many hands over too many years. Nothing the lab can use.",
-    footprints: "Wet footprints across {where}, a man's shoes, to the window and back. Whoever it was stood there a long time, watching the street.",
-  },
-  crime_scene: {
-    prints: "Prints lifted from {where}: the victim's own, matched against the hands on the mortuary table. Nobody else's.",
-    footprints: "Footprints across {where}: the first officer's boots, size and tread matched to the pair he wore on the night.",
-    stain: "The splash on {where} is floor polish, weeks old. The cleaner confirms it.",
-  },
-  paranormal: {
-    palm: "Small handprints on {where}, all the same small hand, as if someone has been trying to get out for a very long time.",
-    footprints: "Small bare footprints on {where}, walking in a circle, round and round, and never leaving it.",
-  },
 };
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { cover, filler, foldAt, foldProgress, hatch, HOLD_AT, handLayout, progressFor, READ_AT, REACH, revealOf, samplesOf, setHand, splitCard, symbolWidth } from "../revealText";
+import { cover, filler, foldAt, foldProgress, hatch, HOLD_AT, handLayout, progressFor, READ_AT, REACH, revealOf, samplesOf, setHand, symbolWidth, writingOf } from "../revealText";
 
 test("the page warms as it's dragged up to the bulb, and a note reflects as it's dragged down to the mirror", () => {
   expect(progressFor("heat", -REACH)).toBe(1);
@@ -9,12 +9,11 @@ test("the page warms as it's dragged up to the bulb, and a note reflects as it's
   expect(HOLD_AT).toBeLessThan(1);
 });
 
-test("a card splits into its narration and what is written", () => {
-  expect(splitCard("Held to the warm bulb, brown letters creep up: ▲ 4.")).toEqual({ lead: "Held to the warm bulb, brown letters creep up:", writing: "▲ 4." });
-  expect(splitCard("In the glass the letters come right:\nNever the first: what holds the light.")).toEqual({
-    lead: "In the glass the letters come right:", writing: "Never the first: what holds the light.",
-  });
-  expect(splitCard("Departure 7:40 sharp")).toEqual({ lead: "", writing: "Departure 7:40 sharp" });
+test("a card that reads with a tool is its writing, whole: never split at a colon, never narrated", () => {
+  expect(writingOf("Never the first: what lies flat on the floor.")).toBe("Never the first: what lies flat on the floor.");
+  expect(writingOf("Never the last: the rug.\nNever the first: the drawer.")).toBe("Never the last: the rug.\nNever the first: the drawer.");
+  expect(writingOf("  ▲ 4.\n")).toBe("▲ 4.");
+  expect(writingOf("Departure 7:40 sharp")).toBe("Departure 7:40 sharp");
 });
 
 test("only a card that reads with a tool opens the reveal", () => {

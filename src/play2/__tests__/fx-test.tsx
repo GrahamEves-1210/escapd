@@ -1,6 +1,6 @@
-// The little celebrations (fx/): how big a moment is, the stamped word (never
-// twice in a row), the roll, where a burst's bits fly, the room's ambient
-// timing, and the hook that ties them to the player's results and sounds.
+// The little celebrations (fx/): how big a moment is, the roll, where a burst's
+// bits fly, the room's ambient timing, and the hook that ties them to the
+// player's results and sounds. Nothing is ever written over a moment.
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
 import type { ActionResult } from "@/engine/v2";
@@ -8,7 +8,8 @@ import { ThemeProvider } from "@/theme/ThemeProvider";
 import { ModeScope } from "@/game/mode";
 import { AMBIENT, eventAt } from "../fx/Ambient";
 import { BURST, Burst, bitsFor } from "../fx/Burst";
-import { ROLL_WORD, STREAK, WORDS, pickWord, streakAfter, strengthOf } from "../fx/celebrate";
+import * as celebrate from "../fx/celebrate";
+import { STREAK, streakAfter, strengthOf } from "../fx/celebrate";
 import { useCelebrate } from "../fx/useCelebrate";
 import { Mechanism } from "../mechanisms";
 import { JUST_GAVE_MS, justGave, markTry } from "../mechanisms/kit";
@@ -75,27 +76,6 @@ describe("streakAfter", () => {
   });
 });
 
-describe("pickWord", () => {
-  it("never stamps the same word twice in a row", () => {
-    for (const genre of ["noir", "crime_scene", "paranormal"] as const) {
-      let last: string | null = null;
-      for (let i = 0; i < 200; i++) {
-        const strength = i % 3 ? "find" : "solve";
-        const word = pickWord(genre, strength, last, i % 5);
-        expect(word).not.toBe(last);
-        expect([...WORDS[genre][strength], ROLL_WORD]).toContain(word);
-        last = word;
-      }
-    }
-  });
-
-  it("says the roll's word as a roll starts (sometimes), never off a roll", () => {
-    expect(pickWord("noir", "find", null, 1, () => 0)).toBe(ROLL_WORD);
-    expect(pickWord("noir", "find", ROLL_WORD, 1, () => 0)).not.toBe(ROLL_WORD);
-    expect(pickWord("noir", "find", null, 0, () => 0)).not.toBe(ROLL_WORD);
-  });
-});
-
 describe("bitsFor", () => {
   const colors = { star: "a", star5: "b", spark: "c", smoke: "d", marker: "e", glint: "f", wisp: "g", moon: "h" };
   it("throws more, further, for a solved step and on a roll", () => {
@@ -134,17 +114,31 @@ describe("eventAt", () => {
 });
 
 describe("Burst", () => {
-  it("stamps its word, framed for a solved step, with a sparkle per find on a roll", async () => {
-    await render(<ModeScope genre="noir"><Burst x={10} y={10} genre="noir" strength="solve" word="Aha!" level={1} count={3} seed={4} /></ModeScope>);
-    expect(screen.getByText("Aha!", { includeHiddenElements: true })).toBeTruthy();
-    expect(screen.getByTestId("v2-burst-word", { includeHiddenElements: true }).props.style).toEqual(expect.arrayContaining([expect.objectContaining({ borderWidth: 2 })]));
+  it("is sparks and nothing written: no word over a find or a solved step, even one a caller still passes", async () => {
+    await render(<ModeScope genre="noir"><Burst x={10} y={10} genre="noir" strength="solve" word="Aha!" level={0} count={1} seed={4} /></ModeScope>);
+    expect(screen.queryByText("Aha!", { includeHiddenElements: true })).toBeNull();
+    expect(screen.queryByTestId("v2-burst-word", { includeHiddenElements: true })).toBeNull();
+    expect(hosts("Text")).toBe(0);
     expect(hosts("SkiaPath")).toBeGreaterThan(0);
+    // Off a roll there's nothing over it at all.
+    expect(screen.queryByTestId("v2-burst-over", { includeHiddenElements: true })).toBeNull();
   });
 
-  it("only fades its word under reduced motion: nothing flies", async () => {
-    await render(<ThemeProvider reducedMotion><Burst x={0} y={0} genre="paranormal" strength="find" word="Oh!" level={0} count={1} seed={1} /></ThemeProvider>);
-    expect(screen.getByText("Oh!", { includeHiddenElements: true })).toBeTruthy();
+  it("on a roll, a row of little sparkles stands over it (still no word)", async () => {
+    await render(<ModeScope genre="noir"><Burst x={10} y={10} genre="noir" strength="find" level={1} count={3} seed={4} /></ModeScope>);
+    expect(screen.getByTestId("v2-burst-over", { includeHiddenElements: true })).toBeTruthy();
+    expect(hosts("Text")).toBe(0);
+  });
+
+  it("is one still sparkle under reduced motion: nothing flies, nothing is written", async () => {
+    await render(<ThemeProvider reducedMotion><Burst x={0} y={0} genre="paranormal" strength="find" level={0} count={1} seed={1} /></ThemeProvider>);
+    expect(screen.getByTestId("v2-burst-over", { includeHiddenElements: true })).toBeTruthy();
+    expect(hosts("Text")).toBe(0);
     expect(hosts("SkiaCanvas")).toBe(0);
+  });
+
+  it("has no words to stamp anywhere in its rules", () => {
+    expect(Object.keys(celebrate).sort()).toEqual(["STREAK", "streakAfter", "strengthOf"]);
   });
 });
 

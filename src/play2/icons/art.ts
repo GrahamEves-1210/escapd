@@ -13,7 +13,9 @@
 export type IconName =
   | "key" | "note" | "letter" | "tornLeft" | "tornRight" | "taped" | "uvLight" | "uvLightOn" | "torch" | "photo" | "ticket"
   | "map" | "scroll" | "ring" | "book" | "coin" | "matchbook" | "wheel" | "box" | "bottle" | "watch"
-  | "pencil" | "lens" | "notepad" | "printed" | "foldIn";
+  | "pencil" | "lens" | "notepad" | "printed" | "foldIn"
+  // The gadgets' things (items_gadgets.py).
+  | "soap" | "wax" | "balance" | "weight" | "musicBox" | "ribbon";
 
 export const ART: Record<IconName, number> = {
   key: require("../../../assets/items/key.png"),
@@ -43,4 +45,12 @@ export const ART: Record<IconName, number> = {
   notepad: require("../../../assets/items/notepad.png"),
   printed: require("../../../assets/items/printed.png"),
   foldIn: require("../../../assets/items/fold-in.png"),
+  // What a key was pressed into (soap; candle wax by moonlight), the pocket balance and one of its weights,
+  // a music box and a typewriter ribbon.
+  soap: require("../../../assets/items/soap.png"),
+  wax: require("../../../assets/items/wax.png"),
+  balance: require("../../../assets/items/balance.png"),
+  weight: require("../../../assets/items/weight.png"),
+  musicBox: require("../../../assets/items/music-box.png"),
+  ribbon: require("../../../assets/items/ribbon.png"),
 };

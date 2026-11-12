@@ -8,7 +8,15 @@ import { categoryOf, type Feature, type InventoryObject, type ObjectCategory, ty
 
 export type ArchetypeId =
   | "Drawer" | "LiftUnder" | "Readable" | "FrameTilt" | "ClockHands" | "TuningDial"
-  | "CombinationLock" | "Light" | "Assemble" | "Decoder" | "Door";
+  | "CombinationLock" | "Light" | "Assemble" | "Decoder" | "Door"
+  // A rotary telephone (a number dialled); a small balance worked in the hand (two found weights on its pans).
+  | "Telephone" | "Balance";
+
+/** A safe dial's face: engraved 0 to 39. */
+export const DIAL_SIZE = 40;
+/** A key's cuts, bow to tip: this many, each a depth of 0 to KEY_DEPTHS - 1. */
+export const KEY_CUTS = 5;
+export const KEY_DEPTHS = 4;
 
 export const SYMBOLS = ["▲", "●", "◆", "■", "★", "✚"] as const;
 const ALPHABETS = {
@@ -26,7 +34,11 @@ export type ControlDomain =
   | { kind: "offset"; max: number }                     // "3", cipher ring 1..max
   | { kind: "wheels"; alphabet: WheelAlphabet; count: number }  // submit: one symbol per wheel
   | { kind: "accusation" }                              // submit: [suspect, motive, method]
-  | { kind: "sequence"; length: number };               // submit: ritual object ids in order
+  | { kind: "sequence"; length: number }                // submit: ritual object ids in order
+  | { kind: "dial"; size: number; count: number }       // submit: a safe's numbers, ["30", "10", "20"], each 0..size-1
+  | { kind: "keys"; bittings: string[] }                // submit: the one key tried, by its cuts, ["20313"]
+  | { kind: "phone"; length: number }                   // "2046": a telephone number of `length` digits
+  | { kind: "pans"; of: string[] };                     // "left|right": two different weights (item ids) on a balance's pans
 
 /** Canonical form of a control value or submit, or null when it is outside the domain. */
 export function normalize(domain: ControlDomain, value: unknown): StateValue | null {
@@ -49,6 +61,19 @@ export function normalize(domain: ControlDomain, value: unknown): StateValue | n
       const n = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value) ? Number(value) : NaN;
       return Number.isInteger(n) && n >= 1 && n <= domain.max ? String(n) : null;
     }
+    case "dial": {
+      if (!Array.isArray(value) || value.length !== domain.count) return null;
+      if (!value.every((v) => typeof v === "string" && /^(0|[1-9]\d*)$/.test(v) && Number(v) < domain.size)) return null;
+      return value.join("|");
+    }
+    case "keys":
+      return Array.isArray(value) && value.length === 1 && typeof value[0] === "string" && domain.bittings.includes(value[0]) ? value[0] : null;
+    case "phone":
+      return typeof value === "string" && value.length === domain.length && /^\d+$/.test(value) ? value : null;
+    case "pans": {
+      const [l, r, ...rest] = typeof value === "string" ? value.split("|") : [];
+      return !rest.length && l && r && l !== r && domain.of.includes(l) && domain.of.includes(r) ? `${l}|${r}` : null;
+    }
     case "wheels":
     case "accusation":
     case "sequence": {
@@ -64,7 +89,7 @@ export function normalize(domain: ControlDomain, value: unknown): StateValue | n
 /** Slot kinds a domain can take (planner binding and simulator candidates). */
 export const DOMAIN_SLOT_KIND: Record<ControlDomain["kind"], string | null> = {
   bool: null, time: "time", freq: "freq", page: "page", offset: "offset",
-  wheels: "code", accusation: "code", sequence: "code",
+  wheels: "code", accusation: "code", sequence: "code", dial: "code", keys: "code", phone: "phone", pans: null,
 };
 
 export interface HostRule {
@@ -75,7 +100,7 @@ export interface HostRule {
 }
 
 export type Emit = "item" | "card" | "room_change" | "exit";
-export type Accept = "bool" | "time" | "freq" | "page" | "offset" | "code" | "item" | "pieces";
+export type Accept = "bool" | "time" | "freq" | "page" | "offset" | "code" | "item" | "pieces" | "phone" | "pans";
 
 export interface VariantSpec {
   hosts: HostRule | null;        // null: inventory-only (a prop, not a photo object)
@@ -103,6 +128,8 @@ const LOCKABLE: ObjectType[] = [
   "desk", "nightstand", "dresser", "wardrobe", "cabinet", "sideboard", "filing_cabinet", "tv_stand",
   "chest", "trunk", "box", "suitcase", "safe", "toolbox",
 ];
+/** Steel things with a dial: a safe, and what could pass for a strongbox. */
+export const STRONGBOXES: ObjectType[] = ["safe", "filing_cabinet", "chest", "trunk", "toolbox"];
 /** Objects that can carry a mark, a glow or ink (tool-reveal and room-change targets). */
 export const MARKABLE_CATEGORIES: ObjectCategory[] = ["furniture", "storage", "wall", "paper", "decor", "electronic", "instrument", "door"];
 /** No door in the room: the most door-like exit, in preference order. */
@@ -149,10 +176,22 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeSpec> = {
   },
   CombinationLock: {
     id: "CombinationLock",
-    variants: Object.fromEntries((["digits", "letters", "symbols"] as const).map((a) => [a, {
-      hosts: { types: LOCKABLE, anyFeature: ["has_doors", "can_open", "has_drawers"] },
-      controls: [], submit: { kind: "wheels", alphabet: a, count: 3 }, initial: { open: false, locked: true },
-    }])),
+    variants: {
+      ...Object.fromEntries((["digits", "letters", "symbols"] as const).map((a) => [a, {
+        hosts: { types: LOCKABLE, anyFeature: ["has_doors", "can_open", "has_drawers"] },
+        controls: [], submit: { kind: "wheels", alphabet: a, count: 3 }, initial: { open: false, locked: true },
+      }])),
+      // A combination dial: on a safe, or something as steel and strongbox-like (never a desk).
+      dial: {
+        hosts: { types: STRONGBOXES, anyFeature: ["has_doors", "can_open", "has_drawers"] },
+        controls: [], submit: { kind: "dial", size: DIAL_SIZE, count: 3 }, initial: { open: false, locked: true },
+      },
+      // A keyhole and a ring of keys that look alike: one fits (the room's ring is on the object's `submit`).
+      keys: {
+        hosts: { types: LOCKABLE, anyFeature: ["has_doors", "can_open", "has_drawers"] },
+        controls: [], submit: { kind: "keys", bittings: [] }, initial: { open: false, locked: true },
+      },
+    },
     emits: ["item", "card"], accepts: ["code"], overlays: ["panel_open"], holdsItems: true,
   },
   Light: {
@@ -173,6 +212,17 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeSpec> = {
     id: "Decoder",
     variants: { wheel: { hosts: null, controls: [{ id: "offset", domain: { kind: "offset", max: 25 } }], initial: { offset: "1" } } },
     emits: ["card"], accepts: ["offset"], overlays: [], holdsItems: false,
+  },
+  Telephone: {
+    id: "Telephone",
+    variants: { rotary: { hosts: { types: ["telephone"] }, controls: [{ id: "number", domain: { kind: "phone", length: 4 } }], initial: { number: "" } } },
+    emits: ["card"], accepts: ["phone"], overlays: [], holdsItems: false,
+  },
+  Balance: {
+    id: "Balance",
+    // Held, like the cipher wheel: the room's three weights are on its control (`of`).
+    variants: { pans: { hosts: null, controls: [{ id: "pans", domain: { kind: "pans", of: [] } }], initial: { pans: "", tilt: "" } } },
+    emits: ["card"], accepts: ["pans"], overlays: [], holdsItems: false,
   },
   Door: {
     id: "Door",

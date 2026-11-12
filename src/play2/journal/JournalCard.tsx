@@ -8,6 +8,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { Arrow, Paperclip, PressedFlower, Sparkle, SubjectDoodle, Underline, type Subject } from "./Doodles";
 import { rand, UV, type HandType, type JournalPalette } from "./palette";
 import { Scrap, softShadow, Tape } from "./Paper";
+import { KeyImpression } from "../mechanisms/gadgets/KeyArt";
+import { isBitting } from "../mechanisms/gadgets/keys";
 
 export interface CardLike {
   id: string;
@@ -78,7 +80,11 @@ export function JournalCard({ card, palette: p, hand, index, large = false, test
       {underline ? <Underline color={underline} width={Math.min(150, 26 + card.title.length * 8)} seed={card.id} style={styles.underline} /> : null}
     </View>
   );
-  const body = (color: string) => <Text style={[bodyStyle, { color }]}>{card.text}</Text>;
+  // A key pressed into soap or wax (a card with the look "impression": its text is the key's cuts and nothing
+  // else) is drawn as the thing itself, never written out.
+  const body = (color: string) => (isBitting(card.text)
+    ? <KeyImpression bitting={card.text.trim()} width={large ? 250 : 190} style={styles.impression} />
+    : <Text style={[bodyStyle, { color }]}>{card.text}</Text>);
 
   if (look === "uv") {
     return (
@@ -222,6 +228,7 @@ export function Polaroid({ subject, palette: p, hand, caption, rotate, tape, pat
 }
 
 const styles = StyleSheet.create({
+  impression: { alignSelf: "center", marginVertical: 6 },
   wide: { alignSelf: "stretch" },
   pad: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14, gap: 4 },
   padLarge: { paddingHorizontal: 24, paddingTop: 26, paddingBottom: 22, gap: 8 },

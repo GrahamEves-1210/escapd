@@ -14,6 +14,10 @@
 // mark per lead, crossed out and ticked as she follows it, and a scribble that
 // knows when she's close (journal/Margin). A coffee ring where the cup sat.
 // Below the page, on the sheet: the glints switch and restart.
+// A UV trace's report is never taped in (quiet.ts): rooms stored before round
+// 14 still hand them over, and a report says what a trace means, which is the
+// player's to work out. The one card a trace keeps is a writing trace's own
+// words, bare.
 import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { DarkSheet } from "@/components/noir";
@@ -23,6 +27,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { LETTER, LETTER_FONT, LETTER_TEXT } from "@/theme/payoff";
 import { ref, type ModeTheme } from "@/theme/tokens";
 import type { FoundCard } from "./InspectView";
+import { withoutTraceReports } from "./quiet";
 import { itemIcon } from "./ItemTray";
 import { Board } from "./journal/Board";
 import { Arrow, CoffeeRing, Moon, Paw, PressedFlower, Sparkle, Star, Underline } from "./journal/Doodles";
@@ -64,8 +69,10 @@ export interface CasebookProps {
   fresh?: number;
   /** Where and when each card turned up (journal/useCaseThreads): the red string. */
   log?: ThreadLog | null;
-  /** The room's objects (a UV trace's card belongs with the thing it marks). */
+  /** The room's objects (a UV trace's card belongs with the thing it marks; a trace's report is never listed). */
   objects?: readonly Pick<ObjectDef, "id" | "trace">[];
+  /** What the room has lit up so far (a writing trace's words: the one card a trace keeps is those words, bare). */
+  marks?: readonly { object: string; overlay: string; mark?: string }[];
   /** As it closes: the strings it showed taut and the steps it showed ticked. */
   onSeen?: (taut: string[], ticked: number) => void;
 }
@@ -80,13 +87,15 @@ const CHAPTER_TYPE = {
 /** What the cat says before each margin note, in turn. */
 const PSST = ["psst —", "ooh, and —", "also —", "and —"];
 
-export function Casebook({ objective, cards, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat, progress, fresh = 0, log, objects, onSeen }: CasebookProps) {
+export function Casebook({ objective, cards: found, items, hints, canHint, board, struck = [], onStrike, glints, onGlints, onHint, onExamine, onRestart, onClose, cat, progress, fresh = 0, log, objects, marks, onSeen }: CasebookProps) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const p = journalPalette(theme);
   const genre = theme.genre ?? "noir";
   const hand = handType(theme);
   const solved = progress?.solved ?? 0;
+  // What she found, less any UV trace's report (old rooms'): never listed, never counted.
+  const cards = useMemo(() => withoutTraceReports(found, objects ? { objects } : null, log ?? null, marks), [found, objects, log, marks]);
   // What the log said as the casebook opened: the strings, which twang, which ticks are new (fixed while it's open).
   const [opened] = useState(() => ({ log, fresh }));
   const strings = useMemo(() => (opened.log ? stringsOf(cards, opened.log, solved, objects) : []), [opened.log, cards, solved, objects]);
@@ -152,7 +161,7 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
           ) : (
             <View style={styles.empty}>
               <Polaroid subject="photo" palette={p} hand={hand} rotate={-4} tape={p.tape[0]} pattern="dots" small />
-              <Text style={[hand.body, styles.flex, { color: p.inkSoft }]} testID="v2-casebook-empty">Nothing yet. Sweep the light across the room.</Text>
+              <Text style={[hand.body, styles.flex, { color: p.inkSoft }]} testID="v2-casebook-empty">Nothing yet.</Text>
             </View>
           )}
         </View>
@@ -168,7 +177,6 @@ export function Casebook({ objective, cards, items, hints, canHint, board, struc
         {items.length ? (
           <View style={styles.chapter}>
             {head("In my pockets", 3)}
-            <Text style={[hand.small, { color: p.inkSoft }]}>Tap one to look closer.</Text>
             <View style={styles.stickers}>
               {items.map((item, i) => <Sticker key={item.id} item={item} index={i} palette={p} hand={hand} onExamine={onExamine} />)}
             </View>

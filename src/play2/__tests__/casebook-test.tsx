@@ -49,6 +49,43 @@ describe("Casebook", () => {
     expect(screen.getByText(/^psst/)).toBeTruthy();
   });
 
+  it("never lists a UV trace's report (an old stored room's): only what was found, and a writing trace's bare words", async () => {
+    const logged = (places: Record<string, string>): ThreadLog => ({ ...emptyLog(), cards: Object.fromEntries(Object.entries(places).map(([id, place], i) => [id, { at: i, place, batch: 1 }])) });
+    // A room stored before: its traces carry nothing of what they look like, and reading one gave a report.
+    const oldObjects = [{ id: "drawer" }, { id: "trace_fp", trace: { kind: "footprints" as const, surface: "floor" as const, anchor: "rug", seed: 7 } }];
+    const report = { id: "c_report", title: "Footprint report", text: "A man's boot, size eleven. Whoever stood here was no gardener." };
+    const slip = { id: "card_1", title: "A slip", text: "Stamped at the station." };
+    const old = await render(<Casebook {...base} cards={[slip, report]} objects={oldObjects} log={logged({ card_1: "drawer", c_report: "trace_fp" })} fresh={2} />);
+    expect(screen.getByTestId("v2-casebook-card-card_1")).toBeTruthy();
+    expect(screen.queryByTestId("v2-casebook-card-c_report")).toBeNull();
+    expect(screen.queryByText(/no gardener/)).toBeNull();
+    expect(screen.queryByText("Footprint report")).toBeNull();
+    await old.unmount();
+    // With no log of where it turned up (found before the log was kept), its title gives it away.
+    const unlogged = await render(<Casebook {...base} cards={[slip, report]} objects={oldObjects} />);
+    expect(screen.queryByTestId("v2-casebook-card-c_report")).toBeNull();
+    await unlogged.unmount();
+    // Only a report was ever found: the page says nothing was (it doesn't show an empty board).
+    const only = await render(<Casebook {...base} cards={[report]} objects={oldObjects} log={logged({ c_report: "trace_fp" })} />);
+    expect(screen.getByTestId("v2-casebook-empty")).toBeTruthy();
+    await only.unmount();
+    // A room planned now: the writing on the wall is logged as its words and nothing else, and that stays.
+    const newObjects = [{ id: "drawer" }, { id: "trace_wr", trace: { kind: "writing" as const, surface: "wall" as const, anchor: "desk", seed: 9, hand: "block" as const } }];
+    const words = { id: "c_w", title: "Writing on the wall", text: "Never the first: what lies flat on the floor." };
+    await render(
+      <Casebook {...base} cards={[slip, words]} objects={newObjects} log={logged({ card_1: "drawer", c_w: "trace_wr" })}
+        marks={[{ object: "trace_wr", overlay: "glow_mark", mark: "Never the first: what lies flat on the floor." }]} />,
+    );
+    expect(screen.getByTestId("v2-casebook-card-c_w")).toBeTruthy();
+    expect(screen.getByText("Never the first: what lies flat on the floor.")).toBeTruthy();
+  });
+
+  it("nothing found yet: says so (and doesn't say where to look)", async () => {
+    await render(<Casebook {...base} cards={[]} />);
+    expect(screen.getByTestId("v2-casebook-empty").props.children).toBe("Nothing yet.");
+    await screen.unmount();
+  });
+
   it("nothing found yet: says so", async () => {
     await render(<Casebook {...base} cards={[]} />);
     expect(screen.getByTestId("v2-casebook-empty")).toBeTruthy();

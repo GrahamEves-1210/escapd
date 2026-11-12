@@ -13,11 +13,13 @@
 // randomness (`randomInt`, injectable for tests).
 import { type Box1000, boxArea, boxToRect, isValidBox } from "../geometry.ts";
 import { cryptoInt, isWeakCode, mintSuffix, type RandomInt, slugId } from "../mint.ts";
-import { type ArchetypeId, type ControlDomain, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, SYMBOLS, variantSpec } from "./archetypes.ts";
+import {
+  type ArchetypeId, type ControlDomain, DIAL_SIZE, DOOR_FALLBACK_TYPES, hostableArchetypes, isMarkable, KEY_CUTS, KEY_DEPTHS, SYMBOLS, variantSpec,
+} from "./archetypes.ts";
 import {
   ALIBIS, capitalise, caseLabel, describeObject, DURATIONS, type Evidence, type Frame, ITEM_NAMES, KEEPSAKES, type Medium, METHODS, MODE_COPY, MOTIVES,
-  NARROWED_DEATH, optionEvidence, orderLine, orderMark, PARTIAL_ALIBIS, partialEvidence, type Pick, placeLine, suspectEvidence, SUSPECTS, TIME_DOCS, TIME_OF_DEATH, TIME_REL_LEAD,
-  type TimeDoc, TRACE_BEATS, TRACE_HERRINGS, TRACE_LABELS, TRACE_REPORTS, TRACE_VALUE, VICTIMS, writeCard,
+  comparisonDoc, DIAL_DOCS, NARROWED_DEATH, optionEvidence, orderLine, orderMark, PARTIAL_ALIBIS, partialEvidence, type Pick, type Shows, suspectEvidence, SUSPECTS,
+  THREATS, TIME_DOCS, TIME_OF_DEATH, TIME_REL_LEAD, type TimeDoc, TRACE_LABELS, VICTIMS, writeCard,
 } from "./copy.ts";
 import { MOTIFS } from "./motifs.ts";
 import { simulate, type SimReport } from "./simulate.ts";
@@ -26,7 +28,7 @@ import { categoryOf, type InventoryObject, isPortableType, type ObjectCategory }
 import {
   type AccuseOption, type CardDef, type Condition, type Effect, type FinaleDef, type ItemDef, type Mode, type MotifId, type ObjectDef, ORDER_RULES,
   orderHolds, type OrderRule, type Rect, type RoomDefinitionV2, type RoomSecretV2, type Rule, type SlotKind, type SlotValue, type StateValue, type StepDef,
-  type TraceKind, type TraceSpec, type Trigger,
+  TRACE_HANDS, TRACE_PATTERNS, TRACE_SIZES, type TraceKind, type TraceSpec, type Trigger,
 } from "./types.ts";
 import { slotRefs, validateDefinition, wordClashes } from "./validate.ts";
 
@@ -35,7 +37,26 @@ export interface PlanOptions {
   seed: string | number;          // structure is deterministic from it (use the room id)
   randomInt?: RandomInt;          // minted values and ids; crypto by default
   candidates?: number;            // structural candidates to try and score (default 8)
+  /**
+   * The gadgets and reveals this room may use (GADGETS), each its own switch. Default: PLAYABLE, the ones
+   * the app can play (none yet). The planner never puts one in a room unless it is named.
+   */
+  gadgets?: readonly Gadget[];
 }
+
+/**
+ * Puzzles whose core side is built ahead of the app's: a safe's combination dial; a ring of keys with an
+ * impression in soap; a rotary telephone; a music box whose tune is a lock's order; a typewriter ribbon
+ * with the last line typed; a pocket balance and three weights.
+ */
+export const GADGETS = ["dial", "keys", "telephone", "tune", "ribbon", "balance"] as const;
+export type Gadget = typeof GADGETS[number];
+/**
+ * THE SWITCHES. A gadget named here is one the app can play, and rooms planned from now on (on the
+ * server and on the device) may use it. Empty until the app side of each is finished: add a name when
+ * its mechanism or sheet plays in the app, and nothing else needs to change.
+ */
+export const PLAYABLE: readonly Gadget[] = [];
 
 export type PlanFailure = "too_few_objects" | "no_exit" | "no_valid_plan";
 
@@ -96,6 +117,8 @@ interface Bound {
   triggers: string[];
   threads: number[];
   initial: Record<string, StateValue>;
+  /** What its lock takes, where the room sets it (a ring of this room's keys, four wheels for a tune). */
+  submit?: ControlDomain;
 }
 
 interface Want {
@@ -118,8 +141,11 @@ interface SlotMeta {
   tag?: string;          // digits: the door wheels' symbols they belong on
   ordinal?: number;      // object: the ritual position (0-based)
   order?: OrderRule;     // object: what its fragment says about that position
-  evidence?: Evidence;   // option: the document (or UV forensics) that rules it out, with {{s}} for its name
+  evidence?: Evidence;   // option: the document that rules it out, with {{s}} for its name
+  /** option: that document rules its suspect out only against a trace of this kind and look, left on the photo. */
+  versus?: { kind: "footprints" | "prints" | "writing"; look: TraceLook; shows: Shows; words: string[] };
   time?: TimeDoc;        // time: the document it is written on (a ticket), and how it reads elsewhere
+  doc?: Frame;           // a lone value's own document, found or read (a safe's numbers inside a matchbook)
   after?: string;        // a sentence the card showing this slot ends with (a time's second fact, when on the same card)
 }
 
@@ -134,9 +160,15 @@ interface Trace {
   where: string;             // "the wall beside the bookshelf"
   label: string;
   seed: number;
-  /** It carries a value (else it leads nowhere). */
+  /** It matters to the case: its writing holds a value, or it is compared with a document (else it's only part of the room). */
   lead: boolean;
+  /** What can be seen in it (TraceSpec's observable fields). */
+  look: TraceLook;
 }
+
+/** What a trace shows under the light: drawn by the app, never described on a card. */
+type TraceLook = Pick_<TraceSpec, "size" | "tread" | "pattern" | "scar" | "stain" | "hand" | "text">;
+type Pick_<T, K extends keyof T> = { [P in K]?: T[P] };
 
 const TRACE_SIZE: Record<TraceKind, [number, number]> = {
   prints: [0.12, 0.09], palm: [0.13, 0.14], writing: [0.28, 0.09], stain: [0.18, 0.11], footprints: [0.36, 0.2],
@@ -181,6 +213,12 @@ class Builder {
   fresh: Pick;
   /** UV finds glow on objects rather than as traces on the photo (the last round of candidates). */
   glowFirst = false;
+  /** The room's UV flashlight, once something needs it. */
+  torch: { item: string; step: string } | null = null;
+  /** What each brass weight weighs (a room with a balance): server only. */
+  weights: Record<string, number> | null = null;
+  /** The gadgets this room may use (PlanOptions.gadgets): none by default. */
+  allow: ReadonlySet<Gadget> = new Set();
   /** The room's one reveal tool (seeded per room, so UV is one tool among several): "any" lifts the limit. */
   tool: RevealTool | "any" = "any";
   names: (typeof ITEM_NAMES)[Mode];
@@ -209,11 +247,12 @@ class Builder {
     const n = [this.items.length, this.rules.length, this.steps.length, this.traces.length];
     const named = new Map(this.namedAt);
     const meta = new Map(this.meta);
+    const torch = this.torch, weights = this.weights;
     // Cards are copied whole: a time's second fact may be added to a card written earlier.
     const cards = this.cards.map((c) => ({ ...c }));
     return () => {
       this.pool = pool.map((b) => ({ ...b, triggers: [...b.triggers], threads: [...b.threads], initial: { ...b.initial } }));
-      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids), namedAt: new Map(named), meta: new Map(meta) });
+      Object.assign(this, { slots: { ...slots }, used: { ...used }, values: new Set(values), ciphers: [...ciphers], ids: new Set(ids), namedAt: new Map(named), meta: new Map(meta), torch, weights });
       this.cards.splice(0, this.cards.length, ...cards.map((c) => ({ ...c })));
       this.items.length = n[0]; this.rules.length = n[1]; this.steps.length = n[2]; this.traces.length = n[3];
     };
@@ -269,7 +308,7 @@ class Builder {
   }
 
   /** A fresh value of a kind, unique in the room. Wheels values are "a|b|c" with text "abc". */
-  mint(kind: "time" | "freq" | "page" | "offset" | "letters" | "symbols" | "digits"): { value: string; text?: string } {
+  mint(kind: "time" | "freq" | "page" | "offset" | "letters" | "symbols" | "digits" | "phone" | "dial" | "tune"): { value: string; text?: string } {
     for (;;) {
       let value: string, text: string | undefined;
       const r = this.rint;
@@ -282,6 +321,21 @@ class Builder {
         // (Never the first three in their own order: that is how the door's wheels are marked.)
         case "symbols": { const pool: string[] = [...SYMBOLS]; const s: string[] = []; while (s.length < 3) s.push(pool.splice(r(pool.length), 1)[0]); if (s.join("") === SYMBOLS.slice(0, 3).join("")) continue; value = s.join("|"); text = s.join(" "); break; }
         case "digits": { const d = String(r(1000)).padStart(3, "0"); if (isWeakCode(d)) continue; value = d.split("").join("|"); text = d; break; }
+        // A telephone number: four digits, never starting at nought.
+        case "phone": { const d = String(1000 + r(9000)); if (isWeakCode(d)) continue; value = d; break; }
+        // A safe's three numbers on a dial of 0-39: none repeated, neighbours at least five apart (a clear turn between them).
+        case "dial": {
+          const n = [r(DIAL_SIZE), r(DIAL_SIZE), r(DIAL_SIZE)];
+          const apart = (a: number, b: number) => Math.min(Math.abs(a - b), DIAL_SIZE - Math.abs(a - b)) >= 5;
+          if (!apart(n[0], n[1]) || !apart(n[1], n[2]) || n[0] === n[2]) continue;
+          value = n.join("|"); text = n.join(" - "); break;
+        }
+        // A music box's run: four of the six marks (a mark may come twice, never all one, never the door's own order).
+        case "tune": {
+          const s = Array.from({ length: 4 }, () => SYMBOLS[r(SYMBOLS.length)]);
+          if (new Set(s).size < 3 || s.join("") === SYMBOLS.slice(0, 4).join("")) continue;
+          value = s.join("|"); text = s.join(" "); break;
+        }
       }
       if (this.values.has(`${kind}:${value}`)) continue;
       this.values.add(`${kind}:${value}`);
@@ -318,34 +372,26 @@ class Builder {
   }
 
   /**
-   * A card with `slots`, written as a finding in the mode's voice; it never names what a value is for.
-   * `host`: the object it was found in, under, behind or on (found and read): the card says where.
+   * A card with `slots`: the in-world thing and what is on it. It never names what a value is for, never
+   * says where it was found (the player saw) and never how it came to light (the player did it).
    */
-  clue(medium: Medium, slots: string[], host?: Bound): string {
-    const place = host && (medium === "found" || medium === "read") ? this.placeOf(host) : undefined;
-    const at = place ? `${place} ` : "";
+  clue(medium: Medium, slots: string[]): string {
     // One piece of crime-scene evidence found on its own is the document itself (a hotel register, a coroner's note).
     const ev = slots.length === 1 ? this.meta.get(slots[0])?.evidence : undefined;
     let card: { title: string; text: string };
     if (ev && (medium === "found" || medium === "read" || medium === "pages")) {
-      card = { title: ev.title, text: `${medium === "pages" ? "Folded in at that page. " : at}${ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`)}` };
+      card = { title: ev.title, text: ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`) };
     } else {
       const list = slots.some((s) => LIST_KINDS.includes(this.slots[s].kind));
       const kind = slots.length === 1 ? this.slots[slots[0]].kind : undefined;
       // A lone time found or read is its own document (the ticket says "Departure: {{t}}").
-      const doc = slots.length === 1 && (medium === "found" || medium === "read") ? this.meta.get(slots[0])?.time : undefined;
+      const doc = slots.length === 1 && (medium === "found" || medium === "read") ? this.meta.get(slots[0])?.time ?? this.meta.get(slots[0])?.doc : undefined;
       const values = doc ? [`{{${slots[0]}}}`] : slots.map((s) => this.phrase(s, false, medium === "radio"));
-      card = writeCard(this.mode, medium, values, list, this.fresh, kind, doc, place);
+      card = writeCard(this.mode, medium, values, list, this.fresh, kind, doc);
     }
     const after = slots.map((s) => this.meta.get(s)?.after).filter((a): a is string => !!a);
     const text = after.length ? `${card.text}${card.text.includes("\n") ? "\n" : " "}${after.join(" ")}` : card.text;
     return this.plainCard(card.title, text);
-  }
-
-  /** Where a card was found, as a sentence: never naming an object the values being built are for. */
-  placeOf(host: Bound): string {
-    const avoid = [this.exit, ...this.consumers].map((c) => c.inv.label);
-    return placeLine({ archetype: host.archetype ?? "", variant: host.variant, type: host.inv.type, label: host.inv.label }, this.fresh, avoid);
   }
 
   plainCard(title: string, text: string): string {
@@ -389,6 +435,9 @@ class Builder {
       case "rub_reveal": return "Whoever wrote it tore the sheet off and took it; the pen's dents stayed in the page beneath.";
       case "lens_reveal": return "Printed in red over blue, so it reads only through a red lens kept somewhere else.";
       case "fold_reveal": return "Written as two halves down the edges of one page, so it reads only when the page is folded.";
+      case "tune_reveal": return "Whoever set the lock pinned its order into a music box, where it sounds like nothing but a tune.";
+      case "ribbon_reveal": return "The line was typed and the page taken away; the ribbon kept every letter.";
+      case "weigh": return "The lock's order was hidden in three weights that look alike and are not.";
       case "finale": return this.mode === "noir" ? "Whoever locked the door left its combination in pieces around the room."
         : "The accusation is made here, and only the evidence decides it.";
       case "ordering": return "The presence lets go only when its offerings are made in the right order; each fragment remembers one part of it.";
@@ -417,8 +466,8 @@ class Builder {
 
   /** What finding a payload at `host` does: an item into the hand (its card, if it has one, shown), or a card to read. */
   give(p: Payload, host?: Bound): Effect[] {
-    if ("note" in p) return [{ do: "show_card", card: this.clue("found", p.note, host) }];
-    if ("plain" in p) return [{ do: "show_card", card: this.plainCard(p.plain.title, host ? `${this.placeOf(host)} ${p.plain.lead}` : p.plain.lead) }];
+    if ("note" in p) return [{ do: "show_card", card: this.clue("found", p.note) }];
+    if ("plain" in p) return [{ do: "show_card", card: this.plainCard(p.plain.title, p.plain.lead) }];
     if ("card" in p) return [{ do: "show_card", card: p.card }];
     const card = this.items.find((i) => i.id === p.item)?.card;
     return [{ do: "grant", item: p.item }, ...(card ? [{ do: "show_card", card } as Effect] : [])];
@@ -426,7 +475,9 @@ class Builder {
 
   // ---- motif builders -------------------------------------------------------
   choose(options: Option[], budget: number, depth: number): string | null {
-    const key = (o: Option) => -Math.log(1 - this.rng()) / (MOTIFS[o.motif as Exclude<MotifId, "finale">]?.weight[this.mode] || 1);
+    // (A room given the music box or the balance reaches for the lock they open.)
+    const lean = (o: Option) => (o.motif === "contain_lock" && (this.tool === "tune" || this.tool === "weigh") ? 4 : 1);
+    const key = (o: Option) => -Math.log(1 - this.rng()) / ((MOTIFS[o.motif as Exclude<MotifId, "finale">]?.weight[this.mode] || 1) * lean(o));
     const ok = options.filter((o) => o.min <= budget && (depth > 0 || !(MOTIFS[o.motif as Exclude<MotifId, "finale">]?.leaf)) &&
       (this.used[o.motif] ?? 0) < (MOTIFS[o.motif as Exclude<MotifId, "finale">]?.maxPerRoom ?? Infinity));
     const fills = (o: Option) => (o.fixed ? o.min === budget : true);
@@ -461,6 +512,8 @@ class Builder {
       ...(brief && (this.tool === "mirror" || this.tool === "any") ? [{ motif: "mirror_reveal" as const, min: 2, fixed: false, run: () => this.mirrorReveal(slots, budget, thread, depth) }] : []),
       ...(brief && (this.tool === "rub" || this.tool === "any") ? [{ motif: "rub_reveal" as const, min: 2, fixed: false, run: () => this.pairReveal("rub", slots, budget, thread, depth) }] : []),
       ...(brief && (this.tool === "lens" || this.tool === "any") ? [{ motif: "lens_reveal" as const, min: 2, fixed: false, run: () => this.pairReveal("lens", slots, budget, thread, depth) }] : []),
+      ...((this.tool === "ribbon" || (this.tool === "any" && this.allow.has("ribbon"))) && slots.length === 1 && this.slots[slots[0]].kind !== "option"
+        ? [{ motif: "ribbon_reveal" as const, min: 2, fixed: false, run: () => this.ribbonReveal(slots, budget, thread, depth) }] : []),
       ...(brief && (this.tool === "fold" || this.tool === "any") ? [{ motif: "fold_reveal" as const, min: 2, fixed: false, run: () => this.foldReveal(slots, budget, thread, depth) }] : []),
       { motif: "split", min: 3, fixed: true, run: () => this.split(slots, thread) },
       ...(codable ? [{ motif: "decode" as const, min: 4, fixed: false, run: () => this.decode(slots, budget, thread, depth) }] : []),
@@ -481,7 +534,7 @@ class Builder {
     const p = this.pickObject({ trigger: "inspect", thread, accept: (a, v) => a === "Readable" && v === "card" });
     if (!p) return null;
     const b = this.bind(p, thread, "inspect");
-    const card = this.clue("read", slots, b);
+    const card = this.clue("read", slots);
     const shelf = b.inv.type === "bookshelf" || b.inv.type === "shelf";
     const s = this.step("read", thread, b.id, [], [this.nudge(b), `Take a closer look at the ${b.inv.label}.`,
       shelf ? `Search the ${b.inv.label} and read what's tucked in among the books.` : `Read the ${b.inv.label}.`]);
@@ -523,17 +576,79 @@ class Builder {
       const p = this.pickObject({ trigger: "contain", thread, accept: (a) => a === "CombinationLock" });
       if (!p) return null;
       const b = this.bind(p, thread, "contain", "submit");
-      const m = this.mint(b.variant as "digits" | "letters" | "symbols");
+      const l = b.inv.label;
+      const kind = this.lockKind(b, budget);
+      b.variant = kind === "tune" || kind === "weigh" ? "symbols" : kind;
+      const opens = (code: string, s: string) => this.rule({ on: "submit", object: b.id }, [{ if: "submitted", eq: { slot: code } }],
+        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload, b)], s);
+      if (kind === "dial") {
+        // A safe's dial: three numbers somebody wrote down rather than trust to memory.
+        const m = this.mint("dial");
+        const code = this.slot("code", m.value, m.text, { doc: this.fresh(DIAL_DOCS[this.mode]) });
+        const up = this.waitingOn(b, () => this.info([code], budget - 1, thread, depth + 1));
+        if (!up) return null;
+        const s = this.step("contain_lock", thread, b.id, [up], ["One lock here has a dial, not a keyhole.",
+          `The ${l} has a combination dial, and ${this.sourceOf(up) ?? "a clue you found"} has three numbers on it.`, `Dial {{${code}}} on the ${l}.`]);
+        opens(code, s);
+        return s;
+      }
+      if (kind === "keys") {
+        // A ring of keys that look alike hangs by the lock; the right one was pressed into soap to be copied.
+        const ring = this.keyRing();
+        b.submit = { kind: "keys", bittings: ring.bittings };
+        const code = this.slot("code", ring.right);
+        const soapName = this.names.soap;
+        const card = this.plainCard(soapName, `{{${code}}}`);
+        this.cards.find((c) => c.id === card)!.look = "impression";
+        const soap = this.item("prop", soapName, { card });
+        const up = this.deliver(soap, budget - 1, thread, depth);
+        if (!up) return null;
+        const s = this.step("contain_lock", thread, b.id, [up], ["One lock here has a keyhole, and a ring of keys that all look alike.",
+          `The ${soapName.toLowerCase()} has a key pressed into it, and one key on the ${l}'s ring has the same cuts.`,
+          `On the ${l}, try the key whose cuts match the ${soapName.toLowerCase()}.`]);
+        opens(code, s);
+        return s;
+      }
+      if (kind === "tune") {
+        // Four wheels of marks, and a music box whose comb has the same marks on its teeth: the tune is the order.
+        b.submit = { kind: "wheels", alphabet: "symbols", count: 4 };
+        const m = this.mint("tune");
+        const code = this.slot("code", m.value, m.text);
+        const up = this.tuneReveal(code, b, budget - 1, thread, depth);
+        if (!up) return null;
+        const s = this.step("contain_lock", thread, b.id, [up], ["One lock here has four wheels of marks.",
+          `The ${l}'s wheels carry the marks on the music box's teeth, and the tune it played had an order.`, `Enter {{${code}}} on the ${l}.`]);
+        opens(code, s);
+        return s;
+      }
+      if (kind === "weigh") {
+        // Three wheels of marks, and three brass weights stamped with them: heaviest first.
+        const marks = this.sample(SYMBOLS, 3);
+        const code = this.slot("code", marks.join("|"), marks.join(" "));
+        const up = this.weighReveal(code, marks, b, budget - 1, thread, depth);
+        if (!up) return null;
+        const s = this.step("contain_lock", thread, b.id, [up], ["One lock here has three wheels of marks.",
+          `The ${l}'s wheels carry the marks stamped on the brass weights, and the balance's lid says which leads.`, `Enter {{${code}}} on the ${l}.`]);
+        opens(code, s);
+        return s;
+      }
+      const m = this.mint(kind);
       const code = this.slot("code", m.value, m.text);
       const up = this.waitingOn(b, () => this.info([code], budget - 1, thread, depth + 1));
       if (!up) return null;
-      const what = b.variant === "letters" ? "letters" : b.variant === "symbols" ? "symbols" : "digits";
+      const what = kind === "letters" ? "letters" : kind === "symbols" ? "symbols" : "digits";
       const s = this.step("contain_lock", thread, b.id, [up], ["One lock here wants a code.",
-        `The ${b.inv.label} has a lock with three wheels of ${what}, and ${this.sourceOf(up) ?? "a clue you found"} has three ${what} on it.`, `Enter {{${code}}} on the ${b.inv.label}.`]);
-      this.rule({ on: "submit", object: b.id }, [{ if: "submitted", eq: { slot: code } }],
-        [{ do: "open", object: b.id }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload, b)], s);
+        `The ${l} has a lock with three wheels of ${what}, and ${this.sourceOf(up) ?? "a clue you found"} has three ${what} on it.`, `Enter {{${code}}} on the ${l}.`]);
+      opens(code, s);
       return s;
     };
+    // (A room given the music box or the balance wants the lock they open.)
+    if (this.tool === "tune" || this.tool === "weigh") {
+      const restore = this.snap();
+      const s = byCode();
+      if (s) return s;
+      restore();
+    }
     const order = this.rng() < 0.5 ? [byKey, byCode] : [byCode, byKey];
     for (const f of order) {
       const restore = this.snap();
@@ -551,11 +666,11 @@ class Builder {
    * braid: neither card alone sets the clock).
    */
   setState(slots: string[], item: Payload | null, budget: number, thread: number, depth: number): string | null {
-    const p = this.pickObject({ trigger: "set", thread, accept: (a) => a === "ClockHands" || (!item && a === "TuningDial") });
+    const p = this.pickObject({ trigger: "set", thread, accept: (a) => a === "ClockHands" || (!item && (a === "TuningDial" || (a === "Telephone" && this.allow.has("telephone")))) });
     if (!p) return null;
     const b = this.bind(p, thread, "set");
-    const clock = b.archetype === "ClockHands";
-    const control = clock ? "time" : "freq";
+    const clock = b.archetype === "ClockHands", phone = b.archetype === "Telephone";
+    const control = clock ? "time" : phone ? "number" : "freq";
     const label = b.inv.label;
     let input: string, up: string | null, requires: string[], connection: string;
     if (clock) {
@@ -572,23 +687,25 @@ class Builder {
         ? `The time on ${what} is only half of it: the ${this.cards.find((c) => c.id === t.carrier!.card)!.title.toLowerCase()} says how far off it was. The ${label} wants the real moment.`
         : `${capitalise(what)} gives a time, and a second line on it says how far off it was. The ${label} wants the real moment.`;
     } else {
-      input = this.slot("freq", this.mint("freq").value);
+      input = phone ? this.slot("phone", this.mint("phone").value) : this.slot("freq", this.mint("freq").value);
       up = this.waitingOn(b, () => this.info([input], budget - 1, thread, depth + 1));
       if (!up) return null;
       requires = [up];
-      connection = `The ${label} has a dial, and ${this.sourceOf(up) ?? "a clue you found"} gives a frequency.`;
+      connection = phone ? `The ${label} still has a line, and ${this.sourceOf(up) ?? "a clue you found"} has a number on it.`
+        : `The ${label} has a dial, and ${this.sourceOf(up) ?? "a clue you found"} gives a frequency.`;
     }
     const payload = item ?? (clock ? this.note(slots) : null);
     const effects: Effect[] = clock
       ? [{ do: "set_state", target: b.id, key: "panel", value: true }, { do: "overlay", object: b.id, overlay: "panel_open" }, ...this.give(payload!, b)]
-      : [{ do: "show_card", card: this.clue("radio", slots) }];
+      : [{ do: "show_card", card: this.clue(phone ? "phone" : "radio", slots) }];
     const s = this.step("set_state", thread, b.id, requires, [
-      clock ? "A stopped clock is waiting for the right time." : "Something in the room can be tuned.",
+      clock ? "A stopped clock is waiting for the right time." : phone ? "Something in the room can be dialled." : "Something in the room can be tuned.",
       connection,
-      clock ? `Set the ${label} to {{${input}}}.` : `Tune the ${label} to {{${input}}}.`,
+      clock ? `Set the ${label} to {{${input}}}.` : phone ? `Dial {{${input}}} on the ${label}.` : `Tune the ${label} to {{${input}}}.`,
     ]);
     this.rule({ on: "control", target: b.id, control }, [{ if: "control", target: b.id, control, eq: { slot: input } }], effects, s);
     if (clock) this.steps[this.steps.length - 1].why = `The ${label} was stopped at the real moment, not the time written down; set to it, its back panel opens.`;
+    if (phone) this.steps[this.steps.length - 1].why = `Somebody left word at a number only they would ring; the ${label} still reaches it.`;
     return s;
   }
 
@@ -630,6 +747,9 @@ class Builder {
     for (const r of this.rules) {
       const st = r.step ? this.steps.find((x) => x.id === r.step) : undefined;
       if (!st || st.thread === null || st.thread === thread || st.optional || st.object === clock.id) continue;
+      // Only paper has a back to write on: never writing on a wall or a wardrobe, never a voice on the radio.
+      const at = st.object ? [this.exit, ...this.pool].find((o) => o.id === st.object) : undefined;
+      if (st.motif === "tool_reveal" || st.motif === "room_change" || at?.archetype === "TuningDial") continue;
       for (const e of r.effects) {
         const card = e.do === "show_card" ? e.card : e.do === "grant" ? this.items.find((i) => i.id === e.item)?.card : undefined;
         const c = card ? this.cards.find((x) => x.id === card) : undefined;
@@ -678,7 +798,8 @@ class Builder {
     const lp = this.pickObject({ trigger: "set", thread, accept: (a, v) => a === "Light" && v !== "torch" });
     if (!lp) return null;
     const lamp = this.bind(lp, thread, "set");
-    const tp = this.pickObject({ trigger: "inspect", thread, markable: true, preferUsed: true, samePhotoAs: lamp, excludeIds: [lamp.id] });
+    // (Never on the thing the writing is for: a number glowing on the telephone it dials.)
+    const tp = this.pickObject({ trigger: "inspect", thread, markable: true, preferUsed: true, samePhotoAs: lamp, excludeIds: [lamp.id, ...this.consumers.map((c) => c.id)] });
     if (!tp) return null;
     const target = this.bind(tp, thread, "inspect");
     const s1 = this.step("room_change", thread, lamp.id, [], ["The room is darker than it should be.", `The ${lamp.inv.label} still works.`, `Switch on the ${lamp.inv.label}.`]);
@@ -700,25 +821,34 @@ class Builder {
     }
   }
 
+  /** The room's UV flashlight and the step that finds it: one per room, found once. */
+  uvTorch(budget: number, thread: number, depth: number): { item: string; step: string } | null {
+    if (this.torch) return this.torch;
+    // No card: a description would only sit beside the torch, repeating it.
+    const item = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
+    const step = this.deliver(item, budget, thread, depth);
+    return step ? (this.torch = { item, step }) : null;
+  }
+
   toolReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
-    // Traces on the photo itself when there's room for both steps (light it, then lift it); else a glow on an object.
+    // Evidence is documents: a wall can't hold a case file. (Crime rooms use the light on what a suspect left: evidenceTrace.)
+    if (slots.some((s) => this.slots[s].kind === "option")) return null;
+    // Writing on the photo itself, read the moment the light finds it; or, short of wall, a glow on an object.
     // (In a last round of candidates, the glow lands on something already seen instead: a revisit, for rooms short of one.)
-    if (budget >= 2 && slots.length <= MAX_TRACES && !this.glowFirst) {
+    if (slots.length <= MAX_TRACES && !this.glowFirst) {
       const restore = this.snap();
-      const s = this.traceReveal(slots, budget, thread, depth, budget >= 3);
+      const s = this.traceReveal(slots, budget, thread, depth);
       if (s) return s;
       restore();
     }
-    // No card: a description would only sit beside the torch, repeating it.
-    const torch = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
-    const up = this.deliver(torch, budget - 1, thread, depth);
-    if (!up) return null;
-    const source = this.steps.find((s) => s.id === up)?.object;
-    const tp = this.pickObject({ trigger: "use", thread, markable: true, preferUsed: true, excludeIds: [source] });
+    const torch = this.uvTorch(budget - 1, thread, depth);
+    if (!torch) return null;
+    const source = this.steps.find((s) => s.id === torch.step)?.object;
+    const tp = this.pickObject({ trigger: "use", thread, markable: true, preferUsed: true, excludeIds: [source, ...this.consumers.map((c) => c.id)] });
     if (!tp) return null;
     const target = this.bind(tp, thread, "use");
-    const s = this.step("tool_reveal", thread, target.id, [up], ["A tool you found shows what eyes can't.", `Something on the ${target.inv.label} only shows under UV.`, `Switch to the UV flashlight and hold it on the ${target.inv.label}.`]);
-    this.rule({ on: "use", item: torch, object: target.id }, [],
+    const s = this.step("tool_reveal", thread, target.id, [torch.step], ["Some things in here only show under ultraviolet.", `Something on the ${target.inv.label} only shows under UV.`, `Switch to the UV flashlight and hold it on the ${target.inv.label}.`]);
+    this.rule({ on: "use", item: torch.item, object: target.id }, [],
       [{ do: "overlay", object: target.id, overlay: "glow_mark", text: this.mark(slots) }, { do: "show_card", card: this.clue("uv", slots) }], s);
     return s;
   }
@@ -746,7 +876,7 @@ class Builder {
       `Switch on the ${l}, then hold the ${name} to it.`,
     ]);
     this.rule({ on: "use", item: letter, object: lamp.id }, [{ if: "control", target: lamp.id, control: "on", eq: { lit: true } }],
-      [{ do: "consume", item: letter }, { do: "show_card", card }, { do: "beat", text: "Brown letters creep up out of the blank paper." }], s);
+      [{ do: "consume", item: letter }, { do: "show_card", card }], s);
     return s;
   }
 
@@ -768,7 +898,7 @@ class Builder {
       `Hold the ${name} up to the ${l}.`,
     ]);
     this.rule({ on: "use", item: note, object: mirror.id }, [],
-      [{ do: "consume", item: note }, { do: "show_card", card }, { do: "beat", text: "In the glass the backwards letters come right." }], s);
+      [{ do: "consume", item: note }, { do: "show_card", card }], s);
     return s;
   }
 
@@ -798,8 +928,7 @@ class Builder {
         `The ${hn} is printed in red over blue, and through the ${tn} the red washes out.`,
         `Drop the ${tn} on the ${hn} (or the ${hn} on the ${tn}), then slide the lens across the card.`]);
     this.rule({ on: "combine", items: [tool, holder] }, [],
-      [{ do: "consume", item: holder }, { do: "consume", item: tool }, { do: "show_card", card },
-        { do: "beat", text: kind === "rub" ? "Under the pencil, the dents come up white." : "Through the red lens, one line stands clear." }], s);
+      [{ do: "consume", item: holder }, { do: "consume", item: tool }, { do: "show_card", card }], s);
     return s;
   }
 
@@ -821,20 +950,136 @@ class Builder {
       `Tap the ${name}, then fold its edges together so A meets B.`,
     ]);
     this.rule({ on: "control", target: page, control: "folded" }, [{ if: "control", target: page, control: "folded", eq: { lit: true } }],
-      [{ do: "consume", item: page }, { do: "show_card", card }, { do: "beat", text: "Folded edge to edge, the halves make one line." }], s);
+      [{ do: "consume", item: page }, { do: "show_card", card }], s);
+    return s;
+  }
+
+  // ---- Locks that aren't wheels, and what opens them ---------------------------
+  /**
+   * What the room's one lock is: a safe's dial on a safe (often on anything strongbox-like), a ring of
+   * keys now and then, four marked wheels for a music box's tune, three for the balance's weights; else
+   * plain wheels of digits, letters or marks. Never more than one lock in a room.
+   */
+  lockKind(b: Bound, budget: number): "digits" | "letters" | "symbols" | "dial" | "keys" | "tune" | "weigh" {
+    const can = (v: string) => b.hostable.some((h) => h.archetype === "CombinationLock" && h.variant === v);
+    if (this.tool === "tune" && can("symbols") && budget >= 3) return "tune";
+    if (this.tool === "weigh" && can("symbols") && budget >= 4) return "weigh";
+    if (this.allow.has("dial") && can("dial") && this.rng() < (b.inv.type === "safe" ? 0.85 : 0.4)) return "dial";
+    if (this.allow.has("keys") && can("keys") && this.rng() < 0.25) return "keys";
+    const wheels = (["digits", "letters", "symbols"] as const).filter(can);
+    return wheels[Math.floor(this.rng() * wheels.length)] ?? "digits";
+  }
+
+  /**
+   * A ring of five keys, each five cuts of depth 0-3 from bow to tip: all different, each with at least
+   * two depths, and every wrong key unlike the right one in two cuts or more, one of them by two levels
+   * (so an impression tells them apart at a glance).
+   */
+  keyRing(): { right: string; bittings: string[] } {
+    const cut = () => Array.from({ length: KEY_CUTS }, () => this.rint(KEY_DEPTHS)).join("");
+    const varied = (k: string) => new Set(k).size >= 2;
+    const unlike = (a: string, b: string) => {
+      const d = [...a].map((c, i) => Math.abs(Number(c) - Number(b[i])));
+      return d.filter((x) => x > 0).length >= 2 && d.some((x) => x >= 2);
+    };
+    let right = cut();
+    while (!varied(right)) right = cut();
+    const keys = [right];
+    while (keys.length < 5) {
+      const k = cut();
+      if (varied(k) && !keys.includes(k) && unlike(k, right)) keys.push(k);
+    }
+    // The right key's place on the ring is the room's own.
+    const at = Math.floor(this.rng() * keys.length);
+    [keys[0], keys[at]] = [keys[at], keys[0]];
+    return { right, bittings: keys };
+  }
+
+  /** A small music box (found somewhere), cranked: it plays `code`'s marks in order. The card is exactly the run. */
+  tuneReveal(code: string, lock: Bound, budget: number, thread: number, depth: number): string | null {
+    const n = this.names.musicBox;
+    const box = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "cranked", domain: { kind: "bool" } }] });
+    const up = this.waitingOn(lock, () => this.deliver(box, budget - 1, thread, depth));
+    if (!up) return null;
+    const card = this.plainCard("Music box tune", `{{${code}}}`);
+    this.cards.find((c) => c.id === card)!.reveal = "tune";
+    const name = n.title.toLowerCase();
+    const s = this.step("tune_reveal", thread, undefined, [up], [
+      "One thing you hold plays a tune.",
+      `The ${name}'s comb has six teeth, each with its mark; the pins on its cylinder pluck them in an order.`,
+      `Tap the ${name} and turn its crank; watch which teeth are plucked, in order.`,
+    ]);
+    this.rule({ on: "control", target: box, control: "cranked" }, [{ if: "control", target: box, control: "cranked", eq: { lit: true } }],
+      [{ do: "consume", item: box }, { do: "show_card", card }], s);
+    return s;
+  }
+
+  /** A typewriter ribbon (found somewhere), pulled out: the last line typed is struck into it. Shows `slots` (one line). */
+  ribbonReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    const n = this.names.ribbon;
+    const spool = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "pulled", domain: { kind: "bool" } }] });
+    const up = this.deliver(spool, budget - 1, thread, depth);
+    if (!up) return null;
+    const card = this.clue("ribbon", slots);
+    const c = this.cards.find((x) => x.id === card)!;
+    c.reveal = "ribbon";
+    c.title = "Typed line";
+    const name = n.title.toLowerCase();
+    const s = this.step("ribbon_reveal", thread, undefined, [up], [
+      "One thing you hold has been written through.",
+      `The ${name} was run through once: every letter of the last line typed is struck into it, back to front.`,
+      `Tap the ${name} and pull the ribbon out to read the line.`,
+    ]);
+    this.rule({ on: "control", target: spool, control: "pulled" }, [{ if: "control", target: spool, control: "pulled", eq: { lit: true } }],
+      [{ do: "consume", item: spool }, { do: "show_card", card }], s);
+    return s;
+  }
+
+  /**
+   * A pocket balance and three brass weights stamped with `marks` (given heaviest first): two at a time on
+   * its pans, the beam shows which is heavier. Their order is `code`; nothing prints it. The step is done
+   * once the weighings made settle the order.
+   */
+  weighReveal(code: string, marks: string[], lock: Bound, budget: number, thread: number, depth: number): string | null {
+    const n = this.names.balance, w = this.names.weight;
+    // (Found in no telling order: the order is the balance's to show.)
+    const shuffled = marks.map((m) => [this.rng(), m] as const).sort((a, b) => a[0] - b[0]).map(([, m]) => m);
+    const made = new Map(shuffled.map((m) => [m, this.item("prop", `${w.title} ${m}`, { card: this.plainCard(`${w.title} ${m}`, w.lead.replace("{m}", m)) })]));
+    const weights = shuffled.map((m) => made.get(m)!);
+    const balance = this.item("tool", n.title, {
+      archetype: "Balance", variant: "pans", card: this.plainCard(n.title, n.lead), controls: [{ id: "pans", domain: { kind: "pans", of: weights } }],
+    });
+    const got = this.waitingOn(lock, () => this.deliver(balance, budget - 2, thread, depth));
+    const found = got && this.contain({ item: weights[0] }, thread);
+    if (!got || !found) return null;
+    // The three weights lie together (a pouch): one find.
+    this.rules.find((r) => r.effects.some((e) => e.do === "grant" && e.item === weights[0]))!.effects.push(...weights.slice(1).flatMap((x) => this.give({ item: x })));
+    this.weights = Object.fromEntries(marks.map((m, i) => [made.get(m)!, [9, 6, 4][i]]));
+    this.slots[code] = { ...this.slots[code], weigh: balance };
+    const name = n.title.toLowerCase();
+    const s = this.step("weigh", thread, undefined, [got, found], [
+      "Three small things here are not the same weight.",
+      `The ${name} compares two brass weights at a time, and its lid says which one leads.`,
+      `Open the ${name} and put two brass weights on its pans at a time, until you know their order, heaviest first.`,
+    ]);
+    this.rule({ on: "auto" }, [{ if: "state", target: balance, key: "settled", eq: { lit: true } }], [], s);
     return s;
   }
 
   // ---- UV traces -------------------------------------------------------------
-  /** Kinds of trace that can carry a slot, in a seeded order of preference. */
-  traceKinds(slot: string | null): TraceKind[] {
-    const shuffle = <T>(xs: T[]): T[] => xs.map((x) => [this.rng(), x] as const).sort((a, b) => a[0] - b[0]).map(([, x]) => x);
-    if (slot === null) return shuffle(Object.keys(TRACE_HERRINGS[this.mode]) as TraceKind[]);
-    const ev = this.meta.get(slot)?.evidence;
-    const kinds = ev ? (Object.keys(ev.traces) as TraceKind[]) : (Object.keys(TRACE_VALUE[this.mode]) as TraceKind[]);
-    const fresh = (k: TraceKind) => (this.traces.some((t) => t.kind === k) ? 1 : 0);
-    // Writing first in noir (it carries the code's look); otherwise kinds not yet in the room first.
-    return shuffle(kinds).sort((a, b) => fresh(a) - fresh(b) || (this.mode === "noir" ? (b === "writing" ? 1 : 0) - (a === "writing" ? 1 : 0) : 0));
+  // A trace is seen, never reported on: the app draws what it shows (TraceSpec's size, tread, pattern,
+  // stain, hand, words) and no card says what it means. Writing is the only kind that holds a value; its
+  // words are logged, bare, when the light finds them.
+  /** What a trace of `kind` shows, where the case doesn't set it. */
+  lookOf(kind: TraceKind): TraceLook {
+    const one = <T>(xs: readonly T[]): T => xs[Math.floor(this.rng() * xs.length)];
+    switch (kind) {
+      // Bare child's feet in a haunting; shoes anywhere else.
+      case "footprints": return this.mode === "paranormal" ? { size: "small", tread: "bare" } : { size: one(["medium", "large"] as const), tread: one(["bars", "zigzag", "rings"] as const) };
+      case "prints": case "palm": return { pattern: one(TRACE_PATTERNS), ...(this.rng() < 0.25 ? { scar: true } : {}) };
+      case "stain": return { stain: this.mode === "noir" ? "bourbon" : this.mode === "paranormal" ? "wax" : one(["wine", "coffee", "ink"] as const) };
+      case "writing": return { hand: one(TRACE_HANDS) };
+    }
   }
 
   /** Where a trace of `kind` fits on or by `b` on its photo, clear of other traces: the rect and the surface. */
@@ -886,22 +1131,22 @@ class Builder {
     return null;
   }
 
-  /** A trace for `slot` (null: one that leads nowhere), on the best object that has room for it. */
-  placeTrace(slot: string | null, thread: number, exclude: (string | undefined)[]): Trace | null {
+  /** A trace of one of `kinds`, on the best object that has room for it. `lead`: it matters to the case. */
+  placeTrace(kinds: TraceKind[], lead: boolean, thread: number, exclude: (string | undefined)[], look?: TraceLook): Trace | null {
     const photos = new Set(this.traces.map((t) => t.photo));
-    const ranked = [...(slot === null ? [this.exit] : []), ...this.pool]
+    const ranked = [...(lead ? [] : [this.exit]), ...this.pool]
       .filter((b) => b !== this.removable && !exclude.includes(b.id))
       .map((b) => [b.inv.salience * 0.5 + this.rng() * 0.8 + (b.threads.includes(thread) ? 0.6 : 0) + (b.roles > 0 ? 0.3 : 0) +
         (photos.has(b.inv.photo_index) ? 0 : 0.5), b] as const)
       .sort((x, y) => y[0] - x[0]).map(([, b]) => b);
-    for (const kind of this.traceKinds(slot)) {
+    for (const kind of kinds) {
       for (const b of ranked) {
         const fit = this.fitTrace(kind, b);
         if (!fit) continue;
         let id: string;
         do id = `trace_${mintSuffix(this.rint)}`; while (this.ids.has(id));
         this.ids.add(id);
-        const t: Trace = { id, kind, anchor: b.id, photo: b.inv.photo_index, ...fit, label: TRACE_LABELS[this.mode][kind], seed: Math.floor(this.rng() * 1e6), lead: slot !== null };
+        const t: Trace = { id, kind, anchor: b.id, photo: b.inv.photo_index, ...fit, label: TRACE_LABELS[this.mode][kind], seed: Math.floor(this.rng() * 1e6), lead, look: look ?? this.lookOf(kind) };
         this.traces.push(t);
         return t;
       }
@@ -909,88 +1154,84 @@ class Builder {
     return null;
   }
 
-  /** The report on a trace: the forensics (crime scene), or what it says (a value), or the room's story (a herring). */
-  traceCard(t: Trace, slot: string | null): string {
-    const title = TRACE_REPORTS[this.mode][t.kind];
-    const where = (s: string) => s.split("{where}").join(t.where);
-    if (slot === null) return this.plainCard(title, where(TRACE_HERRINGS[this.mode][t.kind]!));
-    const ev = this.meta.get(slot)?.evidence;
-    if (ev) return this.plainCard(title, where(ev.traces[t.kind]!).replace(/\{\{s\}\}/g, `{{${slot}}}`));
-    const lead = where(this.pick(TRACE_VALUE[this.mode][t.kind]!));
-    const v = this.phrase(slot);
-    const list = LIST_KINDS.includes(this.slots[slot].kind);
-    const after = this.meta.get(slot)?.after;
-    return this.plainCard(title, `${list ? `${lead}\n${v}` : `${lead} ${/[.!?]$/.test(v) ? v : `${v}.`}`}${after ? `${list ? "\n" : " "}${after}` : ""}`);
+  /** Lighting a trace: it shows (and writing says its words). No beat: the player is looking at it. */
+  light(t: Trace, text?: string): Effect[] {
+    return [
+      { do: "overlay", object: t.id, overlay: "glow_mark", ...(text ? { text } : {}) },
+      { do: "set_state", target: t.id, key: "revealed", value: true },
+    ];
+  }
+
+  /** A trace that is only part of the room (a stain, a child's handprint), now and then, for a sweep to turn up. */
+  strayTrace(torch: string, thread: number, exclude: (string | undefined)[], not: TraceKind[] = []): void {
+    if (this.rng() >= 0.6) return;
+    const kinds = (["stain", "palm", "footprints", "prints"] as TraceKind[]).filter((k) => !not.includes(k) && !this.traces.some((t) => t.kind === k))
+      .map((k) => [this.rng(), k] as const).sort((a, b) => a[0] - b[0]).map(([, k]) => k);
+    const h = this.placeTrace(kinds, false, thread, exclude);
+    if (h) this.rule({ on: "use", item: torch, object: h.id }, [], this.light(h));
   }
 
   /**
-   * Traces on the photo (prints, a stain, footprints, writing), one per slot, seen only under the UV
-   * flashlight: shining it on one shows it (and, for writing, what it says); dragging the magnifier onto
-   * it then reads its report. Two steps after the torch: light them all, then read them all.
+   * Writing on the photo, one piece per slot, seen only under the UV flashlight: the light on it shows
+   * its words, and that is the step (all of them, when there are several). The casebook keeps the words
+   * and nothing else.
    */
-  traceReveal(slots: string[], budget: number, thread: number, depth: number, twoSteps: boolean): string | null {
-    const torch = this.item("tool", this.names.torch, { archetype: "Light", variant: "torch" });
-    const up = this.deliver(torch, budget - (twoSteps ? 2 : 1), thread, depth);
-    if (!up) return null;
-    const source = this.steps.find((s) => s.id === up)?.object;
-    // A report names where it was lifted: never the object its value goes to (nor the way out).
-    // (By label too: a report on "the wall beside the desk lamp" would name the desk.)
+  traceReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
+    // A wall holds one line: a time whose second fact rides on the same paper stays on paper.
+    if (slots.some((s) => this.meta.get(s)?.after)) return null;
+    const torch = this.uvTorch(budget - 1, thread, depth);
+    if (!torch) return null;
+    const source = this.steps.find((s) => s.id === torch.step)?.object;
+    // Never on or by the object its value goes to (nor the way out): the place would point at it.
+    // (By label too: writing on "the wall beside the desk lamp" would name the desk.)
     const named = [this.exit, ...this.consumers].map((c) => new RegExp(`\\b${c.inv.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"));
     const exclude = [source, ...[this.exit, ...this.pool].filter((b) => named.some((re) => re.test(b.inv.label))).map((b) => b.id)];
     const traces: { t: Trace; slot: string }[] = [];
     for (const slot of slots) {
-      const t = this.placeTrace(slot, thread, exclude);
+      const t = this.placeTrace(["writing"], true, thread, exclude);
       if (!t) return null;
       traces.push({ t, slot });
       if (this.slots[slot].kind === "object") this.namedAt.set(slot, [...(this.namedAt.get(slot) ?? []), t.anchor]);
     }
-    const reveal = (t: Trace, slot: string | null): Effect[] => [
-      { do: "overlay", object: t.id, overlay: "glow_mark", ...(t.kind === "writing" && slot ? { text: this.mark([slot]) } : {}) },
-      { do: "set_state", target: t.id, key: "revealed", value: true },
-      { do: "beat", text: TRACE_BEATS[t.kind].replace("{where}", t.where) },
-    ];
-    const revealed = (t: Trace): Condition => ({ if: "state", target: t.id, key: "revealed", eq: { lit: true } });
-    const lifted = (t: Trace): Condition => ({ if: "state", target: t.id, key: "lifted", eq: { lit: true } });
     const one = traces.length === 1;
-    const first = traces[0].t;
     const wheres = listOf([...new Set(traces.map(({ t }) => t.where))]);
     const anchors = listOf([...new Set(traces.map(({ t }) => this.labelOf(t.anchor)))].map((l) => `the ${l}`));
-    const names = listOf([...new Set(traces.map(({ t }) => t.label.toLowerCase()))]);
-    const each = listOf(traces.map(({ t }) => `the ${t.label.toLowerCase()} on ${t.where}`));
-    const reports = one ? "the report" : "each report";
-    // Two steps (light it, then read it), or, short of room, one that asks for both.
-    const lit = twoSteps
-      ? this.step("tool_reveal", thread, first.id, [up], [
-        "Some things in here only show under ultraviolet.",
-        `Something on or near ${anchors} only shows under UV.`,
-        `Switch to the UV flashlight and hold the beam on ${wheres} until it glows.`,
-      ], false, "Under the light")
-      : undefined;
-    const read = this.step("tool_reveal", thread, first.id, [lit ?? up], twoSteps
-      ? [
-        "What glows under the UV light can be looked at closely.",
-        `Drag the magnifier onto the ${names} you found under the UV light.`,
-        `Drag the magnifier onto ${each}, and read ${reports}.`,
-      ]
-      : [
-        "Some things in here only show under ultraviolet.",
-        `Sweep the UV flashlight over ${anchors}; what glows can be looked at closely.`,
-        `With the UV flashlight on, hold the beam on ${wheres} until it glows, then drag the magnifier onto it and read ${reports}.`,
-      ], false, twoSteps ? "Send it to forensics" : "Under the light");
-    // Lighting any of them solves "under the light" (the first glow is the discovery); reading is done once all are read.
+    const s = this.step("tool_reveal", thread, traces[0].t.id, [torch.step], [
+      "Some things in here only show under ultraviolet.",
+      `Something written on or near ${anchors} only shows under UV.`,
+      `Switch to the UV flashlight and hold the beam on ${wheres}.`,
+    ], false, "Under the light");
     for (const { t, slot } of traces) {
-      this.rule({ on: "use", item: torch, object: t.id }, [], reveal(t, slot), lit);
-      this.rule({ on: "inspect", object: t.id }, [revealed(t)],
-        [{ do: "show_card", card: this.traceCard(t, slot) }, { do: "set_state", target: t.id, key: "lifted", value: true }], one ? read : undefined);
+      // What the wall says and what the casebook keeps are the same words, and only those.
+      const words = this.phrase(slot);
+      const card = this.plainCard(t.label, words);
+      this.rule({ on: "use", item: torch.item, object: t.id }, [], [...this.light(t, words), { do: "show_card", card }], one ? s : undefined);
     }
-    if (!one) this.rule({ on: "auto" }, traces.map(({ t }) => lifted(t)), [], read);
-    // Now and then a trace that leads nowhere (the victim's own prints, a cleaner's polish), for a sweep to turn up.
-    const h = this.rng() < 0.6 ? this.placeTrace(null, thread, [source]) : null;
-    if (h) {
-      this.rule({ on: "use", item: torch, object: h.id }, [], reveal(h, null));
-      this.rule({ on: "inspect", object: h.id }, [revealed(h)], [{ do: "show_card", card: this.traceCard(h, null) }]);
-    }
-    return read;
+    if (!one) this.rule({ on: "auto" }, traces.map(({ t }): Condition => ({ if: "state", target: t.id, key: "revealed", eq: { lit: true } })), [], s);
+    this.strayTrace(torch.item, thread, [source]);
+    return s;
+  }
+
+  /**
+   * Crime scene: something a suspect's document can be set against, left on the photo for the UV light
+   * (footprints of a size and tread, fingerprints of a pattern, a threat in a certain hand). Lighting it
+   * is the step; the comparison is the player's. Returns the step.
+   */
+  evidenceTrace(kind: "footprints" | "prints" | "writing", look: TraceLook, thread: number, doc: string): { trace: Trace; step: string } | null {
+    const torch = this.uvTorch(1, thread, 1);
+    if (!torch) return null;
+    const source = this.steps.find((s) => s.id === torch.step)?.object;
+    const t = this.placeTrace([kind], true, thread, [source], look);
+    if (!t) return null;
+    const name = t.label.toLowerCase();
+    const s = this.step("tool_reveal", thread, t.id, [torch.step], [
+      "Some things in here only show under ultraviolet.",
+      `There ${kind === "writing" ? "is" : "are"} ${name} on ${t.where}, and the ${doc.toLowerCase()} says what one of the three would have left.`,
+      `Hold the UV flashlight on ${t.where}, then set what you see beside the ${doc.toLowerCase()}.`,
+    ], false, "Under the light");
+    this.rule({ on: "use", item: torch.item, object: t.id }, [], this.light(t, look.text), s);
+    this.strayTrace(torch.item, thread, [source], ["footprints", "prints", "palm", "writing"]);
+    return { trace: t, step: s };
   }
 
   labelOf(id: string): string {
@@ -1032,6 +1273,7 @@ const STEP_TITLE: Record<MotifId, string> = {
   cross_reference: "Find the page", decode: "Decode it", tool_reveal: "Under the light", room_change: "Change the room",
   ordering: "Perform the ritual", contain_lock: "Open the lock", story_fragment: "A keepsake", finale: "The way out",
   warm_reveal: "Warm it", mirror_reveal: "In the mirror", rub_reveal: "Rub it over", lens_reveal: "Through the lens", fold_reveal: "Fold it",
+  tune_reveal: "Play it", ribbon_reveal: "Pull the ribbon", weigh: "Weigh them",
 };
 
 /**
@@ -1039,31 +1281,55 @@ const STEP_TITLE: Record<MotifId, string> = {
  * note in mirror writing (needs a mirror); a pencil rubbing, a red lens, a fold-in page (need nothing in
  * the room); or none.
  */
-export type RevealTool = "uv" | "warm" | "mirror" | "rub" | "lens" | "fold" | "none";
+export type RevealTool = "uv" | "warm" | "mirror" | "rub" | "lens" | "fold" | "tune" | "ribbon" | "weigh" | "none";
 
 /** The motif each tool is. */
 export const TOOL_MOTIF: Record<Exclude<RevealTool, "none">, MotifId> = {
   uv: "tool_reveal", warm: "warm_reveal", mirror: "mirror_reveal", rub: "rub_reveal", lens: "lens_reveal", fold: "fold_reveal",
+  tune: "tune_reveal", ribbon: "ribbon_reveal", weigh: "weigh",
 };
 /** The reveals worked by hand on a sheet of their own (never the UV light). */
-const HANDS_ON: MotifId[] = ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal"];
+const HANDS_ON: MotifId[] = ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal", "tune_reveal", "ribbon_reveal", "weigh"];
 
 /**
  * The room's one reveal tool, seeded by the room. UV weighs a little less than each of the others, and
- * three of them need nothing in the room, so UV is in under a quarter of rooms, with or without a lamp
- * or a mirror. No tool at all only where a lamp can still change the room.
+ * most of them need nothing in the room, so UV is in under a quarter of rooms, with or without a lamp
+ * or a mirror. The music box and the balance need something a lock can go on. The ribbon, the music box
+ * and the balance are offered only where the app can play them (`gadgets`). No tool at all only where
+ * a lamp can still change the room.
  */
-export function revealTool(objs: InventoryObject[], rng: () => number): RevealTool {
+export function revealTool(objs: InventoryObject[], rng: () => number, gadgets: ReadonlySet<Gadget> = new Set()): RevealTool {
   const lamp = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "Light" && h.variant !== "torch"));
   const mirror = objs.some((o) => o.type === "mirror" || (o.features.includes("reflective") && categoryOf(o.type) !== "textile"));
+  const lockable = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "CombinationLock" && h.variant === "symbols"));
   const tools: [RevealTool, number][] = [
     ["uv", 0.8], ["rub", 1], ["lens", 1], ["fold", 1],
+    ...(gadgets.has("ribbon") ? [["ribbon", 1] as [RevealTool, number]] : []),
     ...(lamp ? [["warm", 1.2] as [RevealTool, number], ["none", 0.6] as [RevealTool, number]] : []),
     ...(mirror ? [["mirror", 1.2] as [RevealTool, number]] : []),
+    ...(lockable && gadgets.has("tune") ? [["tune", 1] as [RevealTool, number]] : []),
+    ...(lockable && gadgets.has("balance") ? [["weigh", 1] as [RevealTool, number]] : []),
   ];
   let r = rng() * tools.reduce((a, [, w]) => a + w, 0);
   for (const [t, w] of tools) if ((r -= w) < 0) return t;
   return "fold";
+}
+
+/**
+ * Crime scene: what the UV light will find on the photo (`look`), and the document about one suspect that
+ * differs from it in everything it states (`shows`): another size and another sole, another pattern,
+ * another hand.
+ */
+function versusTrace(kinds: readonly ("footprints" | "prints" | "writing")[], rng: () => number, pick: Pick): NonNullable<SlotMeta["versus"]> & { evidence: Evidence } {
+  const one = <T>(xs: readonly T[]): T => xs[Math.floor(rng() * xs.length)];
+  const other = <T>(xs: readonly T[], not: T): T => one(xs.filter((x) => x !== not));
+  const kind = one(kinds);
+  const treads = ["bars", "zigzag", "rings"] as const;
+  const look: TraceLook = kind === "footprints" ? { size: one(TRACE_SIZES), tread: one(treads) }
+    : kind === "prints" ? { pattern: one(TRACE_PATTERNS) } : { hand: one(TRACE_HANDS), text: pick(THREATS) };
+  const shows: Shows = kind === "footprints" ? { size: other(TRACE_SIZES, look.size!), tread: other(treads, look.tread as typeof treads[number]) }
+    : kind === "prints" ? { pattern: other(TRACE_PATTERNS, look.pattern!) } : { hand: other(TRACE_HANDS, look.hand!) };
+  return { kind, look, shows, ...comparisonDoc(kind, shows) };
 }
 
 /**
@@ -1135,7 +1401,7 @@ const NESTED = 0.6;
 
 function buildCandidate(
   inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number, trng: () => number,
-  seed: string | number, glowFirst = false,
+  seed: string | number, glowFirst = false, gadgets: ReadonlySet<Gadget> = new Set(),
 ): Candidate | string {
   const taken = new Set<string>();
   const mk = (o: InventoryObject): Bound => ({ inv: o, id: slugId(o.label, taken), hostable: hostableArchetypes(o), archetype: null, roles: 0, triggers: [], threads: [], initial: {} });
@@ -1145,14 +1411,17 @@ function buildCandidate(
   B.glowFirst = glowFirst;
   // The room's reveal tool, seeded by the room (every candidate the same, so scoring can't always pick UV),
   // and lifted in the last round, for rooms that plan no other way.
-  B.tool = glowFirst ? "any" : revealTool(pool.map((b) => b.inv), seededRandom(`${seed}:${mode}:tool`));
+  B.allow = gadgets;
+  B.tool = glowFirst ? "any" : revealTool(pool.map((b) => b.inv), seededRandom(`${seed}:${mode}:tool`), gadgets);
   const voice = MODE_COPY[mode];
 
   // Mode skeleton: the finale's inputs become thread goals.
   const lo = 2 * nThreads + 1;
   const target = Math.max(lo, Math.min(STEP_BAND.max, (mode === "noir" ? 7 : 6) + Math.floor(rng() * 3)));
   const budgets = Array(nThreads).fill(2);
-  for (let extra = target - 1 - 2 * nThreads; extra > 0; extra--) {
+  // A crime scene with the UV light spends two steps on what a suspect left behind (find the light, find the trace).
+  const uvCase = mode === "crime_scene" && (B.tool === "uv" || B.tool === "any");
+  for (let extra = target - 1 - 2 * nThreads - (uvCase ? 2 : 0); extra > 0; extra--) {
     const open = budgets.map((b, i) => (b < 4 ? i : -1)).filter((i) => i >= 0);
     if (!open.length) break;
     budgets[open[Math.floor(rng() * open.length)]]++;
@@ -1198,16 +1467,22 @@ function buildCandidate(
     // A deduction: three named options per question; the evidence rules two out of each, so exactly
     // one suspect, one motive and one method survive. Each true answer is derived from the two
     // eliminations (never written anywhere), and the accusation from the three answers.
-    // Each wrong option gets its evidence now: a document (or UV forensics) that rules it out by what it says.
+    // Each wrong option gets its evidence now: a document that states facts, never a conclusion.
     // One wrong suspect's alibi holds only until half past eleven: it rules them out only against a later
-    // card that narrows the time of death (the case's one two-card deduction). The other has a full alibi.
+    // card that narrows the time of death (a two-card deduction). The other has a full alibi, or, in a room
+    // with the UV light, a document to set against what the light finds on the photo (footprints of
+    // another size and sole, fingerprints of another pattern, a threat in another hand).
     const alibis = B.sample(ALIBIS, 1);
     partial = partialEvidence(B.pick(PARTIAL_ALIBIS));
+    // (Only a kind of trace the photos have room for: footprints need clear floor, prints a hard surface.)
+    const fits = (["footprints", "prints", "writing"] as const).filter((k) => B.pool.some((b) => B.fitTrace(k, b)));
+    const versus = uvCase && fits.length ? versusTrace(fits, rng, B.pick) : undefined;
     let given = 0;
-    const pools: { name: string; evidence: () => Evidence }[][] = [
-      B.sample(SUSPECTS, 3).map((name) => ({ name, evidence: () => (given++ === 0 ? partial! : suspectEvidence(alibis.shift()!, B.pick)) })),
-      B.sample(MOTIVES, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
-      B.sample(METHODS, 3).map((o) => ({ name: o.name, evidence: () => optionEvidence(o) })),
+    const second = (): SlotMeta => (versus ? { evidence: versus.evidence, versus } : { evidence: suspectEvidence(alibis.shift()!) });
+    const pools: { name: string; meta: () => SlotMeta }[][] = [
+      B.sample(SUSPECTS, 3).map((name) => ({ name, meta: () => (given++ === 0 ? { evidence: partial! } : second()) })),
+      B.sample(MOTIVES, 3).map((o) => ({ name: o.name, meta: () => ({ evidence: optionEvidence(o) }) })),
+      B.sample(METHODS, 3).map((o) => ({ name: o.name, meta: () => ({ evidence: optionEvidence(o) }) })),
     ];
     const dims = pools.map((pool, i) => {
       const options: AccuseOption[] = pool.map(({ name }) => {
@@ -1217,7 +1492,7 @@ function buildCandidate(
         return { id, name };
       });
       const right = rint(3);
-      const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, { evidence: pool[j].evidence() })]);
+      const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, pool[j].meta())]);
       return { options, ruledOut, slot: B.slot("option", options[right].id, options[right].name, undefined, ruledOut) };
     });
     const evidence = dims.flatMap((d) => d.ruledOut);
@@ -1248,6 +1523,18 @@ function buildCandidate(
     const end = B.info(outputs[t], budgets[t], t, 0);
     if (!end) return `thread ${t + 1}: no motif fits the room's objects`;
     ends.push(end);
+  }
+
+  // Crime scene, with the UV light: what one suspect's document is set against is left on the photo. Lighting it
+  // is a step the accusation waits for; the comparison itself is never written anywhere.
+  for (const name of Object.keys(B.slots)) {
+    const v = B.meta.get(name)?.versus;
+    if (!v) continue;
+    const thread = Math.max(0, outputs.findIndex((o) => o.includes(name)));
+    const found = B.evidenceTrace(v.kind, v.look, thread, B.meta.get(name)!.evidence!.title);
+    if (!found) return "no room on the photos for what the suspect left";
+    B.slots[name] = { ...B.slots[name], match: { trace: found.trace.id, shows: v.shows, words: v.words } };
+    ends.push(found.step);
   }
 
   // Crime scene: the fact that narrows the time of death goes on another card of the evidence, so the
@@ -1317,7 +1604,7 @@ function buildCandidate(
   const fin = B.step(finale.kind === "ritual" ? "ordering" : "finale", null, exit.id, ends,
     ["Everything you've learned ends at the way out.", finaleHow, finaleHint]);
   B.rule({ on: "submit", object: exit.id }, [{ if: "submitted", eq: { slot: answer } }],
-    [{ do: "open", object: exit.id }, { do: "beat", text: voice.beat }, { do: "complete" }], fin);
+    [{ do: "open", object: exit.id }, { do: "complete" }], fin);
 
   // Optional extras: a story fragment, and at most one removable small object.
   if (rng() < 0.6) {
@@ -1358,7 +1645,7 @@ function buildCandidate(
       id: b.id, photo_index: b.inv.photo_index, box: { x: r.x, y: r.y, w: r.w, h: r.h }, label: b.inv.label, type: b.inv.type,
       archetype: b.archetype, ...(b.variant ? { variant: b.variant } : {}),
       controls: [...(v?.controls ?? []), ...(removable ? [{ id: "taken", domain: { kind: "bool" } } as const] : [])],
-      ...(b === exit ? { submit, exit: true } : v?.submit ? { submit: v.submit } : {}),
+      ...(b === exit ? { submit, exit: true } : v?.submit ? { submit: b.submit ?? v.submit } : {}),
       initial: { ...(v?.initial ?? {}), ...b.initial, ...(removable ? { taken: false } : {}) },
       ...(removable ? { removable: true } : {}),
     };
@@ -1366,7 +1653,7 @@ function buildCandidate(
   // UV traces: marks on the photo, not objects of the room; drawn only under the UV beam.
   const traceDefs = B.traces.map((t): ObjectDef => ({
     id: t.id, photo_index: t.photo, box: t.rect, label: t.label, type: "other", archetype: null, controls: [], initial: { revealed: false },
-    trace: { kind: t.kind, surface: t.surface, anchor: t.anchor, seed: t.seed },
+    trace: { kind: t.kind, surface: t.surface, anchor: t.anchor, seed: t.seed, ...t.look },
   }));
   // A trace's anchor is always in the room, so what the trace is on or by can be checked (and named).
   const anchored = B.pool.filter((b) => B.traces.some((t) => t.anchor === b.id) && !used.includes(b) && !herrings.includes(b));
@@ -1383,6 +1670,7 @@ function buildCandidate(
   const secret: RoomSecretV2 = {
     schema_version: 2, slots: B.slots, rules: B.rules, steps: B.steps, ending: B.pick(voice.endings),
     ...(mode === "crime_scene" ? { keep: [TIME_OF_DEATH] } : {}),
+    ...(B.weights ? { weights: B.weights } : {}),
   };
 
   // A word lock's answer never stands as a word in the room's own text ("In blue ink" with INK): another word.
@@ -1410,7 +1698,8 @@ function buildCandidate(
   if (required.length < STEP_BAND.min || required.length > STEP_BAND.max) return `steps: ${required.length} outside ${STEP_BAND.min}-${STEP_BAND.max}`;
   // The mid-game turn: an object that comes to mean something new (a revisit) and a room that changes, or a
   // reveal worked by hand (a page warmed, rubbed, folded), which is its own breakthrough and needs neither.
-  const handsOn = required.some((s) => HANDS_ON.includes(s.motif));
+  // (So is a trace the light finds that a suspect's document is set against.)
+  const handsOn = required.some((s) => HANDS_ON.includes(s.motif)) || Object.values(B.slots).some((s) => s.match);
   if (revisits < 1 && !handsOn) return "no revisit";
   if (roomChanges < 1 && !handsOn) return "no room change";
 
@@ -1459,7 +1748,7 @@ export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanR
     for (let c = round * n; c < (round + 1) * n; c++) {
       const rng = seededRandom(`${opts.seed}:${opts.mode}:${c}`);
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
-      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2);
+      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2, new Set(opts.gadgets ?? PLAYABLE));
       if (typeof r === "string") fail(r); else built.push(r);
     }
     built.sort((a, b) => b.summary.score - a.summary.score);

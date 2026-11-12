@@ -18,7 +18,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
-import { Line, Stage, adjustable, mod, readoutText, settle } from "./kit";
+import { Stage, adjustable, mod, readoutText, settle } from "./kit";
 import { ENAMEL } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
@@ -199,7 +199,6 @@ export function ClockHands({ state, onSet, busy, width }: MechanismProps) {
           {shownMinute}
         </Text>
       </View>
-      <Line text="Drag the hands" />
     </Stage>
   );
 }

@@ -1,7 +1,9 @@
 // Simulator: breadth-first search over abstract player actions, using the real
 // engine. The simulated player only ever enters values it has *seen* (a slot
 // shown on a card it holds, or a derived slot whose sources it has all seen),
-// so "solvable" means solvable by reasoning, never by guessing.
+// so "solvable" means solvable by reasoning, never by guessing. A fact that takes
+// two things to see (a suspect's document set against a trace on the photo) is
+// known only once both have been seen.
 //
 // Proves: solvable; no softlock (from every reachable state the exit is still
 // reachable); the finale only fires once every required step is solved; every
@@ -37,7 +39,11 @@ export interface SimOptions { maxStates?: number }
 /** Slots a player knows in this state: shown on a held card, or derived from known slots. */
 function knownSlots(state: PlayState, secret: RoomSecretV2, cardSlots: Map<string, string[]>): Set<string> {
   const known = new Set<string>();
-  for (const c of state.cards) for (const s of cardSlots.get(c) ?? []) known.add(s);
+  // A document that rules its suspect out only against a trace says nothing until that trace has been seen.
+  const compared = (name: string) => { const m = secret.slots[name]?.match; return !m || state.objects[m.trace]?.revealed === true; };
+  for (const c of state.cards) for (const s of cardSlots.get(c) ?? []) if (compared(s)) known.add(s);
+  // An order learned on a balance is known once the weighings made there settle it.
+  for (const [name, s] of Object.entries(secret.slots)) if (s.weigh && state.items[s.weigh]?.settled === true) known.add(name);
   for (let grew = true; grew;) {
     grew = false;
     for (const [name, s] of Object.entries(secret.slots)) {
@@ -83,7 +89,8 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
       const kv = Object.entries(s.objects[id]).filter(([k]) => !ctl.has(k) || relevant.has(`${id}.${k}`)).sort(([a], [b]) => (a < b ? -1 : 1));
       return `${id}{${kv.map(([k, v]) => `${k}=${v}`).join(",")}}`;
     });
-    const items = Object.keys(s.items).sort().map((id) => `${id}{${Object.entries(s.items[id]).filter(([k]) => relevant.has(`${id}.${k}`)).map(([k, v]) => `${k}=${v}`).join(",")}}`);
+    // (What a balance has compared so far is part of the state: each weighing is progress.)
+    const items = Object.keys(s.items).sort().map((id) => `${id}{${Object.entries(s.items[id]).filter(([k]) => relevant.has(`${id}.${k}`) || (k === "weighed" && !s.items[id].settled)).map(([k, v]) => `${k}=${v}`).join(",")}}`);
     return [[...s.fired].sort().join(","), [...s.inventory].sort().join(","), objs.join(";"), items.join(";"), s.completed].join("|");
   };
 
@@ -117,6 +124,12 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
     for (const item of def.items) {
       if (!s.inventory.includes(item.id)) continue;
       for (const c of item.controls ?? []) {
+        // A balance: any two of its weights in hand, one on each pan.
+        if (c.domain.kind === "pans") {
+          const held = c.domain.of.filter((w) => s.inventory.includes(w));
+          for (let i = 0; i < held.length; i++) for (let j = i + 1; j < held.length; j++) out.push({ type: "set_control", target: item.id, control: c.id, value: `${held[i]}|${held[j]}` });
+          continue;
+        }
         if (!triggers.has(`c:${item.id}.${c.id}`)) continue;
         // A held thing worked by hand (a page folded): no value to know.
         if (c.domain.kind === "bool") { out.push({ type: "set_control", target: item.id, control: c.id, value: true }); continue; }
@@ -197,7 +210,7 @@ export function simulate(def: RoomDefinitionV2, secret: RoomSecretV2, opts: SimO
   // Slot coverage: each shown slot on exactly one card, and that card reachable.
   const reachableCards = new Set(states.flatMap((s) => s.cards));
   for (const [name, slot] of Object.entries(secret.slots)) {
-    if (slot.from) continue;
+    if (slot.from || slot.weigh) continue;   // derived, or observed on a balance: on no card
     const on = def.cards.filter((c) => cardSlots.get(c.id)!.includes(name));
     if (on.length !== 1) errors.push(`slot {{${name}}} is shown on ${on.length} cards (must be exactly 1)`);
     else if (!reachableCards.has(on[0].id)) errors.push(`slot {{${name}}} is on card ${on[0].id}, which is never reachable`);
@@ -286,6 +299,17 @@ export function finaleLogic(def: RoomDefinitionV2, secret: RoomSecretV2): string
       const ruled = new Set((dim?.from ?? []).map((n) => secret.slots[n]).filter((s) => s && !s.from && s.kind === "option").map((s) => s.value));
       const left = options.filter((o) => !ruled.has(o.id)).map((o) => o.id);
       if (left.length !== 1 || left[0] !== dim?.value) errors.push(`accusation: the evidence leaves ${left.length} options in question ${i + 1}, not exactly the answer`);
+      // A document that rules its suspect out only against a trace: the trace is in the room, a required step
+      // lights it, and it differs from the document in everything the document states.
+      for (const n of dim?.from ?? []) {
+        const m = secret.slots[n]?.match;
+        if (!m) continue;
+        const trace = def.objects.find((o) => o.id === m.trace)?.trace;
+        const lit = secret.rules.some((r) => r.trigger.on === "use" && r.trigger.object === m.trace && !!r.step && !secret.steps.find((s) => s.id === r.step)?.optional);
+        const shows = Object.entries(m.shows) as [keyof typeof m.shows, string][];
+        if (!trace || !lit) errors.push(`accusation: {{${n}}} is set against a trace the player is never led to`);
+        else if (!shows.length || shows.some(([k, v]) => trace[k] === undefined || trace[k] === v)) errors.push(`accusation: {{${n}}}'s document doesn't differ from the trace it is set against`);
+      }
     });
   }
   if (def.finale.kind === "ritual") {

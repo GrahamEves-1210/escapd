@@ -17,13 +17,12 @@ export function progressFor(kind: RevealKind, dy: number): number {
 }
 
 /**
- * A card's text as the narration ("Held to the warm bulb, brown letters creep up:") and what is written
- * (the values): the page shows only the writing, the narration is the caption once it's read.
+ * What is written on a card that reads with a tool: all of it. The card holds only the writing itself (never a
+ * line of narration before it), so nothing is split off at a colon ("Never the first: what lies flat on the
+ * floor." is one line of writing) and nothing is captioned under the page.
  */
-export function splitCard(text: string): { lead: string; writing: string } {
-  const m = /:(\s)/.exec(text);
-  if (!m) return { lead: "", writing: text };
-  return { lead: text.slice(0, m.index + 1).trim(), writing: text.slice(m.index + 1).trim() };
+export function writingOf(text: string): string {
+  return text.trim();
 }
 
 /** The card a result showed that reads with a tool (warmed, in a mirror), as the sheet opens it; else null. */

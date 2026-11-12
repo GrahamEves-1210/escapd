@@ -24,7 +24,7 @@
 // scripts/blender/props/reveal_*.py): the brass lamp (off, and lit over it as it comes on), the mirror's
 // carved frame and what lies on its glass, the red lens, the pencil, the notepad's wire. Everything
 // written, shaded, reflected or folded is drawn live, under and around them.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions, type TextStyle } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, {
@@ -47,7 +47,7 @@ import { RubSheet } from "./RubSheet";
 import type { SheetProps } from "./sheet";
 import { warmFaces } from "./ink";
 import { LAMP, MIRROR } from "./props";
-import { handLayout, HOLD_AT, isShort, progressFor, REACH, revealOf as findReveal, sizeFor, SYMBOL, type HandWord, type RevealKind, splitCard } from "./revealText";
+import { handLayout, HOLD_AT, isShort, progressFor, REACH, revealOf as findReveal, sizeFor, SYMBOL, type HandWord, type RevealKind, writingOf } from "./revealText";
 
 export type { RevealKind } from "./revealText";
 
@@ -99,7 +99,8 @@ const BULB_R = 17;
 const PAGE_GAP = Math.round(HOLD_AT * REACH) + 2;
 
 export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind; title: string; text: string; onClose: () => void }) {
-  const { lead, writing: text } = splitCard(card);
+  // The card is the writing, whole: nothing narrates it before or after it's read.
+  const text = writingOf(card);
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
@@ -172,6 +173,33 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
     finish();
   };
 
+  // How to read it is never said up front. Only if she does nothing with the sheet for a while (no touch, the
+  // writing no further on) do a few words come up under it; a touch puts them away. Once read, nothing is said.
+  const [idle, setIdle] = useState(false);
+  const [touches, setTouches] = useState(0);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleAt = useRef(0);
+  useEffect(() => {
+    if (done) return;
+    const check = () => {
+      const now = shown.get();
+      const busyWithIt = now !== idleAt.current || near.get() > 0.02;
+      idleAt.current = now;
+      if (busyWithIt) idleTimer.current = setTimeout(check, HINT_AFTER_MS);
+      else setIdle(true);
+    };
+    idleAt.current = shown.get();
+    idleTimer.current = setTimeout(check, HINT_AFTER_MS);
+    return () => {
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+    };
+  }, [done, touches, shown, near]);
+  const touched = () => {
+    setIdle(false);
+    setTouches((n) => n + 1);
+    return false;
+  };
+
   const pageStyle = useAnimatedStyle(() => ({ transform: [{ translateY: drag.get() }] }));
   const hint = HINT[kind];
   const page = {
@@ -185,16 +213,12 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   };
   const caption = (
     <View style={styles.caption} pointerEvents="none">
-      {done ? (
-        lead ? <Text style={[ref.type.handSmall, { fontFamily: hand, color: theme.inkMuted, textAlign: "center" }]} testID="v2-reveal-lead">{lead.replace(/:$/, ".")}</Text> : null
-      ) : (
-        <Text style={[ref.type.handSmall, { fontFamily: hand, color: theme.inkMuted, textAlign: "center" }]} testID="v2-reveal-hint">{hint}</Text>
-      )}
+      {!done && idle ? <Text style={[ref.type.handSmall, { fontFamily: hand, color: theme.inkMuted, textAlign: "center" }]} testID="v2-reveal-hint">{hint}</Text> : null}
     </View>
   );
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: theme.ground }]} testID={`v2-reveal-${kind}`}>
+    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: theme.ground }]} onStartShouldSetResponderCapture={touched} testID={`v2-reveal-${kind}`}>
       {/* Once it's read, a tap anywhere puts it away. */}
       {done ? <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} testID="v2-reveal-away" /> : null}
       {kind === "heat" ? (
@@ -254,13 +278,20 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   );
 }
 
-/** The tiny hint under each object until it's read, and how the screen reader is told to read it. */
+/** Idle this long with the sheet unread, and the hint comes up (ms). */
+export const HINT_AFTER_MS = 5000;
+/**
+ * The few words that come up under a sheet left untouched (never before, never once it's read), and how the
+ * screen reader is told to read it (always, in full).
+ */
 const HINT: Record<RevealKind, string> = {
-  heat: "Hold it up to the lamp's warmth",
-  mirror: "Hold it up to the mirror",
-  rub: "Rub the pencil over the page",
-  lens: "Slide the red lens over the card",
-  fold: "Fold the page so A meets B",
+  heat: "Warm it at the bulb",
+  mirror: "Hold it to the glass",
+  rub: "Rub with the pencil",
+  lens: "Lens over the card",
+  fold: "Bring A to B",
+  tune: "Turn the crank",
+  ribbon: "Pull the ribbon",
 };
 const HOW: Record<RevealKind, string> = {
   heat: "hold it to the warm bulb to read it",
@@ -268,6 +299,8 @@ const HOW: Record<RevealKind, string> = {
   rub: "rub the pencil over the page to read it",
   lens: "slide the red lens over it to read it",
   fold: "fold it so its two strips meet to read it",
+  tune: "turn its crank to hear it",
+  ribbon: "pull the ribbon out to read it",
 };
 
 /** The sheets drawn on a canvas, each its own object and gesture. */

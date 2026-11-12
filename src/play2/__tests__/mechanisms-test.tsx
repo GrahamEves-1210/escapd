@@ -49,12 +49,14 @@ describe("mechanisms", () => {
     }
   });
 
-  it("opens a drawer and a compartment; a locked one rattles and says so", async () => {
+  it("opens a drawer and a compartment; a locked one rattles and stays shut (nothing written under either)", async () => {
     for (const [variant, verb] of [["drawer", "Pull the drawer open"], ["compartment", "Swing the door open"]]) {
       const t = target("Drawer", variant);
       const { onSet, view } = await mount(t);
-      // What a screen reader hears is what the line says.
-      if (variant === "compartment") expect(screen.getByText(verb)).toBeTruthy();
+      // The verb is the screen reader's; no line on screen says it.
+      expect(screen.getByLabelText(verb)).toBeTruthy();
+      expect(screen.queryByText(verb)).toBeNull();
+      expect(screen.queryByText("Pull it toward you")).toBeNull();
       await act(verb, "activate");
       expect(onSet).toHaveBeenCalledWith("open", true);
       expectValid(t, "open", true);
@@ -63,7 +65,9 @@ describe("mechanisms", () => {
     const { onSet } = await mount(target("Drawer", "drawer"), { state: { open: false, locked: true } });
     await act("Pull the drawer open", "activate");
     expect(onSet).not.toHaveBeenCalled();
-    expect(screen.getByText("Locked")).toBeTruthy();
+    // Its keyhole and its rattle say it; the screen reader's hint says "It is locked".
+    expect(screen.queryByText("Locked")).toBeNull();
+    expect(screen.getByLabelText("Pull the drawer open").props.accessibilityHint).toBe("It is locked");
   });
 
   it("lifts a cushion and tilts a frame", async () => {
@@ -99,12 +103,14 @@ describe("mechanisms", () => {
   it("draws a lifted thing as what it's called: a rug rolls back, the rest lift off their place", async () => {
     expect(["Rug", "throw blanket", "bath mat"].map(liftKind)).toEqual(["rug", "rug", "rug"]);
     expect(["Cushion", "pillow", "Book", "wooden box", "Plant pot", "vase"].map(liftKind)).toEqual(["cushion", "cushion", "book", "box", "pot", "pot"]);
-    // The line under it says how.
+    // No line under it says how (show, never tell): the screen reader's label does.
     const rug = await mount(target("LiftUnder", "lift", "Rug"));
-    expect(screen.getByText("Peel it back")).toBeTruthy();
+    expect(screen.queryByText("Peel it back")).toBeNull();
+    expect(screen.getByLabelText("Lift the Rug")).toBeTruthy();
     await rug.view.unmount();
     const vase = await mount(target("LiftUnder", "lift", "Vase"));
-    expect(screen.getByText("Lift it up")).toBeTruthy();
+    expect(screen.queryByText("Lift it up")).toBeNull();
+    expect(screen.getByLabelText("Lift the Vase")).toBeTruthy();
     await vase.view.unmount();
   });
 
@@ -122,7 +128,9 @@ describe("mechanisms", () => {
   it("turns straight to a page with the number wheels, which stand at the page it's open at", async () => {
     const t = target("Readable", "pages");
     const { onSet, view } = await mount(t, { state: { page: "46" } });
-    expect(screen.getByText("Open at page 46")).toBeTruthy();
+    // The page is on the book's folios; a screen reader is told where it's open (nothing is captioned).
+    expect(screen.queryByText("Open at page 46")).toBeNull();
+    expect(screen.getByLabelText("Open at page 46")).toBeTruthy();
     expect(wheels(3)).toEqual(["0", "4", "6"]);
     await act("Wheel 3", "increment");
     await fireEvent.press(screen.getByLabelText("Turn to page"));
@@ -134,7 +142,7 @@ describe("mechanisms", () => {
         <Mechanism key="again" target={t} state={{ page: "267" }} onSet={onSet} onSubmit={jest.fn()} busy={false} cooldown={0} width={360} />
       </GestureHandlerRootView>,
     );
-    expect(screen.getByText("Open at page 267")).toBeTruthy();
+    expect(screen.getByLabelText("Open at page 267")).toBeTruthy();
     expect(wheels(3)).toEqual(["2", "6", "7"]);
     await view.unmount();
     // A fresh book opens at page 1: 001.
@@ -295,9 +303,10 @@ describe("mechanisms", () => {
       expect(chip().children.length).toBe(before);
     });
 
-    it("shows open once it is", async () => {
+    it("shows open once it is: the door ajar, no line saying so", async () => {
       await mount(door("combination"), { state: { open: true } });
-      expect(screen.getByText("The door is open")).toBeTruthy();
+      expect(screen.getByTestId("mech-door-open")).toBeTruthy();
+      expect(screen.queryByText("The door is open")).toBeNull();
     });
   });
 

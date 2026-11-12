@@ -165,7 +165,6 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
           {!turned && committed === 1 ? (
             <>
               <ArrowsClockwiseIcon size={26} color={theme.inkMuted} weight="bold" />
-              <Text style={[handType(theme).small, { color: theme.inkMuted }]}>turn the ring</Text>
             </>
           ) : null}
         </View>
@@ -212,9 +211,7 @@ function CodedLine({ coded, source, k, numeric, reads, width }: {
   const hand = handType(theme);
   if (!coded) {
     return (
-      <View style={[styles.slip, styles.slipEmpty, { borderColor: theme.rim }]} testID="mech-decoder-line">
-        <Text style={[hand.small, { color: theme.inkMuted, textAlign: "center" }]}>No coded message yet. Find one, then turn the ring to read it.</Text>
-      </View>
+      <View style={[styles.slip, styles.slipEmpty, { borderColor: theme.rim }]} accessible accessibilityRole="text" accessibilityLabel="No coded message yet" testID="mech-decoder-line" />
     );
   }
   const chars = [...coded];

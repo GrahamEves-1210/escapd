@@ -1,6 +1,6 @@
 // The app imports the shared v2 core (supabase/functions/_shared/v2) through src/engine/v2.ts.
 // Plans a room and plays the simulator's winning path through the engine, as a local preview would.
-import { applyAction, initialState, type InventoryObject, planRoom } from "@/engine/v2";
+import { applyAction, GADGETS, initialState, type InventoryObject, PLAYABLE, planRoom } from "@/engine/v2";
 
 const inv = (type: InventoryObject["type"], photo: number, features: InventoryObject["features"]): InventoryObject => ({
   id: `${type}_${photo}`, label: type.replace(/_/g, " "), type, features, box: [200, 100 + photo * 120, 600, 200 + photo * 120],
@@ -80,4 +80,35 @@ test("the hands-on reveals play in the app runtime: a pencil rubbing, a red lens
   expect([...found].sort()).toEqual(["fold", "lens", "rub"]);
   // UV stays rare even here, where there's no lamp or mirror to use instead.
   expect(uv / rooms).toBeLessThanOrEqual(0.27);
+});
+
+test("the gadgets stay out of rooms until their switch is on; switched on, they play through in the app runtime", () => {
+  // The switches (PLAYABLE) are the app's: nothing is on until its mechanism or sheet plays.
+  expect(PLAYABLE.every((g) => (GADGETS as readonly string[]).includes(g))).toBe(true);
+  const room = [
+    inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("safe", 2, ["can_open", "has_doors"]), inv("telephone", 1, []),
+    inv("cabinet", 2, ["has_doors", "can_open"]), inv("pillow", 3, ["can_lift"]), inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]), inv("poster", 3, ["wall_mounted"]),
+  ];
+  const kinds = (r: Extract<ReturnType<typeof planRoom>, { ok: true }>) => [
+    ...r.definition.objects.flatMap((o) => (o.submit?.kind === "dial" || o.submit?.kind === "keys" ? [o.submit.kind] : [])),
+    ...(r.definition.objects.some((o) => o.archetype === "Telephone" && r.secret.steps.some((s) => s.object === o.id)) ? ["telephone"] : []),
+    ...r.definition.cards.flatMap((c) => (c.reveal === "tune" || c.reveal === "ribbon" ? [c.reveal] : [])),
+    ...(r.definition.items.some((i) => i.archetype === "Balance") ? ["balance"] : []),
+  ];
+  const seen = new Set<string>();
+  for (let i = 0; i < 90; i++) {
+    let s = i + 1;
+    const randomInt = (max: number) => { s = (s * 16807) % 2147483647; return s % max; };
+    const mode = (["noir", "crime_scene", "paranormal"] as const)[i % 3];
+    const off = planRoom(room, { mode, seed: `gad-${i}`, randomInt, gadgets: [] });
+    if (!off.ok) throw new Error(off.detail);
+    expect(kinds(off)).toEqual([]);
+    const on = planRoom(room, { mode, seed: `gad-${i}`, randomInt, gadgets: GADGETS });
+    if (!on.ok) throw new Error(on.detail);
+    let state = initialState(on.definition);
+    for (const action of on.report.path) state = applyAction(on.definition, on.secret, state, action).state;
+    expect(state.completed).toBe(true);
+    kinds(on).forEach((k) => seen.add(k));
+  }
+  expect([...seen].sort()).toEqual(["balance", "dial", "keys", "ribbon", "telephone", "tune"]);
 });

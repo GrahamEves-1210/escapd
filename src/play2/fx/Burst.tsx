@@ -1,13 +1,13 @@
 // A little celebration at something on the photo: tiny inky things pop out of
 // it and drift (noir: little stars, an inked spark or two and a curl of smoke; crime
-// scene: evidence markers and magnifier glints; paranormal: wisps and moons),
-// and a handwritten word stamps on and fades ("Oh!" for a find; "Aha!" in a
-// stamp's frame for a solved step, bigger). On a roll it grows: more of them, a
-// warmer glow behind, and a row of little sparkles under the word, one per
-// find. Drawn at (x, y) in its parent's points; it plays once and is removed by
-// whoever mounted it. Reduced motion: the word fades in and out, nothing moves.
+// scene: evidence markers and magnifier glints; paranormal: wisps and moons).
+// Nothing is written over it: no "Oh!", no "Aha!" (show, never tell). A
+// solved step's is bigger. On a roll it grows: more of them, a warmer glow
+// behind, and a row of little sparkles over it, one per find. Drawn at (x, y)
+// in its parent's points; it plays once and is removed by whoever mounted it.
+// Reduced motion: one still sparkle fades in and out, nothing moves.
 import { useEffect, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Canvas, Circle, Group, Path, RadialGradient, Skia, vec, type SkPath } from "@shopify/react-native-skia";
 import Animated, { Easing, useAnimatedStyle, useDerivedValue, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { SparkleIcon } from "phosphor-react-native";
@@ -21,7 +21,8 @@ export interface BurstProps {
   y: number;
   genre: Genre;
   strength: Strength;
-  word: string;
+  /** Ignored: nothing is stamped over a burst any more (older callers still pass it). */
+  word?: string;
   /** The roll's level (0: not on a roll) and how many finds it holds. */
   level: number;
   count: number;
@@ -31,15 +32,13 @@ export interface BurstProps {
 
 /** The look and timing of a burst, by strength. */
 export const BURST = {
-  find: { ms: 1250, bits: 7, reach: 44, size: 7, word: 24, wordAt: 0 },
-  solve: { ms: 1650, bits: 11, reach: 64, size: 9, word: 30, wordAt: 90 },
+  find: { ms: 1250, bits: 7, reach: 44, size: 7, thumpAt: 0 },
+  /** A solved step: more, further; its thump (the sound) lands this long in. */
+  solve: { ms: 1650, bits: 11, reach: 64, size: 9, thumpAt: 200 },
   /** Per level of a roll: more bits, a little further, a little bigger. */
-  perLevel: { bits: 2, reach: 8, size: 0.8, word: 2 },
-  /** The word stamps down over this long, from this much bigger. */
-  stampMs: 130,
-  stampFrom: 1.55,
-  /** The word sits this far above the burst's centre (points). */
-  wordLift: 40,
+  perLevel: { bits: 2, reach: 8, size: 0.8 },
+  /** A roll's row of sparkles sits this far above the burst's centre (points). */
+  rollLift: 46,
 } as const;
 
 type Kind = "star" | "star5" | "spark" | "smoke" | "marker" | "glint" | "wisp" | "moon";
@@ -113,7 +112,7 @@ export function bitsFor(genre: Genre, strength: Strength, level: number, seed: n
     const kind = mix[Math.floor(R(0) * mix.length)];
     // Smoke and wisps rise rather than fly: a short way, mostly up.
     const rises = kind === "smoke" || kind === "wisp";
-    // (Off to one side of straight up, so they curl past the word rather than through it.)
+    // (Off to one side of straight up, so they curl away rather than straight over the thing.)
     const side = R(7) < 0.5 ? -1 : 1;
     const angle = rises ? -Math.PI / 2 + side * (0.55 + 0.45 * R(1)) : start + (i / n) * Math.PI * 2 + (R(1) - 0.5) * 0.7;
     out.push({
@@ -130,7 +129,7 @@ export function bitsFor(genre: Genre, strength: Strength, level: number, seed: n
   return out;
 }
 
-export function Burst({ x, y, genre, strength, word, level, count, seed }: BurstProps) {
+export function Burst({ x, y, genre, strength, level, count, seed }: BurstProps) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const b = BURST[strength];
@@ -165,23 +164,12 @@ export function Burst({ x, y, genre, strength, word, level, count, seed }: Burst
     return (p < 0.1 ? p / 0.1 : Math.max(0, 1 - (p - 0.1) / 0.5)) * (0.55 + 0.15 * level);
   });
 
-  const fontSize = b.word + level * BURST.perLevel.word;
-  const stamped = strength === "solve";
-  const wordStyle = useAnimatedStyle(() => {
-    const at = b.wordAt / ms;
+  // What stands over it: a roll's row of sparkles; with reduced motion, the one still sparkle. It comes up and fades.
+  const overStyle = useAnimatedStyle(() => {
     const p = t.get();
-    const local = Math.max(0, p - at);
-    const down = Math.min(1, (local * ms) / BURST.stampMs);
     const fadeFrom = 0.72;
-    const opacity = p < at ? 0 : p > fadeFrom ? Math.max(0, (1 - p) / (1 - fadeFrom)) : Math.min(1, down * 2.2);
-    if (reducedMotion) return { opacity };
-    // Down hard, a hair past, and back: a rubber stamp's landing.
-    const ease = 1 - (1 - down) * (1 - down);
-    const scale = down < 1 ? BURST.stampFrom - (BURST.stampFrom - 0.96) * ease : 0.96 + 0.04 * Math.min(1, (local * ms - BURST.stampMs) / 90);
-    return { opacity, transform: [{ translateY: -p * 8 }, { scale }] };
+    return { opacity: p > fadeFrom ? Math.max(0, (1 - p) / (1 - fadeFrom)) : Math.min(1, p / 0.08) };
   });
-  // Tilted a little, each burst its own way.
-  const tilt = (rand(seed, 3) < 0.5 ? -1 : 1) * (3 + 5 * rand(seed, 4));
 
   return (
     <View pointerEvents="none" style={[styles.root, { left: x, top: y }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" testID="v2-burst">
@@ -195,20 +183,11 @@ export function Burst({ x, y, genre, strength, word, level, count, seed }: Burst
           {bits.map((bit, i) => <BitView key={i} bit={bit} t={t} c={c} ink={ink} />)}
         </Canvas>
       )}
-      <Animated.View style={[styles.word, { top: -BURST.wordLift - fontSize }, wordStyle]}>
-        <View style={[stamped && styles.stamp, stamped && { borderColor: theme.stamp }, { transform: [{ rotate: `${tilt}deg` }] }]} testID="v2-burst-word">
-          <Text
-            allowFontScaling={false}
-            style={[styles.text, {
-              fontFamily: theme.hand.fontFamily, fontSize, lineHeight: Math.round(fontSize * 1.25),
-              color: stamped ? theme.stamp : theme.glow, textShadowColor: theme.ground,
-            }]}
-          >
-            {word}
-          </Text>
-        </View>
-        {level > 0 ? <Roll count={count} t={t} color={theme.foil} still={reducedMotion} /> : null}
-      </Animated.View>
+      {level > 0 || reducedMotion ? (
+        <Animated.View style={[styles.over, { top: reducedMotion && level === 0 ? -9 : -BURST.rollLift }, overStyle]} testID="v2-burst-over">
+          {level > 0 ? <Roll count={count} t={t} color={theme.foil} still={reducedMotion} /> : <SparkleIcon size={18} weight="fill" color={theme.glow} />}
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -253,7 +232,7 @@ function BitView({ bit, t, c, ink }: { bit: Bit; t: SharedValue<number>; c: numb
   );
 }
 
-/** A roll's flourish: a row of little sparkles under the word, one per find (up to six), popping in one after another. */
+/** A roll's flourish: a row of little sparkles over the burst, one per find (up to six), popping in one after another. */
 function Roll({ count, t, color, still }: { count: number; t: SharedValue<number>; color: string; still: boolean }) {
   const n = Math.min(6, count);
   return (
@@ -280,8 +259,6 @@ function RollStar({ i, n, t, color, still }: { i: number; n: number; t: SharedVa
 
 const styles = StyleSheet.create({
   root: { position: "absolute", width: 0, height: 0, overflow: "visible", zIndex: 30 },
-  word: { position: "absolute", left: -120, width: 240, alignItems: "center", gap: 2 },
-  stamp: { borderWidth: 2, borderRadius: 10, paddingHorizontal: 8, paddingTop: 0, paddingBottom: 1 },
-  text: { textAlign: "center", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  over: { position: "absolute", left: -120, width: 240, alignItems: "center" },
   roll: { flexDirection: "row", gap: 3, alignItems: "center", justifyContent: "center" },
 });

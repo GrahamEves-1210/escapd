@@ -175,6 +175,25 @@ function runRules(action: Action | null, submitted: string | null, state: PlaySt
   return n;
 }
 
+/**
+ * Whether the weighings made so far (`pairs`, "a+b" with ids sorted) fix the whole order of `ids`: every
+ * two of them compared, directly or through a chain (a over b, b over c).
+ */
+export function orderSettled(ids: readonly string[], pairs: ReadonlySet<string>, weights: Record<string, number>): boolean {
+  const over = new Map(ids.map((id) => [id, new Set<string>()]));
+  for (const p of pairs) {
+    const [a, b] = p.split("+");
+    if (!over.has(a) || !over.has(b) || weights[a] === weights[b]) continue;
+    const [hi, lo] = (weights[a] ?? 0) > (weights[b] ?? 0) ? [a, b] : [b, a];
+    over.get(hi)!.add(lo);
+  }
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const set of over.values()) for (const x of [...set]) for (const y of over.get(x) ?? []) if (!set.has(y)) { set.add(y); grew = true; }
+  }
+  return ids.every((a, i) => ids.slice(i + 1).every((b) => over.get(a)!.has(b) || over.get(b)!.has(a)));
+}
+
 const invalid = (state: PlayState, reason: string) => ({ state, result: { outcome: "invalid", reason, effects: [] } as ActionResult });
 
 /** Why an object cannot be acted on, or null. */
@@ -195,6 +214,8 @@ export function applyAction(
   const out: PublicEffect[] = [];
   let submitted: string | null = null;
   let changed = false;
+  // What the action itself shows, rules aside (a balance's beam).
+  const observed: PublicEffect[] = [];
   let normalized: Action = action;
 
   switch (action.type) {
@@ -224,6 +245,21 @@ export function applyAction(
       changed = bucket[action.target][action.control] !== value;
       bucket[action.target] = { ...bucket[action.target], [action.control]: value };
       normalized = { ...action, value };
+      // Archetype logic: a balance shows which pan dips (never a number), and remembers what it has compared.
+      if (control.domain.kind === "pans" && secret.weights) {
+        const [l, r] = String(value).split("|");
+        if (!state.inventory.includes(l) || !state.inventory.includes(r)) return invalid(state, "not_held");
+        const w = secret.weights;
+        const tilt = (w[l] ?? 0) === (w[r] ?? 0) ? "level" : (w[l] ?? 0) > (w[r] ?? 0) ? "left" : "right";
+        const pairs = new Set(String(bucket[action.target].weighed ?? "").split(",").filter(Boolean));
+        pairs.add([l, r].sort().join("+"));
+        bucket[action.target] = {
+          ...bucket[action.target], tilt, weighed: [...pairs].sort().join(","),
+          ...(orderSettled(control.domain.of, pairs, w) ? { settled: true } : {}),
+        };
+        observed.push({ do: "set_state", target: action.target, key: "tilt", value: tilt });
+        changed = true;
+      }
       break;
     }
     case "use_item": {
@@ -261,6 +297,6 @@ export function applyAction(
   if (action.type === "submit" && fired === 0) {
     return { state, result: { outcome: "wrong", effects: [], start_cooldown: true } };
   }
-  if (fired === 0) return { state: changed ? next : state, result: { outcome: "nothing", effects: [] } };
-  return { state: next, result: { outcome: "ok", effects: out, ...(next.completed ? { completed: true } : {}) } };
+  if (fired === 0 && !observed.length) return { state: changed ? next : state, result: { outcome: "nothing", effects: [] } };
+  return { state: next, result: { outcome: "ok", effects: [...observed, ...out], ...(next.completed ? { completed: true } : {}) } };
 }

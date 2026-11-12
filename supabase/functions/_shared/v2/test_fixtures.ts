@@ -89,7 +89,8 @@ export function planProblems(r: PlanResult, mode: Mode): string[] {
   const m = report.metrics;
   if (m.requiredSteps < STEP_BAND.min || m.requiredSteps > STEP_BAND.max) p.push(`steps ${m.requiredSteps}`);
   // A revisit and a room change, or a reveal worked by hand (which is the room's breakthrough instead).
-  const handsOn = summary.motifs.some((x) => ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal"].includes(x));
+  const handsOn = summary.motifs.some((x) => ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal", "tune_reveal", "ribbon_reveal", "weigh"].includes(x)) ||
+    Object.values(secret.slots).some((s) => s.match);   // a trace set against a suspect's document is one too
   if (m.revisits < 1 && !handsOn) p.push("no revisit");
   if (m.roomChanges < 1 && !handsOn) p.push("no room change");
   if (summary.threads < 2 || summary.threads > 3) p.push(`threads ${summary.threads}`);

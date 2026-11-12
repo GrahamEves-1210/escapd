@@ -151,7 +151,8 @@ Deno.test("planner: found items carry no card that repeats them; paired halves d
       // Only an assembled item has a card (what its pieces say together), or a note that reads only with a
       // tool, whose card says how it reads (it smells of lemons; it's written backwards), never a value.
       const card = i.card ? def.cards.find((c) => c.id === i.card)! : undefined;
-      if (card) assert(i.kind === "assembled" || (i.kind === "prop" && !card.text.includes("{{")), `${mode}: ${i.name} has a card`);
+      // (Or a key's impression in soap: drawn from its slot, never printed.)
+      if (card) assert(i.kind === "assembled" || (i.kind === "prop" && (!card.text.includes("{{") || card.look === "impression")) || i.archetype === "Balance", `${mode}: ${i.name} has a card`);
       if (i.kind === "prop") assert(card, `${mode}: a note is a card to read, not an item: ${i.name}`);
     }
     assertEquals(new Set(def.items.map((i) => i.name)).size, def.items.length, `${mode}: duplicate item names`);
@@ -233,7 +234,7 @@ Deno.test("planner: evidence reads as documents, never a verdict; names are plai
   }
 });
 
-Deno.test("planner: UV traces sit on the photo by a real object, and the torch then the magnifier read them", () => {
+Deno.test("planner: UV traces sit on the photo by a real object; the light shows them and nothing reports on them", () => {
   let rooms = 0;
   for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
     const { definition: def, secret } = planned(inv, mode, seed);
@@ -249,15 +250,36 @@ Deno.test("planner: UV traces sit on the photo by a real object, and the torch t
       if (t.trace!.surface === "wall") assert(b.y + b.h <= 0.73, `${t.id}: a wall trace on the floor`);
       const anchor = inv.find((o) => def.objects.some((d) => d.id === t.trace!.anchor && d.label === o.label));
       if (anchor) assertEquals(anchor.photo_index, t.photo_index);
-      // Under the magnifier before the light finds it: nothing. After: its report.
+      // What it shows is in the definition, for the app to draw: every kind has its attributes.
+      const s = t.trace!;
+      if (s.kind === "footprints") assert(s.size && s.tread, `${t.id}: footprints with no size or tread`);
+      if (s.kind === "prints" || s.kind === "palm") assert(s.pattern, `${t.id}: prints with no pattern`);
+      if (s.kind === "stain") assert(s.stain, `${t.id}: a stain of nothing`);
+      if (s.kind === "writing") assert(s.hand, `${t.id}: writing in no hand`);
+      // The light shows it, and that is all: the magnifier reads no report, before or after.
       let state = initialState(def);
       state = { ...state, inventory: [torch.id] };
       assertEquals(applyAction(def, secret, state, { type: "inspect", object: t.id }).result.outcome, "nothing");
       const lit = applyAction(def, secret, state, { type: "use_item", item: torch.id, object: t.id });
       assertEquals(lit.result.outcome, "ok");
-      assert(lit.result.effects.some((e) => e.do === "overlay" && e.object === t.id));
-      const read = applyAction(def, secret, lit.state, { type: "inspect", object: t.id });
-      assert(read.result.effects.some((e) => e.do === "show_card"), `${t.id}: no report`);
+      const glow = lit.result.effects.find((e) => e.do === "overlay" && e.object === t.id);
+      assert(glow && glow.do === "overlay");
+      assert(!lit.result.effects.some((e) => e.do === "beat"), `${t.id}: a beat narrates the light finding it`);
+      assertEquals(applyAction(def, secret, lit.state, { type: "inspect", object: t.id }).result.outcome, "nothing");
+      const logged = lit.result.effects.filter((e) => e.do === "show_card");
+      if (s.kind === "writing" && !s.text) {
+        // Writing that holds an answer: never in the public definition; its words come with the light,
+        // and the casebook keeps exactly those words.
+        assert(glow.text, `${t.id}: writing with no words`);
+        assertEquals(logged.length, 1);
+        const card = logged[0];
+        assert(card.do === "show_card");
+        assertEquals(card.text, glow.text, "the casebook keeps the wall's words, and only those");
+        assert(card.do === "show_card" && !/glow|ultraviolet|UV|lifted|report/i.test(card.text), `a report: ${card.do === "show_card" && card.text}`);
+      } else {
+        assertEquals(logged.length, 0, `${t.id}: a ${s.kind} trace logs a card`);
+        if (s.kind === "writing") assertEquals(glow.text, s.text);
+      }
     }
     // Two traces on one photo never overlap.
     for (const a of traces) for (const c of traces) {
@@ -268,7 +290,7 @@ Deno.test("planner: UV traces sit on the photo by a real object, and the torch t
     }
   }
   // UV is one tool among several now: some rooms have traces, most use something else.
-  assert(rooms >= 3 && rooms <= 20, `${rooms} of 54 rooms have UV traces`);
+  assert(rooms >= 3 && rooms <= 24, `${rooms} of 54 rooms have UV traces`);
 });
 
 // ---------------------------------------------------------------------------
@@ -345,7 +367,7 @@ Deno.test("planner: orderPuzzle always leaves exactly one order", () => {
   }
 });
 
-Deno.test("planner: cards say where they were, and the UV flashlight is never under an ornament or a plant", () => {
+Deno.test("planner: no card says where it was found, and the UV flashlight is never under an ornament or a plant", () => {
   for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of SEEDS) {
     const { definition: def, secret } = planned(inv, mode, seed);
     for (const r of secret.rules) {
@@ -355,7 +377,8 @@ Deno.test("planner: cards say where they were, and the UV flashlight is never un
       for (const e of r.effects) {
         if (e.do === "show_card" && !def.items.some((i) => i.card === e.card)) {
           const text = def.cards.find((c) => c.id === e.card)!.text;
-          assert(text.includes(host.label) || text.startsWith("Hidden where") || (host.variant === "drawer" && /\bdrawer\b/.test(text)), `${mode}: "${text}" doesn't say it was in the ${host.label}`);
+          // The player lifted the cushion and saw it there: the card is the thing, not the story of finding it.
+          assert(!/^(Pushed|Under the|Taped|Tucked|Slipped|Flat under|Folded small|Wedged|Inside the|In the inside|At the back|At the bottom|Behind|Hidden where)\b/.test(text), `${mode}: "${text}" narrates where it was`);
         }
         if (e.do === "grant" && def.items.find((i) => i.id === e.item)?.kind === "tool") {
           assert(!["decor", "plant"].includes(categoryOf(host.type)), `${mode}: the flashlight under the ${host.label}`);
@@ -419,4 +442,58 @@ Deno.test("planner: one crime deduction needs two cards: an alibi until half pas
     assert(slotRefs(narrow[0].text).some((n) => secret.slots[n].kind === "option"));
   }
   assert(apart >= rooms - 2, `${apart} of ${rooms} rooms keep the two facts on different cards`);
+});
+
+// ---------------------------------------------------------------------------
+// Show, never tell: no beats, no reports, no narration; evidence that is compared
+// ---------------------------------------------------------------------------
+Deno.test("planner: nothing narrates what the player just watched: no beats, and writing that came to light is only the writing", () => {
+  for (const mode of MODES) for (const inv of [FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) for (const seed of [...SEEDS, "w7", "w8", "w9", "w10"]) {
+    const { definition: def, secret } = planned(inv, mode, seed);
+    for (const r of secret.rules) assert(!r.effects.some((e) => e.do === "beat"), `${mode} ${seed}: ${r.id} has a beat`);
+    // A card the player brought to light themselves (warmed, mirrored, rubbed, through the lens, folded) holds
+    // only what is written: its slots as they're written, nothing about how it appeared.
+    // (Crime evidence is documents, whose own words may be anything: "the glass by the bed".)
+    for (const c of def.cards.filter((x) => x.reveal && mode !== "crime_scene")) {
+      assert(!/\b(held|warmed|browns?|creeps?|glass|mirror|graphite|pencil|lens|gel|filter|folded|comes? up|stand out)\b/i.test(c.text.replace(/\{\{[^}]*\}\}/g, "")), `${mode}: "${c.text}" narrates`);
+    }
+    for (const c of def.cards) {
+      const text = renderCard(c, secret);
+      assert(!/\b(rules? out|which means|this means|use it on|for the (clock|door|lock)|you can't|would (show|bring)|too generous)\b/i.test(text), `${mode}: "${text}" interprets or instructs`);
+    }
+  }
+});
+
+Deno.test("planner: in a crime room with the UV light, one suspect is ruled out by setting a drawn trace beside a document", () => {
+  let seen = 0;
+  const kinds = new Set<string>();
+  for (let i = 0; i < 400 && (seen < 12 || kinds.size < 3); i++) {
+    const r = planRoom(i % 2 ? FULL_15 : BEDROOM_WITH_DOOR, { mode: "crime_scene", seed: `versus-${i}`, randomInt: seededRandomInt(i) });
+    assert(r.ok, `${i}`);
+    const { definition: def, secret, report } = r;
+    const matched = Object.entries(secret.slots).filter(([, s]) => s.match);
+    if (!matched.length) continue;
+    seen++;
+    assertEquals(matched.length, 1);
+    const [name, slot] = matched[0];
+    const trace = def.objects.find((o) => o.id === slot.match!.trace)!;
+    kinds.add(trace.trace!.kind);
+    // The trace shows one thing; the document says another, in every attribute it states; and no card says so.
+    for (const [k, v] of Object.entries(slot.match!.shows)) assert(trace.trace![k as "size"] !== undefined && trace.trace![k as "size"] !== v, `${k}: ${v}`);
+    const doc = def.cards.find((c) => c.text.includes(`{{${name}}}`))!;
+    for (const w of slot.match!.words) assert(renderCard(doc, secret).includes(w), `"${w}" isn't on the ${doc.title}`);
+    for (const c of def.cards) assert(!/\b(match|differ|can't have|could not have|too (big|small)|not (hers|his|theirs))/i.test(renderCard(c, secret)), c.text);
+    assertEquals(finaleLogic(def, secret), []);
+    // The simulated player lights the trace before accusing: the document alone rules nobody out.
+    const lit = report.path.findIndex((a) => a.type === "use_item" && a.object === trace.id);
+    const accused = report.path.findIndex((a) => a.type === "submit" && a.object === def.finale.object);
+    assert(lit >= 0 && lit < accused, "the accusation doesn't wait for the trace");
+    // A trace that agrees with the document rules nobody out: refused.
+    const same = structuredClone(def);
+    Object.assign(same.objects.find((o) => o.id === trace.id)!.trace!, slot.match!.shows);
+    assert(finaleLogic(same, secret).some((e) => e.includes("doesn't differ")));
+    // A wall threat's words hold no answer, so they are public; its hand is what is compared.
+    if (trace.trace!.kind === "writing") assert(trace.trace!.text && trace.trace!.hand);
+  }
+  assert(seen >= 12 && kinds.size === 3, `${seen} rooms, kinds ${[...kinds]}`);
 });

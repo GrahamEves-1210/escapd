@@ -4,7 +4,7 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { claudeSchema } from "../anthropic.ts";
 import { proseSystem, voiceRules } from "../prose.ts";
 import {
-  applyAuthor, authorBrief, ORDER_PHRASES, authorSchema, authorSystem, type AuthorText, caseChain, cardLimit, cleanText, keepsLook, keepsMarks,
+  applyAuthor, authorBrief, ORDER_PHRASES, tells, authorSchema, authorSystem, type AuthorText, caseChain, cardLimit, cleanText, keepsLook, keepsMarks,
   parseAuthor, placeOf, slotGuide,
 } from "./author.ts";
 import { planRoom } from "./planner.ts";
@@ -284,4 +284,46 @@ Deno.test("author: clock times and distances in words, the crime scene's whole d
   assert(keepsMarks(evidence, `${rewrite}\n${NARROWED_DEATH[0]}`));
   assert(!keepsMarks(evidence, rewrite), "the coroner's line dropped");
   assert(!keepsMarks(evidence, `${rewrite}\n${NARROWED_DEATH[0].replace("twenty past eleven", "twenty to twelve")}`), "the watch time changed");
+});
+
+Deno.test("author: show, never tell: the prompt says why, a card that concludes or instructs is dropped, and a suspect's comparison words stay", () => {
+  for (const mode of MODES) {
+    const system = authorSystem(plan(mode).definition);
+    assertStringIncludes(system, "Show, never tell.");
+    assertStringIncludes(system, "Telling, bad:");
+    assertStringIncludes(system, "Showing, good:");
+    assert(!system.includes("magnifier reads"), "the magnifier reads no report any more");
+  }
+  for (const bad of [
+    "A ladies' four, far too small for the boot prints, which rules her out.", "The ticket doesn't match the prints.", "It is the same hand as the letter.",
+    "A blank page. Hold it to the lamp.", "A soft pencil. Rub it over the notepad.", "Which means the clock was stopped later.", "You will need a mirror for this.",
+  ]) assert(tells(bad), bad);
+  for (const good of [
+    "Cobbler's ticket. One pair left for resoling: a narrow shoe, ladies' fours, ridged soles.", "Good notepaper, folded twice, with nothing on it. It smells faintly of lemons.",
+    "A page torn from a magazine. The caption says: fold so A meets B.", "Held overnight at the central station; the cell was never unlocked.",
+  ]) assert(!tells(good), good);
+  // No card the planner writes tells; and in a room where a document is set against a trace, a rewrite keeps its words.
+  let checked = false;
+  for (let i = 0; i < 300 && !checked; i++) {
+    const p = planRoom(FULL_15, { mode: "crime_scene", seed: `tell-${i}`, randomInt: seededRandomInt(i) });
+    assert(p.ok);
+    for (const c of p.definition.cards) assert(!tells(c.text), `the planner tells: ${c.text}`);
+    const matched = Object.entries(p.secret.slots).find(([, s]) => s.match);
+    if (!matched) continue;
+    checked = true;
+    const [name, slot] = matched;
+    const card = p.definition.cards.find((c) => c.text.includes(`{{${name}}}`))!;
+    const text: AuthorText = { objects: new Map(), items: new Map(), cards: new Map(), steps: new Map(), beats: new Map(), options: new Map() };
+    // Reworded but faithful: kept. With the load-bearing word gone, or with the comparison made for the player: dropped.
+    const reworded = card.text.replace(/\.$/, ", as the ledger has it.");
+    text.cards.set(card.id, { title: card.title, text: reworded });
+    assertEquals(applyAuthor(p.definition, p.secret, text).definition.cards.find((c) => c.id === card.id)!.text, reworded);
+    text.cards.set(card.id, { title: card.title, text: card.text.split(slot.match!.words[0]).join("something") });
+    assertEquals(applyAuthor(p.definition, p.secret, text).definition.cards.find((c) => c.id === card.id)!.text, card.text);
+    text.cards.set(card.id, { title: card.title, text: `${card.text} That doesn't match the trace.` });
+    assertEquals(applyAuthor(p.definition, p.secret, text).definition.cards.find((c) => c.id === card.id)!.text, card.text);
+    // The brief tells the model what the trace shows and that it is drawn, not described.
+    assertStringIncludes(authorBrief(p.definition, p.secret), "drawn by the game, never described on a card");
+  }
+  assert(checked, "no crime room with a document set against a trace");
 });

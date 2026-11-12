@@ -36,10 +36,11 @@ Rules:
   wall_mounted (hangs on the wall), light_source (a lamp or light), reflective (a mirror or glass), has_pages (a book or notebook),
   holds_items (could have something inside or underneath), is_door (a door a person walks through).
 - List the room's door(s) as type "door" with is_door (and the doorway it closes). Do not list windows, walls, floors or ceilings.
+- A safe, strongbox, cash box or lockbox is type "safe" (can_open). A landline telephone with a handset (rotary dial or push buttons, on a desk or a wall) is type "telephone": list it. A typewriter is type "typewriter".
 - box_2d: [ymin, xmin, ymax, xmax] tightly around the visible part, integers normalized to 0-1000.
 - confidence: 0 to 1, how sure you are that the object is really there and correctly described.
 - At most 20 objects, the most distinctive first. Skip objects narrower than about 3% of the image.
-- Do NOT list: people or any part of a person, or pets; light switches, sockets or cables; phones, laptops, monitors, televisions or any screen; mail, letters, papers, documents, cards or receipts; photographs of people; medication; money, wallets or jewellery; knives or weapons; candles, heaters, stoves or fireplaces.
+- Do NOT list: people or any part of a person, or pets; light switches, sockets or cables; mobile phones, laptops, monitors, televisions or any screen; mail, letters, papers, documents, cards or receipts; photographs of people; medication; money, wallets or jewellery; knives or weapons; candles, heaters, stoves or fireplaces.
 - face_visible: true only if a real person's face is clearly visible (in the room, or clearly in a mirror or window). Hands, arms, backs, cut-off or blurred figures, and faces in artwork or on a screen do not count.
 - sensitive_text: true if mail, documents, cards, handwriting, a name or address label, or a lit screen's content is legible.
 - quality: good, dim, blurry or unusable.
@@ -135,11 +136,14 @@ const INTRINSIC: Partial<Record<ObjectType, Feature[]>> = {
   poster: ["wall_mounted"], calendar: ["wall_mounted"], noticeboard: ["wall_mounted"],
   pillow: ["can_lift"], cushion: ["can_lift"], towel: ["can_lift"],
   radio: ["has_dial"],
+  safe: ["can_open"],
 };
 
 /** v1's deny list, except that v2 wants the room's door, and "picture" is a framed print here. */
 export function isDeniedV2(label: string, type: ObjectType): boolean {
   if (type === "door" && /\b(door|doorway)s?\b/.test(label) && !/\b(window|glass)\b/.test(label)) return false;
+  // A landline is furniture of the room (v1 denies every "phone"); a mobile or a smartphone stays denied.
+  if (type === "telephone" && /\b(telephone|rotary|landline|desk phone|wall phone|corded|dial phone|handset)\b/.test(label) && !/\b(mobile|cell|smart)/.test(label)) return false;
   return isDeniedLabel(label.replace(/\bpictures?\b/g, "print"));
 }
 

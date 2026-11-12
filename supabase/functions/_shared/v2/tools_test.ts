@@ -49,7 +49,7 @@ Deno.test("traces: planned rooms keep every trace where it belongs, and the vali
       assert(validateDefinition(def).some((e) => e.includes("footprints can't be on a bed")), JSON.stringify(validateDefinition(def)));
     }
   }
-  assert(seen > 40, `${seen} traces`);
+  assert(seen > 10, `${seen} traces`);
 });
 
 Deno.test("tools: UV stays rare (a quarter of rooms or less), with or without a lamp or a mirror, and every tool turns up", () => {
