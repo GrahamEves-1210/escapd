@@ -1,12 +1,11 @@
-// The held items' icons as components (art.ts holds the drawings): each draws
-// its sticker at a size, in the set's own warm palette. They take the same
-// props a phosphor icon does (size, weight, color), so anywhere an item's icon
-// was a glyph it can be one of these; the colour and weight are ignored, since
-// the art carries its own. `lit`: the UV flashlight's lens is on, its beam out.
-import { memo, type ComponentType, type ReactNode } from "react";
-import { View } from "react-native";
-import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg";
-import { ART, INK, LINE, type IconName, type Shape } from "./art";
+// The held items' icons as components (art.ts holds the pictures): each draws
+// its thing at a size. They take the same props a phosphor icon does (size,
+// weight, color), so anywhere an item's icon was a glyph it can be one of
+// these; the colour and weight are ignored, since the art carries its own.
+// `lit`: the UV flashlight's lens is on, its beam out.
+import { memo, type ComponentType } from "react";
+import { Image, StyleSheet, View } from "react-native";
+import { ART, type IconName } from "./art";
 
 export interface ItemGlyphProps {
   size?: number;
@@ -14,55 +13,20 @@ export interface ItemGlyphProps {
   weight?: string;
   /** Accepted for a phosphor icon's call sites; the art keeps its own colours. */
   color?: string;
-  /** In use (the UV flashlight switched on): its lit drawing. */
+  /** In use (the UV flashlight switched on): its lit picture. */
   lit?: boolean;
 }
 
 export type ItemGlyph = ComponentType<ItemGlyphProps>;
 
-type Paint = { fill?: string; stroke?: string; strokeWidth?: number; opacity?: number; strokeDasharray?: string; transform?: string };
-
-function shapeEl(s: Exclude<Shape, { t: "g" }>, key: string, paint: Paint) {
-  const p = {
-    fill: paint.fill ?? "none",
-    stroke: paint.stroke,
-    strokeWidth: paint.strokeWidth,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeDasharray: paint.strokeDasharray,
-    opacity: paint.opacity,
-    transform: paint.transform,
-  };
-  switch (s.t) {
-    case "path": return <Path key={key} {...p} d={s.d} fillRule={s.evenodd ? "evenodd" : "nonzero"} />;
-    case "circle": return <Circle key={key} {...p} cx={s.cx} cy={s.cy} r={s.r} />;
-    case "ellipse": return <Ellipse key={key} {...p} cx={s.cx} cy={s.cy} rx={s.rx} ry={s.ry} />;
-    case "rect": return <Rect key={key} {...p} x={s.x} y={s.y} width={s.width} height={s.height} rx={s.rx ?? 0} />;
-  }
-}
-
-/** One shape: its fill (and plain stroke), then the ink line over it, gone over twice like the cat's. */
-function draw(s: Shape, key: string): ReactNode {
-  if (s.t === "g") {
-    return <G key={key} transform={s.transform} opacity={s.o}>{s.children.map((c, i) => draw(c, `${key}.${i}`))}</G>;
-  }
-  const out = [shapeEl(s, `${key}f`, { fill: s.fill, stroke: s.stroke, strokeWidth: s.stroke ? s.w ?? 1.1 : undefined, opacity: s.o, strokeDasharray: s.dash })];
-  if (s.ink) {
-    const w = s.w ?? LINE;
-    out.push(shapeEl(s, `${key}i`, { stroke: INK, strokeWidth: w }));
-    out.push(shapeEl(s, `${key}j`, { stroke: INK, strokeWidth: w * 0.45, opacity: 0.55, transform: "translate(0.6 -0.4)" }));
-  }
-  return out;
-}
-
 function make(name: IconName, litName?: IconName): ItemGlyph {
   const Glyph = memo(function ItemIcon({ size = 32, lit = false }: ItemGlyphProps) {
-    const shapes = ART[lit && litName ? litName : name];
+    const box = { width: size, height: size };
     return (
-      <View style={{ width: size, height: size }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
-        <Svg width={size} height={size} viewBox="0 0 48 48">
-          {shapes.map((s, i) => draw(s, String(i)))}
-        </Svg>
+      <View style={box} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
+        <Image source={ART[name]} style={[box, lit && litName ? styles.hidden : null]} resizeMode="contain" fadeDuration={0} />
+        {/* Its lit picture is kept mounted under the unlit one, so switching on never waits on a load. */}
+        {litName ? <Image source={ART[litName]} style={[box, styles.over, lit ? null : styles.hidden]} resizeMode="contain" fadeDuration={0} /> : null}
       </View>
     );
   });
@@ -99,5 +63,10 @@ export const ItemIcons = {
   foldIn: make("foldIn"),
 } satisfies Record<string, ItemGlyph>;
 
-/** What an icon in the tray draws at, as a share of its tile (the art leaves its own margin in its grid). */
-export const ICON_FILL = 0.8;
+/** What an icon in the tray draws at, as a share of its tile (each picture is its thing edge to edge, less a hair for its line). */
+export const ICON_FILL = 0.76;
+
+const styles = StyleSheet.create({
+  over: { position: "absolute", left: 0, top: 0 },
+  hidden: { opacity: 0 },
+});

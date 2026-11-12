@@ -156,3 +156,16 @@ export.export(src, "assets/props/thing.png", sizes=(88, 88))
 7. Wire it into the app (keep layout, testIDs, accessibility, gestures), and
    screenshot it in the real screen next to the cat or the paper it lives with.
 8. Leave the script runnable: one command regenerates the files.
+
+## Prop scripts added since (each regenerates its own assets)
+
+| scripts in `props/` | renders | to |
+|---|---|---|
+| `flashlight.py`, `magnifier.py` | the torch, its UV twin, the magnifier | `assets/brand/` |
+| `items_all.py` (+ `items_common/paper/metal/things.py`) | the 26 held-item icons | `assets/items/` |
+| `charms_pins.py`, `charms_wardrobe.py`, `charms_board.py` (+ `charms_designs.py`) | charm pins, stickers, turns, wardrobe, velvet | `assets/charms/` |
+| `mech_*.py` (+ `mech_common.py`) | close-up mechanism parts, in layers | `assets/mech/` |
+| `reveal_*.py` (+ `reveal_common.py`) | lamp, mirror, lens, pencil, notepad binding, paperweight | `assets/reveal/` |
+| `home_set.py`, `home_mug.py`, `home_parts.py` | home's set in depth layers, the mug and its tumble, the flame | `assets/home/` |
+
+The charms scripts also need `shapely` in the bpy env (`pip install shapely`).

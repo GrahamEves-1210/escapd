@@ -1,7 +1,10 @@
+import { existsSync } from "fs";
+import { join } from "path";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { render, screen } from "@testing-library/react-native";
 import type { ItemDef } from "@/engine/v2";
 import { useCarry } from "../Carry";
+import { ART } from "../icons/art";
 import { ItemIcons } from "../icons/ItemIcons";
 import { ItemTray, itemIcon } from "../ItemTray";
 import { sparkleSeeds } from "../Stage";
@@ -46,8 +49,40 @@ describe("item icons", () => {
     expect(icon("Torn page")).toBe(ItemIcons.note);
   });
 
-  it("has a drawing for every icon in the set", async () => {
+  it("has a picture for every icon in the set", async () => {
     for (const Glyph of Object.values(ItemIcons)) await render(<Glyph size={40} />);
+  });
+
+  it("ships every picture at 1x, 2x and 3x (scripts/blender/props/items_all.py writes them)", () => {
+    const dir = join(__dirname, "../../../assets/items");
+    for (const name of Object.keys(ART)) {
+      const file = name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+      for (const scale of ["", "@2x", "@3x"]) expect(existsSync(join(dir, `${file}${scale}.png`))).toBe(true);
+    }
+    // Every component has its picture, and the UV light's lit one is in the set too.
+    expect(Object.keys(ART).sort()).toEqual([...Object.keys(ItemIcons), "uvLightOn"].sort());
+  });
+
+  it("draws a picture square at the size asked, and keeps the UV light's lit picture mounted under its unlit one", async () => {
+    type Node = { type: string; props: Record<string, unknown>; children?: (Node | string)[] | null };
+    const images = (n: Node | Node[] | string | null): Node[] =>
+      !n || typeof n === "string" ? [] : Array.isArray(n) ? n.flatMap(images) : [...(n.type === "Image" ? [n] : []), ...(n.children ?? []).flatMap(images)];
+    const styles = (n: Node) => [n.props.style].flat(3) as ({ opacity?: number; width?: number; height?: number } | null)[];
+    const hidden = (n: Node) => styles(n).some((st) => st?.opacity === 0);
+
+    const { rerender, unmount } = await render(<ItemIcons.uvLight size={40} />);
+    let shown = images(screen.toJSON() as Node);
+    expect(shown.map((p) => p.props.source)).toEqual([ART.uvLight, ART.uvLightOn]);
+    expect(shown.map(hidden)).toEqual([false, true]);
+    await rerender(<ItemIcons.uvLight size={40} lit />);
+    shown = images(screen.toJSON() as Node);
+    expect(shown.map(hidden)).toEqual([true, false]);
+    await unmount();
+
+    await render(<ItemIcons.key size={28} />);
+    const key = images(screen.toJSON() as Node);
+    expect(key).toHaveLength(1);
+    expect(styles(key[0])).toContainEqual({ width: 28, height: 28 });
   });
 
   it("know the UV light by its name where the casebook has no variant", () => {
