@@ -16,19 +16,19 @@ import type { GenerationJob } from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import DarkroomScreen from "../../../../app/capture/develop";
-import { HOME_LABEL, LEAVE_LABEL, TYPEWRITER_GAP } from "../BuildWait";
+import { HOME_LABEL, LEAVE_LABEL, TITLE_SIZE, TYPEWRITER_GAP } from "../BuildWait";
 import {
   BUILDING_LABEL,
-  BUILDING_LINES,
+  BUILD_TITLE,
   QUEUED_LINE,
-  READY_LINE,
+  READY_TITLE,
   RETRY_LINE,
   STATUS_MAX,
   sendingLine,
   waitStatus,
 } from "../copy";
 import { SEAL } from "@/render/keepsake";
-import { TILE_ASPECT, panoramaLayout, stringY, threadPhase, threadX, wrapOffset } from "../RoomPanorama";
+import { DARK, SCENE, SLOTS, hangAt, lineY, sceneLayout, slotOf } from "../Darkroom";
 
 let mockStage: DevStage = { kind: "checking" };
 const mockRetry = jest.fn();
@@ -69,11 +69,11 @@ jest.mock("@/screens/hub/art/ModeCover", () => {
 });
 
 const D = ref.layout.develop;
-const T = ref.motion.thinking;
 const STAMP = ref.layout.play.stamp;
 const hidden = { includeHiddenElements: true } as const;
 const styleOf = (node: { props: { style?: unknown } }) => StyleSheet.flatten(node.props.style as never) ?? {};
-const FRAME = { width: 353, height: 400 };
+const FRAME = { width: 353, height: 440 };
+const STAGE = sceneLayout(FRAME.width, FRAME.height);
 
 const job = (overrides: Partial<GenerationJob> = {}): GenerationJob => ({
   id: "j1", room_id: "r1", owner_id: "u1", idempotency_key: "k", status: "queued", attempt_count: 0, max_attempts: 3,
@@ -93,9 +93,17 @@ type Wait = Extract<DevStage, { kind: "sending" | "waiting" }>;
 type AnimatedStyle = { opacity?: number; transform?: Record<string, number | string>[] };
 const animated = (testID: string): AnimatedStyle =>
   (screen.getByTestId(testID, hidden).props.jestAnimatedStyle as { value?: AnimatedStyle } | undefined)?.value ?? {};
-const transformOf = (testID: string, key: string) => Number(animated(testID).transform?.find((t) => key in t)?.[key] ?? 0);
-/** How far round the loop the room has turned (the strip moves left as it turns). */
-const turned = () => -transformOf("build-strip", "translateX");
+const transformOf = (testID: string, key: string) => parseFloat(String(animated(testID).transform?.find((t) => key in t)?.[key] ?? 0));
+/** How far the tray is tipped (degrees). */
+const rocked = () => transformOf("build-tray", "rotate");
+/** Where a print's middle is on the stage, from its transform. */
+const middleOf = (index: number) => ({
+  x: transformOf(`build-print-${index}`, "translateX") + (SCENE.sheet.w * STAGE.s) / 2,
+  y: transformOf(`build-print-${index}`, "translateY") + (SCENE.sheet.h * STAGE.s) / 2,
+});
+/** A print's place in the pile, from its layer: the top sheet is the highest. */
+const layerOf = (index: number) => Number(styleOf(screen.getByTestId(`build-print-${index}`, hidden)).zIndex);
+const topOfPile = () => [0, 1, 2, 3, 4, 5].reduce((top, i) => (layerOf(i) > layerOf(top) ? i : top), 0);
 
 const advance = (ms: number) =>
   act(async () => {
@@ -141,84 +149,82 @@ afterEach(() => {
 });
 
 describe("the words", () => {
-  it("says what each wait is in one short line, and what screen readers hear", () => {
-    expect(waitStatus(queued as Wait, "noir")).toEqual({ phase: "queued", lines: [QUEUED_LINE], label: "Your case is next" });
-    expect(waitStatus(retrying as Wait, null)).toEqual({ phase: "retry", lines: [RETRY_LINE], label: "Trying again" });
-    expect(waitStatus(running as Wait, null)).toEqual({ phase: "running", lines: BUILDING_LINES.shell, label: BUILDING_LABEL });
+  it("tells a screen reader each wait in one short line; on screen, only a second try has a line of its own", () => {
+    expect(waitStatus(queued as Wait)).toEqual({ phase: "queued", line: null, label: "Your case is next" });
+    expect(waitStatus(retrying as Wait)).toEqual({ phase: "retry", line: RETRY_LINE, label: "Trying again" });
+    expect(waitStatus(running as Wait)).toEqual({ phase: "running", line: null, label: BUILDING_LABEL });
     // A retried job that is running again is building.
-    expect(waitStatus(waiting({ status: "running", attempt_count: 1 }) as Wait, "paranormal").lines).toBe(BUILDING_LINES.paranormal);
+    expect(waitStatus(waiting({ status: "running", attempt_count: 1 }) as Wait)).toEqual({ phase: "running", line: null, label: BUILDING_LABEL });
   });
 
-  it("counts the photo being sent, factually, sized to every count so the line never resizes", () => {
-    expect(waitStatus({ kind: "sending", sent: 1, total: 4 }, "noir")).toEqual({
-      phase: "sending",
-      lines: ["Sending photo 2 of 4"],
-      label: "Sending photo 2 of 4",
-      sizeTo: ["Sending photo 1 of 4", "Sending photo 2 of 4", "Sending photo 3 of 4", "Sending photo 4 of 4"],
-    });
+  it("counts the photo being sent, factually, for a screen reader", () => {
+    expect(waitStatus({ kind: "sending", sent: 1, total: 4 })).toEqual({ phase: "sending", line: null, label: "Sending photo 2 of 4" });
     // All sent, the job not yet made: the last count holds.
-    expect(waitStatus({ kind: "sending", sent: 4, total: 4 }, null).lines).toEqual([sendingLine(4, 4)]);
+    expect(waitStatus({ kind: "sending", sent: 4, total: 4 }).label).toBe(sendingLine(4, 4));
   });
 
-  it("gives each mode the same three real steps, in its own light voice, every line one line long at 375", () => {
-    for (const lines of Object.values(BUILDING_LINES)) {
-      expect(lines).toHaveLength(3);
-      expect(lines[0]).toMatch(/object|corner/i);
-      expect(lines[1]).toMatch(/hide/);
-      expect(lines[2]).toMatch(/case/);
-    }
-    const all = [...Object.values(BUILDING_LINES).flat(), QUEUED_LINE, RETRY_LINE, READY_LINE, sendingLine(6, 6)];
-    for (const line of all) expect(line.length).toBeLessThanOrEqual(STATUS_MAX);
+  it("keeps what is shown short and honest, and names the three real steps of building only where the room can't be seen", () => {
+    for (const line of [BUILD_TITLE, READY_TITLE, RETRY_LINE, QUEUED_LINE, sendingLine(7, 7)]) expect(line.length).toBeLessThanOrEqual(STATUS_MAX);
+    expect(BUILDING_LABEL).toMatch(/objects.*hide.*case/);
     // Never a fake find or a fake number.
-    for (const line of all) expect(line).not.toMatch(/%|found \d|\d+ (objects|clues)/i);
+    for (const line of [BUILD_TITLE, READY_TITLE, RETRY_LINE, QUEUED_LINE, BUILDING_LABEL]) expect(line).not.toMatch(/%|found \d|\d+ (objects|clues)/i);
   });
 });
 
-describe("the room's arithmetic", () => {
-  it("lays out a slot per print, a share of the frame's height across, with enough copies that the loop never shows a gap", () => {
-    const { tile, pitch, loop, copies } = panoramaLayout(6, 353, 400);
-    expect(tile).toBe(Math.round(400 * TILE_ASPECT));
-    expect(pitch).toBe(tile + D.tile.gap);
-    expect(loop).toBe(6 * pitch);
-    // The copies always reach a frame's width past the end of one turn.
-    expect((copies - 6) * pitch).toBeGreaterThanOrEqual(353 + pitch);
-    expect(panoramaLayout(0, 353, 400).copies).toBe(0);
+describe("the darkroom's arithmetic", () => {
+  it("stands the bench on the stage's foot, centred, at one scale, the line across the top", () => {
+    const { s, pic, edge, liquid } = sceneLayout(358, 440);
+    expect(s).toBe(1);
+    // The bench picture is wider than the stage (the frame crops it) and ends on its foot.
+    expect(pic).toEqual({ left: (358 - SCENE.pic.w) / 2, top: 440 - SCENE.pic.h, width: SCENE.pic.w, height: SCENE.pic.h });
+    expect(edge).toBe(440 - SCENE.pic.h + SCENE.edge);
+    expect(liquid.x).toBe(179);
+    // The hung prints end above the bench's back edge, where the cat sits.
+    expect(hangAt(0, 6, 358, s).y + SCENE.dry.h + 8).toBeLessThan(edge - 60);
+    // A narrower stage scales the whole scene down, still on its foot and still covering the width.
+    const small = sceneLayout(335, 440);
+    expect(small.s).toBeCloseTo(335 / 358, 9);
+    expect(small.pic.top + small.pic.height).toBeCloseTo(440, 9);
+    expect(small.pic.left).toBeLessThan(0);
   });
 
-  it("hangs every print's thread from a node of the string, for any frame size", () => {
-    for (const [width, height] of [[353, 400], [358, 312], [343, 260], [390, 520]]) {
-      const { tile, pitch, copies } = panoramaLayout(6, width, height);
-      const phase = threadPhase(tile, pitch);
-      for (let i = 0; i < copies; i += 1) {
-        // On the node: the string's own height there, the top of its pull.
-        expect(stringY(threadX(i, tile, pitch), pitch, phase)).toBeCloseTo(16, 9);
+  it("keeps the pile in the order the photos were sent, newest on top; a shuffle sends the top to the bottom", () => {
+    // Three of six sent: the third is on top, the first at the bottom.
+    expect([0, 1, 2].map((i) => slotOf(i, 3, 6, 0))).toEqual([2, 1, 0]);
+    expect([0, 1, 2, 3, 4, 5].map((i) => slotOf(i, 6, 6, 0))).toEqual([5, 4, 3, 2, 1, 0]);
+    expect([0, 1, 2, 3, 4, 5].map((i) => slotOf(i, 6, 6, 1))).toEqual([4, 3, 2, 1, 0, 5]);
+    // Round the whole pile and it is as it began.
+    expect([0, 1, 2, 3, 4, 5].map((i) => slotOf(i, 6, 6, 6))).toEqual([5, 4, 3, 2, 1, 0]);
+  });
+
+  it("lays every sheet wholly in the liquid, however it is turned", () => {
+    const hw = SCENE.liquid.hw / SCENE.unit;
+    const hd = SCENE.liquid.hd / (SCENE.unit * SCENE.squash);
+    const w = SCENE.sheet.w / SCENE.unit / 2;
+    const h = SCENE.sheet.h / SCENE.unit / 2;
+    for (const { x, y, turn } of SLOTS) {
+      const a = (Math.abs(turn) * Math.PI) / 180;
+      expect(Math.abs(x) + w * Math.cos(a) + h * Math.sin(a)).toBeLessThan(hw);
+      expect(Math.abs(y) + h * Math.cos(a) + w * Math.sin(a)).toBeLessThan(hd);
+    }
+  });
+
+  it("hangs the prints along the line in the order they were taken, inside the frame, each from the line's own height", () => {
+    for (const width of [335, 353, 358]) {
+      const { s } = sceneLayout(width, 440);
+      for (const count of [1, 3, 6, 7]) {
+        const at = Array.from({ length: count }, (_, i) => hangAt(i, count, width, s));
+        for (const [i, peg] of at.entries()) {
+          expect(peg.y).toBeCloseTo(lineY(peg.x, width, s), 9);
+          expect(peg.x - (SCENE.dry.w / 2) * s).toBeGreaterThan(8);
+          expect(peg.x + (SCENE.dry.w / 2) * s).toBeLessThan(width - 8);
+          if (i) expect(peg.x).toBeGreaterThan(at[i - 1].x);
+        }
+        // Centred on the line, which hangs lowest in the middle.
+        expect(at[0].x + at[count - 1].x).toBeCloseTo(width, 9);
       }
-      // Between two threads the string sags (half its control's 5), and is back up at the next.
-      expect(stringY(threadX(0, tile, pitch) + pitch / 4, pitch, phase)).toBeCloseTo(16 + 2.5, 9);
+      expect(lineY(width / 2, width, s)).toBeGreaterThan(lineY(20, width, s));
     }
-  });
-
-  it("pivots each print where its thread meets the string, so the sway never pulls it off", async () => {
-    await renderScreen(running);
-    const { tile, pitch } = panoramaLayout(6, FRAME.width, FRAME.height);
-    for (const i of [0, 1, 4]) {
-      const hang = StyleSheet.flatten(screen.getByTestId(`build-hang-${i}`, hidden).props.style);
-      // The box's top centre (its transformOrigin) on the thread's node.
-      expect(hang.transformOrigin).toBe("50% 0%");
-      expect((hang.left as number) + (hang.width as number) / 2).toBeCloseTo(threadX(i, tile, pitch), 9);
-      expect(hang.top).toBe(16);
-      // The thread starts at that top, centred on it.
-      const thread = StyleSheet.flatten(screen.getByTestId(`build-thread-${i}`, hidden).props.style);
-      expect(thread.top).toBe(0);
-      expect((thread.left as number) + (thread.width as number) / 2).toBeCloseTo((hang.width as number) / 2, 9);
-    }
-  });
-
-  it("wraps the turn round the loop", () => {
-    expect(wrapOffset(10, 100)).toBe(10);
-    expect(wrapOffset(110, 100)).toBe(10);
-    expect(wrapOffset(-10, 100)).toBe(90);
-    expect(wrapOffset(5, 0)).toBe(0);
   });
 });
 
@@ -250,27 +256,43 @@ describe("the wait: one visual, one title, one line", () => {
     expect(screen.getByTestId("build-status").props).toMatchObject({ accessibilityLabel: BUILDING_LABEL, accessibilityLiveRegion: "polite" });
   });
 
-  it("rotates the running lines under one fixed label, every status.hold", async () => {
-    await renderScreen(running, true);
-    const shown = (text: string) => screen.queryAllByText(text, hidden).filter((node) => styleOf(node).color === ref.color.textSecondary);
-    expect(screen.getByTestId("build-status").props.accessibilityLiveRegion).toBe("polite");
-    expect(shown("Finding the objects")).toHaveLength(1);
-    await advance(T.gap + T.swap + D.status.hold);
-    expect(shown("Choosing what to hide")).toHaveLength(1);
-    await advance(T.gap + T.swap + D.status.hold);
-    expect(shown("Writing the case")).toHaveLength(1);
-    expect(screen.getByTestId("build-status").props.accessibilityLabel).toBe(BUILDING_LABEL);
+  it.each([
+    ["while the photos send", sending(1), "Sending photo 2 of 6"],
+    ["while it waits its turn", queued, QUEUED_LINE],
+    ["while it builds", running, BUILDING_LABEL],
+  ] as const)("says nothing the room already shows: no line %s", async (_when, stage, label) => {
+    await renderScreen(stage);
+    const status = screen.getByTestId("build-status");
+    // A screen reader, which can't see the room, hears it; nobody reads it.
+    expect(status.props).toMatchObject({ accessibilityLabel: label, accessibilityLiveRegion: "polite" });
+    expect(status.queryAll((node) => typeof node.props.children === "string")).toHaveLength(0);
+    expect(screen.queryByText(/Sending photo|Your case is next|Finding the objects|Choosing what to hide|Writing the case/, hidden)).toBeNull();
   });
 
-  it("sets the status line large and handwritten, centred in a box that never resizes as the count climbs", async () => {
-    await renderScreen(sending(0), true);
-    const line = screen.getAllByText("Sending photo 1 of 6", hidden);
-    expect(line.some((node) => (styleOf(node).fontSize as number) >= 20)).toBe(true);
-    expect(styleOf(screen.getByTestId("build-status"))).toMatchObject({ alignSelf: "stretch", alignItems: "center" });
-    expect(sendingLine(6, 6).length).toBeLessThanOrEqual(STATUS_MAX);
-    await goTo(sending(1), true);
-    await advance(motion.reducedFade);
-    expect(screen.getByTestId("build-status").props.accessibilityLabel).toBe("Sending photo 2 of 6");
+  it("a second try is the one thing the room can't show: one small handwritten line, centred, where its space was kept", async () => {
+    await renderScreen(queued, true);
+    const empty = styleOf(screen.getByTestId("build-status"));
+    expect(empty).toMatchObject({ alignSelf: "stretch", alignItems: "center" });
+    await goTo(retrying, true);
+    const line = screen.getByText("Trying again", hidden);
+    expect(styleOf(line)).toMatchObject({ fontFamily: ref.font.hand, color: ref.color.textSecondary });
+    expect(styleOf(line).fontSize as number).toBeGreaterThanOrEqual(15);
+    expect(styleOf(line).fontSize as number).toBeLessThan(20);
+    // The line's box is as tall with nothing in it: the title never moves.
+    expect(styleOf(screen.getByTestId("build-status")).minHeight).toBe(empty.minHeight);
+    expect(styleOf(screen.getByTestId("build-status")).minHeight as number).toBeGreaterThanOrEqual(styleOf(line).lineHeight as number);
+    // Building again: it goes.
+    await goTo(running, true);
+    await advance(motion.reducedFade + 400);
+    expect(screen.queryByText("Trying again", hidden)).toBeNull();
+  });
+
+  it("the title is small, in the game's own type, one line", async () => {
+    await renderScreen(running);
+    const title = screen.getByRole("header", { name: "Building your case" });
+    expect(styleOf(title).fontSize).toBe(TITLE_SIZE.shell);
+    expect(styleOf(title).fontSize as number).toBeLessThan(D.titleSize.shell);
+    expect(styleOf(title).lineHeight as number).toBeGreaterThanOrEqual(styleOf(title).fontSize as number);
   });
 
   it("queued and trying again: one calm line each", async () => {
@@ -287,102 +309,199 @@ describe("the wait: one visual, one title, one line", () => {
     expect(useRoomTone).not.toHaveBeenCalled();
   });
 
-  it("has no chapter kicker (there are no chapters), and the status line is handwritten", async () => {
+  it("has no chapter kicker (there are no chapters)", async () => {
     await renderScreen(running, true);
     expect(screen.queryByText(/chapter/i, hidden)).toBeNull();
-    expect(styleOf(screen.getAllByText("Finding the objects", hidden)[0])).toMatchObject({ fontFamily: ref.font.hand });
   });
 });
 
-describe("the room turning", () => {
-  it("drifts round the loop on its own, easing up from rest", async () => {
-    await renderScreen(running);
-    const first = turned();
-    await advance(400);
-    const early = turned() - first;
-    await advance(D.drift.rampIn);
-    const before = turned();
-    await advance(1000);
-    // At cruise: about drift.speed pt a second, and faster than as it set off.
-    expect(turned() - before).toBeGreaterThan(D.drift.speed * 0.8);
-    expect(turned() - before).toBeLessThan(D.drift.speed * 1.2);
-    expect(early).toBeLessThan((D.drift.speed * 400) / 1000);
-    expect(early).toBeGreaterThan(0);
+describe("the darkroom: every print's state is one the server reported", () => {
+  const opacityOf = (testID: string) => animated(testID).opacity ?? 1;
+
+  it("lays a blank sheet in the tray for each photo sent, the newest on top", async () => {
+    await renderScreen(sending(0));
+    for (const i of [0, 1, 2, 3, 4, 5]) expect(opacityOf(`build-print-${i}`)).toBe(0);
+    await goTo(sending(2));
+    await advance(DARK.drop.ms + 50);
+    expect(opacityOf("build-print-0")).toBe(1);
+    expect(opacityOf("build-print-1")).toBe(1);
+    expect(opacityOf("build-print-2")).toBe(0);
+    expect(layerOf(1)).toBeGreaterThan(layerOf(0));
+    // Nothing on them yet.
+    expect(opacityOf("build-blank-0")).toBe(1);
+    expect(opacityOf("build-blank-1")).toBe(1);
+    await goTo(sending(6));
+    await advance(DARK.drop.ms + 50);
+    for (const i of [0, 1, 2, 3, 4, 5]) expect(opacityOf(`build-print-${i}`)).toBe(1);
+    expect(topOfPile()).toBe(5);
   });
 
-  it("is a toy: a drag takes the room at once and pauses the drift; let go, it coasts, rests, then drifts again", async () => {
+  it("keeps them blank while the case waits its turn; the pictures come up when it is being built, the top of the pile first", async () => {
+    await renderScreen(queued);
+    await advance(DARK.develop.rise * 2);
+    for (const i of [0, 3, 5]) expect(opacityOf(`build-blank-${i}`)).toBe(1);
+    await goTo(running);
+    const top = topOfPile();
+    const bottom = [0, 1, 2, 3, 4, 5].reduce((low, i) => (layerOf(i) < layerOf(low) ? i : low), 0);
+    await advance(DARK.develop.rise / 2);
+    // Part way: the top sheet's picture is ahead of the bottom's.
+    expect(opacityOf(`build-blank-${top}`)).toBeLessThan(1);
+    expect(opacityOf(`build-blank-${top}`)).toBeGreaterThan(0);
+    expect(opacityOf(`build-blank-${top}`)).toBeLessThan(opacityOf(`build-blank-${bottom}`));
+    await advance(DARK.develop.rise + 5 * DARK.develop.stagger);
+    for (const i of [0, 1, 2, 3, 4, 5]) expect(opacityOf(`build-blank-${i}`)).toBe(0);
+    // Still in the tray: nothing is on the line until the case is ready.
+    expect(middleOf(5).y).toBeGreaterThan(STAGE.edge);
+  });
+
+  it("trying again: the pictures sink back to blank paper", async () => {
     await renderScreen(running);
-    await advance(D.drift.rampIn + 500);
+    await advance(DARK.develop.rise + 5 * DARK.develop.stagger + 50);
+    expect(opacityOf("build-blank-2")).toBe(0);
+    await goTo(retrying);
+    await advance(DARK.develop.sink + 50);
+    for (const i of [0, 2, 5]) expect(opacityOf(`build-blank-${i}`)).toBe(1);
+  });
+
+  it("rocks the tray slowly, the prints with it, and steps the light on the liquid", async () => {
+    await renderScreen(running);
+    await advance(DARK.rock.period / 4);
+    expect(rocked()).toBeCloseTo(DARK.rock.degrees, 1);
+    const right = middleOf(5).x;
+    await advance(DARK.rock.period / 2);
+    expect(rocked()).toBeCloseTo(-DARK.rock.degrees, 1);
+    expect(middleOf(5).x).not.toBeCloseTo(right, 2);
+    // Never more than a degree: a rock, not a spill.
+    expect(Math.abs(rocked())).toBeLessThanOrEqual(1);
+    // The light on the liquid: one frame of the sheet at a time, stepped like stop motion.
+    const frames = new Set<number>();
+    for (let i = 0; i < 4; i += 1) {
+      await advance(1000 / DARK.sheen.fps);
+      frames.add(transformOf("build-sheen-frame", "translateX"));
+    }
+    expect(frames.size).toBeGreaterThan(1);
+    for (const x of frames) expect(x / (SCENE.sheen.w * STAGE.s)).toBeCloseTo(Math.round(x / (SCENE.sheen.w * STAGE.s)), 6);
+  });
+
+  it("is a toy: a drag rocks the tray by hand; let go and it settles back", async () => {
+    await renderScreen(running);
     const pan = createGestureController(getByGestureTestId("build-drag"));
     await act(() => {
       pan.begin({ translationX: 0, velocityX: 0 });
-      pan.activate({ translationX: -9, velocityX: 0 });
+      pan.activate({ translationX: 9, velocityX: 0 });
+      pan.update({ translationX: DARK.rock.handPt * 10, velocityX: 0 });
     });
-    await advance(16);
-    const grabbed = turned();
-    // Held still: time passes and the room doesn't drift.
-    await advance(1500);
-    expect(turned()).toBeCloseTo(grabbed, 1);
-    // It follows the finger: dragging left turns it on.
-    await act(() => pan.update({ translationX: -60, velocityX: 0 }));
-    await advance(16);
-    expect(turned()).toBeCloseTo(grabbed + 51, 0);
-    await advance(1000);
-    expect(turned()).toBeCloseTo(grabbed + 51, 0);
-    // Let go with no fling: it rests, then eases back into its drift.
-    await act(() => pan.end({ translationX: -60, velocityX: 0 }));
-    await advance(D.drift.resume - 200);
-    const resting = turned();
-    await advance(D.drift.rampIn + 1000);
-    expect(turned()).toBeGreaterThan(resting + D.drift.speed * 0.5);
+    await advance(32);
+    // As far as a hand tips it, and no further.
+    expect(rocked()).toBeGreaterThan(DARK.rock.hand - DARK.rock.degrees - 0.01);
+    expect(rocked()).toBeLessThanOrEqual(DARK.rock.hand + DARK.rock.degrees);
+    await act(() => pan.end({ translationX: DARK.rock.handPt * 10, velocityX: 0 }));
+    await advance(4000);
+    expect(Math.abs(rocked())).toBeLessThanOrEqual(DARK.rock.degrees + 0.05);
   });
 
-  it("settles to rest when the case is ready, and the lights come up", async () => {
+  it("shuffles the pile while it waits: the top sheet slips under, the next comes up", async () => {
     await renderScreen(running);
-    await advance(D.drift.rampIn + 500);
+    expect(topOfPile()).toBe(5);
+    await advance(DARK.shuffle.every);
+    await advance(DARK.shuffle.sink / 2);
+    // Slipping under: fading, still on top.
+    expect(opacityOf("build-print-5")).toBeLessThan(1);
+    expect(topOfPile()).toBe(5);
+    await advance(DARK.shuffle.sink);
+    await advance(DARK.shuffle.slide + DARK.shuffle.rise);
+    expect(topOfPile()).toBe(4);
+    expect(layerOf(5)).toBeLessThan(layerOf(0));
+    expect(opacityOf("build-print-5")).toBe(1);
+  });
+
+  it("ready: every print is lifted to its peg on the line, upright and in order, and the lights come up", async () => {
+    await renderScreen(running);
+    await advance(2000);
     expect(animated("build-beam").opacity).toBe(1);
     await goTo(ready);
-    await advance(D.drift.settle + 100);
-    const rest = turned();
-    await advance(2000);
-    expect(turned()).toBeCloseTo(rest, 2);
+    await advance(DARK.hang.first + 5 * DARK.hang.stagger + DARK.hang.fly + 5 * DARK.hang.swingMs);
     expect(animated("build-beam").opacity).toBe(0);
+    for (const i of [0, 1, 2, 3, 4, 5]) {
+      const at = hangAt(i, 6, FRAME.width, STAGE.s);
+      expect(middleOf(i).y).toBeLessThan(STAGE.edge - 40);
+      expect(middleOf(i).x).toBeCloseTo(at.x, -1);
+      expect(transformOf(`build-print-${i}`, "scaleY")).toBeCloseTo(1, 5);
+      expect(transformOf(`build-print-${i}`, "scale")).toBeCloseTo(SCENE.dry.w / SCENE.sheet.w, 5);
+      expect(opacityOf(`build-blank-${i}`)).toBe(0);
+      // A peg for each.
+      expect(screen.getByTestId(`build-peg-${i}`, hidden)).toBeTruthy();
+    }
+    expect(layerOf(5)).toBeGreaterThan(layerOf(0));
+    // The tray has stopped being shuffled.
+    const pile = [0, 1, 2, 3, 4, 5].map(layerOf);
+    await advance(DARK.shuffle.every * 2);
+    expect([0, 1, 2, 3, 4, 5].map(layerOf)).toEqual(pile);
   });
 
-  it("shows the photos in the mode's baked treatment at the review tiles' bake, round the loop", async () => {
+  it("shows the photos in the mode's baked treatment at the review tiles' bake, one print each", async () => {
     setMode("paranormal");
     await renderScreen(running);
     const uriOf = (testID: string) => ([screen.getByTestId(testID, hidden).props.source].flat()[0] as { uri: string }).uri;
     expect(uriOf("build-photo-0-treated")).toBe("baked/paranormal/file://photo-0.jpg");
-    // After photo 6 comes photo 1 again.
-    expect(uriOf("build-photo-6-treated")).toBe("baked/paranormal/file://photo-0.jpg");
+    expect(uriOf("build-photo-5-treated")).toBe("baked/paranormal/file://photo-5.jpg");
+    expect(screen.queryByTestId("build-photo-6-treated", hidden)).toBeNull();
     await act(() => setMode(null));
   });
 
-  it("with no photos on this phone (followed from home), the mode's cover under the beam", async () => {
+  it("with no photos on this phone (followed from home), one sheet with the mode's cover on it", async () => {
     clearPlates();
     setMode("crime_scene");
     jest.mocked(useLocalSearchParams).mockReturnValue({ roomId: "r7" });
     await renderScreen(queued);
     expect(mockUseDevelopment).toHaveBeenCalledWith("r7");
     expect(screen.getByTestId("build-cover", hidden).props.accessibilityHint).toBe("crime_scene");
-    expect(screen.queryByTestId("build-strip", hidden)).toBeNull();
+    expect(screen.getByTestId("build-print-0", hidden)).toBeTruthy();
+    expect(screen.queryByTestId("build-print-1", hidden)).toBeNull();
     expect(screen.getByTestId("build-status").props.accessibilityLabel).toBe("Your case is next");
     jest.mocked(useLocalSearchParams).mockReturnValue({});
     await act(() => setMode(null));
   });
+
+  it("the cat sits behind the bench, outside the hidden picture, watching the tray; ready, it looks up", async () => {
+    await renderScreen(running);
+    const cat = screen.getByTestId("build-cat");
+    const seat = styleOf(cat);
+    // Its foot on the bench's back edge.
+    expect((seat.top as number) + (SCENE.cat.w * STAGE.s * 585) / 560).toBeGreaterThan(STAGE.edge - 2);
+    expect(seat.top as number).toBeLessThan(STAGE.edge);
+    // Not inside the picture's hidden subtree: it can still be petted.
+    expect(screen.getByTestId("v2-cat-pet")).toBeTruthy();
+  });
 });
 
 describe("Reduce Motion", () => {
-  it("no drift, no wandering beam, no drag: one photo at a time, cross-fading to the next", async () => {
+  it("nothing rocks or slides and the light on the liquid holds still; the pile changes by a fade", async () => {
     await renderScreen(running, true);
-    expect(screen.queryByTestId("build-strip", hidden)).toBeNull();
-    expect(screen.getByTestId("build-still-0", hidden)).toBeTruthy();
-    expect(transformOf("build-beam", "translateX")).toBe(0);
     await advance(3000);
-    expect(transformOf("build-beam", "translateX")).toBe(0);
+    expect(rocked()).toBe(0);
+    expect(transformOf("build-sheen-frame", "translateX")).toBe(0);
+    const before = middleOf(5);
+    expect(topOfPile()).toBe(5);
     await advance(D.still.hold + D.still.fade);
-    expect(screen.getByTestId("build-still-1", hidden)).toBeTruthy();
+    await advance(D.still.fade / 2 + 50);
+    expect(topOfPile()).toBe(4);
+    // The sheet that went under is where the bottom of the pile lies, with no slide between.
+    expect(middleOf(5)).not.toEqual(before);
+    await advance(D.still.fade);
+    expect(animated("build-print-5").opacity).toBe(1);
+  });
+
+  it("the pictures still fade up, and at ready the prints are simply on the line, with no drip", async () => {
+    await renderScreen(running, true);
+    await advance(DARK.develop.rise + 5 * DARK.develop.stagger + 50);
+    expect(animated("build-blank-0").opacity).toBe(0);
+    await goTo(ready, true);
+    await advance(50);
+    for (const i of [0, 5]) expect(middleOf(i).y).toBeLessThan(STAGE.edge - 40);
+    await advance(D.beam.lightsOn + 50);
+    expect(animated("build-beam").opacity).toBe(0);
+    expect(screen.queryByTestId("build-drip-1", hidden)).toBeNull();
   });
 
   it("ready: a still stamp, with its cue and then success, and the pill at once", async () => {
@@ -437,7 +556,9 @@ describe("ready: the reward", () => {
     await renderScreen(running);
     await goTo(ready);
     expect(screen.getByRole("header", { name: "Your case is ready" })).toBeTruthy();
-    expect(screen.getByText(READY_LINE)).toBeTruthy();
+    // The title and the seal say it; no line under them. A screen reader is told the wait is over.
+    expect(screen.queryByText("It's all in your photos", hidden)).toBeNull();
+    expect(screen.getByTestId("build-status-ready").props).toMatchObject({ accessibilityLabel: READY_TITLE, accessibilityLiveRegion: "polite" });
     expect(screen.queryByTestId("build-status", hidden)).toBeNull();
     // Falling: no cue yet, and nothing to press but the close.
     expect(mockFeedback.stamp).not.toHaveBeenCalled();
@@ -613,8 +734,8 @@ describe("plain language (round 4)", () => {
     for (const text of said) expect(text).not.toMatch(WORDS);
   });
 
-  it("no mode's running lines use them either", () => {
-    for (const line of Object.values(BUILDING_LINES).flat()) expect(line).not.toMatch(WORDS);
+  it("nor does what a screen reader hears while it builds", () => {
+    for (const line of [BUILDING_LABEL, QUEUED_LINE, RETRY_LINE, BUILD_TITLE, READY_TITLE]) expect(line).not.toMatch(WORDS);
   });
 });
 
@@ -629,11 +750,9 @@ describe("inside a mode", () => {
     expect(styleOf(screen.getByTestId("build-room", hidden)).backgroundColor).toBe(theme.ground);
     expect(styleOf(screen.getByRole("header", { name: "Building your case" }))).toMatchObject({
       fontFamily: theme.display.fontFamily,
-      fontSize: D.titleSize.paranormal,
+      fontSize: TITLE_SIZE.paranormal,
       color: theme.ink,
     });
-    // The close square in the mode's raised fill and ink.
-    expect(styleOf(screen.getByRole("button", { name: LEAVE_LABEL })).backgroundColor).toBe(theme.raised);
   });
 
   it("the CASE READY seal pressed in gold foil, and the pill in its accent", async () => {
