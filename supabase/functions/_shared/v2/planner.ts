@@ -56,7 +56,7 @@ export type Gadget = typeof GADGETS[number];
  * server and on the device) may use it. Empty until the app side of each is finished: add a name when
  * its mechanism or sheet plays in the app, and nothing else needs to change.
  */
-export const PLAYABLE: readonly Gadget[] = [];
+export const PLAYABLE: readonly Gadget[] = ["dial", "keys", "telephone", "balance"];
 
 export type PlanFailure = "too_few_objects" | "no_exit" | "no_valid_plan";
 
