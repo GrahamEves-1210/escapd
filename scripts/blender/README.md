@@ -172,3 +172,6 @@ export.export(src, "assets/props/thing.png", sizes=(88, 88))
 | `darkroom_set.py`, `darkroom_parts.py` (+ `darkroom_common.py`) | the build wait's darkroom: the bench under a red safelight (one camera, no turn, so a photo lies flat in the tray with one transform), the tray on its own to rock, twelve computed frames of light on the liquid; the drying line, pegs (one per mode, handles dipped in its accent) and the sheets of paper with a window for the player's photo. `PX=1 SS=1 SAMPLES=32` for a quick look | `assets/develop/` |
 
 The charms scripts also need `shapely` in the bpy env (`pip install shapely`).
+| `reveal_musicbox.py`, `reveal_ribbon.py` | the music box and the typewriter ribbon spool | `assets/reveal/` |
+| `moment_*.py` (+ `moment_common.py`) | envelopes opening, the door onto the street, the stamp, the candle going out | `assets/moments/` |
+| `camera_*.py` (+ `camera_common.py`) | the vintage camera's chrome for the capture screen | `assets/capture/` |
