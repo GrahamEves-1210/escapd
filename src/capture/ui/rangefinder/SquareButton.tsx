@@ -11,10 +11,18 @@
 // - Focus: the kit's brass ring, concentric with the 14 corners.
 // - Haptic: the light `press` as it is pressed in.
 // - In a mode: the mode's raised fill, rim and ink (src/capture/ui/palette.ts).
-import { StyleSheet } from "react-native";
+// - `chrome` (the camera's own header only; every other screen keeps the look
+//   above): the camera's push button, a rendered black cap in a brass rim
+//   (ART.buttonSquare, a 52 picture centred on the 44 control) in place of the
+//   fill and rim, the glyph in the palette's ink; same size, hit area, press,
+//   focus ring and haptic.
+import { StyleSheet, View } from "react-native";
+import { Image } from "expo-image";
 import { FocusRing, SquashPressable, useFocusRing, type NoirIcon } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import { curve, ref } from "@/theme/tokens";
+import { ART } from "../art";
+import { CHROME } from "../look";
 import { useCapturePalette } from "../palette";
 import { Dimmable } from "./Dimmable";
 
@@ -29,10 +37,12 @@ export interface SquareButtonProps {
   accessibilityLabel: string;
   onPress: () => void;
   disabled?: boolean;
+  /** The camera's rendered push button instead of the flat square (02's header only). */
+  chrome?: boolean;
   testID?: string;
 }
 
-export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled = false, testID }: SquareButtonProps) {
+export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled = false, chrome = false, testID }: SquareButtonProps) {
   const focus = useFocusRing();
   const feedback = useFeedback();
   const palette = useCapturePalette();
@@ -49,10 +59,24 @@ export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled
         onBlur={focus.onBlur}
         hitSlop={SQUARE_SLOP}
         testID={testID}
-        style={({ pressed }) => [styles.box, { backgroundColor: palette.raised, borderColor: palette.squareRim }, pressed ? styles.pressed : null]}
+        style={({ pressed }) => [
+          styles.box,
+          chrome ? null : [styles.flat, { backgroundColor: palette.raised, borderColor: palette.squareRim }],
+          pressed ? styles.pressed : null,
+        ]}
       >
-        <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
-        <FocusRing visible={focus.focused} shape="panel" edge={B.borderWidth} radius={B.radius} />
+        {chrome ? (
+          <>
+            <Image source={ART.buttonSquare} pointerEvents="none" accessible={false} style={styles.art} testID={testID ? `${testID}-art` : undefined} />
+            {/* In a View, so it stacks above the picture on the web too. */}
+            <View>
+              <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
+            </View>
+          </>
+        ) : (
+          <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
+        )}
+        <FocusRing visible={focus.focused} shape="panel" edge={chrome ? 0 : B.borderWidth} radius={B.radius} />
       </SquashPressable>
     </Dimmable>
   );
@@ -64,9 +88,18 @@ const styles = StyleSheet.create({
     height: B.size,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: B.borderWidth,
     borderRadius: B.radius,
     ...curve,
+  },
+  // The flat square's rim (its fill and rim colour are the palette's).
+  flat: { borderWidth: B.borderWidth },
+  // The camera's button: its picture, centred on the control.
+  art: {
+    position: "absolute",
+    left: (B.size - CHROME.square) / 2,
+    top: (B.size - CHROME.square) / 2,
+    width: CHROME.square,
+    height: CHROME.square,
   },
   pressed: { opacity: B.pressedOpacity },
 });

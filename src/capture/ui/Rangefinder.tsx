@@ -1,10 +1,14 @@
 // 02 · Camera (docs/DESIGN.md 02): the rangefinder, guided capture one plate
-// at a time, mounted by /capture once camera access is granted. In Once's
-// look (docs/refs/02-camera.png): the flat ref.color.ground; square header
-// buttons around the serif plate prompt; the big rounded black viewfinder with
-// the live feed; flash, the 0.5 / 1.0 segment and the framing grid; then the
-// italic photo counter (Arabic numerals), the glowing shutter with its
-// magnifying glass and the last-photo thumbnail. Every photo is re-encoded on
+// at a time, mounted by /capture once camera access is granted. The screen is
+// the back of a vintage camera (rendered chrome, ./art.ts and ./look.ts
+// CHROME, round live controls): a leather body (Body) with black push buttons
+// in brass rims around the serif plate prompt; the finder window, the live
+// feed in a brass frame; flash, the 0.5 / 1.0 slide switch and the framing
+// grid; then the frame counter's window (italic numerals and the plan's
+// count), the brass release with its magnifying glass inside the film-advance
+// lever, and the tray the prints pile up in. As a photo is taken the shutter
+// blinks across the finder, the lever winds on and the print slides out from
+// under the tray's cover. Every photo is re-encoded on
 // the phone (EXIF and location dropped) before it is added. Photos keep their
 // slots (src/capture/roll.ts): the next shot fills the first open slot, and
 // its prompt and counter are that slot's. With ?retake=<slot> it takes
@@ -55,6 +59,7 @@ import { useFeedback } from "@/game/feedback";
 import { motion, ref } from "@/theme/tokens";
 import { LENS_SWITCH_TIMEOUT } from "./look";
 import { useCapturePalette } from "./palette";
+import { Body } from "./rangefinder/Body";
 import { ControlRow } from "./rangefinder/ControlRow";
 import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "./rangefinder/copy";
 import { Header, type PromptSubtitle } from "./rangefinder/Header";
@@ -329,6 +334,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       ]}
       testID="rangefinder-root"
     >
+      <Body />
       <Header
         backLabel={filling ? COPY.cancelFill : retake ? COPY.cancelRetake : COPY.close}
         onBack={close}
@@ -351,6 +357,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
             ratio={frame.ratio}
             grid={grid}
             note={!retake && plates.length === 0}
+            wide={lenses.choice === "wide"}
+            blink={shooting}
             overlay={
               <TurnDial
                 stops={plan.stops}
@@ -365,7 +373,6 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
                   ? { uri: slots[anchor.slot]!.uri, width: viewfinder.width, height: viewfinder.height }
                   : null}
                 fov={LENS_FOV[lenses.choice]}
-                line={turnCopy(at, false).line}
                 accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}
                 onReached={onTurned}
               />
@@ -399,9 +406,11 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
       />
       <View style={styles.bottomRow}>
         <PlateCounter current={counter.current} count={plan.shots} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
-        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full || switching} busy={busy} onPress={shoot} testID="shutter" />
+        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full || switching} busy={busy} onPress={shoot} wind={plates.length} testID="shutter" />
         <LastPlate
           uri={lastUri}
+          under={retake ? null : (plates.at(-2)?.uri ?? null)}
+          count={plates.length}
           ring={!retake && plates.length >= MIN_PLATES}
           accessibilityLabel={lastPlateLabel(plates.length, retake, filling)}
           disabled={lastUri === null || busy}
@@ -415,7 +424,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
 }
 
 const styles = StyleSheet.create({
-  // Once's flat ground (the palette's page): no grain, glow or vignette, so photos are judged on a plain ground.
+  // The palette's page under the body's leather (Body), so the leather takes the mode's colour.
   root: { flex: 1 },
   headerRow: { paddingVertical: SQUARE_SLOP },
   // The viewfinder takes what's left between the header and the control row,

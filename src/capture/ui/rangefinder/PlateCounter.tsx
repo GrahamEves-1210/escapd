@@ -1,13 +1,14 @@
-// The plate counter, Once's shot counter: a void pill (73 x 52.5,
-// ref.radius.nested 20) that clips a strip of numerals in Crimson Text Italic
-// (ref.type.counter 29/34, +1.75). ESCAPD's photo numerals, 1 to the roll
-// plan's count (5 on 0.5x, 6 on 1x), sit `gap` apart; the strip is placed so the current numeral (the plate about to
-// be taken) is centred, nudged by dx / dy for the italic's slant and the caps'
-// centre. The current numeral is textPrimary; its neighbours are textDim,
-// evenly, with no fade, cut by the pill's edges. Photo 1 has no left
-// neighbour, the last none on the right; in retake mode the photo being
-// retaken shows alone.
-// - A new plate rolls the strip one numeral left over motion.counterRoll
+// The frame counter: a window in the camera's back. A rendered brass bezel
+// (ART.counter) round a 73 x 52.5 well (the palette's well colour) that clips
+// a strip of numerals in Crimson Text Italic (ref.type.counter 29/34, +1.75),
+// as a film counter's dial showing through. The photo numerals, 1 to the roll
+// plan's count, sit `gap` apart; the strip is placed so the current numeral
+// (the photo about to be taken) is centred, nudged by dx / dy for the italic's
+// slant and the caps' centre. At rest the window shows that numeral alone, in
+// the palette's lit colour; its neighbours show only as the strip rolls (dim,
+// fading as they leave), so the window and the count engraved beside it on
+// the body ("/7") read as one: the photo, and how many there are to take.
+// - A new photo rolls the strip one numeral left over motion.counterRoll
 //   while the old numeral dims and the new one brightens. Reduced motion: no
 //   travel, the strip jumps and the two colours cross-fade over
 //   motion.reducedFade.
@@ -16,10 +17,11 @@
 // - Display only, so it is no keyboard stop: on Android `accessible` would
 //   make it keyboard-focusable, so there it is screenReaderFocusable instead,
 //   and its texts stay out of Android's accessibility tree.
-// - In a mode: the pill in the mode's well and the current numeral in the
-//   mode's stamp colour, the camera's one touch of it (src/capture/ui/palette.ts).
+// - In a mode: the well in the mode's well colour and the current numeral in
+//   the mode's stamp colour (src/capture/ui/palette.ts); the brass is the same.
 import { useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Image } from "expo-image";
 import Animated, {
   ReduceMotion,
   interpolate,
@@ -32,9 +34,12 @@ import Animated, {
 import { timingFor } from "@/components/noir";
 import { useTheme } from "@/theme/ThemeProvider";
 import { curve, motion, ref } from "@/theme/tokens";
+import { ART } from "../art";
+import { CHROME } from "../look";
 import { useCapturePalette } from "../palette";
 
 const C = ref.layout.camera.counter;
+const K = CHROME.counter;
 const ROLL = timingFor(ref.motion.counterRoll);
 const REDUCED = { duration: motion.reducedFade, reduceMotion: ReduceMotion.Never };
 // The pill's centre line, where the current numeral's box is centred.
@@ -91,6 +96,7 @@ export function PlateCounter({ current, count, solo, accessibilityLabel }: Plate
   });
 
   return (
+    <View style={styles.box}>
     <View
       style={[styles.pill, { backgroundColor: palette.well }]}
       accessible={Platform.OS === "ios"}
@@ -112,6 +118,19 @@ export function PlateCounter({ current, count, solo, accessibilityLabel }: Plate
         ))}
       </Animated.View>
     </View>
+    <Image source={ART.counter} pointerEvents="none" accessible={false} style={styles.bezel} testID="plate-counter-bezel" />
+    <Text
+      style={[styles.total, { color: palette.inkMuted }]}
+      numberOfLines={1}
+      maxFontSizeMultiplier={C.maxFontScale}
+      accessible={false}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      testID="plate-counter-total"
+    >
+      {`/${count}`}
+    </Text>
+    </View>
   );
 }
 
@@ -125,9 +144,9 @@ function Numeral({ numeral, index, pos, lit: litColor, hidden, onLayout }: {
   onLayout: (e: LayoutChangeEvent) => void;
 }) {
   const style = useAnimatedStyle(() => {
-    // 1 on the current numeral, falling to 0 one place away: the roll's colour.
+    // 1 on the current numeral, falling to 0 one place away: the roll's colour, and gone at rest.
     const lit = Math.max(0, 1 - Math.abs(pos.get() - index));
-    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, litColor]) };
+    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, litColor]), opacity: Math.min(1, lit * 2) };
   });
   return (
     <Animated.Text
@@ -142,12 +161,30 @@ function Numeral({ numeral, index, pos, lit: litColor, hidden, onLayout }: {
 }
 
 const styles = StyleSheet.create({
+  // The window's own box: the bezel and the count overflow it and take no room in the row.
+  box: { width: C.width, height: C.height },
   pill: {
     width: C.width,
     height: C.height,
     overflow: "hidden",
-    borderRadius: ref.radius.nested,
+    borderRadius: K.radius,
     ...curve,
+  },
+  bezel: {
+    position: "absolute",
+    left: -K.margin,
+    top: -K.margin,
+    width: C.width + K.margin * 2,
+    height: C.height + K.margin * 2,
+  },
+  // Engraved beside the window, centred on its height.
+  total: {
+    ...ref.type.counter,
+    position: "absolute",
+    left: C.width + K.total.gap,
+    top: (C.height - K.total.lineHeight) / 2,
+    fontSize: K.total.size,
+    lineHeight: K.total.lineHeight,
   },
   strip: {
     position: "absolute",

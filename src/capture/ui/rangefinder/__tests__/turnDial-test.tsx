@@ -64,7 +64,6 @@ function props(overrides: Partial<TurnDialProps> = {}): TurnDialProps {
     listening: true,
     active: true,
     resetKey: "shot-1",
-    line: "Photo 2 of 6",
     accessibilityLabel: (reached) => (reached ? `Photo 2 of 6. ${COPY.turnReached}` : "Photo 2 of 6."),
     onReached: jest.fn(),
     fov: LENS_FOV.wide,
@@ -90,7 +89,7 @@ beforeEach(() => {
 describe("turn dial: the static face", () => {
   it("counts the photo and draws a stop for each: taken white, the next a white ring, the rest grey", async () => {
     await render(<TurnDial {...props({ active: false, taken: [true, true, false, false, false, false], target: 2 })} />);
-    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
+    expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(2);
     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(3);
     // White like the taken dots, but hollow (the void inside).
@@ -99,11 +98,11 @@ describe("turn dial: the static face", () => {
     expect(target.props.stroke).toEqual(white);
     expect(target.props.fill).not.toEqual(white);
     expect(arc()).toBeNull();
-    // One screen-reader element with the count; the face and the line are hidden.
+    // One screen-reader element with the count; the face is hidden.
     expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
   });
 
-  it("is the privacy note's see-through black pill, top-centred on the feed", async () => {
+  it("is etched on the glass with no words: a dial on the privacy note's see-through black, top-centred on the feed", async () => {
     const T = ref.layout.camera.turn;
     await render(<TurnDial {...props({ active: false })} />);
     expect(screen.getByTestId("turn-dial").props.style).toMatchObject({ position: "absolute", top: T.inset, alignItems: "center" });
@@ -112,16 +111,18 @@ describe("turn dial: the static face", () => {
       opacity: ref.layout.camera.note.fillOpacity,
     });
     expect(screen.getByTestId("turn-dial-face", hidden).props).toMatchObject({ width: T.dial, height: T.dial });
+    // The count is the frame counter's; the dial carries it for screen readers only.
+    expect(screen.queryByText(/Photo/, hidden)).toBeNull();
   });
 
   it("shows every stop taken and no target once all 6 are", async () => {
-    await render(<TurnDial {...props({ active: false, taken: Array(6).fill(true), target: null, line: "6 of 6 taken" })} />);
+    await render(<TurnDial {...props({ active: false, taken: Array(6).fill(true), target: null })} />);
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
     expect(screen.queryByTestId("turn-dial-target", hidden)).toBeNull();
   });
 
   it("draws 0.5x's five stops 72 apart: photo 3 at 144", async () => {
-    await render(<TurnDial {...props({ active: false, stops: dialStops(5), taken: [true, true, false, false, false], target: 2, line: "Photo 3 of 5" })} />);
+    await render(<TurnDial {...props({ active: false, stops: dialStops(5), taken: [true, true, false, false, false], target: 2 })} />);
     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(2);
     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(2);
     const C = ref.layout.camera.turn.dial / 2;
@@ -362,7 +363,7 @@ describe("turn dial: 1x's 7 photos, sharing a 1.6-degree edge", () => {
   const stops = dialStops(7);
   const STEP = 360 / 7;
   const seven = (overrides: Partial<TurnDialProps> = {}) =>
-    props({ stops, taken: [true, ...Array(6).fill(false)], fov: LENS_FOV.main, ghost, line: "Photo 2 of 7", ...overrides });
+    props({ stops, taken: [true, ...Array(6).fill(false)], fov: LENS_FOV.main, ghost, ...overrides });
 
   it("ticks only once the edge is within half the shared view of the mark, not 5 % short", async () => {
     const onReached = jest.fn();
@@ -386,7 +387,7 @@ describe("turn dial: 1x's 7 photos, sharing a 1.6-degree edge", () => {
     // Photo 2 taken 0.8 short (50.6 of 51.4, as the tick allows).
     await turn(50.65, 1);
     expect(onReached).toHaveBeenCalledTimes(1);
-    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2", line: "Photo 3 of 7" };
+    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2" };
     await view.rerender(<TurnDial {...seven({ onReached, ...next })} />);
     await flush();
     // The next turn aims 0.8 further: its mark moves left by as much, and a plain 51.4 is not yet far enough.
@@ -417,7 +418,7 @@ describe("turn dial: no sensor", () => {
     await render(<TurnDial {...props({ onReached })} />);
     await flush();
     expect(sensors.DeviceMotion.addListener).not.toHaveBeenCalled();
-    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
+    expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
     expect(arc()).toBeNull();
   });
@@ -445,7 +446,7 @@ describe("turn dial: no sensor", () => {
       await flush();
       expect(sensors.DeviceMotion.isAvailableAsync).not.toHaveBeenCalled();
       expect(sensors.DeviceMotion.addListener).not.toHaveBeenCalled();
-      expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
+      expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
     } finally {
       Object.defineProperty(Platform, "OS", { get: () => os, configurable: true });
     }

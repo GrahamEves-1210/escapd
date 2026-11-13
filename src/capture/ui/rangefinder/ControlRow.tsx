@@ -1,8 +1,9 @@
 // The control row under the viewfinder, Once's: the flash glyph in the back
 // button's column (x 43), the 0.5 / 1.0 segment on the screen's centre, and
 // ESCAPD's framing grid on Once's flip glyph (x 347.6, ref.layout.camera
-// .controlColumns, just inside the library button's 350). Both glyphs are bare
-// white Phosphor at 22 (ref.button.bare, ref.layout.camera.controlIcon); each
+// .controlColumns, just inside the library button's 350). Both are round
+// black push buttons in brass rims (BareToggle) carrying a white Phosphor
+// glyph at 22 (ref.button.bare, ref.layout.camera.controlIcon); each
 // shows its state in the glyph itself, so colour never carries it: flash
 // LightningSlash (off) / Lightning (on), both filled as Once's bolt; the grid
 // GridNine outline (off; regular, as its nine cells already weigh as much as

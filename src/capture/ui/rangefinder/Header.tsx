@@ -1,5 +1,6 @@
-// The header row, Once's: two 44 square buttons (back, library) 21 from the
-// screen edges, and between them the plate prompt: the serif title
+// The header row, in Once's layout: two 44 square push buttons (back, library;
+// black caps in brass rims, SquareButton) 21 from the screen edges, and
+// between them, on the body's leather, the plate prompt: the serif title
 // (ref.type.serifTitle, Roboto Serif 17/22, textPrimary) over the grey meta
 // line (ref.type.meta, system 13/16, textSecondary), both centred. The title's
 // line box starts promptTop below the buttons' top and the meta line metaGap
@@ -61,7 +62,7 @@ export function Header({
   const palette = useCapturePalette();
   return (
     <View style={[styles.row, style]}>
-      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} testID="back" />
+      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} chrome testID="back" />
       <View
         ref={promptRef}
         accessible={Platform.OS === "ios"}
@@ -82,6 +83,7 @@ export function Header({
         accessibilityLabel={libraryLabel}
         onPress={onLibrary}
         disabled={libraryDisabled}
+        chrome
         testID="library"
       />
     </View>
