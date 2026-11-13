@@ -91,6 +91,20 @@ const target = (b: Bound) => (b.archetype === "Drawer" && b.variant === "drawer"
 const LIST_KINDS: SlotKind[] = ["option", "object"];
 /** Crime scene: the hours around a death "close to midnight". */
 const DEATH_HOURS = [10, 11, 12, 1];
+/** Draw-until-it-fits loops: tries on the caller's minting stream, then on the room's own; then the candidate gives up. */
+const FRESH_TRIES = 24;
+const MAX_TRIES = 600;
+/** A candidate that couldn't mint a value it needs (a poor minting stream, a room that has used them all): it is dropped. */
+class PlanSpin extends Error {
+  constructor() { super("no value fits"); }
+}
+/**
+ * The simulator's caps while planning. Real rooms stay in the hundreds of states (the most seen is 816, and
+ * the first candidate simulated is almost always the one that proves out), so a candidate past 4,000 is
+ * dropped rather than waited for, and one way of planning a room never explores more than 8,000 in all.
+ */
+const PLAN_MAX_STATES = 4_000;
+const PLAN_STATE_BUDGET = 8_000;
 const WORDS = ["OAK", "ELM", "ASH", "INK", "OWL", "FOX", "JAM", "ICE", "RYE", "GIN", "VOW", "HEX", "ORE", "SKY", "WAX", "YEW"];
 
 /** Deterministic [0, 1) stream from a string seed (FNV-1a + mulberry32). */
@@ -235,6 +249,26 @@ class Builder {
     };
   }
 
+  /**
+   * One draw from the minting stream inside a draw-until-it-fits loop, on its `tries`-th try. Minting is
+   * the caller's stream (crypto on the server, anything in a test): a poor one (low bits that cycle, a
+   * constant) can offer the same few values for ever, so after FRESH_TRIES failed tries the draw comes
+   * from the room's own seeded stream, and after MAX_TRIES the candidate gives up (PlanSpin): a loop
+   * here can never spin.
+   */
+  int(max: number, tries: number): number {
+    if (tries > MAX_TRIES) throw new PlanSpin();
+    return tries < FRESH_TRIES ? this.rint(max) : Math.floor(this.rng() * max);
+  }
+
+  /** A fresh id with `prefix`, by the same rule. */
+  freshId(prefix: string): string {
+    for (let tries = 0;; tries++) {
+      const id = `${prefix}_${mintSuffix((max) => this.int(max, tries))}`;
+      if (!this.ids.has(id)) { this.ids.add(id); return id; }
+    }
+  }
+
   /** `n` distinct entries of `xs`, in a seeded order. */
   sample<T>(xs: readonly T[], n: number): T[] {
     const pool = [...xs];
@@ -309,9 +343,9 @@ class Builder {
 
   /** A fresh value of a kind, unique in the room. Wheels values are "a|b|c" with text "abc". */
   mint(kind: "time" | "freq" | "page" | "offset" | "letters" | "symbols" | "digits" | "phone" | "dial" | "tune"): { value: string; text?: string } {
-    for (;;) {
+    for (let tries = 0;; tries++) {
       let value: string, text: string | undefined;
-      const r = this.rint;
+      const r = (max: number) => this.int(max, tries);
       switch (kind) {
         case "time": value = `${1 + r(12)}:${String(5 * r(12)).padStart(2, "0")}`; if (value === "12:00" || !this.timeOk(value)) continue; break;
         case "freq": { const t = 881 + r(199); if (t % 10 === 0) continue; value = (t / 10).toFixed(1); break; }
@@ -401,9 +435,7 @@ class Builder {
   }
 
   item(kind: ItemDef["kind"], name: string, extra: Partial<ItemDef> = {}): string {
-    let id: string;
-    do id = `${kind === "assembled" ? "item" : kind}_${mintSuffix(this.rint)}`; while (this.ids.has(id));
-    this.ids.add(id);
+    const id = this.freshId(kind === "assembled" ? "item" : kind);
     this.items.push({ id, name, kind, ...extra });
     return id;
   }
@@ -720,7 +752,7 @@ class Builder {
     const fromMin = (x: number) => { const t = ((x % 720) + 720) % 720; return `${Math.floor(t / 60) || 12}:${String(t % 60).padStart(2, "0")}`; };
     for (let tries = 0; tries < 12; tries++) {
       const target = this.mint("time").value;
-      const [mins, words] = DURATIONS[this.rint(DURATIONS.length)];
+      const [mins, words] = DURATIONS[this.int(DURATIONS.length, tries * 4)];
       const base = fromMin(toMin(target) - doc.sign * mins);
       if (base === "12:00" || !this.timeOk(base) || this.values.has(`time:${base}`)) continue;
       this.values.add(`time:${base}`);
@@ -976,7 +1008,8 @@ class Builder {
    * (so an impression tells them apart at a glance).
    */
   keyRing(): { right: string; bittings: string[] } {
-    const cut = () => Array.from({ length: KEY_CUTS }, () => this.rint(KEY_DEPTHS)).join("");
+    let tries = 0;
+    const cut = () => { tries++; return Array.from({ length: KEY_CUTS }, () => this.int(KEY_DEPTHS, tries)).join(""); };
     const varied = (k: string) => new Set(k).size >= 2;
     const unlike = (a: string, b: string) => {
       const d = [...a].map((c, i) => Math.abs(Number(c) - Number(b[i])));
@@ -1143,9 +1176,7 @@ class Builder {
       for (const b of ranked) {
         const fit = this.fitTrace(kind, b);
         if (!fit) continue;
-        let id: string;
-        do id = `trace_${mintSuffix(this.rint)}`; while (this.ids.has(id));
-        this.ids.add(id);
+        const id = this.freshId("trace");
         const t: Trace = { id, kind, anchor: b.id, photo: b.inv.photo_index, ...fit, label: TRACE_LABELS[this.mode][kind], seed: Math.floor(this.rng() * 1e6), lead, look: look ?? this.lookOf(kind) };
         this.traces.push(t);
         return t;
@@ -1443,7 +1474,8 @@ function buildCandidate(
   if (mode === "noir") {
     const wheels = nThreads === 3 || rng() < 0.5 ? 4 : 3;
     let code: string;
-    do code = Array.from({ length: wheels }, () => String(rint(10))).join(""); while (isWeakCode(code));
+    let tries = 0;
+    do code = Array.from({ length: wheels }, () => String(B.int(10, tries))).join(""); while (isWeakCode(code) && ++tries);
     // Contiguous groups, one per thread, in wheel order.
     const sizes = Array(nThreads).fill(1);
     for (let i = nThreads; i < wheels; i++) sizes[Math.floor(rng() * nThreads)]++;
@@ -1486,10 +1518,7 @@ function buildCandidate(
     ];
     const dims = pools.map((pool, i) => {
       const options: AccuseOption[] = pool.map(({ name }) => {
-        let id: string;
-        do id = `${"smx"[i]}_${mintSuffix(rint)}`; while (B.ids.has(id));
-        B.ids.add(id);
-        return { id, name };
+        return { id: B.freshId("smx"[i]), name };
       });
       const right = rint(3);
       const ruledOut = options.flatMap((o, j) => j === right ? [] : [B.slot("option", o.id, o.name, pool[j].meta())]);
@@ -1733,13 +1762,26 @@ export function analyzeInventory(inventory: InventoryObject[]): { usable: Invent
   return { usable, exit, interactive };
 }
 
+/**
+ * Plans a room. It never spins and never throws: every search in it is bounded (candidates, tries, the
+ * simulator's states), so a room that can't be planned one way is planned another or refused. A room
+ * that can't be planned with its gadgets is planned without them (the same room it would be with every
+ * switch off).
+ */
 export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanResult {
+  const gadgets = opts.gadgets ?? PLAYABLE;
+  const first = planWith(inventory, opts, gadgets);
+  return first.ok || !gadgets.length || first.reason === "no_exit" ? first : planWith(inventory, opts, []);
+}
+
+function planWith(inventory: InventoryObject[], opts: PlanOptions, gadgets: readonly Gadget[]): PlanResult {
   const { usable: objs, exit, interactive: poolSize } = analyzeInventory(inventory);
   if (!exit) return { ok: false, reason: "no_exit", detail: "no door, wardrobe or cabinet with doors to use as the way out" };
   if (poolSize < MIN_POOL) return { ok: false, reason: "too_few_objects", detail: `${poolSize} interactive objects besides the exit; at least ${MIN_POOL} are needed` };
 
   const rint = opts.randomInt ?? cryptoInt;
   const n = opts.candidates ?? 8;
+  let budget = PLAN_STATE_BUDGET;
   const failures = new Map<string, number>();
   const fail = (r: string) => { const k = r.replace(/[0-9]+/g, "#"); failures.set(k, (failures.get(k) ?? 0) + 1); };
   // Build structural candidates, then simulate them best-first; the first that the simulator proves wins.
@@ -1748,12 +1790,21 @@ export function planRoom(inventory: InventoryObject[], opts: PlanOptions): PlanR
     for (let c = round * n; c < (round + 1) * n; c++) {
       const rng = seededRandom(`${opts.seed}:${opts.mode}:${c}`);
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
-      const r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2, new Set(opts.gadgets ?? PLAYABLE));
+      let r: Candidate | string;
+      try {
+        r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2, new Set(gadgets));
+      } catch (e) {
+        // A candidate that couldn't mint what it needs is one more that didn't fit; anything else is a bug.
+        if (!(e instanceof PlanSpin)) throw e;
+        r = e.message;
+      }
       if (typeof r === "string") fail(r); else built.push(r);
     }
     built.sort((a, b) => b.summary.score - a.summary.score);
     for (const cand of built) {
-      const report = simulate(cand.definition, cand.secret);
+      if (budget <= 0) { fail("simulation: out of states"); continue; }
+      const report = simulate(cand.definition, cand.secret, { maxStates: Math.min(PLAN_MAX_STATES, budget) });
+      budget -= report.metrics.states;
       if (!report.ok) { fail(`simulation: ${report.errors[0]}`); continue; }
       return { ok: true, ...cand, report, summary: { ...cand.summary, candidatesTried: (round + 1) * n } };
     }

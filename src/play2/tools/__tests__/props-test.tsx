@@ -7,7 +7,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { HINT_AFTER_MS, Reveal } from "../Reveal";
-import { BINDING, LAMP, LENS, MIRROR, PAPERWEIGHT, PENCIL } from "../props";
+import { BINDING, LAMP, LENS, MIRROR, MUSICBOX, PAPERWEIGHT, PENCIL, RIBBON } from "../props";
 
 const DIR = path.join(__dirname, "../../../../assets/reveal");
 /** A PNG's pixel size and weight, from the file. */
@@ -26,14 +26,22 @@ const PICTURES: [string, number, number][] = [
   ["pencil", PENCIL.w, PENCIL.h],
   ["notepad-binding", BINDING.w, BINDING.h],
   ["paperweight", PAPERWEIGHT.w, PAPERWEIGHT.h],
+  ["musicbox", MUSICBOX.w, MUSICBOX.h],
+  ["musicbox-crank", MUSICBOX.crankW, MUSICBOX.crankH],
+  ["ribbon-spool", RIBBON.w, RIBBON.h],
+  ["ribbon-clip", RIBBON.clipW, RIBBON.clipH],
+  // The top flange's frames, a sheet: `columns` across.
+  ["ribbon-flange", RIBBON.flangeW * RIBBON.columns, RIBBON.flangeH * Math.ceil(RIBBON.frames / RIBBON.columns)],
 ];
+/** A still stays under 150 KB; the one sheet of frames under 600 KB. */
+const budget = (name: string) => (name === "ribbon-flange" ? 600 : 150) * 1024;
 
 describe("the reveal props' pictures", () => {
   it.each(PICTURES)("%s is exported at the size it's laid out at, x1, x2 and x3, and stays light", (name, w, h) => {
     for (const [suffix, scale] of [["", 1], ["@2x", 2], ["@3x", 3]] as const) {
       const { width, height, bytes } = png(`${name}${suffix}.png`);
       expect([width, height]).toEqual([w * scale, h * scale]);
-      expect(bytes).toBeLessThan(150 * 1024);
+      expect(bytes).toBeLessThan(budget(name));
     }
   });
 
@@ -50,6 +58,11 @@ describe("the reveal props' pictures", () => {
       [PENCIL.tip, PENCIL.w, PENCIL.h],
       [BINDING.pad, BINDING.w, BINDING.h],
       [PAPERWEIGHT.centre, PAPERWEIGHT.w, PAPERWEIGHT.h],
+      [MUSICBOX.pivot, MUSICBOX.w, MUSICBOX.h],
+      [MUSICBOX.crankPivot, MUSICBOX.crankW, MUSICBOX.crankH],
+      [RIBBON.axis, RIBBON.w, RIBBON.h],
+      [RIBBON.flangeCentre, RIBBON.flangeW, RIBBON.flangeH],
+      [RIBBON.clipEnd, RIBBON.clipW, RIBBON.clipH],
     ] as const) {
       expect(at.x).toBeGreaterThanOrEqual(0);
       expect(at.x).toBeLessThanOrEqual(w);

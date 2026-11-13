@@ -64,3 +64,59 @@ export const PAPERWEIGHT = {
   h: 60,
   centre: { x: 28.32, y: 28.32 },
 } as const;
+
+/**
+ * The music box, seen from above (everything but the crank's arm), and the crank's arm pointing right from
+ * its pivot. What the sheet draws over the box, in the picture's points: the cylinder (its ends, its axis,
+ * its radius: the pins ride it), the comb's six teeth low to high (each one's column, its tip, its root,
+ * its engraved mark), and the pivot the crank turns on.
+ */
+export const MUSICBOX = {
+  art: require("../../../assets/reveal/musicbox.png") as number,
+  crank: require("../../../assets/reveal/musicbox-crank.png") as number,
+  w: 330,
+  h: 300,
+  cyl: { x0: 44, x1: 232, y: 128, r: 30 },
+  columns: [[42.2, 70.47], [74.87, 103.13], [107.53, 135.8], [140.2, 168.47], [172.87, 201.13], [205.53, 233.8]],
+  tip: 159,
+  roots: [212, 208, 204, 200, 196, 192],
+  markY: 181,
+  mark: 15,
+  pivot: { x: 278, y: 152 },
+  arm: 26,
+  crankW: 64,
+  crankH: 36,
+  crankPivot: { x: 15, y: 18 },
+} as const;
+
+/**
+ * The typewriter ribbon's spool standing on the desk (lower flange and winding), its top flange as
+ * `frames` pictures over a sixth of a turn (a sheet, `columns` across), and the clip on the ribbon's end.
+ * In the spool's picture: where the ribbon leaves the winding (`leaves`: its x, its top and bottom edge)
+ * and the top of the spool's axis, which the flange's `flangeCentre` sits on. `radius` is the winding's,
+ * `flangeR` the flange's, in points; `black`, `red` and `redShare` are the ribbon as the picture has it
+ * there, for the ribbon drawn on from it.
+ */
+export const RIBBON = {
+  spool: require("../../../assets/reveal/ribbon-spool.png") as number,
+  flange: require("../../../assets/reveal/ribbon-flange.png") as number,
+  clip: require("../../../assets/reveal/ribbon-clip.png") as number,
+  w: 190,
+  h: 172,
+  leaves: { x: 95, top: 79.56, bottom: 135.56 },
+  axis: { x: 95, y: 51.62 },
+  flangeW: 176,
+  flangeH: 100,
+  frames: 8,
+  columns: 4,
+  flangeCentre: { x: 88, y: 49.17 },
+  radius: 52,
+  flangeR: 84,
+  clipW: 40,
+  clipH: 72,
+  clipEnd: { x: 4.19, y: 36 },
+  clipTop: 8,
+  black: "#262123",
+  red: "#752725",
+  redShare: 26 / 56,
+} as const;

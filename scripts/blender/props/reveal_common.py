@@ -10,14 +10,18 @@
 # Flat-lay props (things lying on the desk, seen from above) are built standing up, facing -Y,
 # and shot with the "front" camera: the house key light is then upper left in the picture, as
 # it is for everything else (a "top" camera would put it lower left).
+import io
 import math
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import bpy  # noqa: E402
 import bmesh  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
+
+from PIL import Image  # noqa: E402
 
 import export  # noqa: E402
 import kit  # noqa: E402
@@ -178,6 +182,32 @@ def ink_over_shadow():
             ls.select_silhouette = True
 
 
+def asset_path(dest):
+    """Where a picture is written: under the repo, or (a draft: $REVEAL_DRAFT_DIR set) in that folder, so a
+    half-made picture never lands in assets/ where the app or its tests would pick it up."""
+    draft = os.environ.get("REVEAL_DRAFT_DIR")
+    if draft:
+        return os.path.join(draft, os.path.basename(dest))
+    return dest if os.path.isabs(dest) else os.path.join(export.REPO, dest)
+
+
+def fewer_colours(im, colours):
+    """PNG bytes of `im` with a palette of `colours` (pngquant, then oxipng), or None without pngquant."""
+    exe = export._pngquant()
+    if not exe:
+        return None
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    p = subprocess.run([exe, str(colours), "--speed", "1", "--strip", "-"], input=buf.getvalue(), capture_output=True)
+    if p.returncode != 0 or not p.stdout:
+        return None
+    try:
+        import oxipng
+        return oxipng.optimize_from_memory(p.stdout, level=6, strip=oxipng.StripChunks.safe())
+    except Exception:
+        return p.stdout
+
+
 def ship(src, dest, sizes, budget_kb=150, scales=(1, 2, 3), errors=(7.0, 10.0, 14.0, 20.0, 28.0)):
     """export.export(..., canvas=True) for pictures that may not fit the budget as they come: each size
     is written with the exporter's own encoder, which keeps a 256-colour palette only if it is faithful
@@ -185,7 +215,7 @@ def ship(src, dest, sizes, budget_kb=150, scales=(1, 2, 3), errors=(7.0, 10.0, 1
     little as gets it under (`errors`: the steps tried; start above 7 for a picture whose palette has been
     looked at and is fine). Prints what it took. Look at the result: this is where banding would show."""
     im = export.load(src) if isinstance(src, str) else src
-    dest = dest if os.path.isabs(dest) else os.path.join(export.REPO, dest)
+    dest = asset_path(dest)
     base, ext = os.path.splitext(dest)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     total = 0
@@ -195,6 +225,13 @@ def ship(src, dest, sizes, budget_kb=150, scales=(1, 2, 3), errors=(7.0, 10.0, 1
             data, how = export.encode(out, True, max_error=err)
             if len(data) / 1024 <= budget_kb:
                 break
+        if len(data) / 1024 > budget_kb:
+            # Still over at the most error allowed: a smaller palette, as long as it is no further off than that.
+            for colours in (192, 160, 128):
+                small = fewer_colours(out, colours)
+                if small and len(small) / 1024 <= budget_kb and export._error(out, Image.open(io.BytesIO(small))) <= errors[-1]:
+                    data, how = small, f"pngquant {colours}+oxipng"
+                    break
         name = dest if k == 1 else f"{base}@{k}x{ext}"
         with open(name, "wb") as f:
             f.write(data)
@@ -210,4 +247,4 @@ def out_dir(args=None):
 
 
 __all__ = ["bpy", "bmesh", "Matrix", "Vector", "export", "kit", "M", "math", "os", "sys", "SAMPLES", "scene", "flat_camera", "anchor",
-           "mesh_object", "tube", "moulding", "lay_flat", "wall_shadow", "ink_over_shadow", "ship", "boolean", "out_dir"]
+           "mesh_object", "tube", "moulding", "lay_flat", "wall_shadow", "ink_over_shadow", "asset_path", "ship", "boolean", "out_dir"]

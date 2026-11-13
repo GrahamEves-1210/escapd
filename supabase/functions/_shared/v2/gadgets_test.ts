@@ -47,9 +47,14 @@ const answerOf = (r: Ok, object: string) => {
   return r.secret.slots[(c as { eq: { slot: string } }).eq.slot];
 };
 
-Deno.test("gadgets: every switch is off by default, and a room planned without them has none", () => {
+Deno.test("gadgets: a room planned with a switch off has none of that gadget; by default only the PLAYABLE ones", async () => {
+  const { PLAYABLE } = await import("./planner.ts");
   for (const mode of MODES) for (const inv of ROOMS) for (let i = 0; i < 12; i++) {
-    const r = planRoom(inv, { mode, seed: `off-${i}`, randomInt: seededRandomInt(i) });
+    // Whatever is switched on for the app, nothing else gets into a room planned by default.
+    const byDefault = planRoom(inv, { mode, seed: `off-${i}`, randomInt: seededRandomInt(i) });
+    assert(byDefault.ok, `${mode} ${i}`);
+    for (const g of used(byDefault)) assert(PLAYABLE.includes(g), `${g} is in a room but not PLAYABLE`);
+    const r = planRoom(inv, { mode, seed: `off-${i}`, randomInt: seededRandomInt(i), gadgets: [] });
     assert(r.ok, `${mode} ${i}`);
     assertEquals(used(r), [], `${mode} ${i}`);
     assert(!r.summary.motifs.some((m) => m === "tune_reveal" || m === "ribbon_reveal" || m === "weigh"));
@@ -239,4 +244,49 @@ Deno.test("gadgets: perception can report a safe and a landline telephone; a mob
   assert(hostableArchetypes({ type: "telephone", features: [] }).some((h) => h.archetype === "Telephone"));
   // A desk never has a safe's dial.
   assert(!hostableArchetypes({ type: "desk", features: ["has_drawers"] }).some((h) => h.variant === "dial"));
+});
+
+// ---------------------------------------------------------------------------
+// The planner never spins (it runs on the phone)
+// ---------------------------------------------------------------------------
+/** The weak stand-in the generation tests mint with: the low bits of an LCG, which cycle every few draws. */
+const lowBits = (seed: number) => { let s = seed >>> 0; return (max: number) => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s % max; }; };
+
+Deno.test("planner: every fixture room plans in well under a second with every gadget on, whatever the minting stream", async () => {
+  const { BEDROOM_NO_DOOR, syntheticInventory } = await import("./test_fixtures.ts");
+  const rooms = [OFFICE, FULL_15, BEDROOM_WITH_DOOR, BEDROOM_NO_DOOR, SPARSE_5, ...Array.from({ length: 12 }, (_, i) => syntheticInventory(40 + i, 7 + i))];
+  const streams: [string, (i: number) => (max: number) => number][] = [
+    ["a good stream", (i) => seededRandomInt(i)],
+    // A draw-until-it-fits loop on this one only ever sees four different keys, eight different ids: it must not wait for a fifth.
+    ["a stream whose low bits cycle", (i) => lowBits(11 + i)],
+    ["a constant", () => () => 0],
+    ["the largest value every time", () => (max) => max - 1],
+  ];
+  let worst = 0, plans = 0;
+  for (const [name, stream] of streams) for (const mode of MODES) for (const [k, inv] of rooms.entries()) for (let i = 0; i < 3; i++) {
+    const t = performance.now();
+    const r = planRoom(inv, { mode, seed: `fast-${k}-${i}`, randomInt: stream(i), gadgets: GADGETS });
+    const ms = performance.now() - t;
+    worst = Math.max(worst, ms);
+    plans++;
+    assert(ms < 1000, `${name}, ${mode}, room ${k}, seed ${i}: planRoom took ${Math.round(ms)} ms`);
+    // It plans (with its gadgets or, failing that, without), or refuses cleanly for want of objects: never a throw.
+    if (!r.ok) assert(r.reason === "too_few_objects" || r.reason === "no_exit" || r.reason === "no_valid_plan", r.reason);
+    else if (name === "a good stream") assertEquals(planProblems(r, mode), [], `${mode} room ${k} seed ${i}`);
+    else assert(r.report.ok && validateDefinition(r.definition, r.secret).length === 0, `${name}, ${mode}, room ${k}: ${r.report.errors[0]}`);
+  }
+  console.log(`${plans} plans with every gadget on, worst ${Math.round(worst)} ms`);
+  // The five fixture rooms always plan, even on the weakest stream.
+  for (const [name, stream] of streams) for (const mode of MODES) for (const inv of [OFFICE, FULL_15, BEDROOM_WITH_DOOR, SPARSE_5]) {
+    assert(planRoom(inv, { mode, seed: "always", randomInt: stream(1), gadgets: GADGETS }).ok, `${name}: ${mode} doesn't plan`);
+  }
+});
+
+Deno.test("planner: a room the simulator can't finish in its cap is refused, not waited for", () => {
+  const r = planRoom(OFFICE, { mode: "noir", seed: "cap", randomInt: seededRandomInt(3), gadgets: GADGETS });
+  assert(r.ok);
+  const t = performance.now();
+  const cut = simulate(r.definition, r.secret, { maxStates: 20 });
+  assert(!cut.ok && cut.errors.some((e) => /state space exceeded 20 states/.test(e)), cut.errors.join("; "));
+  assert(cut.metrics.states <= 20 && performance.now() - t < 200);
 });

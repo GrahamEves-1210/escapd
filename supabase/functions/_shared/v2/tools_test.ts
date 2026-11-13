@@ -59,7 +59,8 @@ Deno.test("tools: UV stays rare (a quarter of rooms or less), with or without a 
       const used = new Map<string, number>();
       let rooms = 0;
       for (const inv of invs) for (let i = 0; i < 60 / invs.length; i++) {
-        const r = planRoom(inv, { mode, seed: `mix-${i}`, randomInt: seededRandomInt(i) });
+        // (The tools every room can have: the gadgets' own switches are tested in gadgets_test.)
+        const r = planRoom(inv, { mode, seed: `mix-${i}`, randomInt: seededRandomInt(i), gadgets: [] });
         assert(r.ok, `${name} ${mode} ${i}: ${!r.ok && r.detail}`);
         rooms++;
         for (const [tool, motif] of Object.entries(TOOL_MOTIF)) if (r.summary.motifs.includes(motif)) used.set(tool, (used.get(tool) ?? 0) + 1);

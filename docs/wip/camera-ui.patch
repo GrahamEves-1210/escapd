@@ -1,0 +1,1984 @@
+diff --git a/src/capture/ui/Rangefinder.tsx b/src/capture/ui/Rangefinder.tsx
+index e6cf752..0e6567f 100644
+--- a/src/capture/ui/Rangefinder.tsx
++++ b/src/capture/ui/Rangefinder.tsx
+@@ -1,10 +1,14 @@
+ // 02 · Camera (docs/DESIGN.md 02): the rangefinder, guided capture one plate
+-// at a time, mounted by /capture once camera access is granted. In Once's
+-// look (docs/refs/02-camera.png): the flat ref.color.ground; square header
+-// buttons around the serif plate prompt; the big rounded black viewfinder with
+-// the live feed; flash, the 0.5 / 1.0 segment and the framing grid; then the
+-// italic photo counter (Arabic numerals), the glowing shutter with its
+-// magnifying glass and the last-photo thumbnail. Every photo is re-encoded on
++// at a time, mounted by /capture once camera access is granted. The screen is
++// the back of a vintage camera (rendered chrome, ./art.ts and ./look.ts
++// CHROME, round live controls): a leather body (Body) with black push buttons
++// in brass rims around the serif plate prompt; the finder window, the live
++// feed in a brass frame; flash, the 0.5 / 1.0 slide switch and the framing
++// grid; then the frame counter's window (italic numerals and the plan's
++// count), the brass release with its magnifying glass inside the film-advance
++// lever, and the tray the prints pile up in. As a photo is taken the shutter
++// blinks across the finder, the lever winds on and the print slides out from
++// under the tray's cover. Every photo is re-encoded on
+ // the phone (EXIF and location dropped) before it is added. Photos keep their
+ // slots (src/capture/roll.ts): the next shot fills the first open slot, and
+ // its prompt and counter are that slot's. With ?retake=<slot> it takes
+@@ -55,6 +59,7 @@ import { useFeedback } from "@/game/feedback";
+ import { motion, ref } from "@/theme/tokens";
+ import { LENS_SWITCH_TIMEOUT } from "./look";
+ import { useCapturePalette } from "./palette";
++import { Body } from "./rangefinder/Body";
+ import { ControlRow } from "./rangefinder/ControlRow";
+ import { COPY, counterCopy, lastPlateLabel, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "./rangefinder/copy";
+ import { Header, type PromptSubtitle } from "./rangefinder/Header";
+@@ -329,6 +334,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
+       ]}
+       testID="rangefinder-root"
+     >
++      <Body />
+       <Header
+         backLabel={filling ? COPY.cancelFill : retake ? COPY.cancelRetake : COPY.close}
+         onBack={close}
+@@ -351,6 +357,8 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
+             ratio={frame.ratio}
+             grid={grid}
+             note={!retake && plates.length === 0}
++            wide={lenses.choice === "wide"}
++            blink={shooting}
+             overlay={
+               <TurnDial
+                 stops={plan.stops}
+@@ -365,7 +373,6 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
+                   ? { uri: slots[anchor.slot]!.uri, width: viewfinder.width, height: viewfinder.height }
+                   : null}
+                 fov={LENS_FOV[lenses.choice]}
+-                line={turnCopy(at, false).line}
+                 accessibilityLabel={(reached) => turnCopy(at, reached).accessibilityLabel}
+                 onReached={onTurned}
+               />
+@@ -399,9 +406,11 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
+       />
+       <View style={styles.bottomRow}>
+         <PlateCounter current={counter.current} count={plan.shots} solo={counter.solo} accessibilityLabel={counter.accessibilityLabel} />
+-        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full || switching} busy={busy} onPress={shoot} testID="shutter" />
++        <Shutter accessibilityLabel={shutterLabel(at)} disabled={!live || full || switching} busy={busy} onPress={shoot} wind={plates.length} testID="shutter" />
+         <LastPlate
+           uri={lastUri}
++          under={retake ? null : (plates.at(-2)?.uri ?? null)}
++          count={plates.length}
+           ring={!retake && plates.length >= MIN_PLATES}
+           accessibilityLabel={lastPlateLabel(plates.length, retake, filling)}
+           disabled={lastUri === null || busy}
+@@ -415,7 +424,7 @@ export function Rangefinder({ retakeIndex, onClose }: RangefinderProps) {
+ }
+ 
+ const styles = StyleSheet.create({
+-  // Once's flat ground (the palette's page): no grain, glow or vignette, so photos are judged on a plain ground.
++  // The palette's page under the body's leather (Body), so the leather takes the mode's colour.
+   root: { flex: 1 },
+   headerRow: { paddingVertical: SQUARE_SLOP },
+   // The viewfinder takes what's left between the header and the control row,
+diff --git a/src/capture/ui/art.ts b/src/capture/ui/art.ts
+new file mode 100644
+index 0000000..87ee97d
+--- /dev/null
++++ b/src/capture/ui/art.ts
+@@ -0,0 +1,25 @@
++// The camera's rendered chrome (scripts/blender/props/camera_*.py; sizes in
++// ./look.ts CHROME): stills only, laid under or round the live controls.
++import type { ImageSourcePropType } from "react-native";
++
++export const ART = {
++  /** The leather's grain, a repeating square laid over the mode's ground. */
++  leather: require("../../../assets/capture/leather.png") as ImageSourcePropType,
++  /** The studio's light across the back: warm upper left, plum lower right. Stretched. */
++  light: require("../../../assets/capture/light.png") as number,
++  /** The brass frame round the preview, per lens. */
++  finder: require("../../../assets/capture/finder.png") as number,
++  finderWide: require("../../../assets/capture/finder-wide.png") as number,
++  /** The finder's glass: a slight darkening into the corners. Stretched. */
++  glass: require("../../../assets/capture/glass.png") as number,
++  shutter: require("../../../assets/capture/shutter.png") as number,
++  shutterDown: require("../../../assets/capture/shutter-down.png") as number,
++  lever: require("../../../assets/capture/lever.png") as number,
++  counter: require("../../../assets/capture/counter.png") as number,
++  lensTrack: require("../../../assets/capture/lens-track.png") as number,
++  lensThumb: require("../../../assets/capture/lens-thumb.png") as number,
++  buttonSquare: require("../../../assets/capture/button-square.png") as number,
++  buttonRound: require("../../../assets/capture/button-round.png") as number,
++  print: require("../../../assets/capture/print.png") as number,
++  tray: require("../../../assets/capture/tray.png") as number,
++} as const;
+diff --git a/src/capture/ui/look.ts b/src/capture/ui/look.ts
+index c1dee7a..1eacee9 100644
+--- a/src/capture/ui/look.ts
++++ b/src/capture/ui/look.ts
+@@ -1,4 +1,7 @@
+-// The camera's own values beside ref.layout.camera: the turn guide's look
++// The camera's own values beside ref.layout.camera: the camera's chrome (CHROME:
++// the rendered leather-and-brass body round the live preview, the sizes its
++// pictures share with scripts/blender/props/camera_*.py, and the few movements
++// it adds); the turn guide's look
+ // (src/capture/ui/rangefinder/TurnGuide.tsx), the strokes and see-through
+ // shares of its two lines and the ghost of the last photo, white over the
+ // feed with a faint dark casing so both lines read on a bright wall and a
+@@ -29,3 +32,76 @@ export const GUIDE = {
+   /** How far past the frame's sides the moving edge is clamped (share of its width), so it parks just off screen. */
+   park: 0.05,
+ } as const;
++
++// The camera's chrome: a leather camera back with brass fittings, rendered in
++// Blender (scripts/blender/props/camera_*.py -> assets/capture, required in
++// ./art.ts). Every picture is still and lies under or round its control; the
++// live preview is never covered by one. Sizes in points, as the scripts'.
++export const CHROME = {
++  /** The leather grain's repeating square. */
++  leather: 120,
++  finder: {
++    /** The preview's corner, a share of its width (26 on 1x's 365). */
++    radius: 26 / 365,
++    /** The frame pictures' margin round the preview, at the width each was drawn for. */
++    margin: 13,
++    drawn: { main: 365, wide: 273.75 },
++    /** Etched marks on the glass at the middle of each side: `length` in from the edge, `line` wide, white at `opacity`. */
++    tick: { length: 7, line: 1, opacity: 0.55 },
++    /** The shutter's blink over the preview as a photo is taken: to `opacity` over `close` ms, clear again over `open`. */
++    blink: { opacity: 0.92, close: 45, open: 150 },
++  },
++  shutter: {
++    /** The release's picture, centred on its 75 box. */
++    art: 84,
++    /** The advance lever's picture, centred on the release; it turns about its middle. */
++    lever: 150,
++    /** The lever turned at rest (degrees clockwise; the picture is drawn at rest) and at the far end of its stroke. */
++    rest: 0,
++    stroke: -32,
++    /** Winding on after a photo: out over `out` ms, home over `home`. */
++    wind: { out: 170, home: 300 },
++    /** The glass sinks this far with the pressed release. */
++    travel: 1,
++  },
++  counter: {
++    /** The window's corner, and its bezel picture's margin round it. */
++    radius: 9,
++    margin: 8,
++    /** The plan's count engraved beside the window ("/7"): `gap` right of the window, in the counter's italic at `size`. */
++    total: { gap: 13, size: 16, lineHeight: 20 },
++  },
++  lens: {
++    /** The slot's and the cursor's pictures' margins round the track and the thumb. */
++    track: 6,
++    thumb: 3,
++  },
++  /** The push buttons' pictures: back and library (their 44 square in a 52 picture), flash and grid (a 48 picture). */
++  square: 52,
++  round: 48,
++  tray: {
++    /** The tray picture's margin round the 72 control: its sides and foot, and its top (the cover stands over the control). */
++    side: 6,
++    top: 12,
++    /** The well the prints lie in: inset in the control, its corner; prints come out from under the cover `slot` below the control's top. */
++    inset: 4,
++    radius: 8,
++    slot: 5,
++  },
++  print: {
++    /** A print (the sheet), its white edge, and its picture's margin round the sheet. */
++    width: 48,
++    height: 62,
++    border: 3.5,
++    margin: 4,
++    /** Where the newest print lies in the well, from the well's top. */
++    top: 0.75,
++    /** The print under it leans by `lean` degrees; from three photos a third shows, leaning `leanBack`. */
++    lean: -7,
++    leanBack: 6,
++    /** A new print slides out from under the cover over `slide` ms. */
++    slide: 460,
++    /** The sheet's tone where no photo covers it. */
++    paper: "#E9E1D2",
++  },
++} as const;
+diff --git a/src/capture/ui/rangefinder/BareToggle.tsx b/src/capture/ui/rangefinder/BareToggle.tsx
+index cb19c10..f8c420b 100644
+--- a/src/capture/ui/rangefinder/BareToggle.tsx
++++ b/src/capture/ui/rangefinder/BareToggle.tsx
+@@ -1,15 +1,18 @@
+-// Once's bare control-row glyph (02's flash and flip slots): no container, a
+-// Phosphor glyph at ref.layout.camera.controlIcon 22 (the measured bolt) in
+-// textPrimary, centred in a 48 hit box (ref.button.bare). ESCAPD uses it as a switch (flash, framing grid): the
+-// glyph itself shows the state (the caller swaps the icon or its weight), so
+-// colour never carries it and every state stays the reference's white.
++// The camera's round push button (02's control row: flash, framing grid): a
++// rendered black cap in a brass rim (ART.buttonRound, filling the 48 hit box,
++// ref.button.bare) carrying a Phosphor glyph at ref.layout.camera.controlIcon
++// 22 in the palette's ink. It is a switch: the glyph itself shows the state
++// (the caller swaps the icon or its weight), so colour never carries it.
+ // - Pressed: ref.button.bare.pressedOpacity 0.75.
+ // - Disabled: 0.4, eased over ref.motion.control (Dimmable).
+ // - Focus: the kit's brass ring, a circle around the 48 box.
+-import { Pressable, StyleSheet } from "react-native";
++import { Pressable, StyleSheet, View } from "react-native";
++import { Image } from "expo-image";
+ import type { IconWeight } from "phosphor-react-native";
+ import { FocusRing, useFocusRing, type NoirIcon } from "@/components/noir";
+ import { ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { Dimmable } from "./Dimmable";
+ 
+@@ -41,7 +44,11 @@ export function BareToggle({ icon: Icon, weight, accessibilityLabel, on, disable
+         testID={testID}
+         style={({ pressed }) => [styles.box, pressed ? styles.pressed : null]}
+       >
+-        <Icon size={ref.layout.camera.controlIcon} color={palette.ink} weight={weight} />
++        <Image source={ART.buttonRound} pointerEvents="none" accessible={false} style={styles.art} testID={testID ? `${testID}-art` : undefined} />
++        {/* In a View, so it stacks above the picture on the web too. */}
++        <View>
++          <Icon size={ref.layout.camera.controlIcon} color={palette.ink} weight={weight} />
++        </View>
+         <FocusRing visible={focus.focused} shape="pill" />
+       </Pressable>
+     </Dimmable>
+@@ -51,4 +58,12 @@ export function BareToggle({ icon: Icon, weight, accessibilityLabel, on, disable
+ const styles = StyleSheet.create({
+   box: { width: B.hit, height: B.hit, alignItems: "center", justifyContent: "center" },
+   pressed: { opacity: B.pressedOpacity },
++  // The button's picture, centred in the hit box.
++  art: {
++    position: "absolute",
++    left: (B.hit - CHROME.round) / 2,
++    top: (B.hit - CHROME.round) / 2,
++    width: CHROME.round,
++    height: CHROME.round,
++  },
+ });
+diff --git a/src/capture/ui/rangefinder/Body.tsx b/src/capture/ui/rangefinder/Body.tsx
+new file mode 100644
+index 0000000..553acf5
+--- /dev/null
++++ b/src/capture/ui/rangefinder/Body.tsx
+@@ -0,0 +1,31 @@
++// The camera's body, behind every control: leather over the mode's ground
++// (the Rangefinder's root colour), under the studio's light. The leather is a
++// rendered grain alone, a square repeated without a seam, light on its pebbles
++// and dark in its creases, so it is plum, oxblood or indigo with the mode; the
++// light is one soft picture stretched over it, warm from the upper left as on
++// every rendered fitting. Both are still pictures that take no touches.
++import { Image as TiledImage, StyleSheet, View } from "react-native";
++import { Image } from "expo-image";
++import { ART } from "../art";
++
++export function Body() {
++  return (
++    <View
++      pointerEvents="none"
++      style={StyleSheet.absoluteFill}
++      accessible={false}
++      accessibilityElementsHidden
++      importantForAccessibility="no-hide-descendants"
++      testID="camera-body"
++    >
++      {/* React Native's own Image: the one that repeats a tile. */}
++      <TiledImage source={ART.leather} resizeMode="repeat" style={styles.leather} testID="camera-leather" />
++      <Image source={ART.light} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} testID="camera-light" />
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  // Sized outright: an image otherwise takes its picture's own size (the tile's) on the web.
++  leather: { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" },
++});
+diff --git a/src/capture/ui/rangefinder/ControlRow.tsx b/src/capture/ui/rangefinder/ControlRow.tsx
+index e3678c8..5157486 100644
+--- a/src/capture/ui/rangefinder/ControlRow.tsx
++++ b/src/capture/ui/rangefinder/ControlRow.tsx
+@@ -1,8 +1,9 @@
+ // The control row under the viewfinder, Once's: the flash glyph in the back
+ // button's column (x 43), the 0.5 / 1.0 segment on the screen's centre, and
+ // ESCAPD's framing grid on Once's flip glyph (x 347.6, ref.layout.camera
+-// .controlColumns, just inside the library button's 350). Both glyphs are bare
+-// white Phosphor at 22 (ref.button.bare, ref.layout.camera.controlIcon); each
++// .controlColumns, just inside the library button's 350). Both are round
++// black push buttons in brass rims (BareToggle) carrying a white Phosphor
++// glyph at 22 (ref.button.bare, ref.layout.camera.controlIcon); each
+ // shows its state in the glyph itself, so colour never carries it: flash
+ // LightningSlash (off) / Lightning (on), both filled as Once's bolt; the grid
+ // GridNine outline (off; regular, as its nine cells already weigh as much as
+diff --git a/src/capture/ui/rangefinder/Header.tsx b/src/capture/ui/rangefinder/Header.tsx
+index 2710e4b..107dbbb 100644
+--- a/src/capture/ui/rangefinder/Header.tsx
++++ b/src/capture/ui/rangefinder/Header.tsx
+@@ -1,5 +1,6 @@
+-// The header row, Once's: two 44 square buttons (back, library) 21 from the
+-// screen edges, and between them the plate prompt: the serif title
++// The header row, in Once's layout: two 44 square push buttons (back, library;
++// black caps in brass rims, SquareButton) 21 from the screen edges, and
++// between them, on the body's leather, the plate prompt: the serif title
+ // (ref.type.serifTitle, Roboto Serif 17/22, textPrimary) over the grey meta
+ // line (ref.type.meta, system 13/16, textSecondary), both centred. The title's
+ // line box starts promptTop below the buttons' top and the meta line metaGap
+@@ -61,7 +62,7 @@ export function Header({
+   const palette = useCapturePalette();
+   return (
+     <View style={[styles.row, style]}>
+-      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} testID="back" />
++      <SquareButton icon={ArrowLeftIcon} accessibilityLabel={backLabel} onPress={onBack} chrome testID="back" />
+       <View
+         ref={promptRef}
+         accessible={Platform.OS === "ios"}
+@@ -82,6 +83,7 @@ export function Header({
+         accessibilityLabel={libraryLabel}
+         onPress={onLibrary}
+         disabled={libraryDisabled}
++        chrome
+         testID="library"
+       />
+     </View>
+diff --git a/src/capture/ui/rangefinder/LastPlate.tsx b/src/capture/ui/rangefinder/LastPlate.tsx
+index 5511e73..1aab141 100644
+--- a/src/capture/ui/rangefinder/LastPlate.tsx
++++ b/src/capture/ui/rangefinder/LastPlate.tsx
+@@ -1,34 +1,49 @@
+-// The last-plate thumbnail, Once's last photo (ref.button.thumbnail): a 72
+-// rounded square frame (ref.color.well, radius 24 continuous) 4 thick around
+-// a 64 image (radius 20, concentric) showing the newest plate in full colour
+-// (cover), with a 1 pt rimFaint rim drawn over it. No glow. Before plate I
+-// the image is an empty void well. In retake mode it shows the plate being
+-// replaced.
+-// - The way on: from MIN_PLATES (outside retake mode) a 1 pt grey ring
+-//   (ref.layout.camera.cue) closes over the frame's outer edge, inside the 72
+-//   box so nothing moves; its label says "Continue to the light table".
++// The prints: the photos taken, piling up in the camera's tray (ART.tray, a
++// felt-lined well in a brass rim under a brass cover, drawn round the 72
++// control). Each photo is a print (Print: ART.print, a sheet of photo paper
++// with its picture cut clear, the photo laid behind it, cover-cropped to the
++// sheet's 3:4). The newest lies on top; the one before it shows under it,
++// leaning; from three photos a third sheet shows under that. Before photo 1
++// the tray is empty. In retake mode the tray holds the photo being replaced,
++// alone.
++// - A photo taken (`count` going up): its print slides out from under the
++//   tray's cover onto the pile over CHROME.print.slide, while the print it
++//   covers leans aside (that print stays mounted, so its photo never blinks).
++//   Reduced motion: it is simply there.
++// - The way on: from MIN_PLATES (outside retake mode) a 1 pt ring in the
++//   palette's cue colour closes round the well; its label says the case is
++//   ready to build.
+ // - Pressed: ref.button.thumbnail.pressedOpacity 0.75.
+-// - A new plate swaps in with a ref.motion.control cross-dissolve.
+-// - Disabled before plate I (a full-opacity empty well) and while busy
+-//   (dimmed, keeping its image and ring).
+-// - Focus: the kit's brass ring 2 outside the frame, concentric with it.
+-// - In a mode (src/capture/ui/palette.ts): the frame and well in the mode's
+-//   near-black, the way-on ring in its stamp colour, and the photo in the
+-//   mode's baked treatment (TreatedImage, at the review tiles' bake size so
+-//   one bake serves both): each new photo shows as taken, then its treatment
+-//   fades in over ref.motion.treatment (at once under reduced motion).
++// - Disabled before photo 1 (a full-opacity empty tray) and while busy
++//   (dimmed, keeping its prints and ring).
++// - Focus: the kit's brass ring 2 outside the control, concentric with it.
++// - In a mode (src/capture/ui/palette.ts): the way-on ring in its stamp colour
++//   and the photos in the mode's baked treatment (TreatedImage, at the review
++//   tiles' bake size so one bake serves both): each new photo shows as taken,
++//   then its treatment fades in over ref.motion.treatment (at once under
++//   reduced motion). The tray and the paper are the same in every mode.
++import { useEffect, useState, type ReactNode } from "react";
+ import { Pressable, StyleSheet, View } from "react-native";
+ import { useFeedback } from "@/game/feedback";
+ import { Image, type ImageTransition } from "expo-image";
+-import Animated, { useAnimatedStyle } from "react-native-reanimated";
++import Animated, { Easing, ReduceMotion, interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+ import { FocusRing, TreatedImage, useFocusRing, useStateProgress } from "@/components/noir";
++import type { Genre } from "@/lib/puzzle-types";
++import { useTheme } from "@/theme/ThemeProvider";
+ import { curve, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { Dimmable } from "./Dimmable";
+ 
+ const T = ref.button.thumbnail;
+ const CUE = ref.layout.camera.cue;
+ const BAKE = ref.layout.review.tile.bake;
++const Y = CHROME.tray;
++const P = CHROME.print;
++// The well the prints lie in, from under the cover down to the tray's foot.
++const WELL = { width: T.size - Y.inset * 2, height: T.size - Y.inset - Y.slot };
++const SLIDE = { duration: P.slide, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.Never };
+ 
+ const SWAP: ImageTransition = {
+   duration: ref.motion.control.duration,
+@@ -37,8 +52,12 @@ const SWAP: ImageTransition = {
+ };
+ 
+ export interface LastPlateProps {
+-  /** The newest plate (or, in retake mode, the plate being replaced); null for the empty well. */
++  /** The newest plate (or, in retake mode, the plate being replaced); null for the empty tray. */
+   uri: string | null;
++  /** The photo before it, lying under it; null when there is none (or in retake mode). */
++  under?: string | null;
++  /** Photos on the roll: one more slides a new print out; from three a third sheet shows in the pile. */
++  count?: number;
+   /** The way-on ring: MIN_PLATES or more, outside retake mode. */
+   ring: boolean;
+   accessibilityLabel: string;
+@@ -49,13 +68,21 @@ export interface LastPlateProps {
+   testID?: string;
+ }
+ 
+-export function LastPlate({ uri, ring, accessibilityLabel, disabled, dimmed, onPress, testID }: LastPlateProps) {
++export function LastPlate({ uri, under = null, count = 0, ring, accessibilityLabel, disabled, dimmed, onPress, testID }: LastPlateProps) {
++  const { reducedMotion } = useTheme();
+   const ringOn = useStateProgress(ring);
+   const focus = useFocusRing();
+   const feedback = useFeedback();
+   const palette = useCapturePalette();
+   const ringStyle = useAnimatedStyle(() => ({ opacity: ringOn.get() }));
+-  const photoID = testID ? `${testID}-photo` : undefined;
++  // The roll just grew: the newest print is one that slides out (state from a prop, so it holds from its first frame).
++  const [seen, setSeen] = useState({ count, grew: false });
++  if (seen.count !== count) setSeen({ count, grew: count > seen.count });
++  const slide = seen.count === count ? seen.grew : count > seen.count;
++  // The pile, bottom to top, keyed by the photo's place on the roll: the print that was on top stays mounted as it becomes the one under.
++  const pile = uri
++    ? [...(under ? [{ uri: under, top: false, key: `${count - 2}:${under}` }] : []), { uri, top: true, key: `${count - 1}:${uri}` }]
++    : [];
+ 
+   return (
+     <Dimmable dimmed={dimmed}>
+@@ -70,26 +97,22 @@ export function LastPlate({ uri, ring, accessibilityLabel, disabled, dimmed, onP
+         onFocus={focus.onFocus}
+         onBlur={focus.onBlur}
+         testID={testID}
+-        style={({ pressed }) => [styles.frame, { backgroundColor: palette.frame }, pressed ? styles.pressed : null]}
++        style={({ pressed }) => [styles.frame, pressed ? styles.pressed : null]}
+       >
+-        <View style={[styles.image, { backgroundColor: palette.well }]} testID={testID ? `${testID}-image` : undefined}>
+-          {uri && palette.genre ? (
+-            // Keyed by photo, so each new one bakes and fades in on its own.
+-            <TreatedImage
+-              key={uri}
+-              source={uri}
+-              genre={palette.genre}
+-              maxEdge={BAKE}
+-              style={StyleSheet.absoluteFill}
+-              contentFit="cover"
+-              accessible={false}
+-              testID={photoID}
+-            />
+-          ) : uri ? (
+-            <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={SWAP} accessible={false} testID={photoID} />
++        <Image source={ART.tray} pointerEvents="none" accessible={false} style={styles.tray} testID={testID ? `${testID}-tray` : undefined} />
++        {/* The well clips the prints: its top edge is the cover's, so a new print comes out from under it. */}
++        <View pointerEvents="none" style={styles.well} testID={testID ? `${testID}-image` : undefined}>
++          {pile.length > 1 && count > 2 ? (
++            <View style={[styles.print, styles.back]} testID={testID ? `${testID}-pile` : undefined}>
++              <Print uri={null} genre={null} />
++            </View>
+           ) : null}
++          {pile.map((print) => (
++            <PileSheet key={print.key} top={print.top} slide={slide && !reducedMotion} still={reducedMotion}>
++              <Print uri={print.uri} genre={palette.genre} testID={testID ? `${testID}-${print.top ? "photo" : "under"}` : undefined} />
++            </PileSheet>
++          ))}
+         </View>
+-        <View pointerEvents="none" style={styles.rim} />
+         <Animated.View
+           pointerEvents="none"
+           style={[styles.ring, { borderColor: palette.cue }, ringStyle]}
+@@ -101,8 +124,45 @@ export function LastPlate({ uri, ring, accessibilityLabel, disabled, dimmed, onP
+   );
+ }
+ 
++/**
++ * A print's place in the pile. On top it lies square; mounted as a photo
++ * joins the roll (`slide`) it starts wholly under the cover, from its first
++ * frame, and slides out. Once another print covers it, it leans aside.
++ */
++function PileSheet({ top, slide, still, children }: { top: boolean; slide: boolean; still: boolean; children: ReactNode }) {
++  const [emerges] = useState(top && slide);
++  const out = useSharedValue(emerges ? 0 : 1);
++  const lean = useSharedValue(top ? 0 : 1);
++  useEffect(() => {
++    if (emerges) out.set(withTiming(1, SLIDE));
++  }, [emerges, out]);
++  useEffect(() => {
++    lean.set(still ? (top ? 0 : 1) : withTiming(top ? 0 : 1, SLIDE));
++  }, [top, still, lean]);
++  const style = useAnimatedStyle(() => ({
++    transform: [{ translateY: interpolate(out.get(), [0, 1], [-(P.top + P.height + P.margin), 0]) }, { rotate: `${lean.get() * P.lean}deg` }],
++  }));
++  return <Animated.View style={[styles.print, style]}>{children}</Animated.View>;
++}
++
++/** One print: the photo (or bare paper) behind the rendered sheet, whose picture is cut clear. */
++function Print({ uri, genre, testID }: { uri: string | null; genre: Genre | null; testID?: string }) {
++  return (
++    <>
++      <View style={styles.photo}>
++        {uri && genre ? (
++          <TreatedImage source={uri} genre={genre} maxEdge={BAKE} style={StyleSheet.absoluteFill} contentFit="cover" accessible={false} testID={testID} />
++        ) : uri ? (
++          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={SWAP} accessible={false} testID={testID} />
++        ) : null}
++      </View>
++      <Image source={ART.print} pointerEvents="none" accessible={false} style={styles.sheet} />
++    </>
++  );
++}
++
+ const styles = StyleSheet.create({
+-  // The 72 frame carries no border, so the focus ring measures from its outer edge.
++  // The 72 control carries no border, so the focus ring measures from its outer edge.
+   frame: {
+     width: T.size,
+     height: T.size,
+@@ -110,31 +170,60 @@ const styles = StyleSheet.create({
+     ...curve,
+   },
+   pressed: { opacity: T.pressedOpacity },
+-  image: {
++  // The tray's picture round the control; its cover stands over the control's top.
++  tray: {
++    position: "absolute",
++    left: -Y.side,
++    top: -Y.top,
++    width: T.size + Y.side * 2,
++    height: T.size + Y.top + Y.side,
++  },
++  well: {
+     position: "absolute",
+-    top: T.frameWidth,
+-    left: T.frameWidth,
+-    right: T.frameWidth,
+-    bottom: T.frameWidth,
++    left: Y.inset,
++    top: Y.slot,
++    width: WELL.width,
++    height: WELL.height,
+     overflow: "hidden",
+-    borderRadius: T.imageRadius,
++    borderBottomLeftRadius: Y.radius,
++    borderBottomRightRadius: Y.radius,
+     ...curve,
+   },
+-  rim: {
++  // A print's sheet, centred across the well, just out from under the cover.
++  print: {
+     position: "absolute",
+-    top: T.frameWidth,
+-    left: T.frameWidth,
+-    right: T.frameWidth,
+-    bottom: T.frameWidth,
+-    borderWidth: ref.layout.camera.hairline,
+-    borderColor: T.imageRim,
+-    borderRadius: T.imageRadius,
+-    ...curve,
++    left: (WELL.width - P.width) / 2,
++    top: P.top,
++    width: P.width,
++    height: P.height,
++  },
++  back: { transform: [{ rotate: `${P.leanBack}deg` }] },
++  // The photo, behind the sheet's cut-out (and paper where there is none).
++  photo: {
++    position: "absolute",
++    left: P.border,
++    top: P.border,
++    right: P.border,
++    bottom: P.border,
++    overflow: "hidden",
++    backgroundColor: P.paper,
+   },
++  sheet: {
++    position: "absolute",
++    left: -P.margin,
++    top: -P.margin,
++    width: P.width + P.margin * 2,
++    height: P.height + P.margin * 2,
++  },
++  // The way on: a ring round the well, inside the brass.
+   ring: {
+-    ...StyleSheet.absoluteFill,
++    position: "absolute",
++    left: Y.inset,
++    top: Y.inset,
++    right: Y.inset,
++    bottom: Y.inset,
+     borderWidth: CUE.width,
+-    borderRadius: T.radius,
++    borderRadius: Y.radius,
+     ...curve,
+   },
+ });
+diff --git a/src/capture/ui/rangefinder/LensSegment.tsx b/src/capture/ui/rangefinder/LensSegment.tsx
+index b0fda2f..e50d8ab 100644
+--- a/src/capture/ui/rangefinder/LensSegment.tsx
++++ b/src/capture/ui/rangefinder/LensSegment.tsx
+@@ -1,30 +1,34 @@
+-// The lens control, Once's zoom segment (ref.button.segment): a 100 x 40 void
+-// track at radius 16, and a raised 45 x 32 thumb (radius 12) inset 4 that
+-// slides under the chosen lens over ref.motion.segmentSlide. Labels are the
+-// system semibold label style (ref.type.label 13/16), both the same size:
+-// textPrimary on the thumb, textTertiary off it, and the chosen one is
+-// followed by Once's thin white xmark ("1.0 ×": Phosphor X, bold, at
+-// ref.layout.camera.lensMark). Each half is a 50 x 48 target and offers the
+-// iOS large-content viewer.
++// The lens selector: a slide switch. A 100 x 40 slot in a rendered brass rim
++// (ART.lensTrack; the slot itself in the palette's well colour, radius 16)
++// and a rendered cursor, a brass frame round a black plate (ART.lensThumb,
++// 45 x 32) inset 4, that slides to the chosen lens over
++// ref.motion.segmentSlide. Labels are the system semibold label style
++// (ref.type.label 13/16), both the same size: the palette's ink in the
++// cursor, textTertiary off it, and the chosen one is followed by a thin
++// xmark ("1.0 ×": Phosphor X, bold, at ref.layout.camera.lensMark). Each half
++// is a 50 x 48 target and offers the iOS large-content viewer.
+ // - Pressed: the other half's label eases textTertiary to textSecondary.
+-// - Reduced motion: the thumb fades out and back in under the new half over
++// - Reduced motion: the cursor fades out and back in at the new half over
+ //   motion.reducedFade instead of sliding.
+ // - Labels cap at ref.layout.camera.lensMaxFontScale, so "0.5 ×" stays inside
+-//   its thumb.
++//   the cursor.
+ // - Focus: one brass ring around the whole track while either half has
+ //   keyboard or switch focus.
+ // - VoiceOver and TalkBack: a radiogroup "Lens" holding two radios.
+ // - Disabled sets the state and blocks presses; the Dimmable around it eases
+ //   the dim.
+-// - In a mode: the track in the mode's well, the thumb raised, the chosen
+-//   label and its mark in the mode's ink (src/capture/ui/palette.ts).
++// - In a mode: the slot in the mode's well, the chosen label and its mark in
++//   the mode's ink (src/capture/ui/palette.ts); the brass is the same.
+ import { useEffect, useState } from "react";
+ import { Pressable, StyleSheet, View } from "react-native";
++import { Image } from "expo-image";
+ import Animated, { ReduceMotion, interpolate, interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+ import { FocusRing, timingFor, usePressProgress, useStateProgress } from "@/components/noir";
+ import { XIcon } from "@/components/icons";
+ import { useTheme } from "@/theme/ThemeProvider";
+ import { curve, motion, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { COPY } from "./copy";
+ import type { LensChoice } from "./useLenses";
+@@ -81,7 +85,10 @@ export function LensSegment({ value, onChange, disabled, testID }: LensSegmentPr
+   return (
+     <View testID={testID} accessibilityRole="radiogroup" accessibilityLabel={COPY.lens} style={styles.frame}>
+       <View pointerEvents="none" style={[styles.track, { backgroundColor: palette.well }]} testID={testID ? `${testID}-track` : undefined}>
+-        <Animated.View style={[styles.thumb, { backgroundColor: palette.thumb }, thumbStyle]} testID={testID ? `${testID}-thumb` : undefined} />
++        <Image source={ART.lensTrack} accessible={false} style={styles.trackArt} testID={testID ? `${testID}-track-art` : undefined} />
++        <Animated.View style={[styles.thumb, thumbStyle]} testID={testID ? `${testID}-thumb` : undefined}>
++          <Image source={ART.lensThumb} accessible={false} style={styles.thumbArt} />
++        </Animated.View>
+         <FocusRing visible={focused} shape="panel" radius={G.radius} />
+       </View>
+       {OPTIONS.map((option, i) => (
+@@ -187,6 +194,21 @@ const styles = StyleSheet.create({
+     ...curve,
+   },
+   // The label (and the chosen one's mark) centred on its thumb's stop.
++  // The rim's and the cursor's pictures, each centred on its box.
++  trackArt: {
++    position: "absolute",
++    left: -CHROME.lens.track,
++    top: -CHROME.lens.track,
++    width: G.width + CHROME.lens.track * 2,
++    height: G.height + CHROME.lens.track * 2,
++  },
++  thumbArt: {
++    position: "absolute",
++    left: -CHROME.lens.thumb,
++    top: -CHROME.lens.thumb,
++    width: G.thumbWidth + CHROME.lens.thumb * 2,
++    height: G.thumbHeight + CHROME.lens.thumb * 2,
++  },
+   labelBox: {
+     position: "absolute",
+     top: TRACK_TOP + G.inset,
+diff --git a/src/capture/ui/rangefinder/PlateCounter.tsx b/src/capture/ui/rangefinder/PlateCounter.tsx
+index b46e55b..a3095c5 100644
+--- a/src/capture/ui/rangefinder/PlateCounter.tsx
++++ b/src/capture/ui/rangefinder/PlateCounter.tsx
+@@ -1,13 +1,14 @@
+-// The plate counter, Once's shot counter: a void pill (73 x 52.5,
+-// ref.radius.nested 20) that clips a strip of numerals in Crimson Text Italic
+-// (ref.type.counter 29/34, +1.75). ESCAPD's photo numerals, 1 to the roll
+-// plan's count (5 on 0.5x, 6 on 1x), sit `gap` apart; the strip is placed so the current numeral (the plate about to
+-// be taken) is centred, nudged by dx / dy for the italic's slant and the caps'
+-// centre. The current numeral is textPrimary; its neighbours are textDim,
+-// evenly, with no fade, cut by the pill's edges. Photo 1 has no left
+-// neighbour, the last none on the right; in retake mode the photo being
+-// retaken shows alone.
+-// - A new plate rolls the strip one numeral left over motion.counterRoll
++// The frame counter: a window in the camera's back. A rendered brass bezel
++// (ART.counter) round a 73 x 52.5 well (the palette's well colour) that clips
++// a strip of numerals in Crimson Text Italic (ref.type.counter 29/34, +1.75),
++// as a film counter's dial showing through. The photo numerals, 1 to the roll
++// plan's count, sit `gap` apart; the strip is placed so the current numeral
++// (the photo about to be taken) is centred, nudged by dx / dy for the italic's
++// slant and the caps' centre. At rest the window shows that numeral alone, in
++// the palette's lit colour; its neighbours show only as the strip rolls (dim,
++// fading as they leave), so the window and the count engraved beside it on
++// the body ("/7") read as one: the photo, and how many there are to take.
++// - A new photo rolls the strip one numeral left over motion.counterRoll
+ //   while the old numeral dims and the new one brightens. Reduced motion: no
+ //   travel, the strip jumps and the two colours cross-fade over
+ //   motion.reducedFade.
+@@ -16,10 +17,11 @@
+ // - Display only, so it is no keyboard stop: on Android `accessible` would
+ //   make it keyboard-focusable, so there it is screenReaderFocusable instead,
+ //   and its texts stay out of Android's accessibility tree.
+-// - In a mode: the pill in the mode's well and the current numeral in the
+-//   mode's stamp colour, the camera's one touch of it (src/capture/ui/palette.ts).
++// - In a mode: the well in the mode's well colour and the current numeral in
++//   the mode's stamp colour (src/capture/ui/palette.ts); the brass is the same.
+ import { useEffect, useMemo, useState } from "react";
+-import { Platform, StyleSheet, View, type LayoutChangeEvent } from "react-native";
++import { Platform, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
++import { Image } from "expo-image";
+ import Animated, {
+   ReduceMotion,
+   interpolate,
+@@ -32,9 +34,12 @@ import Animated, {
+ import { timingFor } from "@/components/noir";
+ import { useTheme } from "@/theme/ThemeProvider";
+ import { curve, motion, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ 
+ const C = ref.layout.camera.counter;
++const K = CHROME.counter;
+ const ROLL = timingFor(ref.motion.counterRoll);
+ const REDUCED = { duration: motion.reducedFade, reduceMotion: ReduceMotion.Never };
+ // The pill's centre line, where the current numeral's box is centred.
+@@ -91,6 +96,7 @@ export function PlateCounter({ current, count, solo, accessibilityLabel }: Plate
+   });
+ 
+   return (
++    <View style={styles.box}>
+     <View
+       style={[styles.pill, { backgroundColor: palette.well }]}
+       accessible={Platform.OS === "ios"}
+@@ -112,6 +118,19 @@ export function PlateCounter({ current, count, solo, accessibilityLabel }: Plate
+         ))}
+       </Animated.View>
+     </View>
++    <Image source={ART.counter} pointerEvents="none" accessible={false} style={styles.bezel} testID="plate-counter-bezel" />
++    <Text
++      style={[styles.total, { color: palette.inkMuted }]}
++      numberOfLines={1}
++      maxFontSizeMultiplier={C.maxFontScale}
++      accessible={false}
++      accessibilityElementsHidden
++      importantForAccessibility="no"
++      testID="plate-counter-total"
++    >
++      {`/${count}`}
++    </Text>
++    </View>
+   );
+ }
+ 
+@@ -125,9 +144,9 @@ function Numeral({ numeral, index, pos, lit: litColor, hidden, onLayout }: {
+   onLayout: (e: LayoutChangeEvent) => void;
+ }) {
+   const style = useAnimatedStyle(() => {
+-    // 1 on the current numeral, falling to 0 one place away: the roll's colour.
++    // 1 on the current numeral, falling to 0 one place away: the roll's colour, and gone at rest.
+     const lit = Math.max(0, 1 - Math.abs(pos.get() - index));
+-    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, litColor]) };
++    return { color: interpolateColor(lit, [0, 1], [ref.color.textDim, litColor]), opacity: Math.min(1, lit * 2) };
+   });
+   return (
+     <Animated.Text
+@@ -142,13 +161,31 @@ function Numeral({ numeral, index, pos, lit: litColor, hidden, onLayout }: {
+ }
+ 
+ const styles = StyleSheet.create({
++  // The window's own box: the bezel and the count overflow it and take no room in the row.
++  box: { width: C.width, height: C.height },
+   pill: {
+     width: C.width,
+     height: C.height,
+     overflow: "hidden",
+-    borderRadius: ref.radius.nested,
++    borderRadius: K.radius,
+     ...curve,
+   },
++  bezel: {
++    position: "absolute",
++    left: -K.margin,
++    top: -K.margin,
++    width: C.width + K.margin * 2,
++    height: C.height + K.margin * 2,
++  },
++  // Engraved beside the window, centred on its height.
++  total: {
++    ...ref.type.counter,
++    position: "absolute",
++    left: C.width + K.total.gap,
++    top: (C.height - K.total.lineHeight) / 2,
++    fontSize: K.total.size,
++    lineHeight: K.total.lineHeight,
++  },
+   strip: {
+     position: "absolute",
+     left: 0,
+diff --git a/src/capture/ui/rangefinder/Shutter.tsx b/src/capture/ui/rangefinder/Shutter.tsx
+index 9df076e..66b497a 100644
+--- a/src/capture/ui/rangefinder/Shutter.tsx
++++ b/src/capture/ui/rangefinder/Shutter.tsx
+@@ -1,51 +1,54 @@
+-// The shutter, Once's (ref.button.shutter): a 75 near-black ring
+-// (ref.color.well, 4 thick) around a 67 disk filled with
+-// ref.gradient.shutterDisk (210 deg, darker at the top right, lighter at the
+-// bottom left), a 1 pt bevel along the disk's top edge (ref.color.bevel,
+-// fading down the sides), and the screen's only light: a soft white glow
+-// biased upward (ref.effect.shutterGlow). The user's note puts a magnifying
+-// glass on it: Phosphor MagnifyingGlass, regular, in the reference's white
+-// (textPrimary), on the disk's centre, nudged so its lens reads as centred
++// The shutter: the camera's release, a rendered reeded brass button with a
++// black face standing in its collar (ART.shutter, an 84 picture centred on
++// the 75 control), inside the hub of the film-advance lever (ART.lever, turned
++// about the release's centre). The user's note puts a magnifying glass on it:
++// Phosphor MagnifyingGlass, regular, in the palette's ink, on the face's
++// centre, nudged so its lens reads as centred
+ // (ref.layout.camera.shutter.glassNudge). Its centre sits ref.layout.camera
+-// .shutter.drop below the bottom row's, as measured: the component is that
+-// much taller above the ring, so its whole 75 target stays inside the row.
+-// - Pressed: the disk (with the glass) scales to 0.94 and its gradient steps
+-//   one notch darker (ref.gradient.shutterDiskPressed) over
+-//   ref.motion.shutterPress; the ring and glow stay still. Reduced motion: the
+-//   gradient change only.
++// .shutter.drop below the bottom row's: the component is that much taller
++// above the control, so its whole 75 target stays inside the row.
++// - Pressed: the picture of the release pressed home (ART.shutterDown, the
++//   collar's shadow across it) fades in over ref.motion.shutterPress and the
++//   glass sinks and scales with it (0.94). Reduced motion: the picture only.
++// - A photo taken (`wind` going up): the lever winds on, out along its stroke
++//   and home again (CHROME.shutter.wind). Not under reduced motion.
+ // - Disabled (camera not ready or failed, roll full): the whole control at
+ //   0.4, eased over ref.motion.control.
+ // - Busy: taps are ignored; it stays still at full opacity, with
+ //   accessibilityState.busy.
+-// - Focus: the kit's brass ring, a circle 4 outside the ring.
+-// - In a mode: the ring in the mode's near-black and the glass in its ink;
+-//   the disk keeps its neutral greys (src/capture/ui/palette.ts).
++// - Focus: the kit's brass ring, a circle 4 outside the control.
++// - In a mode: the glass in the mode's ink; the brass is the same in every mode.
++import { useEffect, useRef } from "react";
+ import { Pressable, StyleSheet, View } from "react-native";
+-import Animated, { interpolate, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+-import Svg, { Circle, Defs, LinearGradient } from "react-native-svg";
+-import { FocusRing, gradientLine, gradientStops, timingFor, useFocusRing } from "@/components/noir";
++import { Image } from "expo-image";
++import Animated, { Easing, ReduceMotion, interpolate, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
++import { FocusRing, timingFor, useFocusRing } from "@/components/noir";
+ import { ICON_WEIGHT, MagnifyingGlassIcon } from "@/components/icons";
+ import { useTheme } from "@/theme/ThemeProvider";
+ import { curve, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { Dimmable } from "./Dimmable";
+ 
+ const B = ref.button.shutter;
+ const S = ref.layout.camera.shutter;
++const K = CHROME.shutter;
+ const PRESS_TIMING = timingFor(ref.motion.shutterPress);
+-const R = B.disk / 2;
+-const DISK_LINE = gradientLine(ref.gradient.shutterDisk.angle, B.disk, B.disk);
+-const PRESSED_LINE = gradientLine(ref.gradient.shutterDiskPressed.angle, B.disk, B.disk);
++const WIND_OUT = { duration: K.wind.out, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.Never };
++const WIND_HOME = { duration: K.wind.home, easing: Easing.inOut(Easing.quad), reduceMotion: ReduceMotion.Never };
+ 
+ export interface ShutterProps {
+   accessibilityLabel: string;
+   disabled: boolean;
+   busy: boolean;
+   onPress: () => void;
++  /** Photos on the roll: each one more winds the lever on. */
++  wind?: number;
+   testID?: string;
+ }
+ 
+-export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }: ShutterProps) {
++export function Shutter({ accessibilityLabel, disabled, busy, onPress, wind = 0, testID }: ShutterProps) {
+   const { reducedMotion } = useTheme();
+   const press = useSharedValue(0);
+   const focus = useFocusRing();
+@@ -53,10 +56,23 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
+   const inert = disabled || busy;
+ 
+   const diskStyle = useAnimatedStyle(() => ({
+-    transform: [{ scale: reducedMotion ? 1 : interpolate(press.get(), [0, 1], [1, ref.motion.shutterPress.scale]) }],
++    transform: reducedMotion
++      ? []
++      : [{ translateY: press.get() * K.travel }, { scale: interpolate(press.get(), [0, 1], [1, ref.motion.shutterPress.scale]) }],
+   }));
+   const pressedStyle = useAnimatedStyle(() => ({ opacity: press.get() }));
+ 
++  // The lever: at rest, and wound out and home again as a photo joins the roll.
++  const arm = useSharedValue<number>(K.rest);
++  const wound = useRef(wind);
++  useEffect(() => {
++    const before = wound.current;
++    wound.current = wind;
++    if (wind <= before || reducedMotion) return;
++    arm.set(withSequence(withTiming(K.stroke, WIND_OUT), withTiming(K.rest, WIND_HOME)));
++  }, [wind, reducedMotion, arm]);
++  const leverStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${arm.get()}deg` }] }));
++
+   return (
+     <Dimmable dimmed={disabled} style={styles.drop}>
+       <Pressable
+@@ -74,30 +90,16 @@ export function Shutter({ accessibilityLabel, disabled, busy, onPress, testID }:
+         testID={testID}
+         style={styles.box}
+       >
+-        <View pointerEvents="none" style={[styles.ring, { backgroundColor: palette.frame }]} testID={testID ? `${testID}-ring` : undefined} />
+-        <Animated.View pointerEvents="none" style={[styles.disk, diskStyle]} testID={testID ? `${testID}-disk` : undefined}>
+-          <Svg width={B.disk} height={B.disk} style={StyleSheet.absoluteFill}>
+-            <Defs>
+-              <LinearGradient id="shutterDisk" gradientUnits="userSpaceOnUse" {...DISK_LINE}>
+-                {gradientStops(ref.gradient.shutterDisk.stops)}
+-              </LinearGradient>
+-              <LinearGradient id="shutterBevel" {...S.bevelLine}>
+-                {gradientStops(S.bevel)}
+-              </LinearGradient>
+-            </Defs>
+-            <Circle cx={R} cy={R} r={R} fill="url(#shutterDisk)" />
+-            <Circle cx={R} cy={R} r={R - S.bevelWidth / 2} fill="none" stroke="url(#shutterBevel)" strokeWidth={S.bevelWidth} />
+-          </Svg>
+-          <Animated.View style={[StyleSheet.absoluteFill, pressedStyle]}>
+-            <Svg width={B.disk} height={B.disk}>
+-              <Defs>
+-                <LinearGradient id="shutterDiskPressed" gradientUnits="userSpaceOnUse" {...PRESSED_LINE}>
+-                  {gradientStops(ref.gradient.shutterDiskPressed.stops)}
+-                </LinearGradient>
+-              </Defs>
+-              <Circle cx={R} cy={R} r={R} fill="url(#shutterDiskPressed)" />
+-            </Svg>
++        <Animated.View pointerEvents="none" style={[styles.lever, leverStyle]} testID={testID ? `${testID}-lever` : undefined}>
++          <Image source={ART.lever} style={StyleSheet.absoluteFill} accessible={false} />
++        </Animated.View>
++        <View pointerEvents="none" style={styles.ring} testID={testID ? `${testID}-ring` : undefined}>
++          <Image source={ART.shutter} style={StyleSheet.absoluteFill} accessible={false} />
++          <Animated.View style={[StyleSheet.absoluteFill, pressedStyle]} testID={testID ? `${testID}-down` : undefined}>
++            <Image source={ART.shutterDown} style={StyleSheet.absoluteFill} accessible={false} />
+           </Animated.View>
++        </View>
++        <Animated.View pointerEvents="none" style={[styles.disk, diskStyle]} testID={testID ? `${testID}-disk` : undefined}>
+           {/* In a View, so it stacks above the absolute layers on the web too. */}
+           <View style={styles.glass}>
+             <MagnifyingGlassIcon size={B.iconFallback} color={palette.ink} weight={ICON_WEIGHT} testID={testID ? `${testID}-glass` : undefined} />
+@@ -115,18 +117,27 @@ const styles = StyleSheet.create({
+   // The 75 box carries no border: Yoga places absolute children inside a
+   // parent's border, which would pull the focus ring in.
+   box: { width: B.ring, height: B.ring, alignItems: "center", justifyContent: "center" },
+-  // The ring is the box's own circle under the disk, glowing upward.
++  // The release's picture, centred on the box (its collar is the box's own circle).
+   ring: {
+-    ...StyleSheet.absoluteFill,
+-    borderRadius: ref.radius.round,
+-    boxShadow: ref.effect.shutterGlow,
+-    ...curve,
++    position: "absolute",
++    left: (B.ring - K.art) / 2,
++    top: (B.ring - K.art) / 2,
++    width: K.art,
++    height: K.art,
++  },
++  // The lever's picture, centred on the release, under it.
++  lever: {
++    position: "absolute",
++    left: (B.ring - K.lever) / 2,
++    top: (B.ring - K.lever) / 2,
++    width: K.lever,
++    height: K.lever,
+   },
++  // The face: the glass's box, which sinks and scales with the press.
+   disk: {
+     width: B.disk,
+     height: B.disk,
+     borderRadius: ref.radius.round,
+-    overflow: "hidden",
+     alignItems: "center",
+     justifyContent: "center",
+     ...curve,
+diff --git a/src/capture/ui/rangefinder/SquareButton.tsx b/src/capture/ui/rangefinder/SquareButton.tsx
+index 75fb3a1..def6a35 100644
+--- a/src/capture/ui/rangefinder/SquareButton.tsx
++++ b/src/capture/ui/rangefinder/SquareButton.tsx
+@@ -11,10 +11,18 @@
+ // - Focus: the kit's brass ring, concentric with the 14 corners.
+ // - Haptic: the light `press` as it is pressed in.
+ // - In a mode: the mode's raised fill, rim and ink (src/capture/ui/palette.ts).
+-import { StyleSheet } from "react-native";
++// - `chrome` (the camera's own header only; every other screen keeps the look
++//   above): the camera's push button, a rendered black cap in a brass rim
++//   (ART.buttonSquare, a 52 picture centred on the 44 control) in place of the
++//   fill and rim, the glyph in the palette's ink; same size, hit area, press,
++//   focus ring and haptic.
++import { StyleSheet, View } from "react-native";
++import { Image } from "expo-image";
+ import { FocusRing, SquashPressable, useFocusRing, type NoirIcon } from "@/components/noir";
+ import { useFeedback } from "@/game/feedback";
+ import { curve, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { Dimmable } from "./Dimmable";
+ 
+@@ -29,10 +37,12 @@ export interface SquareButtonProps {
+   accessibilityLabel: string;
+   onPress: () => void;
+   disabled?: boolean;
++  /** The camera's rendered push button instead of the flat square (02's header only). */
++  chrome?: boolean;
+   testID?: string;
+ }
+ 
+-export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled = false, testID }: SquareButtonProps) {
++export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled = false, chrome = false, testID }: SquareButtonProps) {
+   const focus = useFocusRing();
+   const feedback = useFeedback();
+   const palette = useCapturePalette();
+@@ -49,10 +59,24 @@ export function SquareButton({ icon: Icon, accessibilityLabel, onPress, disabled
+         onBlur={focus.onBlur}
+         hitSlop={SQUARE_SLOP}
+         testID={testID}
+-        style={({ pressed }) => [styles.box, { backgroundColor: palette.raised, borderColor: palette.squareRim }, pressed ? styles.pressed : null]}
++        style={({ pressed }) => [
++          styles.box,
++          chrome ? null : [styles.flat, { backgroundColor: palette.raised, borderColor: palette.squareRim }],
++          pressed ? styles.pressed : null,
++        ]}
+       >
+-        <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
+-        <FocusRing visible={focus.focused} shape="panel" edge={B.borderWidth} radius={B.radius} />
++        {chrome ? (
++          <>
++            <Image source={ART.buttonSquare} pointerEvents="none" accessible={false} style={styles.art} testID={testID ? `${testID}-art` : undefined} />
++            {/* In a View, so it stacks above the picture on the web too. */}
++            <View>
++              <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
++            </View>
++          </>
++        ) : (
++          <Icon size={L.headerIcon.size} color={palette.ink} weight={L.headerIcon.weight} />
++        )}
++        <FocusRing visible={focus.focused} shape="panel" edge={chrome ? 0 : B.borderWidth} radius={B.radius} />
+       </SquashPressable>
+     </Dimmable>
+   );
+@@ -64,9 +88,18 @@ const styles = StyleSheet.create({
+     height: B.size,
+     alignItems: "center",
+     justifyContent: "center",
+-    borderWidth: B.borderWidth,
+     borderRadius: B.radius,
+     ...curve,
+   },
++  // The flat square's rim (its fill and rim colour are the palette's).
++  flat: { borderWidth: B.borderWidth },
++  // The camera's button: its picture, centred on the control.
++  art: {
++    position: "absolute",
++    left: (B.size - CHROME.square) / 2,
++    top: (B.size - CHROME.square) / 2,
++    width: CHROME.square,
++    height: CHROME.square,
++  },
+   pressed: { opacity: B.pressedOpacity },
+ });
+diff --git a/src/capture/ui/rangefinder/TurnDial.tsx b/src/capture/ui/rangefinder/TurnDial.tsx
+index c5884ae..81c9048 100644
+--- a/src/capture/ui/rangefinder/TurnDial.tsx
++++ b/src/capture/ui/rangefinder/TurnDial.tsx
+@@ -1,12 +1,13 @@
+ // The turn dial (docs/DESIGN.md 02): how far round the room the player is,
+-// on the feed at the top of the viewfinder. The privacy note's see-through
+-// black pill (void at note.fillOpacity, radius.round) holding a small dial
+-// and "Photo 2 of 5" in the meta style, white. The dial is a compass seen
+-// from above: a thin textTertiary ring with a stop for each photo in the
+-// roll's plan, photo 1 at the top and the rest clockwise at their stops
+-// (src/capture/turn.ts: 8 45 apart on 1x, 6 60 apart on 0.5x; after a
+-// lens switch mid-roll the stops still to take re-space). Taken
+-// photos are white dots, the next a white ring, the rest small grey dots.
++// etched on the finder's glass at the top of the viewfinder: a small dial on
++// a see-through dark disc (void at note.fillOpacity, so it reads on a bright
++// wall and a dark one). The dial is a compass seen from above: a thin
++// textTertiary ring with a stop for each photo in the roll's plan, photo 1 at
++// the top and the rest clockwise at their stops (src/capture/turn.ts: 7 51.4
++// apart on 1x, 5 72 apart on 0.5x; after a lens switch mid-roll the stops
++// still to take re-space). Taken photos are white dots, the next a white
++// ring, the rest small grey dots. The count itself is the frame counter's
++// ("2 /7", PlateCounter.tsx); the dial carries it for screen readers.
+ // While the phone's motion is tracked (useTurnTracking) a white arc grows
+ // along the ring from the last stop toward the next; once the turn is far
+ // enough the next stop fills and the light tick plays (onReached). The turn
+@@ -20,11 +21,11 @@
+ // - Neutral instrument greys and white in every mode, as the privacy note.
+ // - Screen readers: one element, "Photo 2 of 5.", and "Far enough. Take the
+ //   photo." added (and announced once) when the turn is far enough.
+-// Under the pill, between photos taken in turn, the turn guide on the feed
++// Under the dial, between photos taken in turn, the turn guide on the feed
+ // (TurnGuide.tsx): the last photo's edge, fixed to the room, sliding toward
+ // the mark where it should sit for the plan's turn.
+ import { useCallback } from "react";
+-import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
++import { AccessibilityInfo, Platform, StyleSheet, View } from "react-native";
+ import Svg, { Circle, Path } from "react-native-svg";
+ import { arcPath, dialPoint, turnStep } from "@/capture/turn";
+ import { useTheme } from "@/theme/ThemeProvider";
+@@ -51,7 +52,6 @@ export interface TurnDialProps {
+   active: boolean;
+   /** Changes the moment a photo is taken: the turn restarts from there. */
+   resetKey: string;
+-  line: string;
+   /** The label without the "far enough" sentence; the dial adds it. */
+   accessibilityLabel: (reached: boolean) => string;
+   /**
+@@ -68,7 +68,7 @@ export interface TurnDialProps {
+   onReached: () => void;
+ }
+ 
+-export function TurnDial({ stops, taken, target, listening, active, resetKey, line, accessibilityLabel, onReached, fov, carry = true, ghost = null }: TurnDialProps) {
++export function TurnDial({ stops, taken, target, listening, active, resetKey, accessibilityLabel, onReached, fov, carry = true, ghost = null }: TurnDialProps) {
+   const { reducedMotion } = useTheme();
+   const reachedNow = useCallback(() => {
+     onReached();
+@@ -132,9 +132,6 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
+             })}
+           </Svg>
+         </View>
+-        <Text style={styles.line} numberOfLines={1} accessibilityElementsHidden importantForAccessibility="no">
+-          {line}
+-        </Text>
+       </View>
+     </View>
+     </>
+@@ -144,17 +141,12 @@ export function TurnDial({ stops, taken, target, listening, active, resetKey, li
+ const styles = StyleSheet.create({
+   // Top-centred on the feed.
+   slot: { position: "absolute", left: 0, right: 0, top: T.inset, alignItems: "center" },
++  // The dial's disc.
+   pill: {
+-    flexDirection: "row",
+-    alignItems: "center",
+-    gap: T.gap,
+     overflow: "hidden",
+     borderRadius: ref.radius.round,
+-    paddingLeft: T.padLeft,
+-    paddingRight: T.padRight,
+-    paddingVertical: T.padY,
++    padding: T.padY,
+     ...curve,
+   },
+   fill: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.void, opacity: L.note.fillOpacity },
+-  line: { ...ref.type.meta, color: ref.color.textPrimary },
+ });
+diff --git a/src/capture/ui/rangefinder/Viewfinder.tsx b/src/capture/ui/rangefinder/Viewfinder.tsx
+index 260719d..4ba4ce6 100644
+--- a/src/capture/ui/rangefinder/Viewfinder.tsx
++++ b/src/capture/ui/rangefinder/Viewfinder.tsx
+@@ -1,6 +1,10 @@
+-// The viewfinder, Once's: one big rounded black well (ref.color.void,
+-// ref.radius.viewfinder 40 continuous) holding the live feed, with no border,
+-// shadow or overlay, a hard edge against the ground. The box is exactly the
++// The viewfinder: the camera's finder window. One rounded well (the palette's
++// well colour; its corner CHROME.finder.radius of its width) holding the live
++// feed, in a rendered brass frame (ART.finder, per lens) that lies wholly
++// outside it: the picture is scaled with the well, so its opening is the
++// preview on every screen. On the glass, still and faint: a slight darkening
++// into the corners (ART.glass) and an etched mark at the middle of each side;
++// and as a photo is taken the shutter blinks across it (`blink`). The box is exactly the
+ // lens's photo frame (frameFor: 3:4 on 1x, as the phone's Camera app; tall
+ // 9:16 on 0.5x, the photo centre-cropped to it), fitted by containBox into
+ // the space the header and the control row leave, so it shrinks before any
+@@ -10,19 +14,24 @@
+ // running one, which crashed on 0.5 to 1.0. Over the feed, ESCAPD's own: the framing
+ // grid (when on), the turn guide and dial (`overlay`, TurnDial.tsx) and at
+ // the foot the privacy note (until photo 1), a see-through black pill.
+-import { useEffect, useState, type ReactNode, type RefObject } from "react";
++import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+ import { StyleSheet, Text, View } from "react-native";
+ import { CameraView, type AvailableLenses, type CameraMountError, type CameraRatio, type FlashMode } from "expo-camera";
+-import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
++import { Image } from "expo-image";
++import Animated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
+ import { scheduleOnRN } from "react-native-worklets";
+ import { toEasing, useStateProgress } from "@/components/noir";
+ import { containBox, type Box } from "@/render/geometry";
++import { useTheme } from "@/theme/ThemeProvider";
+ import { curve, ref } from "@/theme/tokens";
++import { ART } from "../art";
++import { CHROME } from "../look";
+ import { useCapturePalette } from "../palette";
+ import { COPY } from "./copy";
+ import { cameraKey, type LensChoice } from "./useLenses";
+ 
+ const L = ref.layout.camera;
++const F = CHROME.finder;
+ 
+ /**
+  * The photo's frame on `lens`: its aspect (width / height, upright; the
+@@ -79,6 +88,10 @@ export interface ViewfinderProps {
+   grid: boolean;
+   /** The privacy note, shown until plate I and never in retake mode. */
+   note: boolean;
++  /** The 0.5x frame (tall): its own brass frame. */
++  wide?: boolean;
++  /** A photo is being taken: as it turns true the shutter blinks across the glass. */
++  blink?: boolean;
+   /** Drawn over the feed and the grid, before the note: the turn guide and dial. */
+   overlay?: ReactNode;
+   /** The camera for this lens (its cameraKey) is ready. */
+@@ -95,6 +108,8 @@ export function Viewfinder({
+   ratio,
+   grid,
+   note,
++  wide = false,
++  blink = false,
+   overlay,
+   onCameraReady,
+   onMountError,
+@@ -102,9 +117,16 @@ export function Viewfinder({
+ }: ViewfinderProps) {
+   const palette = useCapturePalette();
+   const key = cameraKey(selectedLens);
++  // The frame's picture, scaled with the well from the width it was drawn for.
++  const scale = layout.width / (wide ? F.drawn.wide : F.drawn.main);
++  const rim = F.margin * scale;
+   return (
++    <>
+     <View
+-      style={[styles.well, { backgroundColor: palette.well, left: layout.x, top: layout.y, width: layout.width, height: layout.height }]}
++      style={[
++        styles.well,
++        { backgroundColor: palette.well, left: layout.x, top: layout.y, width: layout.width, height: layout.height, borderRadius: F.radius * layout.width },
++      ]}
+       testID="viewfinder-well"
+     >
+       {/* The feed is not a stop for screen readers: the viewfinder isn't tappable and the prompt says what to frame. */}
+@@ -125,6 +147,7 @@ export function Viewfinder({
+           testID="camera"
+         />
+       </View>
++      <Glass width={layout.width} height={layout.height} />
+       <FramingGrid visible={grid} width={layout.width} height={layout.height} />
+       {overlay}
+       <View pointerEvents="none" style={styles.noteSlot}>
+@@ -137,10 +160,67 @@ export function Viewfinder({
+           </View>
+         </FadingNote>
+       </View>
++      <Blink on={blink} />
++    </View>
++    <Image
++      source={wide ? ART.finderWide : ART.finder}
++      pointerEvents="none"
++      accessible={false}
++      contentFit="fill"
++      style={[styles.frame, { left: layout.x - rim, top: layout.y - rim, width: layout.width + rim * 2, height: layout.height + rim * 2 }]}
++      testID="viewfinder-frame"
++    />
++    </>
++  );
++}
++
++/**
++ * The finder's glass, still: the corners a little darker (one soft picture
++ * stretched over the well) and four etched marks, one in from the middle of
++ * each side. Above the feed, under the grid, the guide and the notes.
++ */
++function Glass({ width, height }: { width: number; height: number }) {
++  const half = F.tick.line / 2;
++  return (
++    <View
++      pointerEvents="none"
++      style={StyleSheet.absoluteFill}
++      accessible={false}
++      accessibilityElementsHidden
++      importantForAccessibility="no-hide-descendants"
++      testID="viewfinder-glass"
++    >
++      <Image source={ART.glass} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} />
++      <View style={[styles.tickV, { left: width / 2 - half, top: 0 }]} />
++      <View style={[styles.tickV, { left: width / 2 - half, bottom: 0 }]} />
++      <View style={[styles.tickH, { top: height / 2 - half, left: 0 }]} />
++      <View style={[styles.tickH, { top: height / 2 - half, right: 0 }]} />
+     </View>
+   );
+ }
+ 
++/**
++ * The shutter's blink: the glass goes dark for an instant as a photo is taken
++ * (`on` turning true) and clears again. Opacity only, on the UI thread; not
++ * played under reduced motion.
++ */
++function Blink({ on }: { on: boolean }) {
++  const { reducedMotion } = useTheme();
++  const dark = useSharedValue(0);
++  const was = useRef(on);
++  useEffect(() => {
++    const before = was.current;
++    was.current = on;
++    if (!on || before || reducedMotion) return;
++    dark.set(withSequence(
++      withTiming(F.blink.opacity, { duration: F.blink.close, reduceMotion: ReduceMotion.Never }),
++      withTiming(0, { duration: F.blink.open, reduceMotion: ReduceMotion.Never }),
++    ));
++  }, [on, reducedMotion, dark]);
++  const style = useAnimatedStyle(() => ({ opacity: dark.get() }));
++  return <Animated.View pointerEvents="none" style={[styles.blink, style]} testID="shutter-blink" />;
++}
++
+ /**
+  * Rule of thirds, edge to edge in the well: 1 pt white lines at
+  * ref.layout.camera.grid.opacity, as a camera's own grid, above the feed and
+@@ -175,9 +255,12 @@ const styles = StyleSheet.create({
+   well: {
+     position: "absolute",
+     overflow: "hidden",
+-    borderRadius: ref.radius.viewfinder,
+     ...curve,
+   },
++  frame: { position: "absolute" },
++  tickV: { position: "absolute", width: F.tick.line, height: F.tick.length, backgroundColor: ref.color.textPrimary, opacity: F.tick.opacity },
++  tickH: { position: "absolute", height: F.tick.line, width: F.tick.length, backgroundColor: ref.color.textPrimary, opacity: F.tick.opacity },
++  blink: { ...StyleSheet.absoluteFill, backgroundColor: ref.color.void },
+   vertical: { position: "absolute", top: 0, bottom: 0, width: L.grid.line, backgroundColor: ref.color.textPrimary },
+   horizontal: { position: "absolute", left: 0, right: 0, height: L.grid.line, backgroundColor: ref.color.textPrimary },
+   // Bottom-centred on the feed.
+diff --git a/src/capture/ui/rangefinder/__tests__/rangefinder-test.tsx b/src/capture/ui/rangefinder/__tests__/rangefinder-test.tsx
+index 750e253..5b64ba4 100644
+--- a/src/capture/ui/rangefinder/__tests__/rangefinder-test.tsx
++++ b/src/capture/ui/rangefinder/__tests__/rangefinder-test.tsx
+@@ -11,8 +11,12 @@ import { platePrompts } from "@/capture/slots";
+ import { LENS_FOV, dialPoint, rollPlan, targetX } from "@/capture/turn";
+ import { setMode } from "@/game/mode";
+ import { modeThemes, motion, ref } from "@/theme/tokens";
++import { ART } from "../../art";
++import { CHROME } from "../../look";
+ import { Rangefinder } from "../../Rangefinder";
+ import { COPY, counterCopy, libraryError, promptCopy, shutterLabel, thinkingCopy, turnCopy } from "../copy";
++import { ArrowLeftIcon } from "@/components/icons";
++import { SquareButton } from "../SquareButton";
+ import { ULTRA_WIDE_LENS } from "../useLenses";
+ import { resetTurnSensorForTests } from "../useTurnTracking";
+ import { frameFor, viewfinderLayout } from "../Viewfinder";
+@@ -147,6 +151,10 @@ const pickLens = async (name: string) => {
+ };
+ const prompt = () => screen.getByRole("header").props.accessibilityLabel as string;
+ const counter = () => screen.getByTestId("plate-counter").props.accessibilityLabel as string;
++/** The turn dial's count ("Photo 2 of 7"): its screen-reader line, without the full stop or the "far enough" sentence. */
++const dialLine = () => (screen.getByTestId("turn-dial").props.accessibilityLabel as string).split(".")[0];
++/** The plan's count engraved beside the frame counter's window ("/7"). */
++const counterTotal = () => [screen.getByTestId("plate-counter-total", hidden).props.children].flat().join("");
+ const stateOf = (node: { props: { accessibilityState?: Record<string, unknown> } }) => node.props.accessibilityState ?? {};
+ const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
+ const flush = () => act(async () => {});
+@@ -669,7 +677,7 @@ describe("Rangefinder: retake mode", () => {
+     expect(prompt()).toBe("Photo 2. From the middle, aim between photos 1 and 3.");
+     expect(counter()).toBe("Retaking photo 2.");
+     // The retaken plate's numeral shows alone: its neighbours are hidden.
+-    expect(flat(screen.getByText("2", hidden)).opacity).toBeUndefined();
++    expect(flat(screen.getByText("2", hidden)).opacity).toBe(1);
+     for (const neighbour of ["1", "3"]) expect(flat(screen.getByText(neighbour, hidden))).toMatchObject({ opacity: 0 });
+     expect(screen.getByRole("button", { name: "Retake photo 2, Photo 2" })).toBeTruthy();
+     expect(screen.getByRole("button", { name: "Choose a photo instead" })).toBeTruthy();
+@@ -722,7 +730,7 @@ describe("Rangefinder: hit areas and focus outlines", () => {
+   const ringsIn = (node: ReturnType<typeof screen.getByTestId>) =>
+     node.queryAll((n) => flat(n).borderWidth === ref.focus.width && flat(n).borderColor === ref.focus.color);
+ 
+-  it("draws back and library as Once's 44 squares with 48 hit areas inside the header row", async () => {
++  it("draws back and library as 44 square push buttons with 48 hit areas inside the header row", async () => {
+     await renderCamera();
+     const slop = (ref.button.square.hit - ref.button.square.size) / 2;
+     expect(ref.button.square.hit).toBeGreaterThanOrEqual(ref.hit.min);
+@@ -730,27 +738,44 @@ describe("Rangefinder: hit areas and focus outlines", () => {
+     expect(flat(screen.getByTestId("prompt").parent!)).toMatchObject({ paddingVertical: slop, paddingHorizontal: ref.layout.camera.edge });
+     for (const id of ["back", "library"]) {
+       const control = screen.getByTestId(id);
+-      expect(flat(control)).toMatchObject({
+-        width: ref.button.square.size,
+-        height: ref.button.square.size,
+-        borderRadius: ref.button.square.radius,
+-        backgroundColor: ref.button.square.fill,
+-        borderWidth: ref.button.square.borderWidth,
+-        borderColor: ref.layout.camera.squareRim,
+-      });
++      expect(flat(control)).toMatchObject({ width: ref.button.square.size, height: ref.button.square.size, borderRadius: ref.button.square.radius });
++      // The control carries no border or fill of its own: the button is its picture, centred on it.
++      expect(flat(control).borderWidth).toBeUndefined();
++      expect(flat(control).backgroundColor).toBeUndefined();
++      const art = screen.getByTestId(`${id}-art`, hidden);
++      expect(art.props.source).toEqual([ART.buttonSquare].flat());
++      expect(flat(art)).toMatchObject({ width: CHROME.square, left: (ref.button.square.size - CHROME.square) / 2 });
+       expect(control.props.hitSlop).toBe(slop);
+-      // The ring follows the rounded square, 2 outside its 1 pt rim.
++      // The ring follows the rounded square, 2 outside it.
+       await fireEvent(control, "focus");
+       const rings = ringsIn(control);
+       expect(rings).toHaveLength(1);
+-      expect(flat(rings[0])).toMatchObject({
+-        top: RING_INSET - ref.button.square.borderWidth,
+-        borderRadius: ref.button.square.radius - RING_INSET + ref.button.square.borderWidth,
+-      });
++      expect(flat(rings[0])).toMatchObject({ top: RING_INSET, borderRadius: ref.button.square.radius - RING_INSET });
+     }
+   });
+ 
+-  it("makes flash and the grid bare 48 targets with a round ring, centred on Once's glyph columns", async () => {
++  it("keeps the flat square everywhere else: without `chrome` the button is the palette's raised fill and rim, with no picture", async () => {
++    await render(<SquareButton icon={ArrowLeftIcon} accessibilityLabel="Back" onPress={jest.fn()} testID="plain" />);
++    const control = screen.getByTestId("plain");
++    expect(flat(control)).toMatchObject({
++      width: ref.button.square.size,
++      height: ref.button.square.size,
++      borderRadius: ref.button.square.radius,
++      backgroundColor: ref.button.square.fill,
++      borderWidth: ref.button.square.borderWidth,
++      borderColor: ref.layout.camera.squareRim,
++    });
++    expect(screen.queryByTestId("plain-art", hidden)).toBeNull();
++    // The ring follows the rounded square, 2 outside its 1 pt rim.
++    await fireEvent(control, "focus");
++    const rings = ringsIn(control);
++    expect(flat(rings[0])).toMatchObject({
++      top: RING_INSET - ref.button.square.borderWidth,
++      borderRadius: ref.button.square.radius - RING_INSET + ref.button.square.borderWidth,
++    });
++  });
++
++  it("makes flash and the grid round push buttons filling 48 targets with a round ring, centred on the glyph columns", async () => {
+     await renderCamera();
+     await cameraReady();
+     const { left, right } = ref.layout.camera.controlColumns;
+@@ -762,6 +787,8 @@ describe("Rangefinder: hit areas and focus outlines", () => {
+       const control = screen.getByTestId(id);
+       expect(flat(control)).toMatchObject({ width: ref.button.bare.hit, height: ref.button.bare.hit });
+       expect(control.props.hitSlop).toBeUndefined();
++      expect(screen.getByTestId(`${id}-art`, hidden).props.source).toEqual([ART.buttonRound].flat());
++      expect(flat(screen.getByTestId(`${id}-art`, hidden))).toMatchObject({ width: CHROME.round, height: CHROME.round });
+       await fireEvent(control, "focus");
+       const rings = ringsIn(control);
+       expect(rings).toHaveLength(1);
+@@ -841,18 +868,66 @@ describe("Rangefinder: hit areas and focus outlines", () => {
+   });
+ });
+ 
+-describe("Rangefinder: Once's look", () => {
++describe("Rangefinder: the camera's look", () => {
+   const L = ref.layout.camera;
++  const source = (id: string) => screen.getByTestId(id, hidden).props.source;
++  const picture = (art: unknown) => [art].flat();
+ 
+-  it("lays Once's flat ground with nothing under the chrome", async () => {
++  it("lays the body under everything: leather over the palette's ground, under the studio's light, taking no touches", async () => {
+     await renderCamera();
+     const root = screen.getByTestId("viewfinder").parent!;
+     expect(flat(root)).toMatchObject({ backgroundColor: ref.color.ground });
+-    // No grain or glow: the header row is the first child.
+-    expect(root.children[0]).toBe(screen.getByTestId("prompt").parent);
++    // The body first, then the header row.
++    const body = screen.getByTestId("camera-body", hidden);
++    expect(root.children[0]).toBe(body);
++    expect(root.children[1]).toBe(screen.getByTestId("prompt").parent);
++    expect(body.props).toMatchObject({ pointerEvents: "none", accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" });
++    // The leather is a repeated tile filling the screen; the light one stretched picture.
++    expect(screen.getByTestId("camera-leather", hidden).props).toMatchObject({ source: ART.leather, resizeMode: "repeat" });
++    expect(flat(screen.getByTestId("camera-leather", hidden))).toMatchObject({ position: "absolute", width: "100%", height: "100%" });
++    expect(screen.getByTestId("camera-light", hidden).props).toMatchObject({ source: picture(ART.light), contentFit: "fill" });
++  });
++
++  it("frames the preview in brass that lies wholly outside it, scaled with the well, per lens", async () => {
++    await renderCamera();
++    await cameraReady();
++    const F = CHROME.finder;
++    const outside = (wide: boolean) => {
++      const box = viewfinderLayout(AREA, wide ? L.frameAspectWide : L.frameAspect);
++      const rim = (F.margin * box.width) / (wide ? F.drawn.wide : F.drawn.main);
++      return { left: box.x - rim, top: box.y - rim, width: box.width + rim * 2, height: box.height + rim * 2 };
++    };
++    const frame = () => screen.getByTestId("viewfinder-frame", hidden);
++    expect(frame().props).toMatchObject({ source: picture(ART.finder), pointerEvents: "none", contentFit: "fill" });
++    expect(flat(frame())).toMatchObject({ position: "absolute", ...outside(false) });
++    // The frame is the well's sibling, not its child: nothing of it is clipped into (or drawn over) the preview.
++    expect(screen.getByTestId("viewfinder-well")).not.toContainElement(frame());
++    // 1x's frame is drawn for a 365 preview: on it the brass is its own 13 margin all round.
++    expect(outside(false).left).toBeCloseTo(-F.margin);
++    await pickLens(COPY.ultraWide);
++    expect(frame().props.source).toEqual(picture(ART.finderWide));
++    expect(flat(frame())).toMatchObject(outside(true));
++    expect(outside(true).left).toBeCloseTo(viewfinderLayout(AREA, L.frameAspectWide).x - F.margin, 0);
+   });
+ 
+-  it("fits the viewfinder as one 3:4 void well at radius 40, centred in the area", async () => {
++  it("keeps the glass quiet: one soft still picture, four etched marks, and a blink that is clear at rest; none takes a touch", async () => {
++    await renderCamera();
++    const glass = screen.getByTestId("viewfinder-glass", hidden);
++    expect(glass.props).toMatchObject({ pointerEvents: "none", accessibilityElementsHidden: true });
++    expect(screen.getByTestId("viewfinder-well")).toContainElement(glass);
++    const marks = glass.queryAll((n) => flat(n).opacity === CHROME.finder.tick.opacity);
++    expect(marks).toHaveLength(4);
++    for (const mark of marks) expect(Math.max(Number(flat(mark).width), Number(flat(mark).height))).toBe(CHROME.finder.tick.length);
++    // The feed is under the glass, and the turn dial and the note over it.
++    const order = screen.getByTestId("viewfinder-well").children.map((c) => (typeof c === "string" ? c : c.props.testID));
++    expect(order.indexOf("viewfinder-glass")).toBe(1);
++    expect(order.indexOf("turn-dial")).toBeGreaterThan(order.indexOf("viewfinder-glass"));
++    const blink = screen.getByTestId("shutter-blink", hidden);
++    expect(blink.props.pointerEvents).toBe("none");
++    expect(flat(blink)).toMatchObject({ backgroundColor: ref.color.void, opacity: 0 });
++  });
++
++  it("fits the viewfinder as one 3:4 well, its corner a share of its width, centred in the area", async () => {
+     await renderCamera();
+     const box = viewfinderLayout(AREA);
+     // 1x's frame: on 852 exactly the area.
+@@ -870,7 +945,7 @@ describe("Rangefinder: Once's look", () => {
+       width: box.width,
+       height: box.height,
+       backgroundColor: ref.color.void,
+-      borderRadius: ref.radius.viewfinder,
++      borderRadius: CHROME.finder.radius * box.width,
+       overflow: "hidden",
+     });
+     expect(well.borderWidth).toBeUndefined();
+@@ -925,19 +1000,19 @@ describe("Rangefinder: Once's look", () => {
+     expect(screen.getByTestId("phosphor-react-native-grid-nine-fill", hidden)).toBeTruthy();
+   });
+ 
+-  it("draws the segment as a void track with a raised thumb; the chosen label is followed by the xmark", async () => {
++  it("draws the lens selector as a slot in a brass rim with a sliding cursor; the chosen label is followed by the xmark", async () => {
+     camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+     await renderCamera();
+     await cameraReady();
+     const G = ref.button.segment;
+     expect(flat(screen.getByTestId("lens-track", hidden))).toMatchObject({ width: G.width, height: G.height, borderRadius: G.radius, backgroundColor: G.fill });
+-    expect(flat(screen.getByTestId("lens-thumb", hidden))).toMatchObject({
+-      width: G.thumbWidth,
+-      height: G.thumbHeight,
+-      borderRadius: G.thumbRadius,
+-      backgroundColor: G.thumbFill,
+-      top: G.inset,
+-    });
++    expect(flat(screen.getByTestId("lens-thumb", hidden))).toMatchObject({ width: G.thumbWidth, height: G.thumbHeight, top: G.inset });
++    // The rim round the slot and the cursor are pictures, each its margin bigger than its box.
++    expect(source("lens-track-art")).toEqual(picture(ART.lensTrack));
++    expect(flat(screen.getByTestId("lens-track-art", hidden))).toMatchObject({ left: -CHROME.lens.track, width: G.width + CHROME.lens.track * 2, height: G.height + CHROME.lens.track * 2 });
++    const cursor = screen.getByTestId("lens-thumb", hidden).children[0] as ReturnType<typeof screen.getByTestId>;
++    expect(cursor.props.source).toEqual(picture(ART.lensThumb));
++    expect(flat(cursor)).toMatchObject({ left: -CHROME.lens.thumb, width: G.thumbWidth + CHROME.lens.thumb * 2 });
+     expect(flat(screen.getByText("1.0"))).toMatchObject({ ...ref.type.label });
+     const mark = () => screen.getAllByTestId("lens-mark", hidden);
+     expect(mark()).toHaveLength(1);
+@@ -949,34 +1024,128 @@ describe("Rangefinder: Once's look", () => {
+     expect(screen.getByText("0.5").parent?.props).toEqual(mark()[0].parent?.parent?.props);
+   });
+ 
+-  it("sets the counter in the italic numerals on a void pill", async () => {
++  it("sets the counter's italic numerals in a brass-framed window, the plan's count engraved beside it", async () => {
+     seedRoll(2);
+     await renderCamera();
+-    expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: ref.color.void, borderRadius: ref.radius.nested });
+-    expect(flat(screen.getByText("3", hidden))).toMatchObject({ ...ref.type.counter });
++    const C = L.counter;
++    const K = CHROME.counter;
++    expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: ref.color.void, borderRadius: K.radius });
++    expect(flat(screen.getByText("3", hidden))).toMatchObject({ ...ref.type.counter, opacity: 1 });
++    // At rest the window shows the current numeral alone: its neighbours show only as the strip rolls.
++    for (const neighbour of ["2", "4"]) expect(flat(screen.getByText(neighbour, hidden))).toMatchObject({ opacity: 0 });
++    // The bezel and the count overflow the window's own box, which is all the row sees.
++    const box = screen.getByTestId("plate-counter").parent!;
++    expect(flat(box)).toEqual({ width: C.width, height: C.height });
++    expect(source("plate-counter-bezel")).toEqual(picture(ART.counter));
++    expect(flat(screen.getByTestId("plate-counter-bezel", hidden))).toMatchObject({ left: -K.margin, top: -K.margin, width: C.width + K.margin * 2, height: C.height + K.margin * 2 });
++    const total = screen.getByTestId("plate-counter-total", hidden);
++    expect(counterTotal()).toBe("/7");
++    expect(flat(total)).toMatchObject({ fontFamily: ref.type.counter.fontFamily, fontSize: K.total.size, color: ref.color.textSecondary, position: "absolute", left: C.width + K.total.gap });
++    // Screen readers hear the count from the counter's own label.
++    expect(total.props).toMatchObject({ accessible: false, importantForAccessibility: "no", maxFontSizeMultiplier: C.maxFontScale });
++    expect(counter()).toBe("Next: photo 3. 2 of 7 photos taken.");
+     expect(counterCopy({ index: 2, retake: false, prompts: SEVEN })).toMatchObject({ current: 2, numeral: "3", solo: false });
+   });
+ 
+-  it("builds the shutter: a shade ring glowing upward around the gradient disk and its white magnifier", async () => {
++  it("builds the shutter: the brass release centred on its control inside the advance lever, its white magnifier on the face", async () => {
+     await renderCamera();
+-    expect(flat(screen.getByTestId("shutter-ring", hidden))).toMatchObject({
+-      backgroundColor: ref.button.shutter.ringFill,
+-      borderRadius: ref.radius.round,
+-      boxShadow: ref.effect.shutterGlow,
+-    });
++    const B = ref.button.shutter;
++    const K = CHROME.shutter;
++    const ring = screen.getByTestId("shutter-ring", hidden);
++    expect(flat(ring)).toMatchObject({ position: "absolute", left: (B.ring - K.art) / 2, top: (B.ring - K.art) / 2, width: K.art, height: K.art });
++    expect(ring.props.pointerEvents).toBe("none");
++    const [rest, down] = ring.children as ReturnType<typeof screen.getByTestId>[];
++    expect(rest.props.source).toEqual(picture(ART.shutter));
++    // The pressed release lies over it, clear until the press.
++    expect(down.props.testID).toBe("shutter-down");
++    expect(flat(down)).toMatchObject({ opacity: 0 });
++    expect((down.children[0] as typeof rest).props.source).toEqual(picture(ART.shutterDown));
++    // The lever, under the release, centred on it, at rest.
++    const lever = screen.getByTestId("shutter-lever", hidden);
++    expect(lever.props.pointerEvents).toBe("none");
++    expect(flat(lever)).toMatchObject({ left: (B.ring - K.lever) / 2, top: (B.ring - K.lever) / 2, width: K.lever, height: K.lever, transform: [{ rotate: `${K.rest}deg` }] });
++    expect((lever.children[0] as typeof rest).props.source).toEqual(picture(ART.lever));
++    const parts = screen.getByTestId("shutter").children.map((c) => (typeof c === "string" ? c : c.props.testID));
++    expect(parts.indexOf("shutter-lever")).toBeLessThan(parts.indexOf("shutter-ring"));
+     expect(flat(screen.getByTestId("shutter-disk", hidden))).toMatchObject({ width: ref.button.shutter.disk, height: ref.button.shutter.disk });
+     expect(screen.getByTestId("shutter-glass", hidden).props.color).toBe(ref.color.textPrimary);
+     // Its centre sits `drop` below the bottom row's: the room is above it.
+     expect(flat(screen.getByTestId("shutter").parent!)).toMatchObject({ paddingTop: L.shutter.drop * 2 });
+   });
+ 
+-  it("frames the last plate in shade around a void well, and rings it in grey from 3 plates", async () => {
+-    seedRoll(2);
++  it("piles the prints in the tray: the newest on top, the one before leaning under it, a third sheet from 3, ringed from 3", async () => {
++    seedRoll(1);
+     await renderCamera();
+     const T = ref.button.thumbnail;
+-    expect(flat(screen.getByTestId("last-plate"))).toMatchObject({ backgroundColor: T.frameFill, borderRadius: T.radius });
+-    expect(flat(screen.getByTestId("last-plate-image", hidden))).toMatchObject({ top: T.frameWidth, backgroundColor: ref.color.void, borderRadius: T.imageRadius });
+-    expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: L.cue.width, borderColor: L.cue.color, borderRadius: T.radius });
++    const Y = CHROME.tray;
++    const P = CHROME.print;
++    const tray = screen.getByTestId("last-plate-tray", hidden);
++    expect(tray.props).toMatchObject({ source: picture(ART.tray), pointerEvents: "none" });
++    expect(flat(tray)).toMatchObject({ left: -Y.side, top: -Y.top, width: T.size + Y.side * 2, height: T.size + Y.top + Y.side });
++    // The control itself carries no fill: the tray is its picture.
++    expect(flat(screen.getByTestId("last-plate")).backgroundColor).toBeUndefined();
++    // The well clips the prints from the cover's edge down.
++    const well = screen.getByTestId("last-plate-image", hidden);
++    expect(flat(well)).toMatchObject({ left: Y.inset, top: Y.slot, width: T.size - Y.inset * 2, height: T.size - Y.inset - Y.slot, overflow: "hidden" });
++    expect(well.props.pointerEvents).toBe("none");
++    // One photo: one print, its photo behind the sheet's cut-out, cover-cropped.
++    expect(thumbnailUri()).toBe("file://old-0.jpg");
++    const photo = screen.getByTestId("last-plate-photo", hidden);
++    expect(photo.props.contentFit).toBe("cover");
++    expect(flat(photo.parent!)).toMatchObject({ left: P.border, top: P.border, right: P.border, bottom: P.border, overflow: "hidden" });
++    const sheet = photo.parent!.parent!;
++    expect(flat(sheet)).toMatchObject({ width: P.width, height: P.height, top: P.top, left: (T.size - Y.inset * 2 - P.width) / 2 });
++    expect(P.top + P.height).toBeLessThanOrEqual(T.size - Y.inset - Y.slot);
++    expect(screen.queryByTestId("last-plate-under", hidden)).toBeNull();
++    expect(screen.queryByTestId("last-plate-pile", hidden)).toBeNull();
++    expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: L.cue.width, borderColor: L.cue.color, borderRadius: Y.radius, opacity: 0 });
++    // Two: the one before lies under it, leaning.
++    await act(async () => seedRoll(1));
++    const uriOf = (id: string) => ([screen.getByTestId(id, hidden).props.source].flat()[0] as { uri: string }).uri;
++    expect(thumbnailUri()).toBe("file://old-0.jpg");
++    expect(screen.getAllByTestId("last-plate-photo", hidden)).toHaveLength(1);
++    expect(uriOf("last-plate-under")).toBe("file://old-0.jpg");
++    // It is the same print that was on top a moment ago (kept mounted, so its photo never blinks), now leaning aside.
++    expect(screen.getByTestId("last-plate-under", hidden).parent!.parent!.parent!.props.testID).toBe("last-plate-image");
++    expect(screen.queryByTestId("last-plate-pile", hidden)).toBeNull();
++    // Three: a third sheet under those, and the way-on ring.
++    await act(async () => seedRoll(1));
++    expect(flat(screen.getByTestId("last-plate-pile", hidden))).toMatchObject({ transform: [{ rotate: `${P.leanBack}deg` }] });
++  });
++
++  it("slides a new print out from under the tray's cover as its photo joins the roll, and winds the lever on", async () => {
++    await renderCamera();
++    await cameraReady();
++    expect(screen.queryByTestId("last-plate-photo", hidden)).toBeNull();
++    await fireEvent.press(screen.getByTestId("shutter"));
++    await flush();
++    // The newest photo is the top print at once (it is what slides), whatever the animation's clock.
++    expect(thumbnailUri()).toBe("file://plate-shot.jpg");
++    expect(screen.getByTestId("last-plate-image", hidden)).toContainElement(screen.getByTestId("last-plate-photo", hidden));
++    await fireEvent.press(screen.getByTestId("shutter"));
++    await flush();
++    expect(screen.getAllByTestId("last-plate-photo", hidden)).toHaveLength(1);
++    expect(screen.getByTestId("last-plate-under", hidden)).toBeTruthy();
++    expect(getPlates()).toHaveLength(2);
++  });
++
++  it("opens on a roll with its pile at rest: the top print square and out, the one under it leaning, nothing sliding", async () => {
++    seedRoll(3);
++    await renderCamera();
++    const P = CHROME.print;
++    const sheetOf = (id: string) => flat(screen.getByTestId(id, hidden).parent!.parent!);
++    expect(sheetOf("last-plate-photo").transform).toEqual([{ translateY: 0 }, { rotate: "0deg" }]);
++    expect(sheetOf("last-plate-under").transform).toEqual([{ translateY: 0 }, { rotate: `${P.lean}deg` }]);
++    expect(thumbnailUri()).toBe("file://old-2.jpg");
++    expect(screen.getByTestId("last-plate-pile", hidden)).toBeTruthy();
++  });
++
++  it("holds the retaken photo's print alone in retake mode", async () => {
++    seedRoll(4);
++    await renderCamera(1);
++    expect(thumbnailUri()).toBe("file://old-1.jpg");
++    expect(screen.queryByTestId("last-plate-under", hidden)).toBeNull();
++    expect(screen.queryByTestId("last-plate-pile", hidden)).toBeNull();
+   });
+ });
+ 
+@@ -1127,41 +1296,44 @@ describe("Rangefinder: the turn dial", () => {
+     await renderCamera();
+     await cameraReady();
+     expect(dial().props.accessibilityLabel).toBe("Photo 1 of 7.");
+-    expect(screen.getByText("Photo 1 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 1 of 7");
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(6);
+     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
+     expect(screen.queryAllByTestId("turn-dial-taken", hidden)).toHaveLength(0);
+     await fireEvent.press(screen.getByTestId("shutter"));
+     await flush();
+-    expect(screen.getByText("Photo 2 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 2 of 7");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(1);
+     expect(screen.queryByTestId("turn-dial-arc", hidden)).toBeNull();
+-    // Its words sit in the viewfinder, after the feed and before the privacy note.
++    // The dial sits in the viewfinder, etched on the glass with no words: the count shows in the frame counter.
+     expect(screen.getByTestId("viewfinder-well")).toContainElement(dial());
++    expect(screen.queryByText("Photo 2 of 7", hidden)).toBeNull();
++    expect(counterTotal()).toBe("/7");
+   });
+ 
+   it("plans 7 stops on 1x and 5 on 0.5x before the first photo", async () => {
+     await renderCamera();
+     await cameraReady();
+-    expect(screen.getByText("Photo 1 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 1 of 7");
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(6);
+     await pickLens(COPY.ultraWide);
+-    expect(screen.getByText("Photo 1 of 5", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 1 of 5");
++    expect(counterTotal()).toBe("/5");
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(4);
+     expect(counter()).toBe("Next: photo 1. 0 of 5 photos taken.");
+     await pickLens(COPY.mainLens);
+-    expect(screen.getByText("Photo 1 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 1 of 7");
+   });
+ 
+   it("says when all are taken, and keeps a full roll as it is when the lens changes", async () => {
+     seedRoll(7);
+     await renderCamera();
+     await cameraReady();
+-    expect(screen.getByText("7 of 7 taken", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("7 of 7 taken, all the way round");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(7);
+     await pickLens(COPY.ultraWide);
+     // The 7 already go all the way round: still full.
+-    expect(screen.getByText("7 of 7 taken", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("7 of 7 taken, all the way round");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(7);
+     expect(stateOf(screen.getByTestId("shutter"))).toMatchObject({ disabled: true });
+   });
+@@ -1169,7 +1341,7 @@ describe("Rangefinder: the turn dial", () => {
+   it("marks the retaken photo's stop in retake mode", async () => {
+     seedRoll(4);
+     await renderCamera(2);
+-    expect(screen.getByText("Photo 3 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 3 of 7");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(3);
+     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
+   });
+@@ -1232,7 +1404,7 @@ describe("Rangefinder: the turn after a photo is removed", () => {
+       removePlate(3);
+     });
+     expect(counter()).toBe("Next: photo 4. 3 of 7 photos taken.");
+-    expect(screen.getByText("Photo 4 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 4 of 7");
+     expectTargetAt(3);
+     // Not a turn prompt plus a live turn: that sent the player a stop past photo 4's place.
+     expect(prompt()).toBe("Photo 4. From the middle, face photo 3's view, then turn right a little.");
+@@ -1255,7 +1427,7 @@ describe("Rangefinder: the turn after a photo is removed", () => {
+       removePlate(2);
+     });
+     expect(counter()).toBe("Next: photo 3. 3 of 7 photos taken.");
+-    expect(screen.getByText("Photo 3 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 3 of 7");
+     expectTargetAt(2);
+     expect(prompt()).toBe("Photo 3. From the middle, aim between photos 2 and 4.");
+     await turnPhone(STEP, 1);
+@@ -1277,7 +1449,7 @@ describe("Rangefinder: the turn after a photo is removed", () => {
+       removePlate(0);
+     });
+     expect(counter()).toBe("Next: photo 1. 3 of 7 photos taken.");
+-    expect(screen.getByText("Photo 1 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 1 of 7");
+     expectTargetAt(0);
+     expect(prompt()).toBe("Photo 1. From the middle, face photo 2's view, then turn left a little.");
+     await turnPhone(STEP, 1);
+@@ -1334,13 +1506,13 @@ describe("Rangefinder: the turn after a photo is removed", () => {
+     expect(arc()).toBeTruthy();
+     expect(prompt()).toBe("Turn right a little. Keep a sliver of the last photo in view.");
+     // One photo in: 0.5's own even 5, 72 apart. That photo was taken on 1x (its own view and frame), so it isn't laid over 0.5's feed.
+-    expect(screen.getByText("Photo 2 of 5", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 2 of 5");
+     expect(screen.queryByTestId("turn-guide", hidden)).toBeNull();
+     // 25.7 turned, 48 more: 73.7 of 72 (far enough is within half the 1.7 shared: 71.2).
+     await turnPhone(60, 0.8);
+     expect(mockFeedback.tick).toHaveBeenCalledTimes(1);
+     await pickLens(COPY.mainLens);
+-    expect(screen.getByText("Photo 2 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 2 of 7");
+     // Back on the lens the last photo was taken on: the guide again, its mark for 1x's turn on 1x's 3:4 feed.
+     // (73.7 turned: past 1x's 51.4 too, so the mark is solid.)
+     expect(Number(screen.getByTestId("turn-guide-mark-reached", hidden).props.x1)).toBeCloseTo(targetX(STEP, LENS_FOV.main) * AREA.width, 6);
+@@ -1348,14 +1520,14 @@ describe("Rangefinder: the turn after a photo is removed", () => {
+ 
+   it("switching to 0.5 after 3 photos keeps them where they are and re-spaces the rest for 0.5", async () => {
+     await walkRound(3);
+-    expect(screen.getByText("Photo 4 of 7", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 4 of 7");
+     await pickLens(COPY.ultraWide);
+     mockFeedback.tick.mockClear();
+     // 3 taken at 0, 51.4 and 102.9; 3 more 64.3 apart.
+     const wide = rollPlan("wide", rollPlan("main").stops.slice(0, 3));
+     expect(wide.shots).toBe(6);
+     expect(counter()).toBe("Next: photo 4. 3 of 6 photos taken.");
+-    expect(screen.getByText("Photo 4 of 6", hidden)).toBeTruthy();
++    expect(dialLine()).toBe("Photo 4 of 6");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(3);
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(2);
+     expectTargetAtDeg(wide.stops[3]);
+@@ -1401,25 +1573,26 @@ describe("Rangefinder: inside a mode", () => {
+   beforeEach(() => setMode("crime_scene"));
+   afterEach(() => setMode(null));
+ 
+-  it("takes the mode's ground, raised square buttons, inks and wells", async () => {
++  it("takes the mode's ground under the leather, its inks and wells; the brass is the same in every mode", async () => {
+     seedRoll(2);
+     await renderCamera();
+     expect(flat(screen.getByTestId("rangefinder-root"))).toMatchObject({ backgroundColor: theme.surface });
+-    expect(flat(screen.getByTestId("back"))).toMatchObject({ backgroundColor: theme.raised, borderColor: theme.rim });
++    expect(screen.getByTestId("phosphor-react-native-arrow-left-bold", hidden).props.color).toBe(theme.ink);
++    expect(screen.getByTestId("back-art", hidden).props.source).toEqual([ART.buttonSquare].flat());
+     const placed = promptCopy({ index: 2, retake: false, inTurn: false, filled: [true, true], prompts: SEVEN });
+     expect(flat(screen.getByText(placed.title))).toMatchObject({ ...ref.type.serifTitle, color: theme.ink });
+     expect(flat(screen.getByText(placed.detail)).color).toBe(theme.inkMuted);
+     expect(flat(screen.getByTestId("viewfinder-well"))).toMatchObject({ backgroundColor: theme.ground });
+     expect(flat(screen.getByTestId("plate-counter"))).toMatchObject({ backgroundColor: theme.ground });
+-    expect(flat(screen.getByTestId("shutter-ring", hidden))).toMatchObject({ backgroundColor: theme.ground, boxShadow: ref.effect.shutterGlow });
++    expect(flat(screen.getByTestId("plate-counter-total", hidden)).color).toBe(theme.inkMuted);
+     expect(screen.getByTestId("shutter-glass", hidden).props.color).toBe(theme.ink);
+   });
+ 
+-  it("shows the last photo in the mode's baked treatment, framed in the mode's near-black, ringed in its stamp colour from 3", async () => {
++  it("shows the prints in the mode's baked treatment, ringed in its stamp colour from 3", async () => {
+     seedRoll(3);
+     await renderCamera();
+     expect(uriOf(screen.getByTestId("last-plate-photo-treated", hidden))).toBe("baked/crime_scene/file://old-2.jpg");
+-    expect(flat(screen.getByTestId("last-plate"))).toMatchObject({ backgroundColor: theme.ground });
++    expect(uriOf(screen.getByTestId("last-plate-under-treated", hidden))).toBe("baked/crime_scene/file://old-1.jpg");
+     expect(flat(screen.getByTestId("last-plate-ring", hidden))).toMatchObject({ borderWidth: ref.layout.camera.cue.width, borderColor: theme.stamp });
+     // Still the way on to the review screen.
+     await userEvent.setup().press(screen.getByTestId("last-plate"));
+@@ -1434,12 +1607,11 @@ describe("Rangefinder: inside a mode", () => {
+     expect(screen.queryByTestId("camera-treated", hidden)).toBeNull();
+   });
+ 
+-  it("draws the lens segment in the mode's well, raised thumb and ink", async () => {
++  it("draws the lens selector's slot in the mode's well and its chosen label's mark in the mode's ink", async () => {
+     camera.getAvailableLensesAsync.mockResolvedValue([{ deviceType: ULTRA_WIDE_LENS, localizedName: "Back Ultra Wide Camera" }]);
+     await renderCamera();
+     await cameraReady();
+     expect(flat(screen.getByTestId("lens-track", hidden)).backgroundColor).toBe(theme.ground);
+-    expect(flat(screen.getByTestId("lens-thumb", hidden)).backgroundColor).toBe(theme.raised);
+     expect(screen.getByTestId("lens-mark", hidden).props.color).toBe(theme.ink);
+   });
+ });
+diff --git a/src/capture/ui/rangefinder/__tests__/turnDial-test.tsx b/src/capture/ui/rangefinder/__tests__/turnDial-test.tsx
+index 79b9341..d551d71 100644
+--- a/src/capture/ui/rangefinder/__tests__/turnDial-test.tsx
++++ b/src/capture/ui/rangefinder/__tests__/turnDial-test.tsx
+@@ -64,7 +64,6 @@ function props(overrides: Partial<TurnDialProps> = {}): TurnDialProps {
+     listening: true,
+     active: true,
+     resetKey: "shot-1",
+-    line: "Photo 2 of 6",
+     accessibilityLabel: (reached) => (reached ? `Photo 2 of 6. ${COPY.turnReached}` : "Photo 2 of 6."),
+     onReached: jest.fn(),
+     fov: LENS_FOV.wide,
+@@ -90,7 +89,7 @@ beforeEach(() => {
+ describe("turn dial: the static face", () => {
+   it("counts the photo and draws a stop for each: taken white, the next a white ring, the rest grey", async () => {
+     await render(<TurnDial {...props({ active: false, taken: [true, true, false, false, false, false], target: 2 })} />);
+-    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
++    expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(2);
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(3);
+     // White like the taken dots, but hollow (the void inside).
+@@ -99,11 +98,11 @@ describe("turn dial: the static face", () => {
+     expect(target.props.stroke).toEqual(white);
+     expect(target.props.fill).not.toEqual(white);
+     expect(arc()).toBeNull();
+-    // One screen-reader element with the count; the face and the line are hidden.
++    // One screen-reader element with the count; the face is hidden.
+     expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
+   });
+ 
+-  it("is the privacy note's see-through black pill, top-centred on the feed", async () => {
++  it("is etched on the glass with no words: a dial on the privacy note's see-through black, top-centred on the feed", async () => {
+     const T = ref.layout.camera.turn;
+     await render(<TurnDial {...props({ active: false })} />);
+     expect(screen.getByTestId("turn-dial").props.style).toMatchObject({ position: "absolute", top: T.inset, alignItems: "center" });
+@@ -112,16 +111,18 @@ describe("turn dial: the static face", () => {
+       opacity: ref.layout.camera.note.fillOpacity,
+     });
+     expect(screen.getByTestId("turn-dial-face", hidden).props).toMatchObject({ width: T.dial, height: T.dial });
++    // The count is the frame counter's; the dial carries it for screen readers only.
++    expect(screen.queryByText(/Photo/, hidden)).toBeNull();
+   });
+ 
+   it("shows every stop taken and no target once all 6 are", async () => {
+-    await render(<TurnDial {...props({ active: false, taken: Array(6).fill(true), target: null, line: "6 of 6 taken" })} />);
++    await render(<TurnDial {...props({ active: false, taken: Array(6).fill(true), target: null })} />);
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(6);
+     expect(screen.queryByTestId("turn-dial-target", hidden)).toBeNull();
+   });
+ 
+   it("draws 0.5x's five stops 72 apart: photo 3 at 144", async () => {
+-    await render(<TurnDial {...props({ active: false, stops: dialStops(5), taken: [true, true, false, false, false], target: 2, line: "Photo 3 of 5" })} />);
++    await render(<TurnDial {...props({ active: false, stops: dialStops(5), taken: [true, true, false, false, false], target: 2 })} />);
+     expect(screen.getAllByTestId("turn-dial-taken", hidden)).toHaveLength(2);
+     expect(screen.getAllByTestId("turn-dial-rest", hidden)).toHaveLength(2);
+     const C = ref.layout.camera.turn.dial / 2;
+@@ -362,7 +363,7 @@ describe("turn dial: 1x's 7 photos, sharing a 1.6-degree edge", () => {
+   const stops = dialStops(7);
+   const STEP = 360 / 7;
+   const seven = (overrides: Partial<TurnDialProps> = {}) =>
+-    props({ stops, taken: [true, ...Array(6).fill(false)], fov: LENS_FOV.main, ghost, line: "Photo 2 of 7", ...overrides });
++    props({ stops, taken: [true, ...Array(6).fill(false)], fov: LENS_FOV.main, ghost, ...overrides });
+ 
+   it("ticks only once the edge is within half the shared view of the mark, not 5 % short", async () => {
+     const onReached = jest.fn();
+@@ -386,7 +387,7 @@ describe("turn dial: 1x's 7 photos, sharing a 1.6-degree edge", () => {
+     // Photo 2 taken 0.8 short (50.6 of 51.4, as the tick allows).
+     await turn(50.65, 1);
+     expect(onReached).toHaveBeenCalledTimes(1);
+-    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2", line: "Photo 3 of 7" };
++    const next = { taken: [true, true, ...Array(5).fill(false)], target: 2, resetKey: "shot-2" };
+     await view.rerender(<TurnDial {...seven({ onReached, ...next })} />);
+     await flush();
+     // The next turn aims 0.8 further: its mark moves left by as much, and a plain 51.4 is not yet far enough.
+@@ -417,7 +418,7 @@ describe("turn dial: no sensor", () => {
+     await render(<TurnDial {...props({ onReached })} />);
+     await flush();
+     expect(sensors.DeviceMotion.addListener).not.toHaveBeenCalled();
+-    expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
++    expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
+     expect(screen.getByTestId("turn-dial-target", hidden)).toBeTruthy();
+     expect(arc()).toBeNull();
+   });
+@@ -445,7 +446,7 @@ describe("turn dial: no sensor", () => {
+       await flush();
+       expect(sensors.DeviceMotion.isAvailableAsync).not.toHaveBeenCalled();
+       expect(sensors.DeviceMotion.addListener).not.toHaveBeenCalled();
+-      expect(screen.getByText("Photo 2 of 6", hidden)).toBeTruthy();
++      expect(screen.getByTestId("turn-dial").props.accessibilityLabel).toBe("Photo 2 of 6.");
+     } finally {
+       Object.defineProperty(Platform, "OS", { get: () => os, configurable: true });
+     }

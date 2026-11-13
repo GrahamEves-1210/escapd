@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ColorMatrix, FilterMode, FractalNoise, Group, MipmapMode, Path, Rect, Shadow, Skia, Text, loadData, type SkFont, type SkImage, type SkTypeface } from "@shopify/react-native-skia";
 import { alpha } from "@/theme/payoff";
 
-import { BINDING, LENS, PAPERWEIGHT, PENCIL } from "./props";
+import { BINDING, LENS, MUSICBOX, PAPERWEIGHT, PENCIL, RIBBON } from "./props";
 import { handLayout, setHand, SYMBOL, type Placed, type Setting } from "./revealText";
 
 /** The hand face (Patrick Hand, as everything written in the world) and a typewriter's (a printed page). */
@@ -79,12 +79,24 @@ export function useArt(source: number): SkImage | null {
   return pictures.get(source) ?? image;
 }
 
-/** Starts reading both faces and the canvas sheets' pictures, so a sheet opened later has its writing and its props at once. */
-export function warmFaces(): void {
+/** The canvas sheets' pictures, by the kind of card that opens them (the lamp's and the mirror's are views': Reveal.tsx). */
+const ART: Record<string, readonly number[]> = {
+  rub: [PENCIL.art, BINDING.art],
+  lens: [LENS.art],
+  fold: [PAPERWEIGHT.art],
+  tune: [MUSICBOX.art, MUSICBOX.crank],
+  ribbon: [RIBBON.spool, RIBBON.flange, RIBBON.clip],
+};
+
+/**
+ * Starts reading both faces, and the pictures of the sheets this case can open (`kinds`: its cards' reveals),
+ * so a sheet opened later has its writing and its props at once and a case without one holds none of them.
+ */
+export function warmFaces(kinds: readonly string[] = []): void {
   try {
     void readFace("hand");
     void readFace("typed");
-    for (const art of [LENS.art, PENCIL.art, BINDING.art, PAPERWEIGHT.art]) void readArt(art);
+    for (const kind of kinds) for (const art of ART[kind] ?? []) void readArt(art);
   } catch {
     // Skia not up yet (the web, before CanvasKit): the sheet reads them itself when it opens.
   }

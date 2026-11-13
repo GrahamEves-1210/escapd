@@ -15,6 +15,10 @@
 //   fold:   a typed page, each line of the message cut in two either side of filler. Drag the right of
 //           it in until B meets A: the middle pleats away and the lines read across the join
 //           (FoldSheet.tsx).
+//   tune:   a music box. Turn its crank: the pinned cylinder turns and plucks four teeth of its comb in
+//           order, each tooth engraved with a mark; the four marks are the card (TuneSheet.tsx).
+//   ribbon: a typewriter ribbon on its spool. Pull it out: the last line typed is struck into it, pale,
+//           back to front (RibbonSheet.tsx).
 //
 // The card is already in the casebook when this opens (the engine showed it): this is the moment of
 // reading it. Under reduced motion, or for a screen reader (activate), it reads at once. Paper from
@@ -43,7 +47,9 @@ import { Paper } from "../letters/Paper";
 
 import { FoldSheet } from "./FoldSheet";
 import { LensSheet } from "./LensSheet";
+import { RibbonSheet } from "./RibbonSheet";
 import { RubSheet } from "./RubSheet";
+import { TuneSheet } from "./TuneSheet";
 import type { SheetProps } from "./sheet";
 import { warmFaces } from "./ink";
 import { LAMP, MIRROR } from "./props";
@@ -57,7 +63,7 @@ export type { RevealKind } from "./revealText";
  * by the time one opens, its writing and its props are there.
  */
 export function revealOf(...args: Parameters<typeof findReveal>): ReturnType<typeof findReveal> {
-  warmFaces();
+  warmFaces((args[0]?.cards ?? []).flatMap((c) => (c.reveal ? [c.reveal] : [])));
   warmPictures();
   return findReveal(...args);
 }
@@ -123,10 +129,12 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
   const finish = () => {
     if (done) return;
     setDone(true);
-    // The lens settles on the line with a clean click; the fold creases; paper for the rest.
+    // The lens settles on the line with a clean click; the fold creases; the ribbon's spool gives a last tick;
+    // the music box has just played (nothing over its notes); paper for the rest.
     if (kind === "lens") feedback.snap();
     else if (kind === "fold") feedback.paperFold();
-    else feedback.paper();
+    else if (kind === "ribbon") feedback.tick();
+    else if (kind !== "tune") feedback.paper();
   };
   useEffect(() => {
     if (reducedMotion) shown.set(1);
@@ -249,7 +257,7 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
           </GestureDetector>
           {caption}
         </View>
-      ) : kind === "rub" || kind === "lens" || kind === "fold" ? (
+      ) : kind === "rub" || kind === "lens" || kind === "fold" || kind === "tune" || kind === "ribbon" ? (
         <View style={[styles.scene, { width: screenW }]} pointerEvents="box-none">
           <Drawn kind={kind} text={text} title={title} width={screenW} height={screenH} shown={shown} done={done} reduced={reducedMotion} onRead={finish} feedback={feedback} ground={theme.ground} labels={{ label: page.accessibilityLabel }} />
           {caption}
@@ -304,7 +312,9 @@ const HOW: Record<RevealKind, string> = {
 };
 
 /** The sheets drawn on a canvas, each its own object and gesture. */
-function Drawn({ kind, ...props }: SheetProps & { kind: "rub" | "lens" | "fold" }) {
+function Drawn({ kind, ...props }: SheetProps & { kind: "rub" | "lens" | "fold" | "tune" | "ribbon" }) {
+  if (kind === "tune") return <TuneSheet {...props} />;
+  if (kind === "ribbon") return <RibbonSheet {...props} />;
   return kind === "rub" ? <RubSheet {...props} /> : kind === "lens" ? <LensSheet {...props} /> : <FoldSheet {...props} />;
 }
 

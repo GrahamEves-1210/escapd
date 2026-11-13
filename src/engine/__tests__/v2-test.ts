@@ -50,7 +50,7 @@ test("the reveal tools play in the app runtime: a letter warmed at a lamp, a not
 });
 
 test("the hands-on reveals play in the app runtime: a pencil rubbing, a red lens, a fold-in page", () => {
-  // A room with no lamp and no mirror: these three need nothing in it.
+  // A room with no lamp and no mirror: these three need nothing in it. (Gadgets off here: theirs is the next test.)
   const room = [
     inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("pillow", 2, ["can_lift"]), inv("cabinet", 2, ["has_doors", "can_open"]),
     inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]), inv("poster", 3, ["wall_mounted"]),
@@ -60,7 +60,7 @@ test("the hands-on reveals play in the app runtime: a pencil rubbing, a red lens
   for (let i = 0; i < 150; i++) {
     let s = i + 1;
     const randomInt = (max: number) => { s = (s * 16807) % 2147483647; return s % max; };
-    const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `hands-${i}`, randomInt });
+    const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `hands-${i}`, randomInt, gadgets: [] });
     if (!r.ok) throw new Error(r.detail);
     rooms++;
     if (r.summary.motifs.includes("tool_reveal")) uv++;
@@ -111,4 +111,28 @@ test("the gadgets stay out of rooms until their switch is on; switched on, they 
     kinds(on).forEach((k) => seen.add(k));
   }
   expect([...seen].sort()).toEqual(["balance", "dial", "keys", "ribbon", "telephone", "tune"]);
+});
+
+test("planning never spins in the app runtime: every gadget on, whatever stream it mints with, each room is planned at once", () => {
+  const rooms = [
+    [inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("safe", 2, ["can_open", "has_doors"]), inv("telephone", 1, []),
+      inv("cabinet", 2, ["has_doors", "can_open"]), inv("pillow", 3, ["can_lift"]), inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]), inv("poster", 3, ["wall_mounted"])],
+    [inv("door", 0, ["is_door"]), inv("desk", 1, ["has_drawers"]), inv("pillow", 2, ["can_lift"]), inv("cabinet", 2, ["has_doors", "can_open"]),
+      inv("rug", 4, ["can_lift"]), inv("bookshelf", 4, ["has_pages"]), inv("poster", 3, ["wall_mounted"])],
+  ];
+  // Streams a draw-until-it-fits loop can't wait on: low bits that cycle every few draws, a constant, the top value.
+  const streams: ((i: number) => (max: number) => number)[] = [
+    (i) => { let s = (11 + i) >>> 0; return (max) => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s % max; }; },
+    () => () => 0,
+    () => (max) => max - 1,
+  ];
+  let worst = 0;
+  for (const stream of streams) for (const room of rooms) for (let i = 0; i < 9; i++) {
+    const t = Date.now();
+    const r = planRoom(room, { mode: (["noir", "crime_scene", "paranormal"] as const)[i % 3], seed: `spin-${i}`, randomInt: stream(i), gadgets: GADGETS });
+    worst = Math.max(worst, Date.now() - t);
+    if (!r.ok) throw new Error(r.detail);
+    expect(r.report.ok).toBe(true);
+  }
+  expect(worst).toBeLessThan(1500);
 });
