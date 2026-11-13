@@ -45,6 +45,10 @@ jest.mock("../../../assets/audio/pencil-rub-1.m4a", () => "pencil-rub-1.m4a");
 jest.mock("../../../assets/audio/pencil-rub-2.m4a", () => "pencil-rub-2.m4a");
 jest.mock("../../../assets/audio/pencil-rub-3.m4a", () => "pencil-rub-3.m4a");
 jest.mock("../../../assets/audio/paper-fold.m4a", () => "paper-fold.m4a");
+jest.mock("../../../assets/audio/wax-crack.m4a", () => "wax-crack.m4a");
+jest.mock("../../../assets/audio/string-off.m4a", () => "string-off.m4a");
+jest.mock("../../../assets/audio/door-out.m4a", () => "door-out.m4a");
+jest.mock("../../../assets/audio/candle-out.m4a", () => "candle-out.m4a");
 jest.mock("../../../assets/audio/music-note-0.m4a", () => "music-note-0.m4a");
 jest.mock("../../../assets/audio/music-note-1.m4a", () => "music-note-1.m4a");
 jest.mock("../../../assets/audio/music-note-2.m4a", () => "music-note-2.m4a");
@@ -62,6 +66,10 @@ const SOURCE = {
   purr: "purr.m4a",
   mugBreak: "mug-break.m4a",
   paperFold: "paper-fold.m4a",
+  waxCrack: "wax-crack.m4a",
+  stringOff: "string-off.m4a",
+  doorOut: "door-out.m4a",
+  candleOut: "candle-out.m4a",
   noir: "room-noir.m4a",
   paranormal: "room-paranormal.m4a",
 };
@@ -70,6 +78,7 @@ const SOURCE = {
 const INTERACTION_CUES = [
   "press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter",
   "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak", "pencilRub", "paperFold",
+  "waxCrack", "stringOff", "doorOut", "candleOut",
 ] as const;
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
@@ -294,6 +303,59 @@ describe("cues with sound", () => {
       result.current.musicNote(2);
       expect(notePlays(2)).toBe(1);
       expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("a case's opening and ending", () => {
+    it("the wax seal cracks with a light tap, from its own file", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      result.current.waxCrack();
+      expect(played()).toEqual([playerFor(SOURCE.waxCrack)]);
+      expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+      expect(haptics()).toBe(1);
+    });
+
+    it("the string comes off with a tick, and again as its second and third turns come free", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      result.current.stringOff();
+      expect(played()).toEqual([playerFor(SOURCE.stringOff)]);
+      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(239);
+      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(1);
+      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(2);
+      jest.advanceTimersByTime(130);
+      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(3);
+      jest.runAllTimers();
+      expect(haptics()).toBe(3);
+    });
+
+    it("the door's firm tap is on its latch, at once; it is the loudest of the four, under the shutter", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      result.current.doorOut();
+      const door = playerFor(SOURCE.doorOut)!;
+      expect(played()).toEqual([door]);
+      expect(Haptics.impactAsync).toHaveBeenCalledWith("medium");
+      jest.runAllTimers();
+      expect(haptics()).toBe(1);
+      result.current.waxCrack();
+      result.current.stringOff();
+      result.current.candleOut();
+      const others = [SOURCE.waxCrack, SOURCE.stringOff, SOURCE.candleOut].map((src) => playerFor(src)!.volume);
+      expect(door.volume).toBeGreaterThan(Math.max(...others));
+      expect(door.volume).toBeLessThan(0.95);
+    });
+
+    it("the candle's sound starts at once; its light tap waits for the puff, 450 ms in", async () => {
+      const { result } = await renderHook(() => useFeedback());
+      result.current.candleOut();
+      expect(played()).toEqual([playerFor(SOURCE.candleOut)]);
+      expect(haptics()).toBe(0);
+      jest.advanceTimersByTime(449);
+      expect(haptics()).toBe(0);
+      jest.advanceTimersByTime(1);
+      expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+      expect(haptics()).toBe(1);
     });
   });
 

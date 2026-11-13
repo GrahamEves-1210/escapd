@@ -777,6 +777,182 @@ def music_note(rng, index=0):
     return room(out, rng, rt60=0.3, wet=0.1, tone=5000)
 
 
+def wax_crack(rng):
+    """A wax seal cracking in two as an envelope is opened: a short dry snap, then a brittle crumble.
+
+    Sealing wax is hard and dead: it doesn't ring, it snaps (a hard contact into a few high, very
+    short modes, with a dry burst of noise), the crack runs across it a few milliseconds later, and
+    the crumbs it sheds tick down onto the paper, thinning out. Small and close: almost no room.
+    """
+    out = silence(0.4)
+    wax = [(1850, 0.004, 0.7), (3100, 0.0035, 1.0), (4650, 0.0025, 0.7), (6400, 0.0018, 0.4)]
+    # The snap: the seal gives, and the crack runs to its other edge 11 ms later.
+    place(out, hit(wax, 0.04, 0.00025, rng, 0.35), 0.0, 1.0)
+    n = n_of(0.01)
+    place(out, hp(rng.standard_normal(n), 1800, 2) * env(n, 0.0002, 0.0018), 0.0, 0.5)
+    place(out, hit(scale_bank(wax, 1.22), 0.03, 0.0003, rng, 0.35), 0.011, 0.55)
+    place(out, hp(rng.standard_normal(n), 2400, 2) * env(n, 0.0002, 0.0014), 0.011, 0.25)
+    # The stiff paper under it takes the snap: a dull little pat, no ring.
+    pat = lp(rng.standard_normal(n_of(0.03)), 1300) * env(n_of(0.03), 0.001, 0.006)
+    place(out, pat + 0.6 * hit([(420, 0.008, 1.0), (880, 0.005, 0.5)], 0.03, 0.0015), 0.0, 0.35)
+    # The crumble: crumbs of wax breaking off and ticking onto the paper, dense at first, then a few.
+    for _ in range(34):
+        at = 0.02 + 0.27 * rng.random() ** 2.0
+        fk = rng.uniform(0.85, 1.9)
+        g = rng.uniform(0.1, 0.42) * (1 - 0.75 * (at - 0.02) / 0.27)
+        crumb = hit(scale_bank(wax, fk, 1.0, 0.7), 0.012, rng.uniform(0.0002, 0.0005), rng, 0.3)
+        place(out, crumb, at, g)
+    # Under the first of it, the fine dry crackle of the break's edges rubbing as the halves part.
+    n = n_of(0.12)
+    edges = (rng.random(n) < 0.03) * rng.standard_normal(n)
+    place(out, bp(edges, 2200, 7500) * env(n, 0.004, 0.035), 0.012, 0.3)
+    out = lp(out, 9500)
+    return room(out, rng, rt60=0.1, wet=0.04)
+
+
+# Where the string comes off each button, in seconds (the haptics tick on the same beats), and the flap.
+STRING_TURNS = (0.0, 0.16, 0.3)
+STRING_FLAP = 0.4
+
+
+def string_off(rng):
+    """Waxed string unwound from an envelope's two card buttons, then the flap lifting.
+
+    Each turn is a quick soft whirr (the thread dragging round the card disc: friction in ragged
+    little bursts, the band rising as it speeds up) ending in a tick as it flips free of the button;
+    three turns, each quicker and lighter than the last; then the flap's paper flexing open.
+    """
+    out = silence(0.66)
+    card = [(720, 0.006, 0.8), (1380, 0.005, 1.0), (2250, 0.003, 0.5)]
+    for k, at in enumerate(STRING_TURNS):
+        d = (0.11, 0.095, 0.08)[k]
+        g = (1.0, 0.85, 0.7)[k]
+        n = n_of(d)
+        # The thread sticking and slipping on the card as it comes round.
+        rough = np.abs(lp(rng.standard_normal(n), 300, 2))
+        rough = (rough / rough.mean()) ** 1.8
+        drag = rng.standard_normal(n) * (0.25 + 0.75 * np.minimum(rough, 4.0) / 1.6)
+        whirr = svf_bandpass(drag, np.geomspace(950, 2300 + 250 * k, n), 1.3) * bell_env(n, d * 0.7) ** 1.2
+        place(out, lp(whirr, 4200, 2), at, 0.2 * g)
+        # It flips free of the button: a small, dull tick of thread on card.
+        place(out, hit(scale_bank(card, 1 + 0.12 * k), 0.03, 0.0006, rng, 0.2), at + d * 0.86, 0.4 * g)
+    # The flap lifting: paper flexing open, a few fibre cracks along its crease.
+    n = n_of(0.24)
+    flex = svf_bandpass(rng.standard_normal(n), np.linspace(700, 2100, n), 1.0) * bell_env(n, 0.09) ** 1.2
+    place(out, flex, STRING_FLAP, 0.26)
+    for _ in range(26):
+        d = rng.uniform(0.0008, 0.003)
+        lo = rng.uniform(1900, 4400)
+        grain = bp(rng.standard_normal(n_of(d)) * np.hanning(n_of(d)), lo, lo * 1.9)
+        place(out, grain, STRING_FLAP + 0.02 + 0.17 * rng.random() ** 1.3, min(rng.pareto(2.5) * 0.07 + 0.025, 0.11))
+    out = lp(out, 9000)
+    return room(out, rng, rt60=0.14, wet=0.06)
+
+
+def door_out(rng):
+    """A heavy panelled door swung open onto a rainy street at night (the noir ending).
+
+    The latch lets go (0 s: brass, and the door's weight leaving its frame); the old hinges give a
+    low, short creak as it swings (to ~0.75 s: a slow stick-slip, low and uneven, through the
+    door's panels; never a rising squeal); and the outside comes in as the gap widens, muffled at
+    first, then open: steady rain on cobbles (a hiss of small drops, fatter splats on the stones)
+    and the city's distant hum, held to ~1.9 s and fading out by 2.4 s.
+    """
+    total = 2.4
+    n = n_of(total)
+    t = times(n)
+    inside = silence(total)
+    # The latch: the bolt drawn back, its click, and the door's own low knock as it leaves the frame.
+    place(inside, hit(scale_bank(BRASS_BOLT, 1.15, 1.0, 0.8), 0.25, 0.0009), 0.0, 0.55)
+    place(inside, hit(LATCH, 0.06, 0.0004), 0.035, 0.22)
+    door = [(92, 0.06, 0.6), (171, 0.05, 0.8), (318, 0.035, 1.0), (590, 0.022, 0.6), (1040, 0.012, 0.3)]
+    place(inside, hit(door, 0.35, 0.0018), 0.045, 0.6)
+    # The creak: the hinge pin sticking and slipping, slow and uneven, a little faster mid-swing.
+    m = n_of(0.7)
+    tc = times(m)
+    arc = np.sin(np.pi * tc / 0.7)
+    rate = (26 + 30 * arc ** 1.5) * (1 + 0.5 * lp(rng.standard_normal(m), 12, 1) * 6)
+    slips = np.diff(np.floor(np.cumsum(np.maximum(rate, 8)) / SR), prepend=0)
+    slips *= np.exp(0.35 * rng.standard_normal(m))  # every slip a different size
+    panels = [(205, 0.016, 0.6), (372, 0.014, 1.0), (640, 0.01, 0.7), (1120, 0.006, 0.3)]
+    creak = modes(lp(slips, 2500, 1) * 0.28, panels, 0.7) * arc ** 0.8
+    creak += bp(rng.standard_normal(m), 250, 900, 1) * 0.003 * arc  # the dry rub under it
+    place(inside, creak, 0.07, 1.0)
+    # The door sweeping the air.
+    sweep = lp(rng.standard_normal(n_of(0.75)), 420, 2) * bell_env(n_of(0.75), 0.3) ** 1.5
+    place(inside, sweep, 0.08, 0.05)
+    inside = room(inside, rng, rt60=0.35, wet=0.14)[:n]
+
+    # Outside: rain. A steady hiss of small drops...
+    white = rng.standard_normal(n)
+    hiss = bp(lp(white, 3000, 1) + 0.3 * white, 1100, 8000, 2)
+    hiss *= 1 + 0.25 * lp(rng.standard_normal(n), 2.5, 1) * 25  # it comes in gusts, a little
+    rain = hiss * 0.5
+    # ...single drops ticking on stone and puddle...
+    for _ in range(int(total * 110)):
+        d = rng.uniform(0.0006, 0.0025)
+        lo = rng.uniform(2200, 6000)
+        drop = bp(rng.standard_normal(n_of(d)) * np.hanning(n_of(d)), lo, lo * 1.7)
+        place(rain, drop, rng.uniform(0, total - 0.01), rng.uniform(0.3, 1.2))
+    # ...and fatter splats on the cobbles: lower, rounder.
+    for _ in range(int(total * 16)):
+        f0 = rng.uniform(550, 1500)
+        splat = hit([(f0, 0.004, 1.0), (f0 * 2.3, 0.003, 0.4)], 0.02, 0.0007, rng, 0.3)
+        place(rain, splat, rng.uniform(0, total - 0.03), rng.uniform(0.25, 0.7))
+    # The city, far off: a low hum (its upper partials are what a phone can play) and a soft rumble.
+    hum = sum(g * np.sin(TAU * f * t + rng.uniform(0, TAU)) * (1 + 0.3 * np.sin(TAU * b * t))
+              for f, g, b in ((110.0, 1.0, 0.31), (164.8, 0.6, 0.23), (220.5, 0.5, 0.41), (329.0, 0.3, 0.17)))
+    rumble = lp(np.cumsum(rng.standard_normal(n)) / 40, 300, 2)
+    rumble = hp(rumble, 60, 2)
+    far = 0.012 * hum + 0.06 * rumble / max(np.abs(rumble).max(), 1e-9)
+    outside = rain + far
+    # It comes in as the gap widens: muffled through the door, then open; held, then fading.
+    gap = np.sin(0.5 * np.pi * np.clip((t - 0.1) / 0.75, 0, 1)) ** 2
+    muffled = lp(outside, 700, 2)
+    outside = muffled * (0.25 + 0.75 * (1 - gap)) * np.clip(t / 0.25, 0, 1) * 0.6 + outside * gap ** 1.8
+    hold = np.cos(0.5 * np.pi * np.clip((t - 1.85) / (total - 1.85), 0, 1)) ** 2
+    return inside + 0.45 * outside * hold
+
+
+# Where the flame goes out, in seconds into candle_out (the haptic's beat).
+CANDLE_PUFF = 0.45
+
+
+def candle_out(rng):
+    """A candle guttering and going out: the flame flutters, a small puff takes it, the wick hisses faintly.
+
+    A flame's flutter is air, not a tone: soft low turbulence beating unevenly, quicker and wilder
+    as it gutters (to 0.45 s); the puff is one short breath of low air; the wick's ember hisses
+    for a moment and is gone.
+    """
+    out = silence(0.82)
+    # The flutter: soft turbulence, beating ~11 to 19 times a second, more ragged as it goes.
+    n = n_of(CANDLE_PUFF + 0.03)
+    t = times(n)
+    rate = (11 + 8 * (t / t[-1]) ** 1.5) * (1 + 0.6 * lp(rng.standard_normal(n), 8, 1) * 8)
+    beat = (0.5 + 0.5 * np.cos(TAU * np.cumsum(np.maximum(rate, 5)) / SR)) ** 2
+    lick = 0.2 + 0.8 * beat * (1 + 0.5 * lp(rng.standard_normal(n), 30, 1) * 4)
+    air = rng.standard_normal(n)
+    flutter = (bp(air, 260, 900, 1) + 0.25 * bp(air, 900, 2400, 1)) * lick
+    flutter *= np.clip(t / 0.06, 0, 1) * (0.55 + 0.45 * t / t[-1])
+    place(out, lp(flutter, 2400, 2), 0.0, 0.5)
+    # The puff: a short breath of air, falling as it spends itself.
+    n = n_of(0.2)
+    puff = svf_bandpass(rng.standard_normal(n), np.geomspace(1100, 420, n), 0.8) * env(n, 0.014, 0.045)
+    place(out, puff, CANDLE_PUFF, 1.0)
+    place(out, lp(rng.standard_normal(n), 380, 2) * env(n, 0.02, 0.05), CANDLE_PUFF, 0.5)
+    # The wick: a faint hiss as the ember dies, a tick or two in it.
+    n = n_of(0.3)
+    ember = bp(rng.standard_normal(n), 3800, 8500, 2) * env(n, 0.02, 0.075)
+    ember *= 1 + 0.4 * lp(rng.standard_normal(n), 60, 1) * 3
+    place(out, ember, CANDLE_PUFF + 0.05, 0.1)
+    for at in (0.07, 0.13):
+        tick = hp(rng.standard_normal(n_of(0.0012)), 3000) * np.hanning(n_of(0.0012))
+        place(out, tick, CANDLE_PUFF + at + rng.uniform(-0.01, 0.01), 0.1)
+    out = lp(out, 9000)
+    return room(out, rng, rt60=0.2, wet=0.07)
+
+
 # name: (builder, seed, output file)
 CUES = {
     "press": (press, 11, "press.m4a"),
@@ -801,6 +977,10 @@ CUES = {
     "pencil-rub-3": (lambda rng: pencil_rub(rng, 2), 30, "pencil-rub-3.m4a"),
     "paper-fold": (paper_fold, 31, "paper-fold.m4a"),
     **{f"music-note-{i}": ((lambda rng, i=i: music_note(rng, i)), 32 + i, f"music-note-{i}.m4a") for i in range(6)},
+    "wax-crack": (wax_crack, 38, "wax-crack.m4a"),
+    "string-off": (string_off, 39, "string-off.m4a"),
+    "door-out": (door_out, 40, "door-out.m4a"),
+    "candle-out": (candle_out, 41, "candle-out.m4a"),
 }
 
 

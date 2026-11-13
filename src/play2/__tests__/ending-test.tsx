@@ -20,7 +20,7 @@ jest.mock("@shopify/react-native-skia", () => {
   return { ...base, ...Object.fromEntries(names.map((n) => [n, host(`Skia${n}`)])), vec: (x: number, y: number) => ({ x, y }) };
 });
 
-const mockFeedback = { unlock: jest.fn(), solved: jest.fn(), tick: jest.fn(), stamp: jest.fn(), cloth: jest.fn(), lensUp: jest.fn() };
+const mockFeedback = { unlock: jest.fn(), solved: jest.fn(), tick: jest.fn(), stamp: jest.fn(), candleOut: jest.fn(), doorOut: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
@@ -84,7 +84,7 @@ describe("Ending", () => {
 
 // The moment between the door and the letter (letters/Moments.tsx).
 describe("the moment", () => {
-  it.each([["noir", "lensUp"], ["crime_scene", "stamp"], ["paranormal", "cloth"]] as const)("%s: its own moment, its sound on its beat, before the case is solved's", async (genre, sound) => {
+  it.each([["noir", "doorOut"], ["crime_scene", "stamp"], ["paranormal", "candleOut"]] as const)("%s: its own moment, its sound on its beat, before the case is solved's", async (genre, sound) => {
     jest.useFakeTimers();
     await render(<Ending text="The lock gives." genre={genre} onDone={() => {}} />);
     expect(screen.getByTestId(`v2-ending-moment-${genre}`, { includeHiddenElements: true })).toBeTruthy();

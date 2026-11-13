@@ -44,7 +44,11 @@ export type SoundName =
   | "musicNote2"
   | "musicNote3"
   | "musicNote4"
-  | "musicNote5";
+  | "musicNote5"
+  | "waxCrack"
+  | "stringOff"
+  | "doorOut"
+  | "candleOut";
 
 /** The music box's six teeth, low to high: C5, D5, E5, G5, A5, C6 (C major pentatonic). feedback's musicNote(i) plays the i-th. */
 export const MUSIC_NOTES = ["musicNote0", "musicNote1", "musicNote2", "musicNote3", "musicNote4", "musicNote5"] as const satisfies readonly SoundName[];
@@ -122,6 +126,15 @@ const EFFECTS: Record<SoundName, { source: number | readonly number[]; volume: n
   musicNote3: { source: twice(require("../../assets/audio/music-note-3.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote4: { source: twice(require("../../assets/audio/music-note-4.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote5: { source: twice(require("../../assets/audio/music-note-5.m4a")), volume: MUSIC_NOTE_VOLUME },
+  // A case's envelope opened. Its wax seal cracking in two: a short dry snap and a brittle crumble (0.3 s).
+  waxCrack: { source: require("../../assets/audio/wax-crack.m4a"), volume: 0.5 },
+  // Its waxed string unwound from the two card buttons (three soft whirrs, each ending in a tick), then the flap (0.67 s).
+  stringOff: { source: require("../../assets/audio/string-off.m4a"), volume: 0.4 },
+  // A case's ending. Noir: a heavy door's latch, a low brief creak, and the rainy street coming in, held and
+  // fading (2.4 s). The ending's own moment, so a touch over the rest.
+  doorOut: { source: require("../../assets/audio/door-out.m4a"), volume: 0.6 },
+  // Paranormal: a candle guttering (a soft flutter), the puff that takes it at 450 ms, the wick's faint hiss (0.8 s).
+  candleOut: { source: require("../../assets/audio/candle-out.m4a"), volume: 0.45 },
 };
 
 // Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).

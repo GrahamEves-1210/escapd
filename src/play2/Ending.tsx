@@ -42,6 +42,9 @@ import { MoonReply } from "./letters/Moon";
 import { MOMENT, Moment } from "./letters/Moments";
 import { NoirReply } from "./letters/Noir";
 
+/** How far into the candle's sound its puff comes (ms): src/game/sound.ts, candleOut. */
+const CANDLE_PUFF_MS = 450;
+
 /** The beats, in ms after the room is solved. */
 export const ENDING = {
   /** The close-up's last moment (the door giving) shows under it, then the door's photo fades up. */
@@ -131,9 +134,10 @@ export function Ending({ text, door, genre, roomId, onDone }: {
     if (reducedMotion) light.set(withTiming(1, { duration: d, easing: Easing.in(Easing.quad) }));
     else {
       moment.set(withDelay(lightAt, withTiming(1, { duration: d, easing: Easing.linear })));
-      // The moment's own sound, on its beat: the door sweeping the air, the stamp's thump, the breath that takes the flame.
-      const beat = genre === "crime_scene" ? MOMENT.crime_scene.approach[1] : genre === "paranormal" ? MOMENT.paranormal.gutter[1] - 0.06 : MOMENT.noir.sweep;
-      timers.push(setTimeout(() => (genre === "crime_scene" ? feedback.stamp() : genre === "paranormal" ? feedback.cloth() : feedback.lensUp()), lightAt + d * beat));
+      // The moment's own sound, on its beat: the door's latch as it swings, the stamp's thump, and the candle's
+      // flutter, started so its puff (CANDLE_PUFF_MS into the sound) lands as the flame goes out.
+      const at = genre === "crime_scene" ? d * MOMENT.crime_scene.approach[1] : genre === "paranormal" ? Math.max(0, d * MOMENT.paranormal.gutter[1] - CANDLE_PUFF_MS) : d * MOMENT.noir.sweep;
+      timers.push(setTimeout(() => (genre === "crime_scene" ? feedback.stamp() : genre === "paranormal" ? feedback.candleOut() : feedback.doorOut()), lightAt + at));
     }
     // The screen settles to the room's dark, and the letter comes down into it.
     lines.set(withDelay(reducedMotion ? 150 : lightAt + d + 150 + ENDING.letterAfter, withTiming(1, { duration: 600 })));

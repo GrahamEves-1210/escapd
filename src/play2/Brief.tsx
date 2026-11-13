@@ -275,8 +275,8 @@ export function Brief({ def, roomId, onBegin, photo }: {
     setArrived(true);
     AsyncStorage.setItem(OPENED(roomId), "1").catch(() => {});
     const flap = ((ENVELOPE.frames - 1) * 1000) / ENVELOPE.fps;
-    if (genre === "paranormal") feedback.snap();
-    else if (genre === "crime_scene") feedback.cloth();
+    if (genre === "paranormal") feedback.waxCrack();
+    else if (genre === "crime_scene") feedback.stringOff();
     else feedback.paperFold();
     slid.set(0);
     rise.set(0);

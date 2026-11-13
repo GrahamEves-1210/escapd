@@ -39,6 +39,10 @@ jest.mock("@/game/feedback", () => ({
     pencilRub: jest.fn(),
     paperFold: jest.fn(),
     musicNote: jest.fn(),
+    waxCrack: jest.fn(),
+    stringOff: jest.fn(),
+    doorOut: jest.fn(),
+    candleOut: jest.fn(),
   }),
 }));
 

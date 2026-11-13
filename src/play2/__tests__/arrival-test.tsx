@@ -18,7 +18,7 @@ jest.mock("@shopify/react-native-skia", () => {
 // The cat is its own suite's (its tail runs on a frame callback the test renderer's clock can't carry through a second render).
 jest.mock("../letters/LetterCat", () => ({ LetterCat: () => null, CAT_ASPECT: 1 }));
 
-const mockFeedback = { snap: jest.fn(), cloth: jest.fn(), paperFold: jest.fn(), paper: jest.fn() };
+const mockFeedback = { waxCrack: jest.fn(), stringOff: jest.fn(), paperFold: jest.fn(), paper: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 const def = (mode: "noir" | "crime_scene" | "paranormal") => ({ mode, objective: "Find every piece and walk out through the door." });
@@ -54,7 +54,7 @@ describe("Brief: the arrival", () => {
     expect(screen.getByTestId("brief-context")).toBeTruthy();
     expect(await AsyncStorage.getItem("escapd.v2.brief.opened.room-9")).toBe("1");
     // Its own sound as it opens (the wax, the string, the flap), then the paper's as the letter comes out.
-    expect((mode === "paranormal" ? mockFeedback.snap : mode === "crime_scene" ? mockFeedback.cloth : mockFeedback.paperFold)).toHaveBeenCalledTimes(1);
+    expect((mode === "paranormal" ? mockFeedback.waxCrack : mode === "crime_scene" ? mockFeedback.stringOff : mockFeedback.paperFold)).toHaveBeenCalledTimes(1);
     expect(mockFeedback.paper).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByTestId("v2-brief-begin"));
     await act(() => jest.advanceTimersByTime(400));

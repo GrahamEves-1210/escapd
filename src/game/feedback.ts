@@ -49,6 +49,16 @@
 //   tooth's note; notes ring out over each other. Pass false as the second
 //   argument when the box plays by itself (no touch, so no haptic). An index
 //   outside 0..5 does nothing.
+// - waxCrack: an envelope's wax seal cracked open. Light; a short dry snap and
+//   a brittle crumble.
+// - stringOff: an envelope's waxed string unwound from its buttons. The tick
+//   haptic, and again as the second and third turns come free (240 and
+//   370 ms); soft whirrs and ticks of thread on card, then the flap's paper.
+// - doorOut: the noir ending's door opened onto the rainy street. Medium, on
+//   the latch; the latch, a low brief creak, then rain and the city's hum,
+//   held and fading (2.4 s).
+// - candleOut: the paranormal ending's candle going out. A light tap on the
+//   puff, 450 ms in; a flutter of flame, the puff, the wick's faint hiss.
 // - shutter: the camera taking a photo. A thud and a mechanical shutter.
 // - typewriter: text typing itself out in a game moment. Sound only, no
 //   haptic: a short run of keys.
@@ -58,7 +68,7 @@ import { usePreferences } from "./preferences";
 import { MUSIC_NOTES, playSound, preloadSounds, type SoundName } from "./sound";
 
 /** The beats of the patterns, in ms after the first. The sounds are cut to the same beats. */
-const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170, crease: 160 } as const;
+const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170, crease: 160, string: [240, 370], puff: 450 } as const;
 
 export function useFeedback() {
   const { haptics_enabled, sound_enabled } = usePreferences();
@@ -177,6 +187,23 @@ export function useFeedback() {
         if (!name) return;
         if (touched) tick();
         sound(name);
+      },
+      waxCrack: () => {
+        impact(Haptics.ImpactFeedbackStyle.Light);
+        sound("waxCrack");
+      },
+      stringOff: () => {
+        tick();
+        for (const ms of PATTERN.string) later(ms, tick);
+        sound("stringOff");
+      },
+      doorOut: () => {
+        impact(Haptics.ImpactFeedbackStyle.Medium);
+        sound("doorOut");
+      },
+      candleOut: () => {
+        later(PATTERN.puff, () => impact(Haptics.ImpactFeedbackStyle.Light));
+        sound("candleOut");
       },
     };
   }, [haptics_enabled, sound_enabled]);
