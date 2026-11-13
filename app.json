@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#090807",
+    "backgroundColor": "#130D18",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.escapd.app"
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.escapd.app",
       "adaptiveIcon": {
-        "backgroundColor": "#090807",
+        "backgroundColor": "#33213D",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -29,7 +29,7 @@
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 120,
-          "backgroundColor": "#090807"
+          "backgroundColor": "#130D18"
         }
       ],
       "expo-image",
