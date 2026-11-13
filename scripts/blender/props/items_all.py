@@ -1,5 +1,5 @@
 # The held items' icons, all of them: renders each (items_paper.py, items_metal.py,
-# items_things.py) and writes assets/items/<name>.png, @2x, @3x (src/play2/icons/art.ts
+# items_things.py, items_gadgets.py) and writes assets/items/<name>.png, @2x, @3x (src/play2/icons/art.ts
 # requires them by these names).
 #
 #   <bpy python> scripts/blender/props/items_all.py            # everything
@@ -9,6 +9,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import items_gadgets as gadgets  # noqa: E402
 import items_metal as metal  # noqa: E402
 import items_paper as paper  # noqa: E402
 import items_things as things  # noqa: E402
@@ -22,6 +23,8 @@ ITEMS = {
     "printed": paper.printed, "fold-in": paper.fold_in,
     "book": things.book, "box": things.box, "bottle": things.bottle, "matchbook": things.matchbook, "pencil": things.pencil,
     "torch": things.torch, "uv-light": things.uv_light, "uv-light-on": things.uv_light_on,
+    # The gadgets' things (items_gadgets.py): what a key was pressed into, the balance and a weight, a music box, a ribbon.
+    **gadgets.ITEMS,
 }
 
 if __name__ == "__main__":

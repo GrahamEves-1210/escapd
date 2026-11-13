@@ -32,11 +32,11 @@ jest.mock("@/components/noir/TreatedImage", () => {
       createElement(View, { testID: props.testID, photo: { source: props.source, genre: props.genre, cacheKey: props.cacheKey, maxEdge: props.maxEdge } }),
   };
 });
-// Drawing the covers is src/screens/hub/art's business: here it records which mode's cover shows.
-jest.mock("@/screens/hub/art/ModeCover", () => {
+// The covers are src/screens/hub/art's business (the home cards' dioramas): here it records which mode's cover shows.
+jest.mock("@/screens/hub/art/ModeScene", () => {
   const { createElement } = jest.requireActual("react");
   const { View } = jest.requireActual("react-native");
-  return { ModeCover: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre } }) };
+  return { ModeScene: (props: Record<string, unknown>) => createElement(View, { testID: props.testID, cover: { genre: props.genre, tilt: props.tilt } }) };
 });
 const mockFeedback = { tick: jest.fn(), tap: jest.fn(), press: jest.fn(), thud: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
@@ -91,7 +91,8 @@ describe("A mode's intro: its pieces", () => {
     });
     expect(styleOf(screen.getByText("Find the killer"))).toMatchObject({ ...L.type.tagline, color: theme.inkMuted });
     // The banner: the mode's drawn cover, decorative; no photo anywhere.
-    expect(screen.getByTestId("mode-banner-art", hidden).props.cover).toEqual({ genre: "crime_scene" });
+    // (the same diorama as the mode's card on home, held still)
+    expect(screen.getByTestId("mode-banner-art", hidden).props.cover).toEqual({ genre: "crime_scene", tilt: undefined });
     expect(screen.getByTestId("mode-banner-art", hidden).props.photo).toBeUndefined();
     expect(screen.container.queryAll((node) => (node.props as { photo?: unknown }).photo !== undefined)).toHaveLength(0);
     expect(screen.getByTestId("mode-banner", hidden).props.accessibilityElementsHidden).toBe(true);

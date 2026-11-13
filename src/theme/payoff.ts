@@ -52,6 +52,9 @@ export const LIGHT = {
   hangShade: "0px 6px 14px rgba(0, 0, 0, 0.45)",
 } as const;
 
+/** The way out's moments (src/play2/letters/Moments.tsx): a candle flame's own light (the same in every mode), and the dark that grounds and shadows are mixed toward. */
+export const MOMENT_LIGHT = { candle: "#FFC680", dark: "#000000" } as const;
+
 /** The build wait's prints: their paper and the milky blank they develop from. */
 export const DEVELOPING = { paper: "#FBF6EE", blank: "#E9E0D3" } as const;
 

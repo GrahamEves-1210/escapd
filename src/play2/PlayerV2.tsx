@@ -580,11 +580,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
       uvOff();
       return;
     }
-    // A fold-in page is worked by hand: a tap opens it on its own sheet, to be folded.
-    if (item?.controls?.some((c) => c.id === "folded")) {
+    // A thing worked by hand (the fold-in page, the music box, the typewriter ribbon: a held item whose one
+    // control is a yes/no): a tap opens it on its own sheet, to be folded, cranked, pulled.
+    const byHand = item?.controls?.length === 1 && item.controls[0].domain.kind === "bool" ? item.controls[0].id : null;
+    if (byHand) {
       feedback.tick();
       setShown(null);
-      void act({ type: "set_control", target: id, control: "folded", value: true }).then((result) => {
+      void act({ type: "set_control", target: id, control: byHand, value: true }).then((result) => {
         setReveal(revealOf(def, result));
         take(result, "room", true);
       });

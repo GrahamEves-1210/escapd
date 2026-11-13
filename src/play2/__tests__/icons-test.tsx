@@ -62,6 +62,7 @@ describe("item icons", () => {
     expect(icon("Brass key", { kind: "key" })).toBe(ItemIcons.key);
     expect(icon("Christening spoon", { kind: "taken" })).toBe(ItemIcons.box);
     expect(icon("Wax-sealed letter")).toBe(ItemIcons.letter);
+    expect(icon("Balance sheet")).toBe(ItemIcons.note);
   });
 
   it("has a picture for every icon in the set", async () => {

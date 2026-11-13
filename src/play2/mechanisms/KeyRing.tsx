@@ -102,6 +102,9 @@ export function KeyRing({ target, state, onSubmit, onChange, busy, cooldown, wid
   const shake = useSharedValue(0);
   const going = useSharedValue(false);
   const live = useSharedValue(false);
+  // Where the held key's tip is (the bench's points).
+  const tipX = useSharedValue(0);
+  const tipY = useSharedValue(0);
   const enabled = useSharedValue(!busy && !open);
   const reduced = useSharedValue(reducedMotion);
   const count = useSharedValue(n);
@@ -117,8 +120,8 @@ export function KeyRing({ target, state, onSubmit, onChange, busy, cooldown, wid
 
   /** Back onto its nail. */
   const hangUp = useCallback((after = 0) => {
-    gx.set(withDelay(after, withSpring(0, spring)));
-    gy.set(withDelay(after, withSpring(0, spring)));
+    gx.set(withDelay(after, reducedMotion ? withTiming(0, ease(0)) : withSpring(0, spring)));
+    gy.set(withDelay(after, reducedMotion ? withTiming(0, ease(0)) : withSpring(0, spring)));
     lift.set(withDelay(after, withTiming(0, ease(260))));
     going.set(false);
     setTimeout(() => {
@@ -227,8 +230,10 @@ export function KeyRing({ target, state, onSubmit, onChange, busy, cooldown, wid
       const ty = NAIL.y + y + KEY_REACH * Math.sin(a);
       const tx = NAIL.x + x + KEY_REACH * Math.cos(a);
       const beside = ty > BODY.y - 6 && ty < BODY.y + BODY.h + 6;
+      tipX.set(tx);
+      tipY.set(ty);
       if (beside && tx < MOUTH.x + 3) {
-        if (l >= 0.9 && Math.abs(ty - MOUTH.y) < 15) {
+        if (l >= 0.9 && Math.abs(ty - MOUTH.y) < 18) {
           going.set(true);
           scheduleOnRN(tryKeyAt, i);
           return;
@@ -246,6 +251,12 @@ export function KeyRing({ target, state, onSubmit, onChange, busy, cooldown, wid
       live.set(false);
       scheduleOnRN(touched);
       if (going.get() || pick.get() < 0) return;
+      // Let go with its tip at the keyway (a quick flick can pass the mouth between two touches): in it goes.
+      if (lift.get() >= 0.9 && Math.abs(tipX.get() - MOUTH.x) < 26 && Math.abs(tipY.get() - MOUTH.y) < 26) {
+        going.set(true);
+        scheduleOnRN(tryKeyAt, pick.get());
+        return;
+      }
       // Let go short of the lock: back onto the nail.
       const back = { mass: 0.7, damping: 14, stiffness: 190, reduceMotion: ReduceMotion.Never };
       gx.set(reduced.get() ? 0 : withSpring(0, back));

@@ -8,6 +8,7 @@
 import { memo } from "react";
 import { Image as NativeImage, Platform, StyleSheet, View, type DimensionValue, type ImageStyle, type StyleProp } from "react-native";
 import { Image } from "expo-image";
+import { GADGET } from "./gadgets/sprites";
 import { hidden } from "./materials";
 
 export const ART = {
@@ -97,7 +98,7 @@ export function warmSprites() {
   // On a phone only: a browser keeps its own cache, and react-native-web has no asset registry to ask.
   if (Platform.OS === "web" || typeof NativeImage.resolveAssetSource !== "function") return;
   try {
-    const uris = Object.values(ART)
+    const uris = Object.values({ ...ART, ...GADGET })
       .flatMap((part) => (typeof part === "number" ? [part] : Object.values(part)))
       .map((part) => NativeImage.resolveAssetSource(part)?.uri)
       .filter((uri): uri is string => typeof uri === "string" && uri.length > 0);

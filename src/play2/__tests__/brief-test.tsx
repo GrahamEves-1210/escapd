@@ -20,6 +20,8 @@ jest.mock("@shopify/react-native-skia", () => {
   return { ...base, ...Object.fromEntries(names.map((n) => [n, host(`Skia${n}`)])), vec: (x: number, y: number) => ({ x, y }) };
 });
 
+jest.mock("@/game/feedback", () => ({ useFeedback: () => ({}) }));
+
 const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
 
 const OBJECTIVE = "Somebody locked you in and left the combination scattered in pieces. Find every piece and walk out through the door.";

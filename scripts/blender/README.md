@@ -167,5 +167,8 @@ export.export(src, "assets/props/thing.png", sizes=(88, 88))
 | `mech_*.py` (+ `mech_common.py`) | close-up mechanism parts, in layers | `assets/mech/` |
 | `reveal_*.py` (+ `reveal_common.py`) | lamp, mirror, lens, pencil, notepad binding, paperweight | `assets/reveal/` |
 | `home_set.py`, `home_mug.py`, `home_parts.py` | home's set in depth layers, the mug and its tumble, the flame | `assets/home/` |
+| `gadget_safe.py`, `gadget_keys.py`, `gadget_phone.py`, `gadget_balance.py` (+ `gadget_common.py`) | the object puzzles' parts, in layers: the safe's door, dial, lever and tell-tale; the key (four renders, one per cut depth: any bitting is put together from slices of them) and the soap it is pressed into; the telephone's body, finger wheel, stop and handset; the balance's stand, beam, pan and weight. A part the app turns is lit square on, with the studio's light as a still layer over it (`gadget_common.light_layer`) | `assets/gadgets/` |
+| `items_gadgets.py` (rendered by `items_all.py`) | the gadgets' held things: soap, wax, balance, weight, music box, ribbon | `assets/items/` |
+| `darkroom_set.py`, `darkroom_parts.py` (+ `darkroom_common.py`) | the build wait's darkroom: the bench under a red safelight (one camera, no turn, so a photo lies flat in the tray with one transform), the tray on its own to rock, twelve computed frames of light on the liquid; the drying line, pegs (one per mode, handles dipped in its accent) and the sheets of paper with a window for the player's photo. `PX=1 SS=1 SAMPLES=32` for a quick look | `assets/develop/` |
 
 The charms scripts also need `shapely` in the bpy env (`pip install shapely`).

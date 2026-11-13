@@ -1,7 +1,7 @@
 // A mode's own pieces (MODES_PROMPT.md Part 2), the reference look's parts
 // in the mode's palette, for its first-time intro: the camera's square back
 // button, the fixed header that backs it once the content scrolls under it,
-// the banner of the mode's drawn cover, and the fade above the pinned foot.
+// the banner of the mode's cover (its home card's diorama), and the fade above the pinned foot.
 // The foot's button is the photo guide's pill (ModePill, the mode's accent).
 // Every colour is the mode's theme (modeThemes), every size ref.layout.mode or
 // a shared ref token.
@@ -15,7 +15,7 @@ import { FocusRing, SquashPressable, useFocusRing } from "@/components/noir";
 import { useFeedback } from "@/game/feedback";
 import type { Genre } from "@/lib/puzzle-types";
 import { ref, type ModeTheme } from "@/theme/tokens";
-import { ModeCover } from "@/screens/hub/art/ModeCover";
+import { ModeScene } from "@/screens/hub/art/ModeScene";
 import { FLEURON, SPARK_PATH } from "@/screens/hub/art/nook";
 
 const L = ref.layout.mode;
@@ -118,9 +118,10 @@ export function ModeHeader({
 }
 
 /**
- * The top of a mode's screens: its drawn cover (the same picture as its home
- * card) full bleed from the screen's top to `height`, fading into
- * the ground at its foot. Decorative: hidden from screen readers.
+ * The top of a mode's screens: its cover, the same rendered diorama as its
+ * home card (hub/art/ModeScene, still here: no tilt), full bleed from the
+ * screen's top to `height`, fading into the ground at its foot. Decorative:
+ * hidden from screen readers.
  */
 export function ModeBanner({ genre, theme, height }: { genre: Genre; theme: ModeTheme; height: number }) {
   const id = `banner${useId().replace(/[^A-Za-z0-9]/g, "")}`;
@@ -132,7 +133,7 @@ export function ModeBanner({ genre, theme, height }: { genre: Genre; theme: Mode
       importantForAccessibility="no-hide-descendants"
       testID="mode-banner"
     >
-      <ModeCover genre={genre} style={StyleSheet.absoluteFill} testID="mode-banner-art" />
+      <ModeScene genre={genre} style={StyleSheet.absoluteFill} testID="mode-banner-art" />
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} viewBox="0 0 1 1" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id={id} x1={0} y1={0} x2={0} y2={1}>

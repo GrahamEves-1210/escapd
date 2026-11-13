@@ -37,12 +37,12 @@ export function itemIcon(item: Pick<ItemDef, "name" | "kind" | "archetype"> & { 
   if (item.archetype === "Decoder" || item.kind === "decoder" || /wheel|cipher|decoder|dial/.test(n)) return I.wheel;
   // The gadgets' things, by what they are, before a looser word catches them (a music box is never the box, a
   // bar of soap never a note): the balance and its weights, what a key was pressed into, a music box, a ribbon.
-  if (item.archetype === "Balance" || /\bbalance\b|\bscales?\b/.test(n)) return I.balance;
+  if (item.archetype === "Balance" || /pocket balance|\bscales\b/.test(n)) return I.balance;
   if (/\bweight\b/.test(n)) return I.weight;
   if (/\bsoap\b/.test(n)) return I.soap;
-  if (/\bwax\b/.test(n)) return I.wax;
+  if (/candle ?wax|\bwax$/.test(n)) return I.wax;
   if (/music ?box/.test(n)) return I.musicBox;
-  if (/ribbon/.test(n)) return I.ribbon;
+  if (/typewriter|ink ribbon/.test(n)) return I.ribbon;
   if (item.kind === "key" || /\bkey\b/.test(n)) return I.key;
   // A torn half: the right one is the left one mirrored, so the two look as if they'd fit.
   if (item.kind === "half" || /\((left|right)\)|\bhalf\b/.test(n)) return /right/.test(n) ? I.tornRight : I.tornLeft;

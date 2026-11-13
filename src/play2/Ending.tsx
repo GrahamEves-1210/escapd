@@ -1,13 +1,16 @@
 // The way out (gameplay v2 §2 pacing, "Payoff"): every room ends at its real
 // door. First a beat for the door itself (the close-up's last moment shows
-// under it, then the door's photo comes up and the view pushes in), then
-// light floods out of it and fills the screen in the mode's glow (candle,
-// desk lamp, spirit mint: theme.glow), settling to a warm page of that light,
-// and the ending comes up on it as the last page of her mystery novel
-// (docs/ART_DIRECTION.md, the mystery-book core). "Close the case" goes on to
-// case closed.
+// under it, then the door's photo comes up and the view pushes in), then the
+// mode's moment (letters/Moments.tsx, rendered parts): noir's door swings
+// open onto a wet street at night and she walks out into it; crime scene's
+// file takes a rubber stamp, CASE CLOSED; paranormal's candle gutters and
+// goes out, a wisp of smoke off its wick. Then the ending comes up as the
+// last of her correspondence (docs/ART_DIRECTION.md, the mystery-book core).
+// "Close the case" goes on to case closed. With reduced motion there is no
+// moment: the mode's light (candle, desk lamp, spirit mint: theme.glow)
+// comes up out of the door and the letter is there.
 //
-// The letter: once the light has filled the screen it settles, as eyes do,
+// The letter: once the moment is over the screen settles, as eyes do,
 // to the room's own dark with the doorway's glow still pooled in it, and the
 // reply to her brief lies there, the last of the same correspondence
 // (src/play2/letters: noir's hotel notecard, crime scene's closing sheet with
@@ -36,6 +39,7 @@ import { SERIES_LINE, caseLabel } from "@/render/victory";
 import { LIGHT, alpha, mix } from "@/theme/payoff";
 import { CrimeReply } from "./letters/Crime";
 import { MoonReply } from "./letters/Moon";
+import { MOMENT, Moment } from "./letters/Moments";
 import { NoirReply } from "./letters/Noir";
 
 /** The beats, in ms after the room is solved. */
@@ -43,13 +47,14 @@ export const ENDING = {
   /** The close-up's last moment (the door giving) shows under it, then the door's photo fades up. */
   appear: 450,
   fade: 350,
-  /** The light starts out of the door, and fills the screen over `light`. */
+  /** The mode's moment starts (the door swings, the stamp comes down, the candle gutters), and runs for `light`. */
   lightAt: 1100,
-  light: 1400,
-  /** The view pushes in on the door until the light is full. */
+  light: 1600,
+  /** The view pushes in on the door until the moment is over. */
   push: 1.12,
-  /** After the light is full, it settles to the room's dark round the letter over this long. */
+  /** After the moment, the screen settles to the room's dark round the letter over this long; the letter comes down `letterAfter` into it. */
   settle: 900,
+  letterAfter: 250,
   /** Reduced motion: no push, no hold; the light simply comes up. */
   reducedLight: 200,
 } as const;
@@ -110,6 +115,7 @@ export function Ending({ text, door, genre, roomId, onDone }: {
   const shown = useSharedValue(reducedMotion ? 1 : 0);
   const push = useSharedValue(1);
   const light = useSharedValue(0);
+  const moment = useSharedValue(0);
   const settle = useSharedValue(0);
   const lines = useSharedValue(0);
 
@@ -121,13 +127,19 @@ export function Ending({ text, door, genre, roomId, onDone }: {
       shown.set(withDelay(ENDING.appear, withTiming(1, { duration: ENDING.fade })));
       push.set(withDelay(ENDING.appear, withTiming(ENDING.push, { duration: lightAt + d - ENDING.appear, easing: Easing.inOut(Easing.quad) })));
     }
-    light.set(withDelay(lightAt, withTiming(1, { duration: d, easing: Easing.in(Easing.quad) })));
-    // The letter comes down into the light, then the light settles round it.
-    lines.set(withDelay(reducedMotion ? 150 : lightAt + d * 0.7, withTiming(1, { duration: 600 })));
+    const timers = [setTimeout(() => feedback.solved(), lightAt + d)];
+    if (reducedMotion) light.set(withTiming(1, { duration: d, easing: Easing.in(Easing.quad) }));
+    else {
+      moment.set(withDelay(lightAt, withTiming(1, { duration: d, easing: Easing.linear })));
+      // The moment's own sound, on its beat: the door sweeping the air, the stamp's thump, the breath that takes the flame.
+      const beat = genre === "crime_scene" ? MOMENT.crime_scene.approach[1] : genre === "paranormal" ? MOMENT.paranormal.gutter[1] - 0.06 : MOMENT.noir.sweep;
+      timers.push(setTimeout(() => (genre === "crime_scene" ? feedback.stamp() : genre === "paranormal" ? feedback.cloth() : feedback.lensUp()), lightAt + d * beat));
+    }
+    // The screen settles to the room's dark, and the letter comes down into it.
+    lines.set(withDelay(reducedMotion ? 150 : lightAt + d + 150 + ENDING.letterAfter, withTiming(1, { duration: 600 })));
     settle.set(withDelay(reducedMotion ? 150 : lightAt + d + 150, withTiming(1, { duration: reducedMotion ? motion.reducedFade : ENDING.settle, easing: Easing.inOut(Easing.quad) })));
-    const t = setTimeout(() => feedback.solved(), lightAt + d);
-    return () => clearTimeout(t);
-  }, [feedback, shown, push, light, settle, lines, reducedMotion]);
+    return () => timers.forEach(clearTimeout);
+  }, [feedback, genre, shown, push, light, moment, settle, lines, reducedMotion]);
 
   // The door's close-up fills the screen; the light spreads from its middle.
   const box = door?.box;
@@ -154,13 +166,19 @@ export function Ending({ text, door, genre, roomId, onDone }: {
           <TreatedImage source={door.source} cacheKey={door.cacheKey} genre={null} contentFit="fill" accessible={false} style={{ position: "absolute", width: imgW, height: imgH, left, top }} />
         </Animated.View>
       ) : null}
-      <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Circle cx={width / 2} cy={height / 2} r={r}>
-          <RadialGradient c={vec(width / 2, height / 2)} r={r} colors={look.glow} positions={[0, 0.5, 1]} />
-        </Circle>
-      </Canvas>
-      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.wash }, wash]} pointerEvents="none" />
-      {/* The light settles to the room's dark, the doorway's glow pooled where the letter lies. */}
+      {reducedMotion ? (
+        <>
+          <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Circle cx={width / 2} cy={height / 2} r={r}>
+              <RadialGradient c={vec(width / 2, height / 2)} r={r} colors={look.glow} positions={[0, 0.5, 1]} />
+            </Circle>
+          </Canvas>
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.wash }, wash]} pointerEvents="none" />
+        </>
+      ) : (
+        <Moment genre={genre} m={moment} width={width} height={height} ms={ENDING.light} />
+      )}
+      {/* It settles to the room's dark, the doorway's glow pooled where the letter lies. */}
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: look.desk }, settleStyle]} pointerEvents="none" testID="v2-ending-settle">
         <Svg width="100%" height="100%">
           <Defs>
@@ -190,7 +208,7 @@ export function Ending({ text, door, genre, roomId, onDone }: {
               seed={roomId ?? genre}
               door={door ? { source: door.source, cacheKey: door.cacheKey } : undefined}
               catLabel="The black cat, sitting on the letter"
-              catDelay={reducedMotion ? 0 : ENDING.lightAt + ENDING.light * 0.8 + 300}
+              catDelay={reducedMotion ? 0 : ENDING.lightAt + ENDING.light + ENDING.letterAfter + 700}
             />
           </Animated.View>
         </ScrollView>

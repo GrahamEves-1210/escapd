@@ -10,6 +10,7 @@ import { modeThemes, ref } from "@/theme/tokens";
 import { LETTER_FONT } from "@/theme/payoff";
 import { caseLabel } from "@/render/victory";
 import { ENDING, Ending, endingHeadline, endingLight, runningHead } from "../Ending";
+import { MOMENT } from "../letters/Moments";
 
 jest.mock("@shopify/react-native-skia", () => {
   const base = jest.requireActual("../../../jest/skia-mock");
@@ -19,7 +20,7 @@ jest.mock("@shopify/react-native-skia", () => {
   return { ...base, ...Object.fromEntries(names.map((n) => [n, host(`Skia${n}`)])), vec: (x: number, y: number) => ({ x, y }) };
 });
 
-const mockFeedback = { unlock: jest.fn(), solved: jest.fn(), tick: jest.fn() };
+const mockFeedback = { unlock: jest.fn(), solved: jest.fn(), tick: jest.fn(), stamp: jest.fn(), cloth: jest.fn(), lensUp: jest.fn() };
 jest.mock("@/game/feedback", () => ({ useFeedback: () => mockFeedback }));
 
 const flat = (node: { props: Record<string, unknown> }) => StyleSheet.flatten(node.props.style as Parameters<typeof StyleSheet.flatten>[0]) ?? {};
@@ -78,6 +79,29 @@ describe("Ending", () => {
     }
     await render(<ThemeProvider reducedMotion><Ending text="" genre="paranormal" onDone={() => {}} /></ThemeProvider>);
     expect(flat(screen.getByTestId("v2-ending-words")).paddingBottom).toBeGreaterThanOrEqual(ref.space.lg);
+  });
+});
+
+// The moment between the door and the letter (letters/Moments.tsx).
+describe("the moment", () => {
+  it.each([["noir", "lensUp"], ["crime_scene", "stamp"], ["paranormal", "cloth"]] as const)("%s: its own moment, its sound on its beat, before the case is solved's", async (genre, sound) => {
+    jest.useFakeTimers();
+    await render(<Ending text="The lock gives." genre={genre} onDone={() => {}} />);
+    expect(screen.getByTestId(`v2-ending-moment-${genre}`, { includeHiddenElements: true })).toBeTruthy();
+    await act(() => jest.advanceTimersByTime(ENDING.lightAt));
+    expect(mockFeedback[sound]).not.toHaveBeenCalled();
+    await act(() => jest.advanceTimersByTime(ENDING.light - 10));
+    expect(mockFeedback[sound]).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.solved).not.toHaveBeenCalled();
+    // The letter waits for it: nothing of the reply shows until the moment is over.
+    expect(screen.getByTestId("v2-ending-settle")).toHaveAnimatedStyle({ opacity: 0 });
+    for (const beat of Object.values({ ...MOMENT.noir, ...MOMENT.crime_scene, ...MOMENT.paranormal }).flat()) if (typeof beat === "number" && beat <= 1) expect(beat).toBeGreaterThanOrEqual(0);
+  });
+
+  it("is left out with reduced motion: the light comes up and the letter is there", async () => {
+    await render(<ThemeProvider reducedMotion><Ending text="The lock gives." genre="crime_scene" onDone={() => {}} /></ThemeProvider>);
+    expect(screen.queryByTestId("v2-ending-moment-crime_scene", { includeHiddenElements: true })).toBeNull();
+    expect(mockFeedback.stamp).not.toHaveBeenCalled();
   });
 });
 
