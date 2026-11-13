@@ -90,7 +90,7 @@ interface Box {
   width: number;
 }
 
-export function Board({ cards, strings, fresh, palette: p, hand, reduced }: {
+export function Board({ cards, strings, fresh, palette: p, hand, reduced, startAt = 0 }: {
   cards: CardLike[];
   strings: CaseString[];
   /** How many of the last cards are new since she last looked. */
@@ -98,11 +98,13 @@ export function Board({ cards, strings, fresh, palette: p, hand, reduced }: {
   palette: JournalPalette;
   hand: HandType;
   reduced: boolean;
+  /** How long before anything moves (ms): the book is still opening, or the leaf still turning. */
+  startAt?: number;
 }) {
   const feedback = useFeedback();
   const [boxes, setBoxes] = useState<Record<string, Box>>({});
   const firstNew = cards.length - Math.min(fresh, cards.length);
-  const dropDelay = (i: number) => DROP_START + (i - firstNew) * DROP_STAGGER;
+  const dropDelay = (i: number) => startAt + DROP_START + (i - firstNew) * DROP_STAGGER;
 
   // The side (and lead) each card is pinned on, from the strings it ties to.
   const pins = useMemo(() => {
@@ -114,15 +116,15 @@ export function Board({ cards, strings, fresh, palette: p, hand, reduced }: {
     return out;
   }, [strings]);
 
-  const landedBy = DROP_START + Math.max(0, cards.length - firstNew - 1) * DROP_STAGGER + DROP_LAND;
-  const twangAt = (k: number) => (cards.length > firstNew ? landedBy : 0) + TWANG_START + k * 240;
+  const landedBy = startAt + DROP_START + Math.max(0, cards.length - firstNew - 1) * DROP_STAGGER + DROP_LAND;
+  const twangAt = (k: number) => (cards.length > firstNew ? landedBy : startAt) + TWANG_START + k * 240;
 
   // A rustle of paper as each new card lands (the first few), a twang as the first string pulls taut.
   const twangs = strings.filter((s) => s.twang).length;
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     const landing = Math.min(3, cards.length - firstNew);
-    for (let k = 0; k < landing; k++) timers.push(setTimeout(() => feedback.paper(), reduced ? 120 : DROP_START + k * DROP_STAGGER + DROP_LAND * 0.55));
+    for (let k = 0; k < landing; k++) timers.push(setTimeout(() => feedback.paper(), reduced ? 120 : startAt + DROP_START + k * DROP_STAGGER + DROP_LAND * 0.55));
     if (twangs && !reduced) timers.push(setTimeout(() => feedback.detent(), twangAt(0)));
     return () => timers.forEach(clearTimeout);
     // Once, as the casebook opens.
