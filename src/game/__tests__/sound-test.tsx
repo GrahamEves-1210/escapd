@@ -1,19 +1,13 @@
-import { act, renderHook } from "@testing-library/react-native";
-import { AppState } from "react-native";
+import { renderHook } from "@testing-library/react-native";
 import * as Haptics from "expo-haptics";
 import { useFeedback } from "../feedback";
-import { setMode } from "../mode";
-import { ROOM_TONE_FADE, resetSoundsForTests } from "../sound";
-import { useRoomTone } from "../useRoomTone";
+import { resetSoundsForTests } from "../sound";
 
 // The real cues: setup.js replaces feedback with spies for everyone else.
 jest.unmock("@/game/feedback");
 
 const mockPrefs = { sound_enabled: true, haptics_enabled: true };
 jest.mock("@/game/preferences", () => ({ usePreferences: () => mockPrefs }));
-
-let mockFocused = true;
-jest.mock("expo-router", () => ({ useIsFocused: () => mockFocused }));
 
 jest.mock("expo-haptics", () => ({
   selectionAsync: jest.fn(() => Promise.resolve()),
@@ -34,19 +28,11 @@ const audio = require("expo-audio") as {
 
 // Jest turns every asset into the same number; these get their own names so a
 // test can tell the players apart.
+jest.mock("../../../assets/audio/paper.m4a", () => "paper.m4a");
 jest.mock("../../../assets/audio/unlock.m4a", () => "unlock.m4a");
-jest.mock("../../../assets/audio/shutter.m4a", () => "shutter.m4a");
-jest.mock("../../../assets/audio/typewriter.m4a", () => "typewriter.m4a");
+jest.mock("../../../assets/audio/stamp.m4a", () => "stamp.m4a");
 jest.mock("../../../assets/audio/drawer.m4a", () => "drawer.m4a");
-jest.mock("../../../assets/audio/detent.m4a", () => "detent.m4a");
-jest.mock("../../../assets/audio/purr.m4a", () => "purr.m4a");
-jest.mock("../../../assets/audio/mug-break.m4a", () => "mug-break.m4a");
-jest.mock("../../../assets/audio/pencil-rub-1.m4a", () => "pencil-rub-1.m4a");
-jest.mock("../../../assets/audio/pencil-rub-2.m4a", () => "pencil-rub-2.m4a");
-jest.mock("../../../assets/audio/pencil-rub-3.m4a", () => "pencil-rub-3.m4a");
-jest.mock("../../../assets/audio/paper-fold.m4a", () => "paper-fold.m4a");
-jest.mock("../../../assets/audio/wax-crack.m4a", () => "wax-crack.m4a");
-jest.mock("../../../assets/audio/string-off.m4a", () => "string-off.m4a");
+jest.mock("../../../assets/audio/shutter.m4a", () => "shutter.m4a");
 jest.mock("../../../assets/audio/door-out.m4a", () => "door-out.m4a");
 jest.mock("../../../assets/audio/candle-out.m4a", () => "candle-out.m4a");
 jest.mock("../../../assets/audio/music-note-0.m4a", () => "music-note-0.m4a");
@@ -55,30 +41,22 @@ jest.mock("../../../assets/audio/music-note-2.m4a", () => "music-note-2.m4a");
 jest.mock("../../../assets/audio/music-note-3.m4a", () => "music-note-3.m4a");
 jest.mock("../../../assets/audio/music-note-4.m4a", () => "music-note-4.m4a");
 jest.mock("../../../assets/audio/music-note-5.m4a", () => "music-note-5.m4a");
-jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
-jest.mock("../../../assets/audio/room-paranormal.m4a", () => "room-paranormal.m4a");
 const SOURCE = {
+  paper: "paper.m4a",
   unlock: "unlock.m4a",
-  shutter: "shutter.m4a",
-  typewriter: "typewriter.m4a",
+  stamp: "stamp.m4a",
   drawer: "drawer.m4a",
-  detent: "detent.m4a",
-  purr: "purr.m4a",
-  mugBreak: "mug-break.m4a",
-  paperFold: "paper-fold.m4a",
-  waxCrack: "wax-crack.m4a",
-  stringOff: "string-off.m4a",
+  shutter: "shutter.m4a",
   doorOut: "door-out.m4a",
   candleOut: "candle-out.m4a",
-  noir: "room-noir.m4a",
-  paranormal: "room-paranormal.m4a",
-};
+} as const;
 
-// Every cue with a sound (tick, tap and the outcomes are silent).
-const INTERACTION_CUES = [
-  "press", "thud", "paper", "pickup", "wrongCode", "unlock", "stamp", "solved", "shutter", "typewriter",
-  "drawer", "cloth", "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak", "pencilRub", "paperFold",
-  "waxCrack", "stringOff", "doorOut", "candleOut",
+// The few cues with a sound: something physical in the world that the player earned.
+const SOUNDING = ["paper", "unlock", "stamp", "drawer", "shutter", "doorOut", "candleOut"] as const;
+// Everything else is felt, not heard: buttons, taps, selections, outcomes, the letter, the cat, the tools.
+const SILENT = [
+  "tick", "tap", "press", "thud", "success", "warning", "error", "pickup", "wrongCode", "solved", "typewriter", "cloth",
+  "snap", "detent", "uvSwitch", "lensUp", "lensDown", "purr", "mugBreak", "pencilRub", "paperFold", "waxCrack", "stringOff",
 ] as const;
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
@@ -95,15 +73,13 @@ beforeEach(() => {
   audio.__reset();
   mockPrefs.sound_enabled = true;
   mockPrefs.haptics_enabled = true;
-  mockFocused = true;
-  setMode(null);
 });
 
 afterEach(() => {
   jest.useRealTimers();
 });
 
-describe("cues with sound", () => {
+describe("cues", () => {
   it("sets the session to respect the silent switch and mix with the player's own audio", async () => {
     await renderHook(() => useFeedback());
     expect(audio.setAudioModeAsync).toHaveBeenCalledWith(
@@ -111,10 +87,16 @@ describe("cues with sound", () => {
     );
   });
 
+  it("loading the effects plays nothing: no screen sounds by opening", async () => {
+    await renderHook(() => useFeedback());
+    jest.runAllTimers();
+    expect(audio.createAudioPlayer.mock.calls.length).toBeGreaterThan(5);
+    expect(played()).toEqual([]);
+  });
+
   it("preloads the effects once, then a cue plays its own sound from the start, with its haptic", async () => {
     const { result } = await renderHook(() => useFeedback());
     const loaded = audio.createAudioPlayer.mock.calls.length;
-    expect(loaded).toBeGreaterThan(5);
     result.current.unlock();
     const unlock = playerFor(SOURCE.unlock)!;
     expect(unlock.seekTo).toHaveBeenCalledWith(0);
@@ -127,31 +109,73 @@ describe("cues with sound", () => {
     expect(audio.createAudioPlayer).toHaveBeenCalledTimes(loaded);
   });
 
+  it("each sounding cue plays one sound of its own", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    for (const cue of SOUNDING) {
+      result.current[cue]();
+      expect(played()).toEqual([playerFor(SOURCE[cue])]);
+      playerFor(SOURCE[cue])!.play.mockClear();
+    }
+  });
+
+  it("every other cue is silent, and still felt (all but the sound-only ones, which are now nothing)", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    for (const cue of SILENT) {
+      const before = haptics();
+      result.current[cue]();
+      jest.runAllTimers();
+      expect(played()).toEqual([]);
+      if (cue === "typewriter" || cue === "mugBreak" || cue === "pencilRub") expect(haptics()).toBe(before);
+      else expect(haptics()).toBeGreaterThan(before);
+    }
+  });
+
+  it("a sounding cue asked to be quiet keeps its haptic and makes no sound", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    result.current.paper(false);
+    result.current.stamp(false);
+    result.current.unlock(false);
+    jest.runAllTimers();
+    expect(played()).toEqual([]);
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("heavy");
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("medium");
+  });
+
   it("plays nothing when sound is off, and the haptics are untouched", async () => {
     mockPrefs.sound_enabled = false;
     const { result } = await renderHook(() => useFeedback());
-    for (const cue of INTERACTION_CUES) result.current[cue]();
+    for (const cue of SOUNDING) result.current[cue]();
+    for (let i = 0; i < 6; i++) result.current.musicNote(i);
     jest.runAllTimers();
     expect(audio.createAudioPlayer).not.toHaveBeenCalled();
     expect(played()).toEqual([]);
-    expect(haptics()).toBeGreaterThan(INTERACTION_CUES.length - 4);
+    expect(haptics()).toBeGreaterThanOrEqual(SOUNDING.length + 6);
   });
 
-  it("every interaction cue plays one sound of its own", async () => {
+  it("haptics off leaves the sound on", async () => {
+    mockPrefs.haptics_enabled = false;
     const { result } = await renderHook(() => useFeedback());
-    const used = new Set<unknown>();
-    for (const cue of INTERACTION_CUES) {
-      const before = new Set(played());
-      result.current[cue]();
-      const fresh = played().filter((p) => !before.has(p) || p.play.mock.calls.length > 1);
-      expect(fresh).toHaveLength(1);
-      used.add(fresh[0]);
-      fresh[0].play.mockClear();
-    }
-    expect(used.size).toBe(INTERACTION_CUES.length);
+    result.current.shutter();
+    result.current.drawer();
+    jest.runAllTimers();
+    expect(haptics()).toBe(0);
+    expect(played()).toHaveLength(2);
   });
 
-  it("the drawer's firm haptic lands at its stop, on the sound's thud", async () => {
+  it("every effect sits low in the mix, well under the music; the ending's moment and the lock a touch over a page", async () => {
+    const { result } = await renderHook(() => useFeedback());
+    for (const cue of SOUNDING) result.current[cue]();
+    const volume = (cue: (typeof SOUNDING)[number]) => playerFor(SOURCE[cue])!.volume;
+    for (const cue of SOUNDING) {
+      expect(volume(cue)).toBeGreaterThan(0);
+      expect(volume(cue)).toBeLessThanOrEqual(0.25);
+    }
+    expect(volume("paper")).toBeLessThan(volume("unlock"));
+    expect(volume("paper")).toBeLessThan(volume("doorOut"));
+  });
+
+  it("the drawer's firm haptic lands at its stop, on the sound's knock", async () => {
     const { result } = await renderHook(() => useFeedback());
     result.current.drawer();
     expect(playerFor(SOURCE.drawer)!.play).toHaveBeenCalledTimes(1);
@@ -161,88 +185,24 @@ describe("cues with sound", () => {
     expect(Haptics.impactAsync).toHaveBeenCalledWith("medium");
   });
 
-  it("a wheel's detent ticks with a sound, and the cat purrs, each from its own file", async () => {
+  it("the lock's light haptic lands on its latch, 110 ms in", async () => {
     const { result } = await renderHook(() => useFeedback());
-    for (let i = 0; i < 5; i++) result.current.detent();
-    expect(playerFor(SOURCE.detent)!.play).toHaveBeenCalledTimes(5);
-    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(5);
-    result.current.purr();
-    expect(playerFor(SOURCE.purr)!.play).toHaveBeenCalledTimes(1);
-    expect(played()).toHaveLength(2);
+    result.current.unlock();
+    expect(Haptics.impactAsync).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(110);
+    expect(Haptics.impactAsync).toHaveBeenLastCalledWith("light");
   });
 
-  it("the mug breaking off-screen is sound only, from its own file, quieter than the room's big moments", async () => {
+  it("the candle's sound starts at once; its light tap waits for the puff, 450 ms in", async () => {
     const { result } = await renderHook(() => useFeedback());
-    result.current.mugBreak();
-    jest.runAllTimers();
-    const mug = playerFor(SOURCE.mugBreak)!;
-    expect(mug.play).toHaveBeenCalledTimes(1);
-    expect(played()).toEqual([mug]);
+    result.current.candleOut();
+    expect(played()).toEqual([playerFor(SOURCE.candleOut)]);
     expect(haptics()).toBe(0);
-    expect(mug.volume).toBeGreaterThan(0);
-    expect(mug.volume).toBeLessThan(0.65);
-  });
-
-  it("the purr sits low in the mix, under the other cues", async () => {
-    const { result } = await renderHook(() => useFeedback());
-    result.current.purr();
-    expect(playerFor(SOURCE.purr)!.volume).toBeLessThanOrEqual(0.25);
-  });
-
-  it("the pencil's rub is sound only and quiet: each stroke one of three variants, never the same twice running", async () => {
-    const { result } = await renderHook(() => useFeedback());
-    const rubs = audio.__players.filter((p) => String(p.source).startsWith("pencil-rub-"));
-    expect(rubs.map((p) => p.source).sort()).toEqual(["pencil-rub-1.m4a", "pencil-rub-2.m4a", "pencil-rub-3.m4a"]);
-    const loaded = audio.createAudioPlayer.mock.calls.length;
-    const order: unknown[] = [];
-    for (let i = 0; i < 60; i++) {
-      const before = rubs.map((p) => p.play.mock.calls.length);
-      result.current.pencilRub();
-      const now = rubs.filter((p, j) => p.play.mock.calls.length > before[j]);
-      expect(now).toHaveLength(1);
-      // Each stroke starts from its top, at the cue's level.
-      expect(now[0].seekTo).toHaveBeenLastCalledWith(0);
-      expect(now[0].volume).toBeLessThanOrEqual(0.25);
-      order.push(now[0].source);
-    }
-    for (let i = 1; i < order.length; i++) expect(order[i]).not.toBe(order[i - 1]);
-    expect(new Set(order).size).toBe(3);
-    // Only its own players, no new loads, no haptic (the sheet gives its own).
-    expect(played().every((p) => rubs.includes(p))).toBe(true);
-    expect(audio.createAudioPlayer).toHaveBeenCalledTimes(loaded);
+    jest.advanceTimersByTime(449);
     expect(haptics()).toBe(0);
-  });
-
-  it("a rub variant that failed to load is skipped; the others still play", async () => {
-    // As if the second file never loaded.
-    const real = audio.createAudioPlayer.getMockImplementation()!;
-    audio.createAudioPlayer.mockImplementation((source: unknown) => {
-      if (source === "pencil-rub-2.m4a") throw new Error("missing");
-      return real(source);
-    });
-    try {
-      const { result } = await renderHook(() => useFeedback());
-      expect(() => {
-        for (let i = 0; i < 20; i++) result.current.pencilRub();
-      }).not.toThrow();
-      expect(new Set(played().map((p) => p.source))).toEqual(new Set(["pencil-rub-1.m4a", "pencil-rub-3.m4a"]));
-      expect(played().reduce((n, p) => n + p.play.mock.calls.length, 0)).toBe(20);
-    } finally {
-      audio.createAudioPlayer.mockImplementation(real);
-    }
-  });
-
-  it("the fold's light tap lands on the crease, 160 ms into its sound", async () => {
-    const { result } = await renderHook(() => useFeedback());
-    result.current.paperFold();
-    const fold = playerFor(SOURCE.paperFold)!;
-    expect(fold.play).toHaveBeenCalledTimes(1);
-    expect(played()).toEqual([fold]);
-    expect(fold.volume).toBeLessThan(0.45);
-    expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
-    expect(Haptics.impactAsync).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(160);
+    jest.advanceTimersByTime(1);
     expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
+    expect(haptics()).toBe(1);
   });
 
   describe("the music box", () => {
@@ -260,8 +220,8 @@ describe("cues with sound", () => {
       expect(played().every((p) => String(p.source).startsWith("music-note-"))).toBe(true);
       const volumes = new Set(played().map((p) => p.volume));
       expect(volumes.size).toBe(1);
-      expect([...volumes][0]).toBeGreaterThan(0.2);
-      expect([...volumes][0]).toBeLessThan(0.5);
+      expect([...volumes][0]).toBeGreaterThan(0);
+      expect([...volumes][0]).toBeLessThanOrEqual(0.15);
     });
 
     it("ignores anything that isn't one of the six teeth: no sound, no haptic, no throw", async () => {
@@ -306,83 +266,6 @@ describe("cues with sound", () => {
     });
   });
 
-  describe("a case's opening and ending", () => {
-    it("the wax seal cracks with a light tap, from its own file", async () => {
-      const { result } = await renderHook(() => useFeedback());
-      result.current.waxCrack();
-      expect(played()).toEqual([playerFor(SOURCE.waxCrack)]);
-      expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
-      expect(haptics()).toBe(1);
-    });
-
-    it("the string comes off with a tick, and again as its second and third turns come free", async () => {
-      const { result } = await renderHook(() => useFeedback());
-      result.current.stringOff();
-      expect(played()).toEqual([playerFor(SOURCE.stringOff)]);
-      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(239);
-      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(1);
-      jest.advanceTimersByTime(1);
-      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(2);
-      jest.advanceTimersByTime(130);
-      expect(Haptics.selectionAsync).toHaveBeenCalledTimes(3);
-      jest.runAllTimers();
-      expect(haptics()).toBe(3);
-    });
-
-    it("the door's firm tap is on its latch, at once; it is the loudest of the four, under the shutter", async () => {
-      const { result } = await renderHook(() => useFeedback());
-      result.current.doorOut();
-      const door = playerFor(SOURCE.doorOut)!;
-      expect(played()).toEqual([door]);
-      expect(Haptics.impactAsync).toHaveBeenCalledWith("medium");
-      jest.runAllTimers();
-      expect(haptics()).toBe(1);
-      result.current.waxCrack();
-      result.current.stringOff();
-      result.current.candleOut();
-      const others = [SOURCE.waxCrack, SOURCE.stringOff, SOURCE.candleOut].map((src) => playerFor(src)!.volume);
-      expect(door.volume).toBeGreaterThan(Math.max(...others));
-      expect(door.volume).toBeLessThan(0.95);
-    });
-
-    it("the candle's sound starts at once; its light tap waits for the puff, 450 ms in", async () => {
-      const { result } = await renderHook(() => useFeedback());
-      result.current.candleOut();
-      expect(played()).toEqual([playerFor(SOURCE.candleOut)]);
-      expect(haptics()).toBe(0);
-      jest.advanceTimersByTime(449);
-      expect(haptics()).toBe(0);
-      jest.advanceTimersByTime(1);
-      expect(Haptics.impactAsync).toHaveBeenCalledWith("light");
-      expect(haptics()).toBe(1);
-    });
-  });
-
-  it("haptics off leaves the sound on", async () => {
-    mockPrefs.haptics_enabled = false;
-    const { result } = await renderHook(() => useFeedback());
-    result.current.shutter();
-    result.current.solved();
-    jest.runAllTimers();
-    expect(haptics()).toBe(0);
-    expect(playerFor(SOURCE.shutter)!.play).toHaveBeenCalledTimes(1);
-    expect(played()).toHaveLength(2);
-  });
-
-  it("tick and the outcomes are silent; typewriter is sound only", async () => {
-    const { result } = await renderHook(() => useFeedback());
-    result.current.tick();
-    result.current.success();
-    result.current.warning();
-    result.current.error();
-    expect(played()).toEqual([]);
-    const before = haptics();
-    result.current.typewriter();
-    expect(haptics()).toBe(before);
-    expect(played()).toEqual([playerFor(SOURCE.typewriter)]);
-  });
-
   it("a failed load is silence: no throw, no retry storm, the haptic still lands", async () => {
     audio.__failNextLoad(100);
     const { result } = await renderHook(() => useFeedback());
@@ -410,14 +293,13 @@ describe("cues with sound", () => {
     expect(unlock.play).toHaveBeenCalledTimes(2);
   });
 
-  it("the pickup cue reuses one player however often it lands", async () => {
+  it("a page turned again and again reuses one player", async () => {
     const { result } = await renderHook(() => useFeedback());
     const loaded = audio.createAudioPlayer.mock.calls.length;
-    for (let i = 0; i < 20; i++) result.current.pickup();
+    for (let i = 0; i < 20; i++) result.current.paper();
     expect(audio.createAudioPlayer).toHaveBeenCalledTimes(loaded);
-    const pickups = audio.__players.filter((p) => p.play.mock.calls.length > 0);
-    expect(pickups).toHaveLength(1);
-    expect(pickups[0].play).toHaveBeenCalledTimes(20);
+    expect(played()).toEqual([playerFor(SOURCE.paper)]);
+    expect(playerFor(SOURCE.paper)!.play).toHaveBeenCalledTimes(20);
   });
 
   it("a player that throws on play is silence too", async () => {
@@ -426,104 +308,5 @@ describe("cues with sound", () => {
       throw new Error("no audio session");
     });
     expect(() => result.current.unlock()).not.toThrow();
-  });
-});
-
-describe("room tone", () => {
-  const fadeIn = () => act(() => jest.advanceTimersByTime(ROOM_TONE_FADE.in + 2 * ROOM_TONE_FADE.step));
-  const fadeOut = () => act(() => jest.advanceTimersByTime(ROOM_TONE_FADE.out + 2 * ROOM_TONE_FADE.step));
-
-  it("starts and stops with active, fading in and out", async () => {
-    const { rerender } = await renderHook(({ on }: { on: boolean }) => useRoomTone(on), { initialProps: { on: false } });
-    expect(audio.__players).toHaveLength(0);
-
-    await rerender({ on: true });
-    const tone = playerFor(SOURCE.noir)!;
-    expect(tone.loop).toBe(true);
-    expect(tone.play).toHaveBeenCalled();
-    expect(tone.volume).toBe(0);
-    await act(() => jest.advanceTimersByTime(ROOM_TONE_FADE.in / 2));
-    const half = tone.volume;
-    expect(half).toBeGreaterThan(0);
-    await fadeIn();
-    expect(tone.volume).toBeGreaterThan(half);
-    expect(tone.pause).not.toHaveBeenCalled();
-
-    await rerender({ on: false });
-    await fadeOut();
-    expect(tone.volume).toBe(0);
-    expect(tone.pause).toHaveBeenCalled();
-  });
-
-  it("plays the active mode's tone and crossfades when the mode changes", async () => {
-    setMode("noir");
-    await renderHook(() => useRoomTone(true));
-    await fadeIn();
-    await act(async () => setMode("paranormal"));
-    await fadeIn();
-    const noir = playerFor(SOURCE.noir)!;
-    const paranormal = playerFor(SOURCE.paranormal)!;
-    expect(noir.volume).toBe(0);
-    expect(noir.pause).toHaveBeenCalled();
-    expect(paranormal.volume).toBeGreaterThan(0);
-  });
-
-  it("stays silent when sound is off", async () => {
-    mockPrefs.sound_enabled = false;
-    await renderHook(() => useRoomTone(true));
-    await fadeIn();
-    expect(audio.__players).toHaveLength(0);
-  });
-
-  it("fades out when the screen loses focus or unmounts", async () => {
-    const { rerender, unmount } = await renderHook(() => useRoomTone(true));
-    await fadeIn();
-    const tone = playerFor(SOURCE.noir)!;
-    mockFocused = false;
-    await rerender({});
-    await fadeOut();
-    expect(tone.volume).toBe(0);
-    mockFocused = true;
-    await rerender({});
-    await fadeIn();
-    expect(tone.volume).toBeGreaterThan(0);
-    await unmount();
-    await fadeOut();
-    expect(tone.volume).toBe(0);
-  });
-
-  it("fades out when the app goes to the background", async () => {
-    const listeners: ((state: string) => void)[] = [];
-    // React Native's AppState mock: swap in a listener store and a real state, then put both back.
-    const addEventListener = AppState.addEventListener;
-    const original = AppState.currentState;
-    const set = (key: "addEventListener" | "currentState", value: unknown) =>
-      Object.defineProperty(AppState, key, { value, configurable: true, writable: true });
-    const setState = (value: unknown) => set("currentState", value);
-    set("addEventListener", (_type: string, listener: (state: string) => void) => {
-      listeners.push(listener);
-      return { remove: jest.fn() };
-    });
-    setState("active");
-    await renderHook(() => useRoomTone(true));
-    await fadeIn();
-    const tone = playerFor(SOURCE.noir)!;
-    expect(tone.volume).toBeGreaterThan(0);
-    setState("background");
-    await act(async () => listeners.forEach((l) => l("background")));
-    await fadeOut();
-    expect(tone.volume).toBe(0);
-    expect(tone.pause).toHaveBeenCalled();
-    setState(original);
-    set("addEventListener", addEventListener);
-  });
-
-  it("a newer screen's claim wins over an older one letting go", async () => {
-    const older = await renderHook(() => useRoomTone(true));
-    await renderHook(() => useRoomTone(true));
-    await fadeIn();
-    await older.unmount();
-    await fadeOut();
-    expect(playerFor(SOURCE.noir)!.volume).toBeGreaterThan(0);
   });
 });

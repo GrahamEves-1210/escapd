@@ -1,13 +1,21 @@
-// Sound: short effects for the game's moments and a soft room tone under a
-// case. Presentation only: nothing here may throw or block, and a platform
-// without audio (the web), a failed load or a failed play is simply silence.
+// Sound: the game's few effects. Presentation only: nothing here may throw or
+// block, and a platform without audio (the web), a failed load or a failed
+// play is simply silence.
+//
+// The game is mostly silent on purpose. A touch is felt (the haptics in
+// feedback.ts), not heard: no clicks on buttons, no beeps, no stingers. A
+// sound is kept only where something physical happens in the world and the
+// player earned it, and each is quiet, short and natural, mixed well under the
+// player's music: a lock giving way, a drawer, a page turned, a stamp, the
+// camera's shutter, the ending's door or candle, and the music box (which is
+// an instrument). Nothing sounds on arriving anywhere (a room, the build wait,
+// the brief): every cue answers something the player did.
 //
 // Callers don't play sounds directly: feedback.ts gives each cue its sound
-// (following the player's sound_enabled), useRoomTone.ts runs the ambience
-// and music.ts / useMusic.ts the music. Every file and its level is here, in
-// one place: EFFECTS, TONES and MUSIC. The files and how they were made are in docs/AUDIO.md; they are
-// rebuilt by scripts/audio/foley.py (the interaction foley) and scripts/audio/generate.mjs (the shutter,
-// the typewriter and the room tones).
+// (following the player's sound_enabled), and music.ts / useMusic.ts run the
+// music. Every file and its level is here, in one place: EFFECTS and MUSIC.
+// The files and how they were made are in docs/AUDIO.md; they are rebuilt by
+// scripts/audio/foley.py.
 //
 // The audio session respects the iOS silent switch (playsInSilentMode: false,
 // the "ambient" category; Android likewise stays quiet in silent or vibrate
@@ -15,157 +23,74 @@
 // stops or ducks their music, and asks for no audio focus.
 import { Platform } from "react-native";
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
-import type { Genre } from "@/lib/puzzle-types";
 
 export type SoundName =
-  | "press"
-  | "knock"
   | "paper"
-  | "shutter"
-  | "typewriter"
   | "unlock"
-  | "wrongCode"
-  | "pickup"
   | "stamp"
-  | "solved"
   | "drawer"
-  | "cloth"
-  | "snap"
-  | "detent"
-  | "uvSwitch"
-  | "lensUp"
-  | "lensDown"
-  | "purr"
-  | "mugBreak"
-  | "pencilRub"
-  | "paperFold"
+  | "shutter"
+  | "doorOut"
+  | "candleOut"
   | "musicNote0"
   | "musicNote1"
   | "musicNote2"
   | "musicNote3"
   | "musicNote4"
-  | "musicNote5"
-  | "waxCrack"
-  | "stringOff"
-  | "doorOut"
-  | "candleOut";
+  | "musicNote5";
 
 /** The music box's six teeth, low to high: C5, D5, E5, G5, A5, C6 (C major pentatonic). feedback's musicNote(i) plays the i-th. */
 export const MUSIC_NOTES = ["musicNote0", "musicNote1", "musicNote2", "musicNote3", "musicNote4", "musicNote5"] as const satisfies readonly SoundName[];
 
-/** The six music-box notes share one level: clear over the music, never sharp. */
-const MUSIC_NOTE_VOLUME = 0.32;
+/** The six music-box notes share one level: a small box, a little under the music. */
+const MUSIC_NOTE_VOLUME = 0.1;
 /** Two voices of one file: with two variants a cue alternates, so a replay never cuts the one still ringing. */
 const twice = (source: number): readonly number[] => [source, source];
 
-// The interaction foley (scripts/audio/foley.py) is levelled to one loudness
-// (-18 LUFS momentary, peaks capped at -1.5 dBTP), so these volumes are the
-// mix: soft and close, the small things quietest, the big moments a little
-// over. The shutter and typewriter (scripts/audio/generate.mjs) are peak-normalized.
-// A cue that fires over and over (the pencil's rub) has a few variants as its
-// source: each play picks one at random, never the one before.
+// The files (scripts/audio/foley.py) are levelled to one loudness (-18 LUFS
+// momentary, peaks capped at -1.5 dBTP; the short impacts land on the peak
+// cap and sit lower). These volumes are the mix: each cue's loudest 400 ms at
+// playback sits at about -40 to -44 LUFS, under the music's own median (about
+// -38.6 for the theme at MUSIC.level), and its peaks under the music's.
 const EFFECTS: Record<SoundName, { source: number | readonly number[]; volume: number }> = {
-  // A soft fingertip tap, kept quiet so buttons never clatter.
-  press: { source: require("../../assets/audio/press.m4a"), volume: 0.25 },
-  // A wooden block set down on a cloth-topped table.
-  knock: { source: require("../../assets/audio/knock.m4a"), volume: 0.5 },
-  // A note picked up and opened: crinkle, flex, a papery landing.
-  paper: { source: require("../../assets/audio/paper.m4a"), volume: 0.45 },
-  shutter: { source: require("../../assets/audio/shutter.m4a"), volume: 0.95 },
-  typewriter: { source: require("../../assets/audio/typewriter.m4a"), volume: 0.45 },
-  // A brass bolt's warm clunk, the latch at 110 ms, a soft open-fifth chime.
-  unlock: { source: require("../../assets/audio/unlock.m4a"), volume: 0.65 },
-  // Two gentle, muted wooden knocks: it doesn't give. No buzzer.
-  wrongCode: { source: require("../../assets/audio/wrong-code.m4a"), volume: 0.5 },
-  // A soft wood-and-glass tick and a tiny three-note sparkle.
-  pickup: { source: require("../../assets/audio/pickup.m4a"), volume: 0.5 },
-  // A thick rubber stamp on paper on a wooden desk, with a faint peel.
-  stamp: { source: require("../../assets/audio/stamp.m4a"), volume: 0.75 },
-  // A warm, short celesta shimmer on the haptic beats.
-  solved: { source: require("../../assets/audio/solved.m4a"), volume: 0.55 },
-  // A wooden drawer sliding out, its soft thud at the stop at 170 ms.
-  drawer: { source: require("../../assets/audio/drawer.m4a"), volume: 0.55 },
-  // A cloth lifted: a soft, close rustle.
-  cloth: { source: require("../../assets/audio/cloth.m4a"), volume: 0.45 },
-  // An item used and fitting: a clean two-part click.
-  snap: { source: require("../../assets/audio/snap.m4a"), volume: 0.5 },
-  // A code wheel's step: one tiny mechanical tick. Fires often, so it's the quietest.
-  detent: { source: require("../../assets/audio/detent.m4a"), volume: 0.3 },
-  // The UV light on: a rocker click and a warm electric hum flickering up.
-  uvSwitch: { source: require("../../assets/audio/uv-switch.m4a"), volume: 0.45 },
-  // The magnifier lifted (a soft whoosh) and set down (a glass-on-wood tick).
-  lensUp: { source: require("../../assets/audio/lens-up.m4a"), volume: 0.35 },
-  lensDown: { source: require("../../assets/audio/lens-down.m4a"), volume: 0.4 },
-  // The cat, rubbed: a small, breathy purr, out, in, out (2 s, faded at both ends; replays restart it).
-  // Kept under the music (about -36 LUFS here against the theme's -38 median at MUSIC.level): a
-  // contented little cat, not a lion.
-  purr: { source: require("../../assets/audio/purr.m4a"), volume: 0.18 },
-  // The mug the cat knocked off home's window sill, breaking on the floor just off-screen: a ceramic
-  // crack, the pieces parting, a few shards skittering (0.9 s). Distant, so no louder than a click.
-  mugBreak: { source: require("../../assets/audio/mug-break.m4a"), volume: 0.55 },
-  // Soft graphite shading on paper, one back-and-forth stroke (0.4 s, faded at both ends). It fires
-  // again and again while the player rubs, so it's quiet (about the music's level) and has three
-  // variants: a run never repeats one, and the stroke before rings out under the next.
-  pencilRub: {
-    source: [
-      require("../../assets/audio/pencil-rub-1.m4a"),
-      require("../../assets/audio/pencil-rub-2.m4a"),
-      require("../../assets/audio/pencil-rub-3.m4a"),
-    ],
-    volume: 0.2,
-  },
-  // A sheet folded over, creased (at 160 ms, the haptic's beat) and pressed flat. A little under `paper`.
-  paperFold: { source: require("../../assets/audio/paper-fold.m4a"), volume: 0.3 },
-  // The music box's comb, one plucked steel tooth each: C5, D5, E5, G5, A5, C6 (1.2 to 1.5 s). Clear
-  // over the music without being sharp. Each note has two voices (its file twice: plays alternate
-  // between them), so the same tooth plucked again rings over itself instead of being cut off;
-  // different notes are different players and always ring out.
+  // A page turned: lifted at its corner, swung over, laid down flat (a clue found, the casebook's leaves).
+  paper: { source: require("../../assets/audio/paper.m4a"), volume: 0.05 },
+  // A lock giving way: the bolt drawn back to a solid clack, the latch dropping at 110 ms. No chime.
+  unlock: { source: require("../../assets/audio/unlock.m4a"), volume: 0.16 },
+  // A rubber stamp pressed onto paper on a wooden desk, and lifted with a faint peel.
+  stamp: { source: require("../../assets/audio/stamp.m4a"), volume: 0.17 },
+  // A wooden drawer sliding out on its runners, its soft knock at the stop at 170 ms.
+  drawer: { source: require("../../assets/audio/drawer.m4a"), volume: 0.13 },
+  // A film camera's shutter: two curtains 55 ms apart and the mechanism settling.
+  shutter: { source: require("../../assets/audio/shutter.m4a"), volume: 0.18 },
+  // The music box's comb, one plucked steel tooth each: C5, D5, E5, G5, A5, C6 (1.1 to 1.3 s). Each
+  // note has two voices (its file twice: plays alternate between them), so the same tooth plucked
+  // again rings over itself instead of being cut off; different notes are different players.
   musicNote0: { source: twice(require("../../assets/audio/music-note-0.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote1: { source: twice(require("../../assets/audio/music-note-1.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote2: { source: twice(require("../../assets/audio/music-note-2.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote3: { source: twice(require("../../assets/audio/music-note-3.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote4: { source: twice(require("../../assets/audio/music-note-4.m4a")), volume: MUSIC_NOTE_VOLUME },
   musicNote5: { source: twice(require("../../assets/audio/music-note-5.m4a")), volume: MUSIC_NOTE_VOLUME },
-  // A case's envelope opened. Its wax seal cracking in two: a short dry snap and a brittle crumble (0.3 s).
-  waxCrack: { source: require("../../assets/audio/wax-crack.m4a"), volume: 0.5 },
-  // Its waxed string unwound from the two card buttons (three soft whirrs, each ending in a tick), then the flap (0.67 s).
-  stringOff: { source: require("../../assets/audio/string-off.m4a"), volume: 0.4 },
-  // A case's ending. Noir: a heavy door's latch, a low brief creak, and the rainy street coming in, held and
-  // fading (2.4 s). The ending's own moment, so a touch over the rest.
-  doorOut: { source: require("../../assets/audio/door-out.m4a"), volume: 0.6 },
+  // A case's ending. Noir: a heavy door's latch, a brief low creak, the rainy street coming in and
+  // fading (1.8 s). The ending's own moment, a touch over a page.
+  doorOut: { source: require("../../assets/audio/door-out.m4a"), volume: 0.16 },
   // Paranormal: a candle guttering (a soft flutter), the puff that takes it at 450 ms, the wick's faint hiss (0.8 s).
-  candleOut: { source: require("../../assets/audio/candle-out.m4a"), volume: 0.45 },
+  candleOut: { source: require("../../assets/audio/candle-out.m4a"), volume: 0.1 },
 };
-
-// Room tone sits well under the effects: a bed you notice only when it stops (the user found 0.3 too loud).
-const TONES: Record<Genre, { source: number; volume: number }> = {
-  // Rain on the office window, a radiator rumble, a faint mains hum.
-  noir: { source: require("../../assets/audio/room-noir.m4a"), volume: 0.12 },
-  // A low, tense transformer hum.
-  crime_scene: { source: require("../../assets/audio/room-crime-scene.m4a"), volume: 0.1 },
-  // A cold, airy drone: wind and a glassy, beating pad.
-  paranormal: { source: require("../../assets/audio/room-paranormal.m4a"), volume: 0.11 },
-};
-
-/** Room tone fades, in ms. */
-export const ROOM_TONE_FADE = { in: 1600, out: 700, step: 50 } as const;
 
 export type TrackName = "theme" | "crime" | "paranormal";
 
 /**
- * Music: one looping track at a time, under the effects (shutter 0.95, stamp
- * 0.75, unlock 0.65) and over the room tone. `level` is every track's
- * playback volume times its `trim`, for evening out the supplied tracks'
- * loudness. While music plays the room tone drops to `roomTone` of its level
- * (fading over `fade.duck`), so rain or a hum and the music don't muddy each
- * other; it comes back up when the music stops. Fades are in ms: `cross` for
+ * Music: one looping track at a time, over the effects (which sit under it,
+ * see EFFECTS). `level` is every track's playback volume times its `trim`,
+ * for evening out the supplied tracks' loudness. Fades are in ms: `cross` for
  * a crossfade between tracks (and fading in), `stop` for fading to silence
  * (music off, the app leaving the foreground).
  */
 export const MUSIC = {
   level: 0.35,
-  roomTone: 0.5,
-  fade: { cross: 1200, stop: 500, duck: 1200, step: 50 },
+  fade: { cross: 1200, stop: 500, step: 50 },
   tracks: {
     // The main theme, the sound stripped from the user's video (stream-copied AAC, the silent 1.6 s
     // head and 1.9 s tail cut on frame boundaries; nothing re-encoded): the shell and noir. -27.6 LUFS,
@@ -190,7 +115,7 @@ export function quietly(fn: () => unknown) {
 }
 
 let configured = false;
-/** Set the shared audio session once (effects, room tone and music alike). */
+/** Set the shared audio session once (effects and music alike). */
 export function configure() {
   if (configured) return;
   configured = true;
@@ -265,99 +190,17 @@ export function playSound(name: SoundName) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Room tone: one looping player per mode, faded in and out. Only one mode's
-// tone is wanted at a time; changing mode crossfades.
-// ---------------------------------------------------------------------------
-
-interface Tone {
-  player: AudioPlayer;
-  /** 0..1 along the fade; the volume is the tone's level times this, squared for an even fade. */
-  level: number;
-  target: number;
-}
-
-const tones: Partial<Record<Genre, Tone | null>> = {};
-let ticker: ReturnType<typeof setInterval> | null = null;
-/** The room tone's share of its level: 1, or MUSIC.roomTone while music plays (faded between). */
-let duck = 1;
-let duckTarget = 1;
-
-function applyVolume(genre: Genre, tone: Tone) {
-  quietly(() => {
-    tone.player.volume = TONES[genre].volume * tone.level * tone.level * duck;
-  });
-}
-
-function step() {
-  let moving = false;
-  if (duck !== duckTarget) {
-    const delta = ((1 - MUSIC.roomTone) * ROOM_TONE_FADE.step) / MUSIC.fade.duck;
-    duck = duckTarget > duck ? Math.min(duckTarget, duck + delta) : Math.max(duckTarget, duck - delta);
-    for (const genre of Object.keys(tones) as Genre[]) {
-      const tone = tones[genre];
-      if (tone && tone.level > 0) applyVolume(genre, tone);
-    }
-    if (duck !== duckTarget) moving = true;
-  }
-  for (const genre of Object.keys(tones) as Genre[]) {
-    const tone = tones[genre];
-    if (!tone || tone.level === tone.target) continue;
-    const delta = tone.target > tone.level ? ROOM_TONE_FADE.step / ROOM_TONE_FADE.in : -ROOM_TONE_FADE.step / ROOM_TONE_FADE.out;
-    tone.level = delta > 0 ? Math.min(tone.target, tone.level + delta) : Math.max(tone.target, tone.level + delta);
-    applyVolume(genre, tone);
-    if (tone.level === 0) quietly(() => tone.player.pause());
-    if (tone.level !== tone.target) moving = true;
-  }
-  if (!moving && ticker) {
-    clearInterval(ticker);
-    ticker = null;
-  }
-}
-
-/** Fade the room tone to this mode's (crossfading from any other), or out entirely with null. */
-export function setRoomTone(genre: Genre | null) {
-  if (!supported) return;
-  if (genre) {
-    configure();
-    if (!(genre in tones)) {
-      const player = load(TONES[genre].source);
-      tones[genre] = player ? { player, level: 0, target: 0 } : null;
-      if (player) {
-        quietly(() => {
-          player.loop = true;
-          player.volume = 0;
-        });
-      }
-    }
-  }
-  for (const g of Object.keys(tones) as Genre[]) {
-    const tone = tones[g];
-    if (!tone) continue;
-    tone.target = g === genre ? 1 : 0;
-    if (tone.target === 1) quietly(() => tone.player.play());
-  }
-  if (!ticker) ticker = setInterval(step, ROOM_TONE_FADE.step);
-}
-
-/** Lower the room tone while music plays (true), or bring it back up (false). Fades over MUSIC.fade.duck. */
-export function setRoomToneDucked(ducked: boolean) {
-  const target = ducked ? MUSIC.roomTone : 1;
-  if (target === duckTarget) return;
-  duckTarget = target;
-  if (supported && !ticker) ticker = setInterval(step, ROOM_TONE_FADE.step);
-}
+/**
+ * The room tone under a case (rain, a hum, a drone) is gone: it was a synthesized
+ * bed nobody asked for under the player's music. Kept as a no-op so music.ts,
+ * which lowered it while music played, needs no change.
+ */
+export function setRoomToneDucked(_ducked: boolean) {}
 
 /** Forget every player. For tests. */
 export function resetSoundsForTests() {
   for (const set of Object.values(players)) for (const p of set ?? []) quietly(() => p?.remove());
-  for (const t of Object.values(tones)) quietly(() => t?.player.remove());
   for (const k of Object.keys(players)) delete players[k as SoundName];
   for (const k of Object.keys(lastVariant)) delete lastVariant[k as SoundName];
-  for (const k of Object.keys(tones)) delete tones[k as Genre];
-  if (ticker) clearInterval(ticker);
-  ticker = null;
   configured = false;
-  duck = 1;
-  duckTarget = 1;
 }

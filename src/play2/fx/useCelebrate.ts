@@ -80,7 +80,7 @@ export function useCelebrate(genre: Genre | null, locate: (objectId: string) => 
       later(ms, () => setScreen((e) => (e?.id === id ? null : e)));
     }
     if (roll.level > 0) later(SOUND_AT.roll, feedback.solved);
-    else if (strength === "solve") later(SOUND_AT.stamp, feedback.stamp);
+    else if (strength === "solve") later(SOUND_AT.stamp, () => feedback.stamp(false));
   }, [genre, feedback]);
 
   const result = useCallback((r: ActionResult | null, anchor: Anchor | null, opts?: { grants?: boolean }) => {

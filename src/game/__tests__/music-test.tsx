@@ -2,13 +2,13 @@ import { act, renderHook } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { setMode } from "../mode";
 import { resetMusicForTests, setMusic, trackFor } from "../music";
-import { MUSIC, ROOM_TONE_FADE, resetSoundsForTests } from "../sound";
+import { MUSIC, resetSoundsForTests } from "../sound";
 import { useMusic } from "../useMusic";
-import { useRoomTone } from "../useRoomTone";
 
 const mockPrefs = { sound_enabled: true, music_enabled: true, haptics_enabled: true };
 jest.mock("@/game/preferences", () => ({ usePreferences: () => mockPrefs }));
-jest.mock("expo-router", () => ({ useIsFocused: () => true }));
+// In an escape room, where each mode plays its own track (home and the camera keep the theme).
+jest.mock("expo-router", () => ({ useIsFocused: () => true, usePathname: () => "/play/room-1" }));
 
 interface MockPlayer {
   source: unknown;
@@ -33,8 +33,7 @@ const audio = require("expo-audio") as {
 jest.mock("../../../assets/music/theme.m4a", () => "theme.m4a");
 jest.mock("../../../assets/music/crime.m4a", () => "crime.m4a");
 jest.mock("../../../assets/music/paranormal.mp3", () => "paranormal.mp3");
-jest.mock("../../../assets/audio/room-noir.m4a", () => "room-noir.m4a");
-const SOURCE = { theme: "theme.m4a", crime: "crime.m4a", paranormal: "paranormal.mp3", roomNoir: "room-noir.m4a" };
+const SOURCE = { theme: "theme.m4a", crime: "crime.m4a", paranormal: "paranormal.mp3" };
 
 const playerFor = (source: unknown) => audio.__players.find((p) => p.source === source);
 const loadsOf = (source: unknown) => audio.createAudioPlayer.mock.calls.filter(([s]) => s === source).length;
@@ -230,36 +229,15 @@ describe("music", () => {
     expect(theme.seekTo).not.toHaveBeenCalled();
   });
 
-  it("lowers the room tone while music plays and brings it back when the music stops", async () => {
-    setMode("noir");
-    await renderHook(() => useRoomTone(true));
-    await act(() => jest.advanceTimersByTime(ROOM_TONE_FADE.in + 2 * ROOM_TONE_FADE.step));
-    const tone = playerFor(SOURCE.roomNoir)!;
-    const full = tone.volume;
-    expect(full).toBeGreaterThan(0);
-    const { rerender } = await renderHook(() => useMusic());
-    await fade();
-    expect(tone.volume).toBeCloseTo(full * MUSIC.roomTone);
-    mockPrefs.music_enabled = false;
-    await rerender({});
-    await fade();
-    expect(tone.volume).toBeCloseTo(full);
-  });
-
-  it("a failed load is silence: no throw, no retry storm, and the room tone isn't lowered for it", async () => {
-    // The theme's load fails; the room tone's, after it, works.
+  it("a failed load is silence: no throw, no retry storm", async () => {
     audio.__failNextLoad(1);
     const { rerender } = await renderHook(() => useMusic());
     expect(() => setMusic("theme")).not.toThrow();
     await act(async () => setMode("noir"));
     await rerender({});
-    await renderHook(() => useRoomTone(true));
-    await act(() => jest.advanceTimersByTime(ROOM_TONE_FADE.in + MUSIC.fade.duck));
+    await fade();
     expect(loadsOf(SOURCE.theme)).toBe(1);
     expect(playerFor(SOURCE.theme)).toBeUndefined();
-    const tone = playerFor(SOURCE.roomNoir)!;
-    // The room tone at its full level: nothing is playing over it.
-    expect(tone.volume).toBeCloseTo(0.12);
   });
 
   it("a player that throws on play or seek is silence too", async () => {

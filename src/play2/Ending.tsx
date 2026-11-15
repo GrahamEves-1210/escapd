@@ -123,7 +123,8 @@ export function Ending({ text, door, genre, roomId, onDone }: {
   const lines = useSharedValue(0);
 
   useEffect(() => {
-    feedback.unlock();
+    // Felt, not heard: the moment's own sound (the door, the stamp, the candle) comes on its beat below.
+    feedback.unlock(false);
     const lightAt = reducedMotion ? 0 : ENDING.lightAt;
     const d = reducedMotion ? ENDING.reducedLight : ENDING.light;
     if (!reducedMotion) {

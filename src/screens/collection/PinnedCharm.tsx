@@ -91,7 +91,7 @@ export function PinnedCharm({ charm, delay, from, reduced, colors, tagInk, tagPa
 
   useEffect(() => {
     const landed = () => {
-      if (sticker) feedback.paper();
+      if (sticker) feedback.paper(false);
       else feedback.snap();
       setLanded(true);
       setBurst((n) => n + 1);

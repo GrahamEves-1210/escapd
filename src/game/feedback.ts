@@ -3,65 +3,56 @@
 // Haptics follow haptics_enabled and sound follows sound_enabled, separately:
 // either can be off without touching the other.
 //
+// The game is felt more than heard. Every cue has its haptic; only a few have
+// a sound, where something physical happens in the world and the player
+// earned it (src/game/sound.ts, docs/AUDIO.md). No button, tap, selection,
+// arrival or outcome makes a sound; nothing sounds because a screen opened.
+//
 // One small vocabulary for the whole app (docs/DESIGN.md, Global tokens:
-// Haptics), so the same kind of moment always feels and sounds the same:
-// - tick: a selection moving (a code wheel digit, a photo page settling, a
-//   toggle, a segment, a step in the guide). The lightest. Silent.
-// - press: a button, chip or card pressed in. A very quiet felt click.
-// - thud: a firm, physical moment (an item landing, a lock giving way). A
-//   wooden block set down on a cloth-topped table.
-// - success / warning / error: an outcome the screen also states. Silent:
-//   the moments below carry their own sounds.
-// The game's own moments (GAME_FEEL_PROMPT.md), each one named so a screen
-// asks for the moment, not a vibration, and each has its own sound
-// (src/game/sound.ts, docs/AUDIO.md):
-// - paper: a clue, note or sheet opening. As light as press; crisp paper.
-// - pickup: an item found and kept. A thud; a soft wood-and-glass tick and a
-//   tiny sparkle.
-// - wrongCode: a wrong code or accusation. A heavy thud, then the error buzz;
-//   two gentle, muted wooden knocks (it doesn't give), never a buzzer.
-// - unlock: a correct code; the lock's bolt, then its latch a beat later; a
-//   warm brass clunk, the latch, a soft chime.
-// - stamp: a rubber stamp pressed down (CASE CLOSED, GUILTY). Heavy; a thick
-//   rubber thump on a wooden desk.
-// - solved: the case solved. The success pattern, then two closing taps; a
-//   warm, short celesta shimmer on the same beats.
-// - drawer: a drawer pulled open. A light tap as it goes, a firm one at the
-//   stop; a wooden slide and its soft thud on the same beat.
-// - cloth: a cloth lifted off something. Light; a soft rustle.
-// - snap: an item used on something and fitting. Medium; a clean click.
-// - detent: a lock or code wheel stepping one place. The tick haptic, with a
-//   tiny mechanical tick (tick itself stays silent: it fires everywhere).
-// - uvSwitch: the UV light turned on. Light; a rocker click and a soft hum.
-// - lensUp / lensDown: the magnifier lifted (the tick haptic, a soft whoosh)
-//   and set down (light; a glass-on-wood tick).
-// - purr: the cat, rubbed. Light; a small, soft, breathy purr.
-// - mugBreak: the mug the cat knocks off home's window sill hitting the floor
-//   off-screen. Sound only (it isn't the player's touch): a distant ceramic
-//   crack and a few shards skittering.
-// - pencilRub: graphite shaded over paper, one back-and-forth stroke. Sound
-//   only (the rubbing sheet gives its own ticks), quiet, made to be called
-//   again and again as the player rubs: each call plays one of three strokes.
-// - paperFold: a sheet folded over and creased. The tick haptic as it comes
-//   over, a light tap at the crease; a short rustle into a soft, crisp crease.
+// Haptics), so the same kind of moment always feels the same:
+// - tick (tap): a selection moving (a code wheel digit, a photo page settling,
+//   a toggle, a segment). The lightest.
+// - press: a button, chip or card pressed in. A light impact.
+// - thud: a firm, physical moment (an item landing, building a case). Medium.
+// - success / warning / error: an outcome the screen also states.
+// The game's own moments, each named so a screen asks for the moment, not a
+// vibration. Those with a sound say so; the sound is quiet, short and on the
+// haptic's beat. A cue with a sound takes `audible` (default true): false
+// keeps its haptic and leaves it silent, for the same moment where a sound
+// would be one too many (a stamp on every solved step, the brief's letter).
+// - paper: a page turned, a clue found. Light; with sound, a page lifted,
+//   swung over and laid down.
+// - pickup: an item found and kept. Medium.
+// - wrongCode: a wrong code or accusation. Heavy, then the error pattern.
+// - unlock: a lock giving way. Medium, then light at the latch (110 ms); with
+//   sound, the bolt's clack and the latch dropping on the same beats.
+// - stamp: a rubber stamp pressed down (CASE CLOSED, GUILTY). Heavy; with
+//   sound, a dull rubber thump on a wooden desk.
+// - solved: the case solved. The success pattern, then two closing taps.
+// - drawer: a drawer pulled open. Light as it goes, medium at the stop
+//   (170 ms); with sound, wood sliding and its knock at the stop.
+// - cloth: a cloth lifted off something. Light.
+// - snap: an item used on something and fitting. Medium.
+// - detent: a lock or code wheel stepping one place. The tick.
+// - uvSwitch: the UV light turned on. Light.
+// - lensUp / lensDown: the magnifier lifted (the tick) and set down (light).
+// - purr: the cat, rubbed. Light.
+// - paperFold: a sheet folded over and creased. The tick, a light tap at the
+//   crease (160 ms).
+// - waxCrack: an envelope's wax seal cracked open. Light.
+// - stringOff: an envelope's string unwound: the tick, and again as the
+//   second and third turns come free (240 and 370 ms).
 // - musicNote(i): a tooth of the music box's comb plucked, i = 0..5 from low to
-//   high (C5 D5 E5 G5 A5 C6, C major pentatonic). The tick haptic and the
-//   tooth's note; notes ring out over each other. Pass false as the second
-//   argument when the box plays by itself (no touch, so no haptic). An index
-//   outside 0..5 does nothing.
-// - waxCrack: an envelope's wax seal cracked open. Light; a short dry snap and
-//   a brittle crumble.
-// - stringOff: an envelope's waxed string unwound from its buttons. The tick
-//   haptic, and again as the second and third turns come free (240 and
-//   370 ms); soft whirrs and ticks of thread on card, then the flap's paper.
-// - doorOut: the noir ending's door opened onto the rainy street. Medium, on
-//   the latch; the latch, a low brief creak, then rain and the city's hum,
-//   held and fading (2.4 s).
+//   high (C5 D5 E5 G5 A5 C6). The tick and the tooth's note (the box is an
+//   instrument: its notes are what it says); notes ring out over each other.
+//   Pass false as the second argument when the box plays by itself (no touch,
+//   so no haptic). An index outside 0..5 does nothing.
+// - doorOut: the noir ending's door opened onto the rainy street. Medium; with
+//   sound, its latch, a brief creak and the rain coming in (1.8 s).
 // - candleOut: the paranormal ending's candle going out. A light tap on the
-//   puff, 450 ms in; a flutter of flame, the puff, the wick's faint hiss.
-// - shutter: the camera taking a photo. A thud and a mechanical shutter.
-// - typewriter: text typing itself out in a game moment. Sound only, no
-//   haptic: a short run of keys.
+//   puff, 450 ms in; with sound, the flutter, the puff, the wick's hiss.
+// - shutter: the camera taking a photo. Medium; with sound, the shutter.
+// - mugBreak, pencilRub, typewriter: once sound only; now nothing at all.
 import { useEffect, useMemo } from "react";
 import * as Haptics from "expo-haptics";
 import { usePreferences } from "./preferences";
@@ -73,7 +64,7 @@ const PATTERN = { wrongCode: 90, latch: 110, solved: [260, 400], drawer: 170, cr
 export function useFeedback() {
   const { haptics_enabled, sound_enabled } = usePreferences();
   useEffect(() => {
-    // Load the effects before the first cue needs one.
+    // Load the effects before the first cue needs one (loading plays nothing).
     if (sound_enabled) preloadSounds();
   }, [sound_enabled]);
   return useMemo(() => {
@@ -84,102 +75,73 @@ export function useFeedback() {
         fn().catch(() => {});
       } catch {}
     };
-    const sound = (name: SoundName) => {
-      if (sound_enabled) playSound(name);
+    const sound = (name: SoundName, audible = true) => {
+      if (sound_enabled && audible) playSound(name);
     };
     const tick = () => run(() => Haptics.selectionAsync());
     const impact = (style: Haptics.ImpactFeedbackStyle) => run(() => Haptics.impactAsync(style));
+    const light = () => impact(Haptics.ImpactFeedbackStyle.Light);
+    const medium = () => impact(Haptics.ImpactFeedbackStyle.Medium);
+    const heavy = () => impact(Haptics.ImpactFeedbackStyle.Heavy);
     // A later beat of a pattern; skipped if haptics were off when it started.
     const later = (ms: number, fn: () => void) => {
       if (haptics_enabled) setTimeout(fn, ms);
     };
+    const nothing = () => {};
     return {
       tick,
       /** The older name for tick, kept for existing callers. */
       tap: tick,
-      press: () => {
-        run(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
-        sound("press");
-      },
-      thud: () => {
-        run(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-        sound("knock");
-      },
+      press: light,
+      thud: medium,
       success: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
       warning: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)),
       error: () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)),
-      paper: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("paper");
+      paper: (audible = true) => {
+        light();
+        sound("paper", audible);
       },
-      pickup: () => {
-        impact(Haptics.ImpactFeedbackStyle.Medium);
-        sound("pickup");
-      },
+      pickup: medium,
       wrongCode: () => {
-        impact(Haptics.ImpactFeedbackStyle.Heavy);
+        heavy();
         later(PATTERN.wrongCode, () => run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)));
-        sound("wrongCode");
       },
-      unlock: () => {
-        impact(Haptics.ImpactFeedbackStyle.Medium);
-        later(PATTERN.latch, () => impact(Haptics.ImpactFeedbackStyle.Light));
-        sound("unlock");
+      unlock: (audible = true) => {
+        medium();
+        later(PATTERN.latch, light);
+        sound("unlock", audible);
       },
-      stamp: () => {
-        impact(Haptics.ImpactFeedbackStyle.Heavy);
-        sound("stamp");
+      stamp: (audible = true) => {
+        heavy();
+        sound("stamp", audible);
       },
       solved: () => {
         run(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
-        later(PATTERN.solved[0], () => impact(Haptics.ImpactFeedbackStyle.Light));
-        later(PATTERN.solved[1], () => impact(Haptics.ImpactFeedbackStyle.Medium));
-        sound("solved");
+        later(PATTERN.solved[0], light);
+        later(PATTERN.solved[1], medium);
       },
       shutter: () => {
-        impact(Haptics.ImpactFeedbackStyle.Medium);
+        medium();
         sound("shutter");
       },
-      typewriter: () => sound("typewriter"),
+      typewriter: nothing,
       drawer: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        later(PATTERN.drawer, () => impact(Haptics.ImpactFeedbackStyle.Medium));
+        light();
+        later(PATTERN.drawer, medium);
         sound("drawer");
       },
-      cloth: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("cloth");
-      },
-      snap: () => {
-        impact(Haptics.ImpactFeedbackStyle.Medium);
-        sound("snap");
-      },
-      detent: () => {
-        tick();
-        sound("detent");
-      },
-      uvSwitch: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("uvSwitch");
-      },
-      lensUp: () => {
-        tick();
-        sound("lensUp");
-      },
-      lensDown: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("lensDown");
-      },
-      purr: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("purr");
-      },
-      mugBreak: () => sound("mugBreak"),
-      pencilRub: () => sound("pencilRub"),
+      cloth: light,
+      snap: medium,
+      detent: tick,
+      uvSwitch: light,
+      lensUp: tick,
+      lensDown: light,
+      purr: light,
+      mugBreak: nothing,
+      pencilRub: nothing,
       paperFold: () => {
         tick();
-        later(PATTERN.crease, () => impact(Haptics.ImpactFeedbackStyle.Light));
-        sound("paperFold");
+        later(PATTERN.crease, light);
       },
       musicNote: (index: number, touched = true) => {
         // Not one of the six teeth (out of range, a fraction, NaN): nothing.
@@ -188,21 +150,17 @@ export function useFeedback() {
         if (touched) tick();
         sound(name);
       },
-      waxCrack: () => {
-        impact(Haptics.ImpactFeedbackStyle.Light);
-        sound("waxCrack");
-      },
+      waxCrack: light,
       stringOff: () => {
         tick();
         for (const ms of PATTERN.string) later(ms, tick);
-        sound("stringOff");
       },
       doorOut: () => {
-        impact(Haptics.ImpactFeedbackStyle.Medium);
+        medium();
         sound("doorOut");
       },
       candleOut: () => {
-        later(PATTERN.puff, () => impact(Haptics.ImpactFeedbackStyle.Light));
+        later(PATTERN.puff, light);
         sound("candleOut");
       },
     };

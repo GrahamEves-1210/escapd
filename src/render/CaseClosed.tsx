@@ -243,7 +243,8 @@ export function CaseClosed({ genre, caseNo, message: rawMessage, exit: rawExit, 
   const nudgeY = useSharedValue(0);
   const [cheer, setCheer] = useState(0);
   const landed = () => {
-    feedback.stamp();
+    // Felt, not heard: the ending before this screen gave the case its sound.
+    feedback.stamp(false);
     setCheer((n) => n + 1);
     if (reduced) return;
     const { x, y, step } = C.slam.nudge;

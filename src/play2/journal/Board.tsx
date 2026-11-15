@@ -124,7 +124,7 @@ export function Board({ cards, strings, fresh, palette: p, hand, reduced, startA
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     const landing = Math.min(3, cards.length - firstNew);
-    for (let k = 0; k < landing; k++) timers.push(setTimeout(() => feedback.paper(), reduced ? 120 : startAt + DROP_START + k * DROP_STAGGER + DROP_LAND * 0.55));
+    for (let k = 0; k < landing; k++) timers.push(setTimeout(() => feedback.paper(false), reduced ? 120 : startAt + DROP_START + k * DROP_STAGGER + DROP_LAND * 0.55));
     if (twangs && !reduced) timers.push(setTimeout(() => feedback.detent(), twangAt(0)));
     return () => timers.forEach(clearTimeout);
     // Once, as the casebook opens.

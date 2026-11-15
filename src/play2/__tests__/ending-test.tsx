@@ -48,6 +48,8 @@ describe("Ending", () => {
     const onDone = jest.fn();
     await render(<Ending text="The lock gives. Case closed." genre="noir" onDone={onDone} />);
     expect(mockFeedback.unlock).toHaveBeenCalledTimes(1);
+    // Felt, not heard: the door's own sound comes on its beat.
+    expect(mockFeedback.unlock).toHaveBeenCalledWith(false);
     // The close-up underneath shows first: the ending fades up after `appear`.
     expect(screen.getByTestId("v2-ending")).toHaveAnimatedStyle({ opacity: 0 });
     await act(() => jest.advanceTimersByTime(ENDING.appear + ENDING.fade + 20));

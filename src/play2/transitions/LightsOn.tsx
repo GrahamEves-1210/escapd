@@ -48,7 +48,7 @@ export function LightsOn({ top, bottom, onDone }: {
       withTiming(0, { duration: LIGHTS.up, easing: Easing.out(Easing.quad) }),
     )));
     frame.set(withDelay(LIGHTS.dark + LIGHTS.catch + LIGHTS.dip + LIGHTS.frameAfter, withTiming(0, { duration: LIGHTS.frame, easing: Easing.out(Easing.quad) })));
-    // The switch's click as the bulb catches.
+    // The switch's click as the bulb catches: felt (a light haptic), not heard. Nothing sounds as a room opens.
     const click = setTimeout(() => feedback.uvSwitch(), LIGHTS.dark);
     const end = setTimeout(() => done.current(), LIGHTS_MS + 20);
     return () => {

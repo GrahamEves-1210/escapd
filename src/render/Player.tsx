@@ -780,7 +780,7 @@ function PlayerStage({ roomId, player, sources, ui, onExit, onComplete }: {
   }, [idleTouch]);
   const startedAt = player.session?.started_at ? Date.parse(player.session.started_at) : NaN;
   const openInformant = useCallback(() => {
-    feedback.paper();
+    feedback.paper(false);
     setSheet({ kind: "informant" });
   }, [feedback]);
   const codeHotspot = sheet?.kind === "code" ? hotspotById(def, sheet.hotspotId) : undefined;

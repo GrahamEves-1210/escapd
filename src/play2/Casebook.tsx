@@ -175,7 +175,7 @@ export function Casebook({ objective, cards: found, items, hints, canHint, board
     if (reducedMotion) return;
     // Once the book and its page are laid out (two frames on): nothing is still being made while it moves.
     const cancel = afterFrames(2, () => {
-      feedback.paper();
+      feedback.paper(false);
       rise.set(withTiming(1, { duration: BOOK_MS.rise, easing: Easing.out(Easing.cubic) }));
       swing.set(withDelay(BOOK_MS.rise - BOOK_MS.overlap, withTiming(1, { duration: BOOK_MS.swing, easing: Easing.inOut(Easing.quad) })));
       timer.current = setTimeout(() => setPhase("open"), BOOK_MS.rise - BOOK_MS.overlap + BOOK_MS.swing + 20);

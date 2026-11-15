@@ -146,13 +146,14 @@ describe("useCelebrate", () => {
   const box = { x: 0.1, y: 0.2, w: 0.3, h: 0.2 };
   const locate = (id: string) => (id === "drawer" ? box : null);
 
-  it("bursts on the object in view, a stamp's thump for a solved step, then clears", async () => {
+  it("bursts on the object in view, a stamp's thump (felt, not heard) for a solved step, then clears", async () => {
     jest.useFakeTimers();
     const { result } = await renderHook(() => useCelebrate("noir", locate));
     await act(async () => result.current.result(ok({ do: "solved", step: "s1" }), { object: "drawer" }));
     expect(result.current.stage).toMatchObject({ strength: "solve", box, level: 0 });
     await act(async () => jest.advanceTimersByTime(400));
     expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.stamp).toHaveBeenCalledWith(false);
     expect(mockFeedback.solved).not.toHaveBeenCalled();
     await act(async () => jest.advanceTimersByTime(3000));
     expect(result.current.stage).toBeNull();

@@ -134,7 +134,7 @@ export function Reveal({ kind, title, text: card, onClose }: { kind: RevealKind;
     if (kind === "lens") feedback.snap();
     else if (kind === "fold") feedback.paperFold();
     else if (kind === "ribbon") feedback.tick();
-    else if (kind !== "tune") feedback.paper();
+    else if (kind !== "tune") feedback.paper(false);
   };
   useEffect(() => {
     if (reducedMotion) shown.set(1);
