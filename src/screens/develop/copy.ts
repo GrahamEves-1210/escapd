@@ -1,9 +1,12 @@
 // 06 · The build wait's words: as few as it can honestly have. The darkroom
 // shows where the case is (src/screens/develop/Darkroom.tsx), so the screen
-// says one thing, small: "Building your case", then "Your case is ready". One
-// more line appears only when there is something the room can't show: the
-// build is being tried again. Plain language (round 4): photos, building,
-// ready; no darkroom or film words, and AI is never mentioned.
+// says one thing, small: "Building your case", then "Your case is ready".
+// While it builds, the title shimmers and turns over to a few short lines in
+// the same spirit (BUILD_LINES: what building a case does, said plainly and a
+// little dry; never a count or a claim of progress). One more line appears
+// only when there is something the room can't show: the build is being tried
+// again. Plain language (round 4): photos, building, ready; AI is never
+// mentioned.
 //
 // Screen readers can't see the room, so they hear each wait in full (`label`):
 // the photo being sent, the queue, what building does, a second try.
@@ -22,8 +25,17 @@ export interface WaitStatus {
   label: string;
 }
 
-/** The title, through every wait. */
+/** The title, through every wait (and what screen readers hear as the title). */
 export const BUILD_TITLE = "Building your case";
+/** What the title turns over to while the case is queued or being built, in this order, from the title. */
+export const BUILD_LINES = [
+  BUILD_TITLE,
+  "Developing your photos",
+  "Hiding the clues",
+  "Locking the door",
+  "Losing the key",
+  "Sealing the letter",
+] as const;
 export const READY_TITLE = "Your case is ready";
 export const STAMP_TEXT = "CASE READY";
 

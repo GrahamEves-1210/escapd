@@ -1,39 +1,48 @@
 // What the cat makes of the game (PeekingCat draws it; PlayerV2 tells this what
 // happened). It keeps to the game's rules and nudges without telling, and
-// without a word: a cat doesn't talk, it looks.
-//   - stuck (nothing new looked at, no step solved, for a while), it glances
-//     now and then at something the player hasn't looked at yet, or toward the
+// without a word: a cat doesn't talk, it looks. Its nudges are rare (PATIENCE):
+// none in a room's first minutes, only after a long, genuine idle, and a long
+// wait after each one that grows each time; and never while the player is
+// getting somewhere (a tap, a sweep of the light, a turn, a find: the idle
+// starts again). The hints asked for in the casebook are another thing.
+//   - stuck (no tap, no sweep, nothing found or solved, for a long while), it
+//     glances once at something the player hasn't looked at yet, or toward the
 //     turn arrow on the side where one is; everything looked at and the case
 //     still open, at the way out (the door, the accusation), or its arrow.
-//     Now and then a glance comes with a paw too, patting the ledge that way,
+//     From its second glance on, a paw too, patting the ledge that way,
 //   - the light passing over something not looked at yet, it perks up (once per
-//     thing, not too often),
+//     thing, rarely, and not in the room's first minutes),
 //   - guessing (three wrong answers in a row), a slow, level blink and a huff
 //     with a shake of its head; waiting out a wrong answer's cooldown, its lids
 //     sit half shut (`waiting`),
 //   - an inspect that turns up nothing, it yawns now and then.
 import { useEffect, useRef, useState } from "react";
-import { useWindowDimensions } from "react-native";
+import { AppState, useWindowDimensions } from "react-native";
 import type { ActionResult, PlayState, RoomDefinitionV2, StateValue } from "@/engine/v2";
 import { ref } from "@/theme/tokens";
 import { CONTAINER_KEYS, type Content } from "./InspectView";
 import type { CatLook, CatReaction } from "./PeekingCat";
 
-/** Stuck this long (ms) without progress, it starts glancing. */
-const STUCK_MS = 45000;
-/** A glance holds this long (ms), and the next comes this much later (plus up to GLANCE_JITTER). */
-const GLANCE_HOLD = 3500;
-const GLANCE_EVERY = 9000;
-const GLANCE_JITTER = 5000;
-/** It perks up at most this often (ms). */
-const PERK_GAP = 4000;
+/**
+ * How patient it is (ms). Nothing in a room's first `graceMs`; a glance only after `idleMs` with no tap, no
+ * sweep of the light, no turn and nothing found or solved; then nothing for `coolMs`, half as long again
+ * after each glance (`growth`), up to `coolMaxMs`. A perk at most every `perkGapMs`, and none in the grace.
+ * A glance holds `holdMs`.
+ */
+export const PATIENCE = { graceMs: 150_000, idleMs: 75_000, coolMs: 240_000, growth: 1.5, coolMaxMs: 900_000, perkGapMs: 90_000, holdMs: 3500 } as const;
+
+/** The wait after the `n`-th glance (n >= 1). */
+export const coolAfter = (n: number): number => Math.min(PATIENCE.coolMaxMs, PATIENCE.coolMs * PATIENCE.growth ** Math.max(0, n - 1));
+
+/** When it may next glance: past the grace, a full idle after the last activity, and the wait after its last glance. */
+export function glanceDue(t: { openedAt: number; activeAt: number; glancedAt: number | null; glances: number }): number {
+  return Math.max(t.openedAt + PATIENCE.graceMs, t.activeAt + PATIENCE.idleMs, t.glancedAt === null ? -Infinity : t.glancedAt + coolAfter(t.glances));
+}
 /** A yawn at nothing about one time in this many, and never twice within BORED_GAP ms. */
 const BORED_ODDS = 3;
 const BORED_GAP = 10000;
 /** Wrong answers in a row before it huffs. */
 const GUESSES = 3;
-/** Every this many glances (the first among them), it points that way with a paw as well. */
-const GLANCE_PAW = 3;
 /** The turn arrows' centres in from the screen's edges (PlayerV2's edge buttons: 52 wide, ref.space.sm in). */
 const ARROW_X = ref.space.sm + 26;
 
@@ -63,26 +72,41 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
   const solved = state?.solved.length ?? 0;
   const progress = `${seen}/${solved}`;
 
-  // Stuck: since the last progress, a glance every so often (each tied to that progress, so progress ends it).
-  const since = useRef(0);
-  const nextGlance = useRef(0);
+  // Activity: a tap, a sweep of the light, a turn, a close-up opened or shut, any action, anything found or solved.
+  const openedAt = useRef(0);   // (set when the room mounts, below)
+  const activeAt = useRef(0);
+  const glancedAt = useRef<number | null>(null);
   const glances = useRef(0);
-  const [glance, setGlance] = useState<{ progress: string; wonder: boolean; paw: boolean } | null>(null);
+  const touch = () => {
+    activeAt.current = Date.now();
+  };
   useEffect(() => {
-    since.current = Date.now();
-    nextGlance.current = 0;
-  }, [progress]);
+    activeAt.current = Date.now();
+  }, [progress, view, watching, state]);
+  // A new room: its own grace, its own count. Back from another app: that was no idle in the room.
+  useEffect(() => {
+    openedAt.current = activeAt.current = Date.now();
+    glancedAt.current = null;
+    glances.current = 0;
+  }, [def]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") activeAt.current = Date.now();
+    });
+    return () => sub.remove();
+  }, []);
+  const [glance, setGlance] = useState<{ progress: string; wonder: boolean; paw: boolean } | null>(null);
   useEffect(() => {
     if (!watching) return;
     let hold: ReturnType<typeof setTimeout> | undefined;
     const timer = setInterval(() => {
       const now = Date.now();
-      if (now - since.current < STUCK_MS || now < nextGlance.current) return;
+      if (now < glanceDue({ openedAt: openedAt.current, activeAt: activeAt.current, glancedAt: glancedAt.current, glances: glances.current })) return;
       glances.current += 1;
-      nextGlance.current = now + GLANCE_HOLD + GLANCE_EVERY + Math.random() * GLANCE_JITTER;
-      // Every other glance a "?" (the rest an "!"); now and then a paw that way too.
-      setGlance({ progress, wonder: glances.current % 2 === 0, paw: glances.current % GLANCE_PAW === 1 });
-      hold = setTimeout(() => setGlance(null), GLANCE_HOLD);
+      glancedAt.current = now;
+      // The first a "?" with its eyes only; after that an "!", and a paw that way too.
+      setGlance({ progress, wonder: glances.current === 1, paw: glances.current > 1 });
+      hold = setTimeout(() => setGlance(null), PATIENCE.holdMs);
     }, 1000);
     return () => {
       clearInterval(timer);
@@ -119,11 +143,13 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
   const perked = useRef(new Set<string>());
   const perkedAt = useRef(-Infinity);
   const hover = (objectId: string | null) => {
+    // The light moving is the player at work.
+    touch();
     const { def: d, state: s } = latest.current;
     const o = objectId ? d?.objects.find((x) => x.id === objectId) : undefined;
     if (!o || !o.archetype || !s || s.seen.includes(o.id) || perked.current.has(o.id)) return;
     const now = Date.now();
-    if (now - perkedAt.current < PERK_GAP) return;
+    if (now - openedAt.current < PATIENCE.graceMs || now - perkedAt.current < PATIENCE.perkGapMs) return;
     perked.current.add(o.id);
     perkedAt.current = now;
     react({ kind: "warm", at: now });
@@ -135,6 +161,7 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
     streak.current = 0;
   }, [solved]);
   const wrong = () => {
+    touch();
     streak.current += 1;
     if (streak.current < GUESSES) return;
     streak.current = 0;
@@ -148,6 +175,7 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
   // Nothing there: an inspect that turned up nothing, or a container opened on nothing. Now and then, a yawn.
   const boredAt = useRef(-Infinity);
   const nothing = (objectId: string, result: ActionResult | null, set?: { control: string; value: StateValue }) => {
+    touch();
     const { def: d, state: s, contents: c } = latest.current;
     const o = d?.objects.find((x) => x.id === objectId);
     if (!result || result.outcome !== "nothing" || !o || !s || (c[objectId] ?? []).length) return;
@@ -160,5 +188,5 @@ export function useCatCues({ def, state, view, photos, frame, watching, cooldown
     react({ kind: "empty", at: now });
   };
 
-  return { lookAt, waiting: cooling, hover, wrong, nothing };
+  return { lookAt, waiting: cooling, hover, wrong, nothing, touch };
 }

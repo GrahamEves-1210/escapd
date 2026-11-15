@@ -3,13 +3,23 @@
 // scrap glowing in the dark; two halves taped together show the tear and the
 // tape; something found on an object is a polaroid of it with her note beside;
 // a page from a book keeps its dog-ear and a pressed flower; a sticky note is
-// a sticky note; anything else is a torn notebook page. Text stays text.
+// a sticky note; anything else is a torn notebook page. Text stays text, and
+// is only what is written on the thing: a printed line (capitals, a line of
+// its own) is set in type, the rest in the hand it was written in.
+// A card that is a thing (types.ts CardDef.look) is drawn as the thing: a
+// photograph is a print of the player's own room, turned over to read its
+// back (Snapshot); a weight, a ring, a blank letter is the thing itself, its
+// stamp or engraving on it (Thing).
 import { StyleSheet, Text, View } from "react-native";
 import { Arrow, Paperclip, PressedFlower, Sparkle, SubjectDoodle, Underline, type Subject } from "./Doodles";
 import { rand, UV, type HandType, type JournalPalette } from "./palette";
 import { Scrap, softShadow, Tape } from "./Paper";
 import { KeyImpression } from "../mechanisms/gadgets/KeyArt";
 import { isBitting } from "../mechanisms/gadgets/keys";
+import { useCardDef } from "../shown";
+import { LETTER_FONT } from "@/theme/payoff";
+import { photoOf, Snapshot } from "./Snapshot";
+import { Thing, thingOf } from "./Thing";
 
 export interface CardLike {
   id: string;
@@ -63,7 +73,26 @@ function tilt(id: string, index: number, max = 1.6) {
   return (index % 2 ? 1 : -1) * (0.5 + rand(id, 7) * (max - 0.5));
 }
 
+/** A line printed on the thing (a hotel's name on its bill): capitals, no slot's lowercase, a line of its own. */
+const printed = (line: string) => /[A-Z]{3}/.test(line) && !/[a-z]/.test(line);
+
+/** What's written on a card, line by line: printed lines in type, the rest in the hand. */
+export function Written({ text, style, color, testID }: { text: string; style: object | object[]; color: string; testID?: string }) {
+  const lines = text.split("\n");
+  if (!lines.some(printed)) return <Text style={[style, { color }]} testID={testID}>{text}</Text>;
+  return (
+    <View testID={testID} style={styles.written}>
+      {lines.map((line, i) => (printed(line)
+        ? <Text key={i} style={[styles.print, { color }]}>{line}</Text>
+        : <Text key={i} style={[style, { color }]}>{line}</Text>))}
+    </View>
+  );
+}
+
 export function JournalCard({ card, palette: p, hand, index, large = false, testID }: Props) {
+  const def = useCardDef(card.id);
+  const photo = photoOf(card, def);
+  const thing = photo ? null : thingOf(card, def?.look);
   const { look, subject } = lookOf(card);
   const rot = tilt(card.id, index);
   const scale = large ? 1.18 : 1;
@@ -84,7 +113,24 @@ export function JournalCard({ card, palette: p, hand, index, large = false, test
   // else) is drawn as the thing itself, never written out.
   const body = (color: string) => (isBitting(card.text)
     ? <KeyImpression bitting={card.text.trim()} width={large ? 250 : 190} style={styles.impression} />
-    : <Text style={[bodyStyle, { color }]}>{card.text}</Text>);
+    : <Written text={card.text} style={bodyStyle} color={color} />);
+
+  // A photograph: the print itself, mounted in brass corners in the casebook; loose, read up close.
+  if (photo) {
+    return (
+      <View testID={testID} style={large ? styles.snapLarge : styles.snapRow}>
+        <Snapshot object={photo.object} back={photo.back} width={large ? 270 : 180} rotate={large ? -2 : rot * 1.4} mount={large ? "none" : "corners"} testID={`snapshot-${card.id}`} />
+      </View>
+    );
+  }
+  // A thing (a weight, a ring, a blank letter): itself, on a card of its own, what's stamped or engraved on it drawn there.
+  if (thing) {
+    return (
+      <Scrap testID={testID} color={p.note} seed={card.id} rotate={rot} shadow={p.shadow} style={large ? styles.wide : styles.thingCard} contentStyle={[pad, styles.thingBody]}>
+        <Thing title={card.title} text={card.text} look={thing} size={large ? 140 : 96} ink={p.ink} />
+      </Scrap>
+    );
+  }
 
   if (look === "uv") {
     return (
@@ -229,6 +275,13 @@ export function Polaroid({ subject, palette: p, hand, caption, rotate, tape, pat
 
 const styles = StyleSheet.create({
   impression: { alignSelf: "center", marginVertical: 6 },
+  written: { gap: 2 },
+  // A printed line: small type, spaced, the way a bill or a ticket has it.
+  print: { fontFamily: LETTER_FONT.typewriter, fontSize: 13, lineHeight: 18, letterSpacing: 0.8, opacity: 0.85 },
+  snapRow: { alignItems: "center", paddingVertical: 10 },
+  snapLarge: { alignItems: "center" },
+  thingCard: { alignSelf: "center", minWidth: 180 },
+  thingBody: { alignItems: "center" },
   wide: { alignSelf: "stretch" },
   pad: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14, gap: 4 },
   padLarge: { paddingHorizontal: 24, paddingTop: 26, paddingBottom: 22, gap: 8 },

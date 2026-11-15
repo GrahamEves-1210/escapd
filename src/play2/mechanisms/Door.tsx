@@ -1,5 +1,8 @@
 // The door: the finale, by its kind. "combination": the door's wheels and a
-// submit. "accusation": a suspect, a motive and a method, then Accuse.
+// submit. "accusation": a suspect, a motive and a method, then Accuse: three
+// columns of tags (Who, Why, How; three each), all on the sheet at once with
+// nothing to scroll, a tag's words wrapping to a second line rather than
+// running off.
 // "ritual": choose the objects in order (tap to add, tap a chosen one to take
 // it back), then Begin. Held while busy or cooling down. Open once it is.
 // What was picked or dialled stays after a wrong try, to change one thing.
@@ -113,8 +116,10 @@ const Ajar = memo(function Ajar({ glow, dark }: { glow: string; dark: string }) 
  * front, an empty ring until it's chosen, so a chip never changes size (and
  * the ones after it never move under the finger).
  */
-function Chip({ label, selected, badge, numbered = false, onPress, disabled }: {
+function Chip({ label, selected, badge, numbered = false, onPress, disabled, column = false }: {
   label: string; selected: boolean; badge?: number; numbered?: boolean; onPress: () => void; disabled: boolean;
+  /** In a column of the accusation: as wide as the column, its words on up to two lines. */
+  column?: boolean;
 }) {
   const theme = useModeTheme();
   const feedback = useFeedback();
@@ -134,6 +139,7 @@ function Chip({ label, selected, badge, numbered = false, onPress, disabled }: {
       }}
       style={({ pressed }) => [
         styles.chip,
+        column ? styles.chipColumn : null,
         {
           backgroundColor: selected ? mix(ENAMEL.light, theme.foil, 0.38) : ENAMEL.mid,
           borderColor: selected ? theme.stamp : INK,
@@ -150,7 +156,7 @@ function Chip({ label, selected, badge, numbered = false, onPress, disabled }: {
       ) : (
         <View style={[styles.hole, { backgroundColor: theme.surface }]} />
       )}
-      <Text style={[styles.chipLabel, { color: ENAMEL.ink, fontFamily: hand }]} numberOfLines={1}>{label}</Text>
+      <Text style={[column ? styles.chipColumnLabel : styles.chipLabel, { color: ENAMEL.ink, fontFamily: hand }]} numberOfLines={column ? 2 : 1}>{label}</Text>
     </RingPressable>
   );
 }
@@ -165,14 +171,15 @@ function Accusation({ target, finale, onSubmit, onChange, busy, cooldown, width 
   const ready = pick.every((p) => p !== null);
   return (
     <Stage width={width}>
-      {rows.map(([title, options], r) => (
-        <View key={title} style={styles.pickRow}>
-          <Text style={[styles.rowTitle, { color: theme.inkMuted }]}>{title}</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityLabel={title}>
+      <View style={styles.columns}>
+        {rows.map(([title, options], r) => (
+          <View key={title} style={styles.pickColumn} accessibilityLabel={title} testID={`mech-accuse-${title.toLowerCase()}`}>
+            <Text style={[styles.rowTitle, { color: theme.inkMuted }]} accessibilityRole="header">{title}</Text>
             {options.map((o) => (
               <Chip
                 key={o.id}
                 label={o.name}
+                column
                 selected={pick[r] === o.id}
                 disabled={busy}
                 onPress={() => {
@@ -181,9 +188,9 @@ function Accusation({ target, finale, onSubmit, onChange, busy, cooldown, width 
                 }}
               />
             ))}
-          </ScrollView>
-        </View>
-      ))}
+          </View>
+        ))}
+      </View>
       <MechButton
         label="Accuse"
         disabled={!ready || busy || cooldown > 0}
@@ -271,9 +278,10 @@ const styles = StyleSheet.create({
   flush: { paddingVertical: 0 },
   fill: { position: "absolute", left: 0, top: 0 },
   doorPanel: { alignItems: "center", justifyContent: "center" },
-  pickRow: { alignSelf: "stretch", gap: ref.space.xs },
+  // The accusation: three columns side by side, a heading and three tags each.
+  columns: { alignSelf: "stretch", flexDirection: "row", gap: ref.space.sm },
+  pickColumn: { flex: 1, minWidth: 0, gap: ref.space.sm },
   rowTitle: { ...ref.type.tag, paddingHorizontal: ref.space.xs },
-  chips: { gap: ref.space.sm, paddingHorizontal: ref.space.xs },
   // A tag's size never changes with its border (chosen or not): the ring is drawn inside its box.
   chip: {
     minHeight: ref.hit.min,
@@ -284,6 +292,9 @@ const styles = StyleSheet.create({
     gap: ref.space.sm,
   },
   chipLabel: { fontSize: 18, lineHeight: 24, maxWidth: 180 },
+  // A tag in a column: its width, a little less room round the words, which wrap to two lines.
+  chipColumn: { alignSelf: "stretch", paddingHorizontal: ref.space.sm, paddingVertical: 4, gap: 6, minHeight: 50 },
+  chipColumnLabel: { flex: 1, fontSize: 17, lineHeight: 20 },
   hole: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.2, borderColor: INK },
   badge: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.4, alignItems: "center", justifyContent: "center" },
   badgeText: { ...ref.type.tag, fontVariant: ["tabular-nums"], textAlign: "center" },

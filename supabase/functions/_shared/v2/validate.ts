@@ -142,6 +142,15 @@ export function validateDefinition(def: RoomDefinitionV2, secret?: RoomSecretV2)
     if ((c.look === "impression" || c.reveal === "tune") && !/^\{\{[a-z0-9_]+\}\}$/.test(c.text)) err(`${c.id}: a drawn card's text is exactly one {{slot}}`);
   }
   for (const i of def.items) if (i.card && !cards.has(i.card)) err(`${i.id}: unknown card ${i.card}`);
+  // What a photograph shows, and what a container holds (shown.ts), are the room's own.
+  for (const c of def.cards) {
+    if (c.object !== undefined && (c.look !== "photo" || !def.objects.some((o) => o.id === c.object && !o.trace))) err(`${c.id}: a photograph shows a room object`);
+  }
+  for (const o of def.objects) {
+    if (!o.holds) continue;
+    for (const id of o.holds.items) if (!def.items.some((i) => i.id === id)) err(`${o.id}: holds an unknown item ${id}`);
+    for (const id of o.holds.cards) if (!cards.has(id)) err(`${o.id}: holds an unknown card ${id}`);
+  }
 
   if (secret) {
     errors.push(...validateSecret(def, secret, targets, cards));

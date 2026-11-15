@@ -57,7 +57,7 @@ export interface Tint { core: string; fill: string; blot: string; halo: string }
 const VIOLET: Tint = { core: "rgba(240,232,255,0.98)", fill: "rgba(190,164,255,0.5)", blot: "rgba(150,120,255,0.34)", halo: "rgba(120,232,255,0.45)" };
 /** What was spilt fluoresces in its own colour. */
 export const STAIN_TINT: Record<TraceStain, Tint> = {
-  wine: { core: "rgba(255,170,210,0.98)", fill: "rgba(226,84,150,0.62)", blot: "rgba(200,60,130,0.36)", halo: "rgba(255,120,190,0.4)" },
+  wine: { core: "rgba(255,200,176,0.98)", fill: "rgba(178,54,46,0.62)", blot: "rgba(140,34,36,0.36)", halo: "rgba(224,96,70,0.4)" },
   coffee: { core: "rgba(255,206,150,0.98)", fill: "rgba(214,138,66,0.6)", blot: "rgba(190,110,50,0.34)", halo: "rgba(255,170,90,0.4)" },
   ink: { core: "rgba(150,196,255,0.98)", fill: "rgba(40,70,200,0.72)", blot: "rgba(30,50,170,0.4)", halo: "rgba(90,150,255,0.45)" },
   wax: { core: "rgba(255,252,236,1)", fill: "rgba(250,244,214,0.8)", blot: "rgba(240,230,190,0.32)", halo: "rgba(255,250,220,0.45)" },

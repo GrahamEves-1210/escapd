@@ -5,7 +5,7 @@
 // in it. Set in IM Fell, a face cut for a seventeenth-century press, in
 // iron-gall ink: the series line in its italic, the case's number in the
 // same ink faded, the brief, and what it wants. The cat's line is added by
-// hand at the foot, and the cat sits by the letter.
+// hand at the foot.
 //
 // The reply, at the way out: the same paper, the headline in the italic, the
 // ending, "The End" beside the seal, whole again; the cat on the letter.
@@ -27,7 +27,6 @@ export const MOON_TYPE = {
   replyBody: { fontFamily: LETTER_FONT.fell, fontSize: 20, lineHeight: 30 },
   end: { fontFamily: LETTER_FONT.fellItalic, fontSize: 32, lineHeight: 38 },
 } as const;
-const CAT = 72;
 
 const paper = (seed: string) => ({ color: P.paper, seed, edges: "deckle" as const, grain: 0.6, age: 0.5, ageColor: P.fox, foxing: 26, foxColor: P.fox, laid: true, shade: P.shade });
 
@@ -42,7 +41,7 @@ function Hung({ text, style, testID }: { text: string; style: object; testID?: s
   );
 }
 
-export function MoonBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay }: BriefLetterProps) {
+export function MoonBrief({ label, series, context, objective, objectiveLabel, postscript }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       {/* A sprig pressed in the letter, poking out from under it. */}
@@ -61,7 +60,6 @@ export function MoonBrief({ label, series, context, objective, objectiveLabel, p
       </Paper>
       <WaxDrop color={P.candle} seed={label} size={30} style={styles.drips} />
       <WaxSeal wax={P.wax} light={P.waxLight} deep={P.waxDeep} seed={label} broken size={88} rotate={-12} style={styles.seal} />
-      <LetterCat width={CAT} delay={catDelay} label={catLabel} style={styles.cat} />
     </View>
   );
 }
@@ -89,18 +87,17 @@ export function MoonReply({ head, headline, text, seed, catLabel, catDelay }: Re
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingTop: 22, paddingBottom: 58 },
+  wrap: { paddingTop: 22, paddingBottom: 30 },
   sheet: { transform: [{ rotate: "0.8deg" }] },
   pad: { paddingHorizontal: 28, paddingTop: 30, paddingBottom: 30, gap: 14 },
   head: { gap: 2, paddingRight: 76 },
   // An opening quote set out in the margin, so the words line up on the measure.
   hung: { marginLeft: -7 },
   objective: { gap: 0 },
-  hand: { transform: [{ rotate: "-1.5deg" }], paddingRight: CAT - 10, marginTop: 4 },
+  hand: { transform: [{ rotate: "-1.5deg" }], marginTop: 4 },
   drips: { position: "absolute", top: 70, right: 30 },
   seal: { position: "absolute", top: -6, right: 16 },
   sprig: { position: "absolute", left: -26, bottom: 18 },
-  cat: { position: "absolute", right: 0, bottom: 0 },
   // The reply.
   replyWrap: { paddingBottom: 24 },
   replySheet: { transform: [{ rotate: "-1.2deg" }] },

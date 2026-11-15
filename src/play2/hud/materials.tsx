@@ -51,7 +51,7 @@ const FELT: Record<Genre, HudMaterials["felt"]> = {
 };
 
 const BOOK: Record<Genre, HudMaterials["book"]> = {
-  noir: { cover: "#7E2F4F", spine: "#571D36", ribbon: "#E9B8A6", tab: "#FFF1DC", tabInk: "#2E1A30" },
+  noir: { cover: "#7E2F4F", spine: "#571D36", ribbon: "#C9A15A", tab: "#FFF1DC", tabInk: "#2E1A30" },
   crime_scene: { cover: "#A12D3F", spine: "#6E1B29", ribbon: "#F6D776", tab: "#F6D776", tabInk: "#3A2A12" },
   paranormal: { cover: "#4B3A9E", spine: "#30246E", ribbon: "#9FF2D8", tab: "#EDE8FF", tabInk: "#1F1C45" },
 };

@@ -36,7 +36,7 @@ Rules:
   wall_mounted (hangs on the wall), light_source (a lamp or light), reflective (a mirror or glass), has_pages (a book or notebook),
   holds_items (could have something inside or underneath), is_door (a door a person walks through).
 - List the room's door(s) as type "door" with is_door (and the doorway it closes). Do not list windows, walls, floors or ceilings.
-- A safe, strongbox, cash box or lockbox is type "safe" (can_open). A landline telephone with a handset (rotary dial or push buttons, on a desk or a wall) is type "telephone": list it. A typewriter is type "typewriter".
+- A safe, strongbox, cash box or lockbox is type "safe" (can_open). A landline telephone with a handset (rotary dial or push buttons, on a desk or a wall) is type "telephone": list it. A typewriter is type "typewriter". A backpack, rucksack, satchel, handbag or tote is type "bag" (never a plant or a pot).
 - box_2d: [ymin, xmin, ymax, xmax] tightly around the visible part, integers normalized to 0-1000.
 - confidence: 0 to 1, how sure you are that the object is really there and correctly described.
 - At most 20 objects, the most distinctive first. Skip objects narrower than about 3% of the image.

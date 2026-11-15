@@ -1,5 +1,5 @@
 // Paper things for the casebook, her annotated reading journal: torn scraps
-// and notes, washi tape, a deckled page edge, a bookmark ribbon, sticky tabs,
+// and notes, kraft paper tape, a deckled page edge, a bookmark ribbon, sticky tabs,
 // and the ornamental rule (a fleuron) between chapters. Drawn with small SVGs
 // that stretch to whatever they edge, so nothing needs measuring.
 import { memo, useId, type ReactNode } from "react";
@@ -79,26 +79,27 @@ export const Rules = memo(function Rules({ color, gap = 24, top = 30 }: { color:
 
 export type TapeStyle = "stripes" | "dots" | "plain";
 
-/** A strip of washi tape, its ends torn, a little see-through. */
+/**
+ * A strip of kraft paper tape (gummed brown paper, the kind parcels are sealed with), its ends torn, its
+ * fibres running along it. `pattern` only varies the fibres (older callers still pass it): never a print.
+ */
 export const Tape = memo(function Tape({ color, width = 70, height = 20, rotate = 0, pattern = "stripes", style }: { color: string; width?: number; height?: number; rotate?: number; pattern?: TapeStyle; style?: StyleProp<ViewStyle> }) {
-  // Torn ends: a zigzag down the left, back up the right.
-  const left = Array.from({ length: 6 }, (_, i) => `${i % 2 ? 2.4 : 0} ${(height * i) / 5}`);
-  const right = Array.from({ length: 6 }, (_, i) => `${width - (i % 2 ? 2.4 : 0)} ${(height * (5 - i)) / 5}`);
+  // Torn ends: a ragged edge down the left, back up the right.
+  const left = Array.from({ length: 7 }, (_, i) => `${[0, 1.8, 0.6, 2.2, 0.4, 1.6, 0][i]} ${(height * i) / 6}`);
+  const right = Array.from({ length: 7 }, (_, i) => `${width - [0.5, 2, 0.3, 1.7, 0.8, 2.3, 0][i]} ${(height * (6 - i)) / 6}`);
   const d = `M${left.join(" L")} L${right.join(" L")} Z`;
+  const step = pattern === "dots" ? 3.1 : pattern === "plain" ? 4.3 : 3.7;
   return (
     <View style={[{ width, height }, rotate ? { transform: [{ rotate: `${rotate}deg` }] } : null, style]} {...hidden}>
       <Svg width={width} height={height}>
-        <Path d={d} fill={color} opacity={0.82} />
-        {pattern === "stripes"
-          ? Array.from({ length: Math.ceil(width / 9) }, (_, i) => (
-            <Path key={i} d={`M${i * 9 + 2} ${height} L${i * 9 + 9} 0`} stroke="rgba(255,255,255,0.45)" strokeWidth={2.4} />
-          ))
-          : pattern === "dots"
-            ? Array.from({ length: Math.floor(width / 10) }, (_, i) => (
-              <Circle key={i} cx={6 + i * 10} cy={i % 2 ? height * 0.32 : height * 0.68} r={1.7} fill="rgba(255,255,255,0.7)" />
-            ))
-            : null}
-        <Path d={`M3 1.5 L${width - 3} 1.5`} stroke="rgba(255,255,255,0.35)" strokeWidth={1} />
+        <Path d={d} fill={color} opacity={0.94} />
+        {/* The paper's fibres, along its length. */}
+        {Array.from({ length: Math.floor(height / step) }, (_, i) => (
+          <Path key={i} d={`M${2 + (i * 7) % 11} ${(i + 0.6) * step} L${width - 3 - (i * 5) % 9} ${(i + 0.6) * step + ((i % 3) - 1) * 0.6}`} stroke="rgba(70,45,20,0.12)" strokeWidth={0.6} />
+        ))}
+        {/* The gum's faint sheen along the top edge, and the shade along the bottom. */}
+        <Path d={`M3 1.4 L${width - 3} 1.4`} stroke="rgba(255,240,210,0.3)" strokeWidth={1} />
+        <Path d={`M3 ${height - 1.2} L${width - 3} ${height - 1.2}`} stroke="rgba(60,36,14,0.16)" strokeWidth={1} />
       </Svg>
     </View>
   );

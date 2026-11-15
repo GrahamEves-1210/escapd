@@ -17,6 +17,22 @@ Deno.test("textiles host only LiftUnder, whatever perception claims", () => {
   assert(can("pillow").has("LiftUnder"));
 });
 
+Deno.test("a bag is opened and looked inside, never lifted like a pot; its name is a bag's", async () => {
+  const { isPortableType, typeForLabel } = await import("./taxonomy.ts");
+  // Never taken away as a find of its own (an item named "Brown backpack" in the tray, drawn as anything).
+  assert(!isPortableType("bag"));
+  for (const label of ["brown backpack", "leather satchel", "canvas tote", "black handbag", "rucksack", "gym bag"]) assertEquals(typeForLabel(label), "bag", label);
+  // Whatever perception says about it, a bag hosts only LiftUnder/inside (its flap or zip opened).
+  for (const features of [[], ["can_lift"], ALL_FEATURES] as Feature[][]) {
+    assertEquals(hostableArchetypes({ type: "bag", features }), [{ archetype: "LiftUnder", variant: "inside" }]);
+  }
+  // And nothing else in storage is "looked inside" this way; a box or basket still lifts.
+  for (const type of OBJECT_TYPES.filter((t) => t !== "bag")) {
+    assert(!hostableArchetypes({ type, features: ALL_FEATURES }).some((h) => h.variant === "inside"), type);
+  }
+  assert(hostableArchetypes({ type: "basket", features: ["can_lift"] }).some((h) => h.archetype === "LiftUnder" && h.variant === "lift"));
+});
+
 Deno.test("no lock, clock or dial on absurd hosts", () => {
   for (const t of ["pillow", "cushion", "rug", "plant_pot", "poster", "mug", "bed", "guitar"] as ObjectType[]) {
     assert(!can(t, ALL_FEATURES).has("CombinationLock"), `${t} took a lock`);

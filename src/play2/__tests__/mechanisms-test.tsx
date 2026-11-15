@@ -232,7 +232,7 @@ describe("mechanisms", () => {
     const { onSet } = await mount(t, { state: { offset: "1" } });
     await act("Cipher ring", "increment");
     expect(onSet).toHaveBeenLastCalledWith("offset", "2");
-    expect(screen.getByTestId("mech-decoder-letter")).toHaveTextContent("C");
+    expect(screen.getByLabelText("Cipher ring").props.accessibilityValue.text).toMatch(/^A over C\b/);
     await act("Cipher ring", "decrement");
     await act("Cipher ring", "decrement");
     expect(onSet).toHaveBeenLastCalledWith("offset", "25");

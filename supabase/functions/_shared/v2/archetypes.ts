@@ -128,6 +128,8 @@ const LOCKABLE: ObjectType[] = [
   "desk", "nightstand", "dresser", "wardrobe", "cabinet", "sideboard", "filing_cabinet", "tv_stand",
   "chest", "trunk", "box", "suitcase", "safe", "toolbox",
 ];
+/** Storage small enough to lift off what it stands on (a bag is opened instead: LiftUnder/inside). */
+const LIFTABLE_STORAGE: ObjectType[] = ["box", "basket", "jar", "toolbox"];
 /** Steel things with a dial: a safe, and what could pass for a strongbox. */
 export const STRONGBOXES: ObjectType[] = ["safe", "filing_cabinet", "chest", "trunk", "toolbox"];
 /** Objects that can carry a mark, a glow or ink (tool-reveal and room-change targets). */
@@ -147,7 +149,13 @@ export const ARCHETYPES: Record<ArchetypeId, ArchetypeSpec> = {
   },
   LiftUnder: {
     id: "LiftUnder",
-    variants: { lift: { hosts: { categories: ["textile", "decor", "plant", "paper", "storage"], allFeatures: ["can_lift"] }, controls: [bool("lifted")], initial: { lifted: false } } },
+    variants: {
+      // Lifted, and what was under it is there: a cushion, a rug, a plant pot, a book, a small box or basket.
+      lift: { hosts: { categories: ["textile", "decor", "plant", "paper"], types: LIFTABLE_STORAGE, allFeatures: ["can_lift"] }, controls: [bool("lifted")], initial: { lifted: false } },
+      // A bag (a backpack, a satchel, a handbag) isn't lifted to see under it: its flap or zip is opened and
+      // what's inside is there. Same control, so the engine treats it as any find.
+      inside: { hosts: { types: ["bag"] }, controls: [bool("lifted")], initial: { lifted: false } },
+    },
     emits: ["item", "card"], accepts: ["bool"], overlays: [], holdsItems: true,
   },
   Readable: {

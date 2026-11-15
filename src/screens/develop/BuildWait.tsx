@@ -1,9 +1,12 @@
 // 06 · Building your case: the wait itself, and the moment it's ready. The
 // screen is a darkroom (Darkroom.tsx): the player's own photos lie in a tray
 // of developer under a red safelight, blank as each is sent, their pictures
-// coming up while the case is built, and the cat behind the bench watches
-// them. Under it, one small title in the mode's display face, and nothing
-// else unless the room can't say it (a second try: one handwritten line). A
+// coming up while the case is built, and the cat sits on the bench watching
+// them (rendered into the room, in its light). Under it, one small title in
+// the mode's display face with the old status line's shimmer running over it
+// (ShimmerTitle), turning over to a few short lines while the case is built
+// (copy.ts BUILD_LINES), and nothing else unless the room can't say it (a
+// second try: one handwritten line). A
 // quiet way out sits in the header: the camera's square button, which goes
 // home; the case keeps building and home's Continue comes back to it.
 // Android's back does the same. While the photos are still sending there is
@@ -11,16 +14,15 @@
 //
 // Ready is the reward: the prints are lifted out and pegged on the line, the
 // lights come up on them, a gold-foil CASE READY seal is pressed onto the
-// picture (`stamp`), the cat cheers, `success` follows it, and only then does
+// picture (`stamp`), `success` follows it, and only then does
 // "Open the case" (the guide's pill, `thud`) fade in at the foot, where its
 // space was kept all along so nothing jumps.
 //
 // Screen readers can't see the room: the status (a polite live region) tells
 // them each wait in full.
 //
-// Sound: `typewriter` when the status changes meaning (queued, building,
-// trying again), never for a photo count, and never twice within
-// TYPEWRITER_GAP.
+// Sound: none. The wait is silent (the user's music plays on); only the
+// ready seal is felt, never heard, so nothing sounds on arriving here.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
@@ -32,19 +34,17 @@ import { XIcon } from "@/components/icons";
 import { StateActions, type StateAction } from "@/components/StateScreen";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
-import { PeekingCat, type CatReaction } from "@/play2/PeekingCat";
 import { FoilSeal } from "@/render/keepsake";
-import { handType } from "@/theme/payoff";
+import { handType, mix } from "@/theme/payoff";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ctaBottomPad, ref } from "@/theme/tokens";
-import { BUILD_TITLE, READY_TITLE, STAMP_TEXT, waitStatus, type WaitStage } from "./copy";
+import { BUILD_LINES, BUILD_TITLE, READY_TITLE, STAMP_TEXT, waitStatus, type WaitStage } from "./copy";
 import { Darkroom, type DarkroomPhoto } from "./Darkroom";
+import { ShimmerTitle } from "./ShimmerTitle";
 
 const D = ref.layout.develop;
 const SQ = ref.button.square;
 const NUDGE = ref.layout.play.complete.slam.nudge;
-/** The typewriter cue's minimum spacing, in ms: a change of meaning, at most this often. */
-export const TYPEWRITER_GAP = 4000;
 export const LEAVE_LABEL = "Leave. Your case keeps building.";
 export const HOME_LABEL = "Back to home";
 
@@ -139,20 +139,6 @@ export function BuildWait({ stage, photos, onLeave, open }: {
     }, [sending, onLeave]),
   );
 
-  // The typewriter: when the status changes meaning, not on mount, at most every TYPEWRITER_GAP.
-  const phase = status?.phase ?? "ready";
-  const lastPhase = useRef(phase);
-  const lastTyped = useRef(-Infinity);
-  useEffect(() => {
-    if (lastPhase.current === phase) return;
-    lastPhase.current = phase;
-    if (phase === "ready" || phase === "sending") return;
-    const now = Date.now();
-    if (now - lastTyped.current < TYPEWRITER_GAP) return;
-    lastTyped.current = now;
-    feedback.typewriter();
-  }, [phase, feedback]);
-
   // Ready: the stamp lands (its own `stamp` cue), success after it, then the pill.
   const [landed, setLanded] = useState(false);
   const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -165,11 +151,7 @@ export function BuildWait({ stage, photos, onLeave, open }: {
     if (successTimer.current) clearTimeout(successTimer.current);
     successTimer.current = setTimeout(() => feedback.success(), D.ready.success);
   }, [feedback]);
-  // The cat watches the tray from behind the bench while the case is built, and cheers the stamp.
-  const [catReaction, setCatReaction] = useState<CatReaction>(null);
-  const still = { x: useSharedValue(0.5), y: useSharedValue(0.5) };
   const land = () => {
-    setCatReaction({ kind: "found", at: Date.now() });
     const { x, y, step } = NUDGE;
     const t = (to: number) => withTiming(to, { duration: step });
     nudgeY.set(withSequence(t(y), t(-y / 2), t(0)));
@@ -183,13 +165,15 @@ export function BuildWait({ stage, photos, onLeave, open }: {
   // Reduced motion: the stamp is simply there and the pill with it; the stamp's cue and success still come, in order.
   useEffect(() => {
     if (!ready || !reducedMotion) return;
-    feedback.stamp();
+    feedback.stamp(false);
     succeed();
   }, [ready, reducedMotion, feedback, succeed]);
   const showOpen = ready && (landed || reducedMotion);
 
   const titleSize = TITLE_SIZE[palette.genre ?? "shell"];
-  const title = ready ? READY_TITLE : BUILD_TITLE;
+  const titleType = { ...theme.display, fontSize: titleSize, lineHeight: Math.round(titleSize * 1.3) };
+  // The title turns over while the case is queued or built; while the photos send, it is the title alone.
+  const titleLines = status && status.phase !== "sending" ? BUILD_LINES : [BUILD_TITLE];
   const foot = ref.layout.state.footer.pad + ref.button.ghost.height + ctaBottomPad(insets.bottom);
 
   return (
@@ -219,28 +203,34 @@ export function BuildWait({ stage, photos, onLeave, open }: {
                   delay={D.ready.stampDelay}
                   reduced={reducedMotion}
                   onLanded={() => {
-                    feedback.stamp();
+                    feedback.stamp(false);
                     land();
                   }}
                   testID="build-stamp"
                 />
               </View>
             ) : null}
-          >
-            {({ width, look }) => (
-              <PeekingCat width={width} beamX={still.x} beamY={still.y} frame={null} reaction={catReaction} lookAt={look} />
-            )}
-          </Darkroom>
+          />
         </Animated.View>
-        <Animated.Text
-          key={title}
-          entering={ready ? TITLE_IN : undefined}
-          style={[styles.title, { ...theme.display, fontSize: titleSize, lineHeight: Math.round(titleSize * 1.3), color: palette.ink }]}
-          accessibilityRole="header"
-          testID="build-title"
-        >
-          {title}
-        </Animated.Text>
+        <View style={styles.title}>
+          {ready ? (
+            <Animated.Text entering={TITLE_IN} style={[titleType, styles.readyTitle, { color: palette.ink }]} accessibilityRole="header" testID="build-title">
+              {READY_TITLE}
+            </Animated.Text>
+          ) : (
+            <ShimmerTitle
+              lines={titleLines}
+              label={BUILD_TITLE}
+              type={titleType}
+              // The old line's sweep: the title a shade under its ink, a glint of the mode's brass running over it.
+              base={mix(palette.ink, palette.inkMuted, 0.4)}
+              highlight={mix(theme.foil, "#FFFFFF", 0.55)}
+              still={palette.ink}
+              reduced={reducedMotion}
+              testID="build-title"
+            />
+          )}
+        </View>
         <View style={styles.status}>
           {status ? (
             <HandStatus line={status.line} color={palette.inkMuted} label={status.label} reduced={reducedMotion} />
@@ -267,7 +257,8 @@ const styles = StyleSheet.create({
   column: { flex: 1, justifyContent: "center", paddingHorizontal: ref.space.edge, paddingTop: D.header.below },
   stage: { flexShrink: 1, flexGrow: 1, maxHeight: D.frame.maxHeight, minHeight: D.frame.minHeight, justifyContent: "center" },
   room: { flex: 1 },
-  title: { textAlign: "center", marginTop: 18 },
+  title: { alignSelf: "stretch", marginTop: 18 },
+  readyTitle: { textAlign: "center" },
   statusLine: { alignSelf: "stretch", alignItems: "center", minHeight: STATUS_LINE },
   statusRow: { flexDirection: "row", alignItems: "baseline" },
   dots: { flexDirection: "row", width: 16 },

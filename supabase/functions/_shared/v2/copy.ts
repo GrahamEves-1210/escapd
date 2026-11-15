@@ -9,6 +9,13 @@
 //     report, a coroner's note), never a label ("Code: 374", "Page in the
 //     bookshelf: 267") and never a conclusion ("ruled out"): the player reads
 //     the evidence and draws the inference.
+//   - Show, never tell: a card's text is only what is literally written,
+//     printed, stamped or engraved on the thing ("THE BLUE LANTERN" printed on
+//     a matchbook, the code pencilled inside it). What the thing is and what it
+//     looks like (lipstick on a napkin, a photograph face down, a weight the
+//     size of a thimble) the app shows: the title names it, the look (types.ts
+//     CardDef.look) says how it is drawn, and nothing narrates it. A printed
+//     line is in capitals, on a line of its own.
 //   - Names are plain and concrete ("Train ticket", "Wedding ring"), never
 //     jargon ("Personal effect").
 //   - No card names the object a value is for, or says what it is for: which
@@ -16,15 +23,16 @@
 //   - No digits outside {{slots}}: a stray number would read as a clue.
 //   - Choices are deterministic from the caller's `pick` (a seeded stream).
 import type { ObjectType } from "./taxonomy.ts";
-import type { Mode, OrderRule, SlotKind, TraceHand, TraceKind, TracePattern, TraceSize, TraceTread } from "./types.ts";
+import type { CardLook, Mode, OrderRule, SlotKind, TraceHand, TraceKind, TracePattern, TraceSize, TraceTread } from "./types.ts";
 
 export type Pick = <T>(xs: readonly T[]) => T;
 
 /** Where a card's writing was found, which decides how it reads. */
 export type Medium = "found" | "read" | "pages" | "lamp" | "uv" | "radio" | "assembled" | "decoded" | "heat" | "mirror" | "rub" | "lens" | "fold" | "tune" | "ribbon" | "phone";
 
-export interface Frame { title: string; lead: string }
-const f = (title: string, lead: string): Frame => ({ title, lead });
+/** A card's title and text ("{v}": the value), and how the app draws it when it's a thing, not paper. */
+export interface Frame { title: string; lead: string; look?: CardLook }
+const f = (title: string, lead: string, look?: CardLook): Frame => ({ title, lead, ...(look ? { look } : {}) });
 
 // ---------------------------------------------------------------------------
 // The case: its label, objective, brief and ending
@@ -96,23 +104,24 @@ export function caseLabel(seed: string | number): string {
 const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
   noir: {
     found: [
-      f("Matchbook", "From a bar called the Blue Lantern. Inside the flap, in hurried pencil: {v}"),
-      f("Pawn ticket", "One silver cigarette case, pawned and never collected. On the back, in pencil: {v}"),
-      f("Cocktail napkin", "Lipstick on one corner. On the other, in blotted ink: {v}"),
-      f("Envelope", "No stamp, no address, nothing inside. Pressed hard enough to dent the paper: {v}"),
-      f("Betting slip", "A losing horse at long odds. Scrawled across the back: {v}"),
+      f("Matchbook", "THE BLUE LANTERN\n{v}"),
+      f("Pawn ticket", "UNCLAIMED PLEDGE · ONE SILVER CIGARETTE CASE\n{v}"),
+      f("Cocktail napkin", "THE GILDED CAGE · COCKTAILS\n{v}"),
+      f("Envelope", "{v}"),
+      f("Betting slip", "LOWRY'S TURF ACCOUNTANTS\n{v}"),
     ],
     read: [
-      f("Pencil note", "Underlined twice, in soft pencil: {v}"),
-      f("Margin note", "Between the printed lines, in a different hand: {v}"),
+      f("Pencil note", "{v}"),
+      f("Margin note", "{v}"),
     ],
     pages: [
-      f("Photograph", "Marking the place, a photograph, face down. On the back: {v}"),
-      f("Bar bill", "Folded in at that page, a bar bill. Across the total, in pencil: {v}"),
+      // A snapshot of something in this room, marking the place: what's on its back is the writing.
+      f("Photograph", "{v}", "photo"),
+      f("Bar bill", "THE BLUE LANTERN · SETTLE AT THE BAR\n{v}"),
     ],
     lamp: [f("Writing in the light", "{v}")],
     uv: [f("Invisible ink", "{v}")],
-    radio: [f("Radio", "A man's voice through the static, flat and tired: {v}")],
+    radio: [f("Radio", "{v}")],
     assembled: [f("Taped note", "{v}")],
     decoded: [f("Decoded note", "{v}")],
     heat: [f("Lemon-juice letter", "{v}")],
@@ -122,23 +131,26 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "{v}")],
     tune: [f("Music box", "{v}")],
     ribbon: [f("Typewriter ribbon", "{v}")],
-    phone: [f("Telephone", "A woman's voice on the line, low and quick: {v}")],
+    phone: [f("Telephone", "{v}")],
   },
   crime_scene: {
     found: [
-      f("Evidence bag", "Bagged at the scene, logged as loose paper. Written on it: {v}"),
-      f("Receipt", "Crumpled, the print faded to nothing. Biro on the back: {v}"),
-      f("Sticky note", "Half a fingerprint on the adhesive. In blue ink: {v}"),
-      f("Index card", "Filed out of order. In the middle, in capitals: {v}"),
+      f("Evidence bag", "EVIDENCE · LOOSE PAPER\n{v}"),
+      f("Receipt", "{v}"),
+      f("Sticky note", "{v}"),
+      f("Index card", "{v}"),
     ],
     read: [
-      f("Margin note", "Circled in red: {v}"),
-      f("Margin note", "Pencilled in the margin and circled twice: {v}"),
+      f("Margin note", "{v}"),
+      f("Pencil note", "{v}"),
     ],
-    pages: [f("Dry-cleaning tag", "Pressed flat at that page, a dry-cleaning tag. Inked on it: {v}")],
+    pages: [
+      f("Photograph", "{v}", "photo"),
+      f("Dry-cleaning tag", "SWIFT CLEANERS · CALL FOR\n{v}"),
+    ],
     lamp: [f("Indented writing", "{v}")],
     uv: [f("Invisible ink", "{v}")],
-    radio: [f("Police radio", "The police band, between stations. The dispatcher: {v}")],
+    radio: [f("Police radio", "{v}")],
     assembled: [f("Taped statement", "{v}")],
     decoded: [f("Decoded note", "{v}")],
     heat: [f("Lemon-juice note", "{v}")],
@@ -148,23 +160,26 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "{v}")],
     tune: [f("Music box", "{v}")],
     ribbon: [f("Typewriter ribbon", "{v}")],
-    phone: [f("Telephone", "The exchange operator, reading back a message left for this number: {v}")],
+    phone: [f("Telephone", "{v}")],
   },
   paranormal: {
     found: [
-      f("Yellowed scrap", "Damp, and colder than the room. In a cramped, old-fashioned hand: {v}"),
-      f("Child's drawing", "Crayon pressed so hard it tore the paper. Under the scribble: {v}"),
-      f("Prayer card", "The saint's face has been scratched away. On the back: {v}"),
-      f("Burnt letter", "Only one line survived the fire: {v}"),
+      f("Yellowed scrap", "{v}"),
+      f("Child's drawing", "{v}"),
+      f("Prayer card", "{v}"),
+      f("Burnt letter", "{v}"),
     ],
     read: [
-      f("Faded writing", "The ink has gone brown, but this much is still legible: {v}"),
-      f("Faded writing", "In a small, careful hand, pressed hard: {v}"),
+      f("Faded writing", "{v}"),
+      f("Pencilled line", "{v}"),
     ],
-    pages: [f("Pressed lily", "Beside a pressed lily, in the gutter of the page: {v}")],
+    pages: [
+      f("Photograph", "{v}", "photo"),
+      f("Pressed lily", "{v}"),
+    ],
     lamp: [f("Writing in the light", "{v}")],
     uv: [f("Finger-writing", "{v}")],
-    radio: [f("Radio", "A child's voice under the hiss, counting slowly: {v}")],
+    radio: [f("Radio", "{v}")],
     assembled: [f("Mended page", "{v}")],
     decoded: [f("Decoded note", "{v}")],
     heat: [f("Lemon-juice page", "{v}")],
@@ -174,7 +189,7 @@ const INLINE: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "{v}")],
     tune: [f("Music box", "{v}")],
     ribbon: [f("Typewriter ribbon", "{v}")],
-    phone: [f("Telephone", "A child's voice down the line, very far away: {v}")],
+    phone: [f("Telephone", "{v}")],
   },
 };
 
@@ -187,73 +202,73 @@ type DocKind = Exclude<SlotKind, "option" | "object" | "time">;
 const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
   noir: {
     freq: [
-      f("Matchbook", "From the Blue Lantern. Inside the flap, in lipstick: Tune in, {v}, after midnight"),
-      f("Taxi log", "A page from a cab dispatcher's log. One line circled twice: Night car, call in on {v}"),
+      f("Matchbook", "THE BLUE LANTERN\nTune in, {v}, after midnight"),
+      f("Taxi log", "YELLOW CAB CO. · NIGHT DISPATCH\nNight car, call in on {v}"),
     ],
     page: [
-      f("Library slip", "A city library slip, long overdue. Pencilled under the date stamp: {v}"),
-      f("Pawn ticket", "For one leather-bound volume, never collected. On the back, in a neat hand: see {v}"),
-      f("Bookmark", "A cheap leather bookmark, the tassel chewed. Inked on the end: {v}"),
+      f("Library slip", "CITY LIBRARY · DATE DUE\n{v}"),
+      f("Pawn ticket", "UNCLAIMED PLEDGE · ONE LEATHER-BOUND VOLUME\nsee {v}"),
+      f("Bookmark", "{v}"),
     ],
     digits: [
-      f("Luggage tag", "A brass-eyed tag from a suitcase that never arrived. Inked where the room number goes: {v}"),
-      f("Hotel bill", "From a cheap hotel down by the docks. Torn off the bottom, in the clerk's hand: {v}"),
-      f("Cloakroom ticket", "From the Blue Lantern's coat check, never redeemed. Punched through the middle: {v}"),
-      f("Pawn ticket", "One silver cigarette case, pawned and never collected. Stamped in red where the number goes: {v}"),
+      f("Luggage tag", "ROOM NO. {v}"),
+      f("Hotel bill", "HOTEL MARINER, BY THE DOCKS\n{v}"),
+      f("Cloakroom ticket", "THE BLUE LANTERN · CLOAKROOM\n{v}"),
+      f("Pawn ticket", "UNCLAIMED PLEDGE\nNo. {v}"),
     ],
     code: [
-      f("Hardware receipt", "For one padlock, paid in cash, no name given. Scrawled across the back: {v}"),
-      f("Shoeshine stub", "A shoeshine stand's ticket. On the back, in pencil, pressed hard: {v}"),
-      f("Matchbook", "From a bar called the Blue Lantern. Inside the flap, in hurried pencil: {v}"),
+      f("Hardware receipt", "KELLER HARDWARE · ONE PADLOCK · CASH\n{v}"),
+      f("Shoeshine stub", "SHINE · TEN CENTS\n{v}"),
+      f("Matchbook", "THE BLUE LANTERN\n{v}"),
     ],
-    offset: [f("Pocket diary", "Every page blank but one, and on it, circled: {v}")],
-    cipher: [f("Telegram", "Delivered, never opened until now. The whole message: {v}")],
+    offset: [f("Pocket diary", "{v}")],
+    cipher: [f("Telegram", "{v}")],
     phone: [
-      f("Matchbook", "From the Blue Lantern, two matches left. Inside the flap, in lipstick, a telephone number: {v}"),
-      f("Calling card", "No name on it, only a line of print: Night line {v}"),
+      f("Matchbook", "THE BLUE LANTERN\n{v}"),
+      f("Calling card", "Night line {v}"),
     ],
   },
   crime_scene: {
     freq: [
-      f("Dispatch slip", "Torn from the dispatcher's pad, in the night sergeant's capitals: Night channel, {v}"),
-      f("Scanner log", "The victim's scanner log. One channel, ringed twice: {v}"),
+      f("Dispatch slip", "NIGHT CHANNEL, {v}"),
+      f("Scanner log", "{v}"),
     ],
     page: [
-      f("Library slip", "A library slip the inspector clipped to the evidence list. Pencilled under the date stamp, in the inspector's hand: {v}"),
-      f("Index card", "From the inspector's card index on the case. One line only: see {v}"),
+      f("Library slip", "CITY LIBRARY · DATE DUE\n{v}"),
+      f("Index card", "see {v}"),
     ],
-    digits: [f("Luggage tag", "Torn from the victim's case. Where the room goes, in the victim's hand: {v}")],
+    digits: [f("Luggage tag", "ROOM NO. {v}")],
     code: [
-      f("Receipt", "From a locksmith across town, for one padlock. On the back, in biro: {v}"),
-      f("Phone bill", "The victim's, unpaid. Written in the margin and boxed twice: {v}"),
-      f("Sticky note", "Half a fingerprint on the adhesive. In blue ink, boxed: {v}"),
+      f("Receipt", "BRANNOCK LOCKSMITHS · ONE PADLOCK\n{v}"),
+      f("Phone bill", "{v}"),
+      f("Sticky note", "{v}"),
     ],
-    offset: [f("Diary page", "The victim's diary, one entry only, and only this: {v}")],
-    cipher: [f("Postcard", "No picture, no signature. Just one line in capitals: {v}")],
+    offset: [f("Diary page", "{v}")],
+    cipher: [f("Postcard", "{v}")],
     phone: [
-      f("Message pad", "The pad kept by the telephone. The last message taken down: Please ring back, {v}"),
-      f("Address book", "The victim's, open at a page with one entry and no name: {v}"),
+      f("Message pad", "WHILE YOU WERE OUT\nPlease ring back, {v}"),
+      f("Address book", "{v}"),
     ],
   },
   paranormal: {
     freq: [
-      f("Wireless log", "A page from an old wireless log, the ink gone brown. One line, underlined: {v}"),
-      f("Séance notes", "Pencil notes from a séance in this room. One line, underlined twice: the voice comes on {v}"),
+      f("Wireless log", "{v}"),
+      f("Séance notes", "the voice comes on {v}"),
     ],
     page: [
-      f("Hymn sheet", "Torn from a pew. Ringed in pencil at the foot: {v}"),
-      f("Bookmark", "A black ribbon bookmark, frayed at the end. Stitched into it in white thread: {v}"),
+      f("Hymn sheet", "{v}"),
+      f("Bookmark", "{v}"),
     ],
-    digits: [f("Christening card", "Lace edges gone grey. Inside, where the name should be: {v}")],
+    digits: [f("Christening card", "{v}")],
     code: [
-      f("Sampler", "A child's cross-stitch, unfinished. The last row, in black thread: {v}"),
-      f("Slate", "A child's school slate. Chalked on it, and never rubbed out: {v}"),
+      f("Sampler", "{v}"),
+      f("Slate", "{v}"),
     ],
-    offset: [f("Diary page", "A girl's diary, one line on an empty page: {v}")],
-    cipher: [f("Burnt letter", "Only one line survived the fire: {v}")],
+    offset: [f("Diary page", "{v}")],
+    cipher: [f("Burnt letter", "{v}")],
     phone: [
-      f("Visiting card", "Black-edged, the name rubbed away. Under it, in a child's pencil: {v}"),
-      f("Wall calendar leaf", "A torn-off day. On the back, in a round hand: ring {v}"),
+      f("Visiting card", "{v}"),
+      f("Wall calendar leaf", "ring {v}"),
     ],
   },
 };
@@ -261,16 +276,16 @@ const DOCS: Record<Mode, Partial<Record<DocKind, Frame[]>>> = {
 /** Where a safe's three numbers are written down: by whoever couldn't trust their memory with them. */
 export const DIAL_DOCS: Record<Mode, Frame[]> = {
   noir: [
-    f("Matchbook", "From the Blue Lantern. Inside the flap, three numbers in a careful hand: {v}"),
-    f("Betting slip", "A losing horse at long odds. Along the bottom edge, small and neat: {v}"),
+    f("Matchbook", "THE BLUE LANTERN\n{v}"),
+    f("Betting slip", "LOWRY'S TURF ACCOUNTANTS\n{v}"),
   ],
   crime_scene: [
-    f("Diary page", "The victim's pocket diary, the last page. No words, only: {v}"),
-    f("Locksmith's card", "From the firm that fitted the safe. Pencilled on the back by the fitter: {v}"),
+    f("Diary page", "{v}"),
+    f("Locksmith's card", "BRANNOCK LOCKSMITHS · SAFES FITTED\n{v}"),
   ],
   paranormal: [
-    f("Flyleaf", "Torn from a prayer book. Inside the cover, in faded ink: {v}"),
-    f("Sampler", "A child's cross-stitch, unfinished. The last row, in black thread: {v}"),
+    f("Flyleaf", "{v}"),
+    f("Sampler", "{v}"),
   ],
 };
 
@@ -285,32 +300,32 @@ export interface TimeDoc { title: string; lead: string; brief: string; rel: stri
 const td = (title: string, lead: string, brief: string, rel: string, sign: 1 | -1 = 1): TimeDoc => ({ title, lead, brief, rel, sign });
 export const TIME_DOCS: Record<Mode, TimeDoc[]> = {
   noir: [
-    td("Train ticket", "A third-class single for the last train out, punched once by the guard. Departure, printed in the corner: {v}", "the last train, {v}",
+    td("Train ticket", "THIRD CLASS · SINGLE · LAST TRAIN OUT\nDeparts {v}", "the last train, {v}",
       "The last train never leaves on time. It pulls out {d} after the time on the ticket."),
-    td("Theatre ticket", "Stalls, the seat number torn away. Curtain up, stamped across it in purple: {v}", "curtain up at {v}",
+    td("Theatre ticket", "STALLS · CURTAIN UP {v}", "curtain up at {v}",
       "The curtain went up {d} late that night. Somebody kept the whole house waiting."),
     td("Telegram", "ARRIVING ON THE LATE TRAIN STOP MEET ME AT {v} STOP COME ALONE STOP", "meet at {v}",
       "He turned up to the meeting {d} late. He always does."),
   ],
   crime_scene: [
-    td("Parking ticket", "Issued on the street outside. The warden's time, written in the box: {v}", "the warden's ticket, {v}",
+    td("Parking ticket", "PARKING OFFENCE · TIME OBSERVED {v}", "the warden's ticket, {v}",
       "From the traffic office: that warden's watch was found to run {d} fast.", -1),
-    td("Platform ticket", "A platform ticket, clipped by the inspector. Stamped in purple: {v}", "platform ticket stamped {v}",
+    td("Platform ticket", "PLATFORM TICKET · NOT VALID ON TRAINS\n{v}", "platform ticket stamped {v}",
       "The stationmaster's note: the platform clock ran {d} slow all that week."),
   ],
   paranormal: [
-    td("Mourning card", "Black-edged, for a child. The hour of passing, in copperplate: {v}", "she passed at {v}",
+    td("Mourning card", "IN LOVING MEMORY\nfell asleep at {v}", "she passed at {v}",
       "They rang the bell {d} after she passed, and stopped every clock in the house on its last stroke."),
-    td("Parish register", "A page torn from the parish register. Beside a burial, the hour it began, underlined: {v}", "the burial began at {v}",
+    td("Parish register", "BURIALS\nbegun at {v}", "the burial began at {v}",
       "The bell was tolled only when the last earth was in, {d} after the burial began."),
   ],
 };
 
 /** How the second fact about a time is written: on the same document, or on another card ("carrier"). */
 export const TIME_REL_LEAD: Record<Mode, { same: string; carrier: string }> = {
-  noir: { same: "Pencilled underneath: \"{r}\"", carrier: "On the back, in another hand: \"{r}\"" },
-  crime_scene: { same: "Paper-clipped to it: {r}", carrier: "Paper-clipped to it, a second note: {r}" },
-  paranormal: { same: "Beneath, fainter: {r}", carrier: "And at the very bottom, fainter, as if added later: {r}" },
+  noir: { same: "P.S. {r}", carrier: "N.B. {r}" },
+  crime_scene: { same: "Memo: {r}", carrier: "Further memo: {r}" },
+  paranormal: { same: "Remember: {r}", carrier: "Do not forget: {r}" },
 };
 
 /** Amounts of time in words (minutes): never digits on a card. */
@@ -324,12 +339,12 @@ export const DURATIONS: [number, string][] = [
 // ---------------------------------------------------------------------------
 const LIST: Record<Mode, Record<Medium, Frame[]>> = {
   noir: {
-    found: [f("Notes", "Somebody's notes, in a cramped hand:")],
-    read: [f("Notes", "Between the printed lines, in a different hand:")],
-    pages: [f("Folded sheet", "A folded sheet marks the place:")],
+    found: [f("Notes", "")],
+    read: [f("Margin notes", "")],
+    pages: [f("Folded sheet", "")],
     lamp: [f("Writing in the light", "")],
     uv: [f("Invisible ink", "")],
-    radio: [f("Radio", "A man's voice through the static:")],
+    radio: [f("Radio", "")],
     assembled: [f("Taped note", "")],
     decoded: [f("Decoded note", "")],
     heat: [f("Lemon-juice letter", "")],
@@ -339,19 +354,19 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "")],
     tune: [f("Music box", "")],
     ribbon: [f("Typewriter ribbon", "")],
-    phone: [f("Telephone", "A woman's voice on the line, low and quick:")],
+    phone: [f("Telephone", "")],
   },
   crime_scene: {
     found: [
-      f("Evidence envelope", "Sealed at the scene and signed across the flap. Clipped together inside:"),
-      f("Case file", "The inspector's file, still thin. The pages so far:"),
-      f("Lab envelope", "From the lab, marked preliminary. Inside:"),
+      f("Evidence envelope", "EVIDENCE · SEALED AT THE SCENE"),
+      f("Case file", ""),
+      f("Lab envelope", "PRELIMINARY"),
     ],
-    read: [f("Inspector's notebook", "Notes from the first night's enquiries, in pencil:")],
-    pages: [f("Case papers", "Folded in at that page, a few sheets from the case file:")],
+    read: [f("Inspector's notebook", "")],
+    pages: [f("Case papers", "")],
     lamp: [f("Inspector's notes, pressed through", "")],
     uv: [f("Inspector's notes, pressed through", "")],
-    radio: [f("Police radio", "The police band, between stations. The dispatcher reads out the night's checks:")],
+    radio: [f("Police radio", "")],
     assembled: [f("Taped statement", "")],
     decoded: [f("Decoded note", "")],
     heat: [f("Lemon-juice note", "")],
@@ -361,21 +376,21 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "")],
     tune: [f("Music box", "")],
     ribbon: [f("Typewriter ribbon", "")],
-    phone: [f("Telephone", "The exchange operator, reading back messages left for this number:")],
+    phone: [f("Telephone", "")],
   },
   paranormal: {
     found: [
-      f("Yellowed scrap", "In a cramped, old hand, the ink gone brown:"),
-      f("Scratched card", "Scratched with a pin, the letters shaking:"),
-      f("Child's drawing", "Crayon pressed through the paper, in a careful list:"),
-      f("Diary page", "From a girl's diary: Mama says we must do it in the right order, or it won't rest. She wrote down what she knew:"),
-      f("Séance notes", "Notes from a séance held in this room, the pencil shaking:"),
+      f("Yellowed scrap", ""),
+      f("Scratched card", ""),
+      f("Child's drawing", ""),
+      f("Diary page", "Mama says we must do it in the right order, or it won't rest. This is what she knew:"),
+      f("Séance notes", ""),
     ],
-    read: [f("Faded writing", "In a small, careful hand, pressed hard:")],
-    pages: [f("Pressed lily", "Beside a pressed lily, in the gutter of the page:")],
+    read: [f("Faded writing", "")],
+    pages: [f("Pressed lily", "")],
     lamp: [f("Writing in the light", "")],
     uv: [f("Finger-writing", "")],
-    radio: [f("Radio", "A child's voice under the hiss, reciting:")],
+    radio: [f("Radio", "")],
     assembled: [f("Mended page", "")],
     decoded: [f("Decoded note", "")],
     heat: [f("Lemon-juice page", "")],
@@ -385,7 +400,7 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
     fold: [f("Folded page", "")],
     tune: [f("Music box", "")],
     ribbon: [f("Typewriter ribbon", "")],
-    phone: [f("Telephone", "A child's voice down the line, very far away:")],
+    phone: [f("Telephone", "")],
   },
 };
 
@@ -395,14 +410,18 @@ const LIST: Record<Mode, Record<Medium, Frame[]>> = {
  * with documents, found or read, is on one of them. Writing that came to light (under a lamp, in a
  * mirror, taped together) is only the writing: the player watched it appear.
  */
-export function writeCard(mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind, doc?: Frame): { title: string; text: string } {
+export function writeCard(mode: Mode, medium: Medium, values: string[], list: boolean, pick: Pick, kind?: SlotKind, doc?: Frame): { title: string; text: string; look?: CardLook } {
   const docs = !list && (medium === "found" || medium === "read") ? (doc ? [doc] : kind ? DOCS[mode][kind as DocKind] ?? [] : []) : [];
   const frame = pick(docs.length ? docs : (list ? LIST : INLINE)[mode][medium]);
-  if (list) return { title: frame.title, text: [...(frame.lead ? [frame.lead] : []), ...values].join("\n") };
+  const look = frame.look ? { look: frame.look } : {};
+  if (list) return { title: frame.title, text: [...(frame.lead ? [frame.lead] : []), ...values].join("\n"), ...look };
   const v = values.join(", ");
-  // A full stop after the value only when the value ends the sentence ("MEET ME AT {v} STOP" needs none).
-  const end = frame.lead.endsWith("{v}") && !/[.!?"]$/.test(v) ? "." : "";
-  return { title: frame.title, text: frame.lead.replace("{v}", `${v}${end}`) };
+  // A full stop after the value only when the value ends a sentence: never after a bare value or a printed
+  // line ("ROOM NO. {v}"), and never when it ends one already ("MEET ME AT {v} STOP" needs none).
+  const line = frame.lead.split("\n").pop() ?? "";
+  const sentence = /[a-z]/.test(line.replace("{v}", "")) && line.endsWith("{v}");
+  const end = sentence && !/[.!?"]$/.test(v) ? "." : "";
+  return { title: frame.title, text: frame.lead.replace("{v}", `${v}${end}`), ...look };
 }
 
 // ---------------------------------------------------------------------------
@@ -410,52 +429,54 @@ export function writeCard(mode: Mode, medium: Medium, values: string[], list: bo
 // ---------------------------------------------------------------------------
 export const ITEM_NAMES: Record<Mode, { key: string; halves: [string, string]; joined: string; torch: string; wheel: string; letter: Frame; backwards: Frame; pad: Frame; pencil: Frame; printed: Frame; lens: Frame; fold: Frame;
   musicBox: Frame; ribbon: Frame; soap: string; balance: Frame; weight: Frame }> = {
+  // Each card is only what is written, printed or engraved on the thing; the app draws the thing (its rendered
+  // art, large): a blank letter is blank (its dried lemon juice shows as faint stains), a backwards note shows its
+  // reversed scrawl, a weight its stamped mark ({m}). A caption printed on a novelty card or a puzzle page, and an
+  // engraving inside a lid, are written there, so they stay.
   noir: {
     key: "Brass key", halves: ["Torn note (left)", "Torn note (right)"], joined: "Taped note", torch: "UV flashlight", wheel: "Cipher wheel",
-    // What each says when found is the clue to how it reads (no value on it yet).
-    letter: f("Blank letter", "Good notepaper, folded twice, with nothing written on it. It smells faintly of lemons."),
-    backwards: f("Backwards note", "One line in a looping hand, every letter written back to front."),
-    pad: f("Notepad", "A hotel notepad, the top sheet torn clean off. The page beneath looks blank, but tilt it and the dents of somebody's hard pen catch the light."),
-    pencil: f("Soft pencil", "A soft pencil, chewed at one end and worn to a stub."),
-    printed: f("Printed card", "A novelty card from a spy kit, printed in a jumble of red and blue letters that spell nothing. The small print says: see it through red."),
-    lens: f("Red lens", "A square of red gel in a cardboard frame, the kind that comes in a spy kit."),
-    fold: f("Fold-in page", "A page torn from a magazine, with half a line of writing down each edge and two small marks, A and B. The caption says: fold so A meets B."),
-    // What each is; nothing about what to do with it.
-    musicBox: f("Music box", "A small music box with its lid gone, a brass cylinder under a comb of six teeth. Each tooth is stamped with a mark."),
-    ribbon: f("Typewriter ribbon", "A spool of black typewriter ribbon, run through once and wound back."),
+    letter: f("Blank letter", ""),
+    backwards: f("Backwards note", "", "mirrored"),
+    pad: f("Notepad", "HOTEL MARINER"),
+    pencil: f("Soft pencil", ""),
+    printed: f("Printed card", "SEE IT THROUGH RED"),
+    lens: f("Red lens", ""),
+    fold: f("Fold-in page", "FOLD SO A MEETS B"),
+    musicBox: f("Music box", ""),
+    ribbon: f("Typewriter ribbon", ""),
     soap: "Bar of soap",
-    balance: f("Pocket balance", "A jeweller's pocket balance in a worn case, two pans on a brass beam. Engraved inside the lid: the heaviest leads."),
-    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
+    balance: f("Pocket balance", "The heaviest leads.", "inscribed"),
+    weight: f("Brass weight", "{m}", "inscribed"),
   },
   crime_scene: {
     key: "Small key", halves: ["Torn statement (left)", "Torn statement (right)"], joined: "Taped statement", torch: "UV flashlight", wheel: "Cipher wheel",
-    letter: f("Blank letter", "A sheet of good paper, blank, but stiff in places, as if something clear dried on it. It smells of lemons."),
-    backwards: f("Backwards note", "A line of capitals, every letter set down back to front, right to left."),
-    pad: f("Notepad", "The telephone pad, its top sheet torn off. The next page looks blank, but it is dented where a pen pressed through."),
-    pencil: f("Soft pencil", "A soft pencil stub from a desk tidy, the lead worn flat on one side."),
-    printed: f("Printed card", "An index card overprinted in red and blue type, one line on top of another."),
-    lens: f("Red lens", "A red filter from a photographer's kit, in its brass ring."),
-    fold: f("Fold-in page", "A sheet of typing paper with half-words down both edges, one edge pencilled A and the other B."),
-    musicBox: f("Music box", "A small music box from the mantel, a brass cylinder under a comb of six teeth. Each tooth is stamped with a mark."),
-    ribbon: f("Typewriter ribbon", "The ribbon from a portable typewriter, run through once and wound back to its start."),
+    letter: f("Blank letter", ""),
+    backwards: f("Backwards note", "", "mirrored"),
+    pad: f("Notepad", "TELEPHONE MESSAGES"),
+    pencil: f("Soft pencil", ""),
+    printed: f("Printed card", "VIEW THROUGH RED FILTER"),
+    lens: f("Red lens", ""),
+    fold: f("Fold-in page", "FOLD A TO B"),
+    musicBox: f("Music box", ""),
+    ribbon: f("Typewriter ribbon", ""),
     soap: "Bar of soap",
-    balance: f("Pocket balance", "A chemist's pocket balance in its case, two pans on a brass beam. Engraved inside the lid: the heaviest leads."),
-    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
+    balance: f("Pocket balance", "The heaviest leads.", "inscribed"),
+    weight: f("Brass weight", "{m}", "inscribed"),
   },
   paranormal: {
     key: "Iron key", halves: ["Torn page (left)", "Torn page (right)"], joined: "Mended page", torch: "UV flashlight", wheel: "Cipher wheel",
-    letter: f("Blank page", "A page from a child's exercise book, empty, the paper stiff where something was painted on and dried. It smells of lemons."),
-    backwards: f("Backwards note", "Small letters, every one back to front, the way a child writes when she's playing at secrets."),
-    pad: f("Notepad", "A child's drawing pad, the top sheet torn away. The page left behind looks blank, but it was pressed hard: there are letters under a fingertip."),
-    pencil: f("Soft pencil", "A stub of soft drawing pencil, the kind for shading."),
-    printed: f("Printed card", "A magic-lantern card printed in red and blue, the letters tangled together so nothing can be read. Along its edge: look through the red glass."),
-    lens: f("Red lens", "A round of red glass from a magic lantern, chipped at the rim."),
-    fold: f("Fold-in page", "A page from a child's puzzle book, with broken letters down each side, one edge marked A and the other B. Printed underneath: fold A to B."),
-    musicBox: f("Music box", "A child's music box, the dancer snapped off its lid. Under the comb of six teeth, each stamped with a mark, the cylinder is still wound."),
-    ribbon: f("Typewriter ribbon", "A typewriter ribbon on its spool, dry as a leaf, run through once."),
+    letter: f("Blank page", ""),
+    backwards: f("Backwards note", "", "mirrored"),
+    pad: f("Notepad", ""),
+    pencil: f("Soft pencil", ""),
+    printed: f("Printed card", "LOOK THROUGH THE RED GLASS"),
+    lens: f("Red lens", ""),
+    fold: f("Fold-in page", "FOLD A TO B"),
+    musicBox: f("Music box", ""),
+    ribbon: f("Typewriter ribbon", ""),
     soap: "Lump of candle wax",
-    balance: f("Pocket balance", "An apothecary's pocket balance in a cracked case, two pans on a brass beam. Scratched inside the lid: the heaviest leads."),
-    weight: f("Brass weight", "A brass weight the size of a thimble, stamped {m}."),
+    balance: f("Pocket balance", "The heaviest leads.", "inscribed"),
+    weight: f("Brass weight", "{m}", "inscribed"),
   },
 };
 
@@ -465,16 +486,17 @@ export const capitalise = (s: string): string => (s ? s[0].toUpperCase() + s.sli
 /** Optional story fragments: a card found somewhere, never needed. Each is named for what it is. */
 export const KEEPSAKES: Record<Mode, Frame[]> = {
   noir: [
-    f("Photograph", "A woman in a fur collar, laughing at someone outside the frame. On the back, only a lipstick kiss."),
-    f("Telegram", "COME BACK STOP ALL IS FORGIVEN STOP. Never sent. Folded small enough to hide in a fist."),
+    // A snapshot of the place it was hidden (shown.ts), and on its back:
+    f("Photograph", "Don't wait up.", "photo"),
+    f("Telegram", "COME BACK STOP ALL IS FORGIVEN STOP"),
   ],
   crime_scene: [
-    f("Wedding ring", "A plain gold band. Whatever was engraved inside has been filed away."),
-    f("Theatre stub", "A ticket for two, for a play that closed last week. Only one half was ever torn off at the entrance."),
+    f("Wedding ring", "For ever. R.", "inscribed"),
+    f("Theatre stub", "ADMIT TWO · STALLS · FINAL WEEK"),
   ],
   paranormal: [
-    f("Locket", "Inside, a curl of fair hair tied with thread. It's warm, as if someone just let go of it."),
-    f("Christening spoon", "Tarnished black, except where a small thumb has polished it bright."),
+    f("Locket", "Always near.", "inscribed"),
+    f("Christening medal", "Blessed in this house.", "inscribed"),
   ],
 };
 
@@ -587,13 +609,13 @@ export function suspectEvidence(alibi: Frame): Evidence {
   return { title: alibi.title, text: alibi.lead, line: `${alibi.title}: ${alibi.lead}` };
 }
 
-/** A motive's or method's evidence: the inspector's question on top, the finding beneath. */
+/** A motive's or method's evidence: what it concerns at its head, as a memo has it ("Re: Poison"), the finding beneath. */
 export function optionEvidence(o: OptionEvidence): Evidence {
   const lower = o.finding[0].toLowerCase() + o.finding.slice(1);
   return {
     title: o.title,
-    text: `The inspector's query, pencilled on top: "{{s}}?" ${o.finding}`,
-    line: `${o.title}, with the inspector's query pencilled on top, "{{s}}?": ${lower}`,
+    text: `Re: {{s}}\n${o.finding}`,
+    line: `${o.title}, re {{s}}: ${lower}`,
   };
 }
 

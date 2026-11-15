@@ -326,6 +326,8 @@ describe("show, never tell: the close-up says nothing", () => {
     expect(t("Drawer", "compartment")!.move.by!.y).toBe(0);
     expect(t("LiftUnder")!.move.by!.y).toBeLessThan(0);
     expect(t("ClockHands")!.move.turn).toBeTruthy();
+    // The cipher wheel's disc turns anticlockwise to bring later letters under A.
+    expect(t("Decoder", "wheel")!.move.turn!.deg).toBeLessThan(0);
     expect(t("Door", "combination")?.kind).toBe(t("CombinationLock")?.kind);
     expect(t("Door", "accusation")).toBeNull();
     expect(t("Readable", "pages")?.kind).toBe("Wheels");

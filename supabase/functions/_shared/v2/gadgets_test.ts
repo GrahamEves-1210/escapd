@@ -58,7 +58,7 @@ Deno.test("gadgets: a room planned with a switch off has none of that gadget; by
     assert(r.ok, `${mode} ${i}`);
     assertEquals(used(r), [], `${mode} ${i}`);
     assert(!r.summary.motifs.some((m) => m === "tune_reveal" || m === "ribbon_reveal" || m === "weigh"));
-    assert(!r.secret.weights && !r.definition.cards.some((c) => c.look));
+    assert(!r.secret.weights && !r.definition.cards.some((c) => c.look === "impression"));
   }
 });
 

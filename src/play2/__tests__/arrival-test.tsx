@@ -1,5 +1,5 @@
 // The brief's arrival (Brief.tsx, letters/Envelope.tsx): the letter comes in
-// the mode's envelope; she opens it (its own sound, then the paper's) and the
+// the mode's envelope; she opens it (felt, not heard: its haptics, no sound) and the
 // letter is out in under a second and a half; a touch while it opens has it
 // out at once; it happens once a case; with reduced motion, not at all.
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -53,9 +53,10 @@ describe("Brief: the arrival", () => {
     expect(screen.queryByTestId("v2-brief-envelope")).toBeNull();
     expect(screen.getByTestId("brief-context")).toBeTruthy();
     expect(await AsyncStorage.getItem("escapd.v2.brief.opened.room-9")).toBe("1");
-    // Its own sound as it opens (the wax, the string, the flap), then the paper's as the letter comes out.
+    // Felt as it opens (the wax, the string, the flap; each cue a haptic only), then the paper's light tap, silent.
     expect((mode === "paranormal" ? mockFeedback.waxCrack : mode === "crime_scene" ? mockFeedback.stringOff : mockFeedback.paperFold)).toHaveBeenCalledTimes(1);
     expect(mockFeedback.paper).toHaveBeenCalledTimes(1);
+    expect(mockFeedback.paper).toHaveBeenCalledWith(false);
     await fireEvent.press(screen.getByTestId("v2-brief-begin"));
     await act(() => jest.advanceTimersByTime(400));
     expect(onBegin).toHaveBeenCalledTimes(1);

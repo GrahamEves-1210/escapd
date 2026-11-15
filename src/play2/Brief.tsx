@@ -7,13 +7,13 @@
 // its paper and inks theme/payoff.ts LETTER, its faces LETTER_FONT), the
 // first of a correspondence the way out answers (Ending.tsx):
 // - noir: a letter typed on hotel onion-skin, folded in three, paper-clipped,
-//   the cat's line added by hand with a lipstick blot (letters/Noir.tsx).
+//   the writer's line added by hand with a lipstick blot (letters/Noir.tsx).
 // - crime scene: a case intake sheet out of a kraft evidence envelope, her
-//   room's print clipped on, the assignment filled in in ballpoint, the cat's
-//   line on a sticky note (letters/Crime.tsx).
+//   room's print clipped on, the assignment filled in in ballpoint, the
+//   writer's line on a sticky note (letters/Crime.tsx).
 // - paranormal: an old deckled, foxed letter in IM Fell, its wax seal broken,
 //   candle wax and a pressed sprig on it (letters/Moon.tsx).
-// The cat sits by the letter, part of the scene; Begin under it.
+// No cat on the letter (the cat waits in the room); Begin under it.
 //
 // Before it can be read it arrives (letters/Envelope.tsx): the mode's envelope
 // lies on the desk, she opens it with a touch or a drag (the string comes
@@ -188,8 +188,6 @@ export function Brief({ def, roomId, onBegin, photo }: {
 
   // The letter arrives in its envelope, once a case: opened before (or with reduced motion), it lies there already.
   const [found, setFound] = useState<Stage>("wait");
-  // Whether it came out of its envelope just now (the cat waits for it).
-  const [arrived, setArrived] = useState(false);
   const stage: Stage = reduced ? "letter" : found;
   useEffect(() => {
     if (reduced) return;
@@ -272,7 +270,6 @@ export function Brief({ def, roomId, onBegin, photo }: {
   const openEnvelope = useCallback(() => {
     if (found !== "envelope") return;
     setFound("opening");
-    setArrived(true);
     AsyncStorage.setItem(OPENED(roomId), "1").catch(() => {});
     const flap = ((ENVELOPE.frames - 1) * 1000) / ENVELOPE.fps;
     if (genre === "paranormal") feedback.waxCrack();
@@ -286,7 +283,7 @@ export function Brief({ def, roomId, onBegin, photo }: {
     shown.set(withDelay(flap, withTiming(1, { duration: 40 })));
     slid.set(withDelay(flap, withTiming(1, { duration: ARRIVAL.slide, easing: Easing.bezier(0.3, 0, 0.2, 1) })));
     away.set(withDelay(flap + ARRIVAL.awayAfter, withTiming(1, { duration: ARRIVAL.away, easing: Easing.in(Easing.quad) })));
-    timers.current.push(setTimeout(() => feedback.paper(), flap), setTimeout(settled, ARRIVAL_MS + 30));
+    timers.current.push(setTimeout(() => feedback.paper(false), flap), setTimeout(settled, ARRIVAL_MS + 30));
   }, [found, roomId, genre, feedback, slid, rise, landed, turn, frame, shown, away, settled]);
   // A drag opens it as a touch does.
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -333,8 +330,6 @@ export function Brief({ def, roomId, onBegin, photo }: {
 
   // The letter itself: laid out once, and left alone while the envelope's business goes on round it.
   const context = words.context, objective = words.objective;
-  // (the cat comes after the letter has come out of its envelope, when that's how it came)
-  const catDelay = reduced ? 0 : found === "wait" || found === "envelope" || arrived ? ARRIVAL_MS + 150 : 450;
   const letter = useMemo(() => {
     const props: BriefLetterProps = {
       label,
@@ -343,12 +338,10 @@ export function Brief({ def, roomId, onBegin, photo }: {
       objective,
       objectiveLabel: OBJECTIVE_LABEL[genre],
       postscript: BRIEF_POSTSCRIPT,
-      catLabel: "The black cat, ready when you are",
-      catDelay,
       photo,
     };
     return genre === "crime_scene" ? <CrimeBrief {...props} /> : genre === "paranormal" ? <MoonBrief {...props} /> : <NoirBrief {...props} />;
-  }, [genre, label, context, objective, catDelay, photo]);
+  }, [genre, label, context, objective, photo]);
   const sealed = stage === "envelope" || stage === "opening";
   const read = stage === "opening" || stage === "letter";
 

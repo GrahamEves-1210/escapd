@@ -111,15 +111,33 @@ describe("modeThemes", () => {
 
   it("takes the art direction's palettes (docs/ART_DIRECTION.md, Palettes)", () => {
     const doc = {
-      noir: { ground: "#18121D", surface: "#241A2B", raised: "#32253A", ink: "#F8EEF1", inkMuted: "#BFAFC0", accent: "#E9B8A6", accentInk: "#2A1620", glow: "#FFD9A8", sweet: "#F4A7C0", rim: "rgba(255, 214, 230, 0.12)" },
-      crime_scene: { ground: "#1C0F12", surface: "#2A161B", raised: "#3A1F25", ink: "#FBEFE8", inkMuted: "#CDB3AC", accentInk: "#FFF4EE", glow: "#FFE3A3", sweet: "#F6D776", rim: "rgba(255, 220, 205, 0.12)" },
-      paranormal: { ground: "#10122A", surface: "#191C38", raised: "#252949", ink: "#EEF0FF", inkMuted: "#ABB0D6", accent: "#B8A6F7", accentInk: "#15132E", glow: "#9FF2D8", sweet: "#F3B6E6", rim: "rgba(200, 205, 255, 0.14)" },
+      noir: { ground: "#18121D", surface: "#241A2B", raised: "#32253A", ink: "#F5EEE4", inkMuted: "#BFAFC0", accent: "#D9AE62", accentInk: "#2A1620", glow: "#FFD9A8", sweet: "#E3B76E", rim: "rgba(236, 214, 178, 0.12)" },
+      crime_scene: { ground: "#1C0F12", surface: "#2A161B", raised: "#3A1F25", ink: "#FBEFE8", inkMuted: "#CDB3AC", accent: "#A8322A", accentInk: "#FFF4EE", stamp: "#E07C4C", glow: "#FFE3A3", sweet: "#F6D776", rim: "rgba(240, 214, 170, 0.12)" },
+      paranormal: { ground: "#10122A", surface: "#191C38", raised: "#252949", ink: "#EEF0FF", inkMuted: "#ABB0D6", accent: "#B8A6F7", accentInk: "#15132E", glow: "#9FF2D8", sweet: "#5FC7C0", rim: "rgba(200, 205, 255, 0.14)" },
     };
     for (const [genre, roles] of Object.entries(doc)) expect(modeThemes[genre as keyof typeof doc]).toMatchObject(roles);
-    // Cherry (#E8475D) one shade deeper for its cream label, the same hue; its stamp the same hue lifted.
-    for (const value of [modeThemes.crime_scene.accent, modeThemes.crime_scene.stamp]) expect(Math.abs(hueOf(value).hue - hueOf("#E8475D").hue)).toBeLessThan(3);
+    // Blood red and brick: red to red-orange, never leaning to pink.
+    for (const value of [modeThemes.crime_scene.accent, modeThemes.crime_scene.stamp]) {
+      const { hue } = hueOf(value);
+      expect({ value, red: hue <= 25 || hue >= 356 }).toEqual({ value, red: true });
+    }
     // One gold foil across the series.
     expect(new Set(THEMES.map(([, t]) => t.foil)).size).toBe(1);
+  });
+
+  it("has no pink anywhere: no rose, blush or orchid among any mode's colours", () => {
+    for (const [genre, t] of [...THEMES, ["shell", shellTheme] as const]) {
+      for (const role of HEX_ROLES) {
+        const value = (t as unknown as Record<string, string | undefined>)[role];
+        if (!value) continue;
+        const n = parseInt(value.slice(1), 16);
+        const [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255];
+        const { hue, saturation } = hueOf(value);
+        // Pink: a light, saturated colour between magenta and red, with more blue in it than a red or a brass has.
+        const pink = saturation > 0.3 && (r + g + b) / 3 > 120 && (hue >= 290 || hue <= 12) && b > g;
+        expect({ genre, role, value, pink }).toEqual({ genre, role, value, pink: false });
+      }
+    }
   });
 
   it("sets each mode's name in a loaded Google face", () => {

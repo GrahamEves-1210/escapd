@@ -93,10 +93,11 @@ Deno.test("tools: the lemon-juice letter reads only at a lamp that's on; the bac
       const card = rule.effects.find((e) => e.do === "show_card");
       assert(card && card.do === "show_card");
       assertEquals(def.cards.find((c) => c.id === card.card)!.reveal, reveal);
-      // The found note says how it reads, and holds no value.
+      // The found note holds no value, and nothing narrates it: a blank letter is blank (the app draws its dried
+      // juice), a backwards note is drawn back to front.
       const note = def.items.find((i) => i.id === item)!;
       const told = def.cards.find((c) => c.id === note.card)!;
-      assert(!told.text.includes("{{") && (reveal === "heat" ? /lemon/i : /backwards|back to front/i).test(told.text), told.text);
+      assert(!told.text.includes("{{") && (reveal === "heat" ? told.text === "" && /blank/i.test(told.title) : told.look === "mirrored"), told.text);
       if (reveal === "heat") assertEquals(def.objects.find((o) => o.id === object)!.archetype, "Light");
       else assert(def.objects.find((o) => o.id === object)!.type === "mirror");
       // In hand: at the lamp while it's off, nothing; switched on, the writing.
@@ -124,10 +125,11 @@ Deno.test("tools: the pencil rubs the notepad and the lens reads the card, dropp
       const card = rule.effects.find((e) => e.do === "show_card");
       assert(card && card.do === "show_card");
       assertEquals(def.cards.find((c) => c.id === card.card)!.reveal, reveal);
-      // Both things say how they work when found, and hold no value; they are found in two places.
+      // Both things hold no value, and say nothing but what is printed on them (the card's small print); they
+      // are found in two places.
       for (const id of [a, b]) {
         const told = def.cards.find((c) => c.id === def.items.find((i) => i.id === id)!.card)!;
-        assert(!told.text.includes("{{") && told.text.length > 40, told.text);
+        assert(!told.text.includes("{{") && told.text.length < 40, told.text);
       }
       const names = [a, b].map((id) => def.items.find((i) => i.id === id)!.name).sort();
       assertEquals(names, reveal === "rub" ? ["Notepad", "Soft pencil"] : ["Printed card", "Red lens"]);

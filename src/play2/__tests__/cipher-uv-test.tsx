@@ -51,7 +51,7 @@ describe("the cipher", () => {
     expect(cipherClues(CARDS, [coded, note]).solved).toEqual({ offset: 5, reads: "4", note: "◆ 4" });
   });
 
-  it("the wheel shows the coded line and what it reads at the ring's setting, written as the clue writes it", async () => {
+  it("the wheel shows the coded line and what it reads at the ring's setting, its index showing the key as the clue writes it (A over the key letter), with no words round it", async () => {
     const t: MechanismTarget = { kind: "item", id: "wheel", label: "Cipher wheel", archetype: "Decoder", variant: "wheel", controls: [{ id: "offset", domain: { kind: "offset", max: 25 } }] };
     const clues: CipherClues = { coded: "JM", source: "Telegram", numeric: true, solved: null };
     const onSet = jest.fn();
@@ -63,17 +63,20 @@ describe("the cipher", () => {
       </GestureHandlerRootView>
     );
     const view = await render(mount({ offset: "1" }, clues));
-    expect(screen.getByTestId("mech-decoder-offset")).toHaveTextContent("+1");
+    const ring = () => screen.getByLabelText("Cipher ring");
+    expect(ring().props.accessibilityValue).toEqual({ text: "A over B, plus 1" });
+    // Nothing written round the wheel: no labels, no setting in figures, no "reads".
+    for (const words of [/^ring$/i, /^\+\d+$/, /^reads$/i, /^it reads$/i, /Telegram/]) expect(screen.queryByText(words)).toBeNull();
     expect(screen.getByTestId("mech-decoder-reads-0")).toHaveTextContent("8");
     await fireEvent(screen.getByLabelText("Cipher ring"), "accessibilityAction", { nativeEvent: { actionName: "increment" } });
     expect(onSet).toHaveBeenLastCalledWith("offset", "2");
-    expect(screen.getByTestId("mech-decoder-offset")).toHaveTextContent("+2");
+    expect(ring().props.accessibilityValue).toEqual({ text: "A over C, plus 2" });
     expect(screen.getByTestId("mech-decoder-reads-0")).toHaveTextContent("7");
     // Set where the note was shown: it reads, stamped.
     await view.rerender(mount({ offset: "5" }, { ...clues, solved: { offset: 5, reads: "47" } }));
     expect(screen.getByTestId("mech-decoder-reads-0")).toHaveTextContent("4");
     expect(screen.getByTestId("mech-decoder-reads-1")).toHaveTextContent("7");
-    expect(screen.getByText("It reads")).toBeTruthy();
+    expect(screen.getByTestId("mech-decoder-decoded")).toBeTruthy();
     await view.unmount();
     // No coded line found yet: an empty slip, nothing written on it (a screen reader is told).
     await render(mount({ offset: "1" }, { coded: null, source: null, numeric: false, solved: null }));

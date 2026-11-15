@@ -5,7 +5,7 @@
 // date would go, the brief struck out on a worn typewriter (each word's ink
 // its own, one word misspelled and x'd out), what she's to find typed in the
 // ribbon's red half, and the cat's line added by hand in fountain-pen ink
-// with a lipstick blot beside it. The cat sits on the desk at its corner.
+// with a lipstick blot beside it. No cat on it: the cat comes in later.
 //
 // The reply, at the way out: a hotel notecard from the same stationery, the
 // headline typed large, the ending under it, "The End" by hand (no second
@@ -28,7 +28,6 @@ export const NOIR_TYPE = {
   headline: { fontFamily: LETTER_FONT.typewriter, fontSize: 38, lineHeight: 44 },
   replyBody: { fontFamily: LETTER_FONT.typewriter, fontSize: 19, lineHeight: 29 },
 } as const;
-const CAT = 74;
 
 function Letterhead({ text, right }: { text: string; right?: string }) {
   return (
@@ -43,7 +42,7 @@ function Letterhead({ text, right }: { text: string; right?: string }) {
   );
 }
 
-export function NoirBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay }: BriefLetterProps) {
+export function NoirBrief({ label, series, context, objective, objectiveLabel, postscript }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       {/* The sheet under it. */}
@@ -74,7 +73,6 @@ export function NoirBrief({ label, series, context, objective, objectiveLabel, p
         </View>
       </Paper>
       <PaperClip color={P.clip} size={62} rotate={-4} style={styles.clip} />
-      <LetterCat width={CAT} delay={catDelay} label={catLabel} style={styles.cat} />
     </View>
   );
 }
@@ -114,11 +112,10 @@ const styles = StyleSheet.create({
   ref: { alignSelf: "flex-end", marginTop: -2 },
   objective: { gap: 2, marginTop: 2 },
   underlined: { textDecorationLine: "underline", alignSelf: "flex-start" },
-  signoff: { marginTop: 4, paddingRight: CAT + 8, flexDirection: "row", alignItems: "flex-end" },
+  signoff: { marginTop: 4, paddingRight: 24, flexDirection: "row", alignItems: "flex-end" },
   hand: { flexShrink: 1, transform: [{ rotate: "-2.5deg" }] },
   kiss: { marginLeft: -6, marginBottom: -14 },
   clip: { position: "absolute", top: 2, right: 46 },
-  cat: { position: "absolute", right: 10, bottom: 34 },
   // The reply.
   replyWrap: { paddingBottom: 30 },
   card: { transform: [{ rotate: "1.4deg" }] },

@@ -33,8 +33,8 @@ paperback with sticky tabs.
    Light is warm and soft: glows, not hard edges.
 2. **Made by hand.** The black cat's inky, hand-drawn line is the house style.
    Frames, doodles, icons and marks look drawn with the same pen. The casebook
-   is a scrapbook journal: polaroids, washi tape, handwritten notes, pressed
-   flowers, red string, stickers.
+   is a scrapbook journal: snapshots in brass photo corners, kraft paper tape,
+   handwritten notes, pressed flowers, red string, stickers.
 3. **Spooky-cute.** The cat is a companion with feelings. Small delights
    everywhere: sparkles, an inked star, a sticker earned, a wobble when
    something's wrong. Never gore, never cruelty, never a jump scare.
@@ -52,19 +52,25 @@ tone, with one soft "glow" colour for light and one "sweet" colour for delight
 | ground       | `#18121D` midnight plum       | `#1C0F12` oxblood night        | `#10122A` deep indigo |
 | surface      | `#241A2B`                     | `#2A161B`                      | `#191C38`             |
 | raised       | `#32253A`                     | `#3A1F25`                      | `#252949`             |
-| ink          | `#F8EEF1` warm white          | `#FBEFE8` cream                | `#EEF0FF` moon white  |
+| ink          | `#F5EEE4` warm white          | `#FBEFE8` cream                | `#EEF0FF` moon white  |
 | inkMuted     | `#BFAFC0`                     | `#CDB3AC`                      | `#ABB0D6`             |
-| accent       | `#E9B8A6` rose gold           | `#C83D50` cherry ¹             | `#B8A6F7` lavender    |
+| accent       | `#D9AE62` brass               | `#A8322A` blood red ¹          | `#B8A6F7` lavender    |
 | accentInk    | `#2A1620`                     | `#FFF4EE`                      | `#15132E`             |
-| stamp        | `#E9B8A6` rose gold           | `#EB6174` cherry, lifted ¹     | `#B8A6F7` lavender    |
+| stamp        | `#D9AE62` brass               | `#E07C4C` brick, lifted ¹      | `#B8A6F7` lavender    |
 | glow         | `#FFD9A8` candle              | `#FFE3A3` desk lamp            | `#9FF2D8` spirit mint |
-| sweet        | `#F4A7C0` blush               | `#F6D776` sticky-note yellow   | `#F3B6E6` orchid      |
+| sweet        | `#E3B76E` candle brass        | `#F6D776` sticky-note yellow   | `#5FC7C0` teal        |
 | foil         | `#D9B26A` gold foil           | `#D9B26A`                      | `#D9B26A`             |
-| rim          | `rgba(255,214,230,0.12)`      | `rgba(255,220,205,0.12)`       | `rgba(200,205,255,0.14)` |
+| rim          | `rgba(236,214,178,0.12)`      | `rgba(240,214,170,0.12)`       | `rgba(200,205,255,0.14)` |
 
-¹ Cherry was `#E8475D`; its cream label read at only 3.5:1, so the fill is one
-shade deeper (4.6:1), and the stamp (cherry as text) is the same hue lifted to
-4.6:1 on `raised`. Crime Scene's police-tape `detail` is the sticky-note yellow.
+¹ Crime scene is oxblood and bottle green: the fill is a blood red its cream
+label reads on (6:1), the stamp a brick red lifted to 5:1 on `raised`. Crime
+Scene's police-tape `detail` is the sticky-note yellow.
+
+**No pink, anywhere.** The user's rule after play-testing: no rose, blush,
+candy, orchid or washi pink, on any screen, in any mode. Tape is kraft paper
+tape; photos are held by brass photo corners; the accents are brass, ink,
+plum and wine (noir), oxblood and bottle green (crime scene), indigo, violet
+and teal (paranormal). modeThemes-test fails on a pink role.
 
 **Gold foil** (`foil`, one gold for the whole series, 7:1 or more on every
 ground): foil-stamped titles, seals, ornamental rules and fleurons, a
@@ -72,9 +78,9 @@ bookmark's tip.
 
 **The shell** (home, settings, the guide, Pro, capture outside a mode) is the
 bookshelf the three books sit on, velvet plum: ground `#130D18`, surface
-`#1E1525`, raised `#2C2034`, ink `#FBF1F4`, inkMuted `#C6B3C8`, accent `#F2B8C9`
-blush on `#2A1220`, rim `rgba(255,214,230,0.12)`, glow candle, sweet blush,
-foil gold. These are `ref.color` (void, ground, raised, textPrimary,
+`#1E1525`, raised `#2C2034`, ink `#F8F1E7`, inkMuted `#C6B3C8`, accent `#D9AE62`
+brass on `#2A1220`, rim `rgba(236,214,178,0.12)`, glow candle, sweet candle
+brass, foil gold. These are `ref.color` (void, ground, raised, textPrimary,
 textSecondary, rim): every reference grey is retinted into this family.
 
 All live in `src/theme/tokens.ts` (`modeThemes`, `shellTheme`, `ref.color`);

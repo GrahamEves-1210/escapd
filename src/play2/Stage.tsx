@@ -25,9 +25,9 @@ import type { Genre } from "@/lib/puzzle-types";
 import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
-import { aspectOf } from "@/render/geometry";
 import type { SceneSource } from "@/render/SceneView";
 import { V2 } from "./layout";
+import { PHOTO_CACHE, knownAspect, rememberAspect } from "./transitions/Preload";
 import { useOutlines } from "./useOutlines";
 import { tapTrace, UvTrace, type StageTrace } from "./UvTrace";
 import { Ambient, CarLight } from "./fx/Ambient";
@@ -82,6 +82,8 @@ export interface StageProps {
   burst?: BurstEvent | null;
   onLook: (objectId: string | null) => void;
   onPage: (dir: 1 | -1) => void;
+  /** The photo is loaded and drawn in its frame (a turn's light catches on it then: transitions/TurnLights). */
+  onReady?: () => void;
   accessibilityLabel: string;
 }
 
@@ -98,7 +100,7 @@ export function hitTest(objects: readonly StageObject[], x: number, y: number): 
 
 export function Stage({
   source, cacheKey, genre, objects, overlays, patch, glints, assist, onLook, onPage, accessibilityLabel,
-  uv = false, marks = [], traces = [], onTrace, onHover, onFrame, focus = null, beam, enter = 0, burst = null,
+  uv = false, marks = [], traces = [], onTrace, onHover, onFrame, focus = null, beam, enter = 0, burst = null, onReady,
 }: StageProps) {
   const theme = useModeTheme();
   const { reducedMotion } = useTheme();
@@ -115,7 +117,8 @@ export function Stage({
     return () => cancelAnimation(clock);
   }, [reducedMotion, glints, clock]);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const [aspect, setAspect] = useState<number | null>(null);
+  // Known already when this photo (or its neighbour's preload) has loaded before: the frame is laid out at once.
+  const [aspect, setAspect] = useState<number | null>(() => knownAspect(source, cacheKey));
   // The room fills the whole view, edge to edge like a game's viewport (no
   // bars): scaled to cover it, centred, the overflow trimmed.
   const frame = useMemo(() => {
@@ -266,12 +269,17 @@ export function Stage({
               source={source}
               genre={null}
               cacheKey={cacheKey}
+              cachePolicy={PHOTO_CACHE}
               style={StyleSheet.absoluteFill}
               contentFit="fill"
               accessible
               accessibilityRole="image"
               accessibilityLabel={accessibilityLabel}
-              onLoad={(e) => setAspect((a) => a ?? aspectOf(e.source.width, e.source.height))}
+              onLoad={(e) => {
+                const a = rememberAspect(source, cacheKey, e.source.width, e.source.height);
+                setAspect((was) => was ?? a);
+                onReady?.();
+              }}
             />
             {patch ? (
               <Image
@@ -349,10 +357,11 @@ export function Stage({
           source={source}
           genre={null}
           cacheKey={cacheKey}
+          cachePolicy={PHOTO_CACHE}
           style={styles.probe}
           contentFit="contain"
           accessible={false}
-          onLoad={(e) => setAspect(aspectOf(e.source.width, e.source.height) ?? 0.75)}
+          onLoad={(e) => setAspect(rememberAspect(source, cacheKey, e.source.width, e.source.height) ?? 0.75)}
         />
       )}
     </Animated.View>

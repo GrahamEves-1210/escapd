@@ -10,7 +10,7 @@ export const color = {
   canvas: "#110B14",
   surface: "#1B1320",
   raised: "#261B2C",
-  text: "#F8EEF1",
+  text: "#F5EEE4",
   textSecondary: "#B9A8B8",
   hairline: "rgba(200, 157, 84, 0.32)",
   accent: "#C89D54",
@@ -28,7 +28,7 @@ export const color = {
   ink: "#171411",
   verdigris: "#4E7A72",
   wax: "#A63429",
-  rim: "rgba(255, 214, 230, 0.12)",
+  rim: "rgba(236, 214, 178, 0.12)",
   brassRule: "rgba(200, 157, 84, 0.25)",
   velvet: "#2A1216",
 } as const;
@@ -175,17 +175,17 @@ const refColor = {
   /** The light permission screen and its sheet (03). */
   paper: "#FFF8F4",
   /** The cool grey illustration panel at the top of 03's sheet. */
-  panel: "#F6EEF0",
+  panel: "#F2ECE2",
 
   // Text on dark.
   /** Titles, header titles, active labels, icons, pill labels, the hero illustration line. */
-  textPrimary: "#FBF1F4",
+  textPrimary: "#F8F1E7",
   /** Tag text on 01's game cards (white 82 %). */
-  textLabel: "rgba(251, 241, 244, 0.84)",
+  textLabel: "rgba(248, 241, 231, 0.84)",
   /** Subtitles, meta lines and one-line instructions (6.3 to 6.9:1). */
   textSecondary: "#C6B3C8",
   /** The same grey as white 60 %, for a glyph over 01's glow (the dismiss X). */
-  textSecondaryAlpha: "rgba(251, 236, 244, 0.64)",
+  textSecondaryAlpha: "rgba(248, 238, 226, 0.64)",
   /** Inactive segment label only (2.8:1). */
   textTertiary: "#6E5A73",
   /** The shot counter's neighbouring numerals (white 24 % on black); decorative only. */
@@ -199,19 +199,19 @@ const refColor = {
 
   // Hairlines, glass and highlights.
   /** White 10 %: 01's divider peak and tag-pill stroke. */
-  rim: "rgba(255, 214, 230, 0.12)",
+  rim: "rgba(236, 214, 178, 0.12)",
   /** The rim as a solid colour on black: the ghost pill's 1 pt edge (measured #1C1C1C top-left, #181818 bottom-right). */
   hairline: "#2A1F30",
   /** White 5 %: the 1 pt rim of 02's square buttons and last-photo image. */
-  rimFaint: "rgba(255, 214, 230, 0.06)",
+  rimFaint: "rgba(236, 214, 178, 0.06)",
   /** White 3.5 %: 01's game-card glass over the floor glow. */
-  glassFill: "rgba(255, 228, 238, 0.04)",
+  glassFill: "rgba(250, 232, 206, 0.04)",
   /** Black 13 %: 01's dismiss disc over the floor glow. */
   dismissFill: "rgba(10, 4, 12, 0.18)",
   /** 04's light grey glass dismiss disc on black. */
   glassDisc: "#A08CA6",
   /** White 14 %: the brightest point of the diagonal 1 pt ring on 01's chips. */
-  specularDark: "rgba(255, 224, 236, 0.16)",
+  specularDark: "rgba(250, 228, 200, 0.16)",
   /** The glass disc's ring highlight, lower right. */
   specularLight: "#C9B6CC",
   /** The glass disc's ring highlight, upper left. */
@@ -225,7 +225,7 @@ const refColor = {
   /** Hero line-icon gradient, top left. */
   lineStart: "#FFD9A8",
   /** Hero line-icon gradient, bottom right. */
-  lineEnd: "#F4A7C0",
+  lineEnd: "#E3B76E",
   /** Floor glow, the flat bright area on the left half. */
   glowOlive: "#2E1A2E",
   /** Floor glow, the flat bright area on the right half. */
@@ -317,12 +317,12 @@ export const ref = {
     // ≈5 % along the top, 2–2.5 % down the sides to half height, gone by 0.85.
     cardRim: {
       angle: 180,
-      stops: [stop(0, "#FFD6E6", 0.12), stop(0.15, "#FFD6E6", 0.06), stop(0.5, "#FFD6E6", 0.03), stop(0.85, "#FFD6E6", 0)],
+      stops: [stop(0, "#F2DDB6", 0.12), stop(0.15, "#F2DDB6", 0.06), stop(0.5, "#F2DDB6", 0.03), stop(0.85, "#F2DDB6", 0)],
     },
     // 01's 1 pt divider under the header, brightest in the middle.
     divider: {
       angle: 90,
-      stops: [stop(0.1, "#FFD6E6", 0), stop(0.5, "#FFD6E6", 0.16), stop(0.94, "#FFD6E6", 0)],
+      stops: [stop(0.1, "#F2DDB6", 0), stop(0.5, "#F2DDB6", 0.16), stop(0.94, "#F2DDB6", 0)],
     },
     // 01's hero line icons: one gradient across the whole icon, not one per stroke.
     line: {
@@ -1548,10 +1548,10 @@ export const ref = {
         holeInset: 6,
         materials: {
           noir: {
-            leather: "#22182A", edge: "#0C0810", stitch: "rgba(233, 184, 166, 0.55)", well: "#150F1A", wellEdge: "#08050A", tag: "#30243A",
+            leather: "#22182A", edge: "#0C0810", stitch: "rgba(217, 178, 106, 0.55)", well: "#150F1A", wellEdge: "#08050A", tag: "#30243A",
           },
           crime_scene: {
-            leather: "#2A141A", edge: "#0E0608", stitch: "rgba(255, 220, 205, 0.42)", well: "#170A0E", wellEdge: "#070204", tag: "#38202A",
+            leather: "#2A141A", edge: "#0E0608", stitch: "rgba(230, 205, 160, 0.42)", well: "#170A0E", wellEdge: "#070204", tag: "#38202A",
           },
           paranormal: {
             leather: "#171A36", edge: "#080920", stitch: "rgba(184, 166, 247, 0.5)", well: "#0E1028", wellEdge: "#05061A", tag: "#232748",
@@ -1594,8 +1594,8 @@ export const ref = {
         stackScale: 1.3,
         paperDelay: 260,
         papers: {
-          noir: { paper: "#F3E8DE", ink: "#2A1620", inkMuted: "#68505E", rule: "rgba(42, 22, 32, 0.13)", margin: "rgba(226, 140, 160, 0.7)", frame: "#FBF5EF", shade: "rgba(24, 10, 28, 0.38)" },
-          crime_scene: { paper: "#F4E8D6", ink: "#2A1216", inkMuted: "#6A4E4B", rule: "rgba(42, 18, 22, 0.13)", margin: "rgba(200, 61, 80, 0.6)", frame: "#FBF4EA", shade: "rgba(28, 8, 12, 0.42)" },
+          noir: { paper: "#F3E8DE", ink: "#2A1620", inkMuted: "#68505E", rule: "rgba(42, 22, 32, 0.13)", margin: "rgba(122, 46, 58, 0.55)", frame: "#FBF5EF", shade: "rgba(24, 10, 28, 0.38)" },
+          crime_scene: { paper: "#F4E8D6", ink: "#2A1216", inkMuted: "#6A4E4B", rule: "rgba(42, 18, 22, 0.13)", margin: "rgba(150, 40, 36, 0.6)", frame: "#FBF4EA", shade: "rgba(28, 8, 12, 0.42)" },
           paranormal: { paper: "#F0EAF0", ink: "#1A1838", inkMuted: "#59577A", rule: "rgba(26, 24, 56, 0.13)", margin: "rgba(150, 130, 230, 0.7)", frame: "#F9F5F9", shade: "rgba(12, 12, 36, 0.38)" },
         },
       },
@@ -1874,7 +1874,7 @@ export interface ModeTheme {
    */
   readonly glow: `#${string}`;
   /**
-   * The mode's colour for delight (blush, sticky-note yellow, orchid): hearts,
+   * The mode's colour for delight (candle brass, sticky-note yellow, teal): hearts,
    * stickers, the cat's marks, washi tape. Sparingly. Reads at 4.5:1 on every ground.
    */
   readonly sweet: `#${string}`;
@@ -1971,7 +1971,7 @@ const HAND: TextStyle = { fontFamily: refFont.hand, fontSize: 18, lineHeight: 24
  * Home shows them in this order: noir, crime_scene, paranormal.
  */
 export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
-  // "Velvet Noir": midnight plum, rose gold, candlelight, blush.
+  // "Velvet Noir": midnight plum, brass, candlelight, wine. (No pink anywhere: the user's rule.)
   noir: {
     genre: "noir",
     name: "Detective Noir",
@@ -1979,15 +1979,15 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     ground: "#18121D",
     surface: "#241A2B",
     raised: "#32253A",
-    ink: "#F8EEF1",
+    ink: "#F5EEE4",
     inkMuted: "#BFAFC0",
-    accent: "#E9B8A6",
+    accent: "#D9AE62",
     accentInk: "#2A1620",
-    // Rose gold reads as text too (8:1 on raised).
-    stamp: "#E9B8A6",
-    rim: "rgba(255, 214, 230, 0.12)",
+    // Brass reads as text too (7:1 on raised).
+    stamp: "#D9AE62",
+    rim: "rgba(236, 214, 178, 0.12)",
     glow: "#FFD9A8",
-    sweet: "#F4A7C0",
+    sweet: "#E3B76E",
     foil: FOIL,
     display: { fontFamily: refFont.noirDisplay, fontSize: 30, lineHeight: 36, letterSpacing: 1, textTransform: "uppercase" },
     hand: HAND,
@@ -2002,7 +2002,7 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
       bloom: 0,
     },
   },
-  // "True Crime Club": oxblood night, cherry, desk-lamp gold, sticky-note yellow.
+  // "True Crime Club": oxblood night, blood red, desk-lamp gold, sticky-note yellow.
   crime_scene: {
     genre: "crime_scene",
     name: "Crime Scene",
@@ -2012,12 +2012,12 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     raised: "#3A1F25",
     ink: "#FBEFE8",
     inkMuted: "#CDB3AC",
-    // Cherry (#E8475D in the doc), one shade deeper so its cream label reads at 4.5:1. An accent, never a ground.
-    accent: "#C83D50",
+    // Blood red (oxblood lifted), deep enough that its cream label reads at 4.5:1. An accent, never a ground.
+    accent: "#A8322A",
     accentInk: "#FFF4EE",
-    // The same cherry lifted until stamp text reads at 4.5:1 on every crime-scene ground.
-    stamp: "#EB6174",
-    rim: "rgba(255, 220, 205, 0.12)",
+    // A brick red, lifted until stamp text reads at 4.5:1 on every crime-scene ground.
+    stamp: "#E07C4C",
+    rim: "rgba(240, 214, 170, 0.12)",
     glow: "#FFE3A3",
     sweet: "#F6D776",
     foil: FOIL,
@@ -2036,7 +2036,7 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
       bloom: 0,
     },
   },
-  // "Moonlit": deep indigo, lavender, spirit mint, orchid.
+  // "Moonlit": deep indigo, lavender, spirit mint, teal.
   paranormal: {
     genre: "paranormal",
     name: "Paranormal",
@@ -2052,7 +2052,7 @@ export const modeThemes: Readonly<Record<Genre, ModeTheme>> = {
     rim: "rgba(200, 205, 255, 0.14)",
     // Spirit mint: the one green in the app, and only ever as light.
     glow: "#9FF2D8",
-    sweet: "#F3B6E6",
+    sweet: "#5FC7C0",
     foil: FOIL,
     display: { fontFamily: refFont.paranormalDisplay, fontSize: 34, lineHeight: 40, letterSpacing: 0.4 },
     hand: HAND,
@@ -2082,13 +2082,13 @@ export const shellTheme: ModeTheme = {
   raised: refColor.raised,
   ink: refColor.textPrimary,
   inkMuted: refColor.textSecondary,
-  // Blush: the shell's one strong action.
-  accent: "#F2B8C9",
+  // Brass: the shell's one strong action.
+  accent: "#D9AE62",
   accentInk: "#2A1220",
-  stamp: "#F4A7C0",
+  stamp: "#E3B76E",
   rim: refColor.rim,
   glow: "#FFD9A8",
-  sweet: "#F4A7C0",
+  sweet: "#E3B76E",
   foil: FOIL,
   display: { fontFamily: refFont.cover, fontSize: 30, lineHeight: 36, letterSpacing: 0 },
   hand: HAND,

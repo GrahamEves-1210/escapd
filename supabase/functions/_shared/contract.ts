@@ -36,6 +36,8 @@ export interface GenerationInput {
   /** Snapshot of rooms.genre on the job. Absent means noir (callers that predate genres). */
   genre?: Genre;
   photos: GenerationPhoto[];
+  /** Schema 2: what the owner's last few cases featured (v2 featuredKinds, the most recent first), so this one varies. */
+  recent?: readonly (readonly string[])[];
 }
 
 // Mirrors private.generation_usage. Integers only for token/image/duration

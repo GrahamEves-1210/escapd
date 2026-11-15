@@ -6,10 +6,11 @@ export * from "./archetypes.ts";
 export * from "./motifs.ts";
 export { applyAction, initialState, renderCard } from "./engine.ts";
 export { slotRefs, validateDefinition } from "./validate.ts";
+export { heldIn, photographed, withShown } from "./shown.ts";
 export { simulate, type SimMetrics, type SimOptions, type SimReport } from "./simulate.ts";
 export {
-  analyzeInventory, type Gadget, GADGETS, MAX_OBJECTS, PLAYABLE, MIN_POOL, MIN_SALIENCE, type PlanFailure, type PlanOptions, type PlanResult, planRoom, type PlanSummary,
-  seededRandom, STEP_BAND, THREE_THREAD_POOL, usableObjects,
+  analyzeInventory, FEATURED, type Featured, featuredKinds, type Gadget, GADGETS, MAX_OBJECTS, PLAYABLE, MIN_POOL, MIN_SALIENCE, type PlanFailure, type PlanOptions, type PlanResult, planRoom, type PlanSummary,
+  recentWeights, seededRandom, STEP_BAND, THREE_THREAD_POOL, usableObjects,
 } from "./planner.ts";
 export {
   COOLDOWN_MS, cooldownFor, type FoundCardV2, MAX_COOLDOWN_MS, nextStep, play, type PlayRequest, type PlayResponse, type PlaySave, storedState,

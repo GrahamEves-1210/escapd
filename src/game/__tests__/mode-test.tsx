@@ -47,7 +47,7 @@ describe("the active mode", () => {
   it("the shell's theme is the velvet-plum bookshelf, on ref.color's grounds, with no photo treatment", () => {
     expect(themeFor(null)).toBe(shellTheme);
     expect(themeFor("noir")).toBe(modeThemes.noir);
-    expect(shellTheme).toMatchObject({ genre: null, ground: "#130D18", ink: "#FBF1F4", inkMuted: "#C6B3C8", treatment: null });
+    expect(shellTheme).toMatchObject({ genre: null, ground: "#130D18", ink: "#F8F1E7", inkMuted: "#C6B3C8", treatment: null });
   });
 });
 

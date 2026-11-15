@@ -13,10 +13,8 @@ export interface BriefLetterProps {
   context: string;
   objective: string;
   objectiveLabel: string;
-  /** The writer's postscript, handwritten at the foot (never the cat's: it doesn't talk). */
+  /** The writer's postscript, handwritten at the foot (never the cat's: it doesn't talk). No cat on the brief. */
   postscript: string;
-  catLabel: string;
-  catDelay: number;
   /** Her own room, for a print clipped to the file (crime scene). */
   photo?: Photo;
 }

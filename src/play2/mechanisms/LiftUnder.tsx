@@ -1,18 +1,26 @@
-// LiftUnder: lift the thing to see beneath it, drawn as what it is. A rug, a
-// blanket or a cloth rolls back from its near edge: the roll follows the
-// finger, pale woven underside out, fatter the more of it is rolled up, the
-// boards it covered coming into view (drawn live: it rolls). A cushion, a book, a box
-// or a pot (rendered: sprites.tsx) lifts off the place it sat, its shadow thinning
-// under it, a ring of dust where it was.
+// LiftUnder: lift the thing to see beneath it. The thing is the player's own:
+// cut out of her photo of the room along its outline (cutout.ts, baked while
+// she looks round the room), so her brown backpack is her brown backpack. A
+// rug, a blanket or a cloth rolls back from its near edge: the roll follows
+// the finger, pale woven underside out, fatter the more of it is rolled up,
+// the boards it covered coming into view. Anything else lifts off the place it
+// sat, its shadow thinning under it, a ring of dust where it was. With no
+// photo (a room planned with none, no Skia) it is drawn: a rug, or a cushion,
+// a book, a box or a pot (rendered: sprites.tsx). A bag (the core's variant
+// "inside": a backpack, a satchel, a handbag) is opened instead: its flap,
+// cut from the same picture, folds back and up and its mouth gapes, what's in
+// it lying there in the dark from the first movement.
 //
-// The moment it gives (GIVE_AT) it's lifted: onSet("lifted", true), the finger
-// still on it, so what was under it is there, uncovered from its near edge as
-// it rises.
+// What was under it lies there from the moment the close-up opens (the room
+// says what a container holds: InspectView's `inside`), so the first millimetre
+// of the lift already shows it. The moment it gives (GIVE_AT) it's lifted:
+// onSet("lifted", true), the finger still on it.
 import { memo, useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated, { interpolate, useAnimatedStyle } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
+import { Image } from "expo-image";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { mix } from "@/theme/payoff";
@@ -21,6 +29,8 @@ import { GIVE_AT, STAGE, Stage, activatable, tryKey, usePull } from "./kit";
 import { Boards, CastShadow, Ink, SoftShadow, Fade, inkRect, rng, useGradId, useMaterials, type Materials } from "./materials";
 import { ART, Sprite } from "./sprites";
 import type { MechanismProps } from "./types";
+import { useBaked } from "../cutout";
+import { cropOf, useShown } from "../shown";
 
 const RISE = 84;
 /** The thing's height on the floor (a rug's depth, a cushion's). */
@@ -37,7 +47,7 @@ export function liftKind(label: string): Kind {
   if (/rug|carpet|\bmat\b|blanket|throw|quilt|duvet|towel|cloth|curtain|sheet|drape/.test(l)) return "rug";
   if (/cushion|pillow/.test(l)) return "cushion";
   if (/book|magazine|journal|diary|album|ledger/.test(l)) return "book";
-  if (/box|basket|crate|bag|bin|case|chest|trunk/.test(l)) return "box";
+  if (/box|basket|crate|bag|pack|satchel|purse|bin|case|chest|trunk/.test(l)) return "box";
   return "pot";
 }
 
@@ -47,6 +57,13 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
   const feedback = useFeedback();
   const lifted = state.lifted === true;
   const kind = liftKind(target.label);
+  // A bag (the core's LiftUnder "inside"): opened, not lifted.
+  const bag = target.variant === "inside" || BAG_WORDS.test(target.label);
+  // The thing itself, cut out of her photo (null: drawn instead).
+  const shown = useShown();
+  const crop = target.kind === "object" ? cropOf(shown, target.id) : null;
+  const baked = useBaked("cutout", shown.genre, crop);
+  const real = baked ?? null;
   const onCommit = useCallback(() => {
     feedback.cloth();
     onSet("lifted", true);
@@ -77,12 +94,76 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
     const p = progress.get();
     return { opacity: interpolate(p, [0, 1], [0.95, 0.35]), transform: [{ scaleX: 1 - p * 0.18 }, { scaleY: 1 - p * 0.3 }] };
   });
+  // A bag: the mouth opens from the first movement (never shut tight, so what's in it shows at once), the flap
+  // folding back and up, darker as it turns away from the lamp.
+  const mouthStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: 0.12 + 0.88 * Math.min(1, progress.get() * 1.4) }] }));
+  const bagFlapStyle = useAnimatedStyle(() => {
+    const p = progress.get();
+    return { transform: [{ translateY: -p * 46 }, { rotate: `${p * -7}deg` }, { scaleY: 1 - p * 0.45 }] };
+  });
+  const flapShadeStyle = useAnimatedStyle(() => ({ opacity: progress.get() * 0.45 }));
   // The place it was: the dust line and the cleaner patch show as it comes off.
   const placeStyle = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, 0.3], [0, 1], "clamp") }));
 
   const floorW = Math.min(width, w + 96);
-  const thingW = peel ? w : kind === "cushion" ? 168 : kind === "book" ? 150 : 124;
+  // Her own thing keeps its own shape: fitted into the space the drawn one would take, a little roomier.
+  const fit = real && !peel ? (() => {
+    const maxW = kind === "cushion" ? 196 : 176, maxH = 128;
+    const tw = Math.min(maxW, maxH * real.aspect);
+    return { w: Math.round(tw), h: Math.round(tw / real.aspect) };
+  })() : null;
+  const thingW = peel ? w : fit ? fit.w : kind === "cushion" ? 168 : kind === "book" ? 150 : 124;
+  const thingH = fit ? fit.h : H;
   const label = lifted ? `${target.label}, lifted` : `Lift the ${target.label}`;
+  if (bag) {
+    // A bag is opened, not lifted: its flap folds back and its mouth gapes, what's in it lying there.
+    const bw = real ? Math.round(Math.min(184, 156 * real.aspect)) : 150;
+    const bh = real ? Math.round(bw / real.aspect) : 140;
+    const flapH = Math.round(bh * BAG.flap);
+    const mouthW = Math.round(bw * 0.7);
+    return (
+      <Stage width={width}>
+        <View style={[styles.room, { height: STAGE }]}>
+          <View style={[styles.floor, { width: floorW }]} pointerEvents="none">
+            <Boards w={floorW} h={FLOOR_H} seed={71} tone={mat.floor} board={46} fade={0.42} />
+          </View>
+          <View style={[styles.shadow, { width: bw, bottom: ref.space.lg - 12 }]} pointerEvents="none">
+            <SoftShadow w={bw} h={46} color={mat.shadow} strength={0.9} />
+          </View>
+          <View style={{ width: bw, height: bh }}>
+            <GestureDetector gesture={gesture}>
+              <Animated.View
+                {...activatable(lifted ? `${target.label}, open` : `Open the ${target.label}`, "Looks inside", lifted ? onUncommit : commitNow, busy)}
+                testID="mech-lift"
+                style={{ width: bw, height: bh }}
+              >
+                {/* The bag itself: hers, cut out of the photo (or drawn), standing still. */}
+                {real ? (
+                  <Image source={{ uri: real.uri }} style={{ width: bw, height: bh }} contentFit="contain" transition={0} accessible={false} pointerEvents="none" testID="mech-lift-photo" />
+                ) : (
+                  <Sprite source={ART.box} w={bw} h={bh} />
+                )}
+              </Animated.View>
+            </GestureDetector>
+            {/* Its mouth, gaping as the flap goes back: dark inside, what it holds lying there from the first movement. */}
+            <Animated.View style={[styles.mouth, { width: mouthW, left: (bw - mouthW) / 2, top: flapH - 4, height: Math.round(bh * BAG.mouth) }, mouthStyle]} pointerEvents="box-none">
+              <View style={[StyleSheet.absoluteFill, styles.mouthDark]} pointerEvents="none" />
+              {inside ? <View style={styles.inBag} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
+            </Animated.View>
+            {/* The flap: the bag's own top, cut from the same picture, folding back and up off the mouth. */}
+            <Animated.View style={[styles.bagFlap, { width: bw, height: flapH }, bagFlapStyle]} pointerEvents="none">
+              {real ? (
+                <Image source={{ uri: real.uri }} style={{ width: bw, height: bh }} contentFit="contain" transition={0} accessible={false} pointerEvents="none" />
+              ) : (
+                <Sprite source={ART.box} w={bw} h={bh} />
+              )}
+              <Animated.View style={[StyleSheet.absoluteFill, styles.flapShade, flapShadeStyle]} pointerEvents="none" />
+            </Animated.View>
+          </View>
+        </View>
+      </Stage>
+    );
+  }
   return (
     <Stage width={width}>
       <View style={[styles.room, { height: STAGE }]}>
@@ -99,7 +180,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
           <Place w={thingW - (peel ? 12 : 30)} h={peel ? H - 8 : 48} round={!peel} light={mat.floor.sheen} />
         </Animated.View>
         {/* What was under it, there all along, uncovered as it rises; picked up once most of it shows. */}
-        {inside ? <View style={[styles.lying, { width: w * 0.8, bottom: ref.space.lg + 3 + UNDER[kind] }]} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
+        {inside ? <View style={[styles.lying, { width: w * 0.8, bottom: ref.space.lg + 3 + (fit ? Math.max(6, (thingH - 56) / 2) : UNDER[kind]) }]} pointerEvents={reach ? "box-none" : "none"} testID="mech-inside">{inside}</View> : null}
         {peel ? null : (
           <Animated.View style={[styles.shadow, { width: thingW, bottom: ref.space.lg - 12 }, shadowStyle]} pointerEvents="none">
             <SoftShadow w={thingW} h={46} color={mat.shadow} strength={0.9} />
@@ -110,7 +191,7 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
             <Animated.View {...activatable(label, "Looks underneath", lifted ? onUncommit : commitNow, busy)} testID="mech-lift" style={{ width: w, height: H }} pointerEvents="box-none">
               <Animated.View style={[styles.window, { width: w, height: H }, flatStyle]}>
                 <Animated.View style={stayStyle}>
-                  <Rug w={w} h={H} tone={mat.cloth} />
+                  {real ? <Image source={{ uri: real.uri }} style={{ width: w, height: H }} contentFit="fill" transition={0} accessible={false} pointerEvents="none" /> : <Rug w={w} h={H} tone={mat.cloth} />}
                 </Animated.View>
               </Animated.View>
               <Animated.View style={[styles.flap, { width: w, height: FLAP, top: H - FLAP }, flapStyle]}>
@@ -120,9 +201,14 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
               </Animated.View>
             </Animated.View>
           ) : (
-            <Animated.View {...activatable(label, "Looks underneath", lifted ? onUncommit : commitNow, busy)} testID="mech-lift" style={[{ width: thingW, height: H }, liftStyle]}>
-              {/* The thing itself, rendered (the cushion, the book and the pot in the mode's dye). */}
-              <Sprite source={kind === "box" ? ART.box : ART[kind][genre]} w={thingW} h={H} />
+            <Animated.View {...activatable(label, "Looks underneath", lifted ? onUncommit : commitNow, busy)} testID="mech-lift" style={[{ width: thingW, height: thingH }, liftStyle]}>
+              {real ? (
+                // Hers, cut out of the photo.
+                <Image source={{ uri: real.uri }} style={{ width: thingW, height: thingH }} contentFit="contain" transition={0} accessible={false} pointerEvents="none" testID="mech-lift-photo" />
+              ) : (
+                // Drawn (the cushion, the book and the pot in the mode's dye).
+                <Sprite source={kind === "box" ? ART.box : ART[kind][genre]} w={thingW} h={H} />
+              )}
             </Animated.View>
           )}
         </GestureDetector>
@@ -132,6 +218,10 @@ export function LiftUnder({ target, state, onSet, busy, width, inside }: Mechani
 }
 
 const FLOOR_H = 156;
+/** What a bag is called; a bag is opened, never lifted. */
+const BAG_WORDS = /back ?pack|rucksack|satchel|hand ?bag|purse|tote|\bbag\b|knapsack/i;
+/** A bag's flap (of its height, from the top) and its mouth's depth when wide open. */
+const BAG = { flap: 0.36, mouth: 0.42 } as const;
 /** How far up from the near edge what's under a thing lies, so the thing covers all of it while it's down (the rendered ones' feet are rounder than a box). */
 const UNDER: Record<Kind, number> = { rug: 0, cushion: 10, book: 10, box: 10, pot: 7 };
 
@@ -255,4 +345,9 @@ const styles = StyleSheet.create({
   window: { position: "absolute", left: 0, top: 0, overflow: "hidden" },
   flap: { position: "absolute", left: 0, transformOrigin: "50% 100%" },
   flapShadow: { position: "absolute", left: 6, top: -9, transform: [{ scaleY: -1 }] },
+  mouth: { position: "absolute", overflow: "hidden", borderRadius: 999, transformOrigin: "50% 0%", alignItems: "center", justifyContent: "center" },
+  mouthDark: { backgroundColor: "#120C0E", borderRadius: 999, opacity: 0.92 },
+  inBag: { alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
+  bagFlap: { position: "absolute", left: 0, top: 0, overflow: "hidden", transformOrigin: "50% 0%" },
+  flapShade: { backgroundColor: "#000000" },
 });

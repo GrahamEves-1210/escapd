@@ -1,13 +1,17 @@
-// Decoder: a two-ring cipher disc. The outer ring is the plain alphabet (for a
-// coded number, A..J also carry 0..9); the inner disc is the cipher alphabet,
-// and turns under it in detents. Set to +k, the letter under plain A is A + k,
-// as the clue writes it ("+5"). Above the disc lies the coded line the player
-// found, and under each coded letter what it reads at this setting, live, so
-// turning the ring shows its effect: the coded letters are marked on the inner
-// disc and the plain letters they sit under light up on the outer ring. Once
-// the engine has shown the decoded note, the line is stamped "It reads" at that
-// setting. Offset 1..max; onSet("offset", "3") on release. It never knows the
-// answer: the reading is the player's.
+// Decoder: a two-ring cipher disc, and nothing written round it: it explains
+// itself. The outer ring is the plain alphabet (for a coded number, A..J also
+// carry 0..9); the inner disc is the cipher alphabet, and turns under it in
+// detents. The index bracket at twelve frames plain A over the cipher letter
+// under it, which is how the clue writes the key ("A=R": set to +k, R is
+// A + k), so the clue and the wheel look the same when it's set.
+// Each letter of the coded line is marked on the inner disc, and a wedge runs
+// from it out across the brass to the plain letter it sits under, turning
+// with the disc: the pair is one thing to the eye. Above the disc lies the
+// coded line the player found, typed, and under each coded letter, pencilled,
+// what it reads at this setting, live. Once the engine has shown the decoded
+// note, the pencil turns to ink and the slip is stamped. Offset 1..max;
+// onSet("offset", "3") on release. It never knows the answer: the reading is
+// the player's. One action: turn the disc (by the knurled boss, or anywhere).
 //
 // Drawn as the thing in the hand: a brass wheel, its plain alphabet engraved
 // round the rim, an enamel disc turning in it with the cipher alphabet in ink,
@@ -18,7 +22,6 @@ import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import Animated, { FadeIn, cancelAnimation, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from "react-native-svg";
 import { scheduleOnRN } from "react-native-worklets";
-import { ArrowsClockwiseIcon } from "phosphor-react-native";
 import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -33,8 +36,9 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const N = LETTERS.length;
 const STEP = 360 / N;
 const A = 65;
-/** The columns either side of the disc: the turn hint, the setting. */
-const SIDE = 74;
+/** The disc's largest size, and the room left either side of it. */
+const MAX_D = 228;
+const MARGIN = 24;
 
 /** A step's offset kept in 1..max: 0 (no shift) and anything past max land on the nearest end. */
 function valid(k: number, max: number) {
@@ -47,7 +51,6 @@ function valid(k: number, max: number) {
 const placesOf = (coded: string) => new Set([...coded.toUpperCase()].filter((c) => c >= "A" && c <= "Z").map((c) => c.charCodeAt(0) - A));
 
 export function Decoder({ target, state, onSet, onChange, busy, width }: MechanismProps) {
-  const theme = useModeTheme();
   const { reducedMotion } = useTheme();
   const feedback = useFeedback();
   const cipher = useCipher();
@@ -55,11 +58,10 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
   const max = Math.min(domain?.kind === "offset" ? domain.max : N - 1, N - 1);
   const committed = valid(Number(state.offset) || 1, max);
   const [shown, setShown] = useState(committed);
-  const [turned, setTurned] = useState(false);
 
   const numeric = cipher.numeric;
   const band = numeric ? 32 : 26;
-  const D = Math.min(width - 2 * SIDE, 206);
+  const D = Math.min(width - 2 * MARGIN, MAX_D);
   const R = D / 2;
   const inner = D - 2 * band;
   const pos = useSharedValue(committed);
@@ -84,7 +86,6 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
 
   const passed = useCallback((k: number) => {
     feedback.tick();
-    setTurned(true);
     setShown(mod(k, N));
     onChange?.();
   }, [feedback, onChange]);
@@ -144,7 +145,6 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
     if (next > max) next = 1;
     if (next < 1) next = max;
     feedback.tick();
-    setTurned(true);
     commit(next);
   };
 
@@ -159,43 +159,47 @@ export function Decoder({ target, state, onSet, onChange, busy, width }: Mechani
   return (
     <Stage width={width} style={styles.stage}>
       <CodedLine coded={coded} source={cipher.source} k={k} numeric={numeric} reads={reads ? cipher.solved?.note ?? "" : null} width={width} />
-      <View style={styles.row}>
-        {/* Which way: a turn arrow until the ring has been turned once. */}
-        <View style={styles.side} pointerEvents="none">
-          {!turned && committed === 1 ? (
-            <>
-              <ArrowsClockwiseIcon size={26} color={theme.inkMuted} weight="bold" />
-            </>
-          ) : null}
+      <GestureDetector gesture={pan}>
+        <View
+          {...adjustable("Cipher ring", `A over ${under}, plus ${k}`, step)}
+          testID="mech-decoder"
+          style={[styles.ring, { width: D, height: D, borderRadius: R }]}
+        >
+          <WheelFace size={D} />
+          {/* Each coded letter's wedge on the brass, turning with the disc: it lands on the plain letter it reads as. */}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, discStyle]}>
+            <Wedges size={D} from={R - band + 1} to={R - 3} places={places} color={LIT} opacity={0.42} />
+          </Animated.View>
+          <OuterRing size={D} lit={lit} numeric={numeric} ink={ENGRAVED} muted="#4A3413" accent={LIT} />
+          <Animated.View style={[styles.disc, { width: inner, height: inner, borderRadius: inner / 2 }, discStyle]}>
+            <DiscFace size={inner} />
+            <Wedges size={inner} from={inner / 2 - 22} to={inner / 2 - 1.5} places={places} color={LIT} opacity={0.3} />
+            <InnerRing size={inner} marked={places} ink={ENAMEL.ink} mark={LIT} markInk={ENAMEL.light} />
+          </Animated.View>
+          {/* The index at twelve: plain A over the letter it becomes (the key, as the clue writes it). */}
+          <View pointerEvents="none" style={[styles.window, { height: band + 24 }]} testID="mech-decoder-index" />
         </View>
-        <GestureDetector gesture={pan}>
-          <View
-            {...adjustable("Cipher ring", `Ring at plus ${k}: A reads as ${under}`, step)}
-            testID="mech-decoder"
-            style={[styles.ring, { width: D, height: D, borderRadius: R }]}
-          >
-            <WheelFace size={D} />
-            <OuterRing size={D} lit={lit} numeric={numeric} ink={ENGRAVED} muted="#4A3413" accent={LIT} />
-            <Animated.View style={[styles.disc, { width: inner, height: inner, borderRadius: inner / 2 }, discStyle]}>
-              <DiscFace size={inner} />
-              <InnerRing size={inner} marked={places} ink={ENAMEL.ink} mark={theme.accent} markInk={theme.accentInk} />
-            </Animated.View>
-            {/* The index at twelve: plain A over the letter it becomes. */}
-            <View pointerEvents="none" style={[styles.window, { height: band + 22 }]} />
-          </View>
-        </GestureDetector>
-        {/* The setting, written the way the clue writes it. */}
-        <View style={styles.side} pointerEvents="none" testID="mech-decoder-setting">
-          <Text style={[ref.type.tag, { color: theme.inkMuted }]}>ring</Text>
-          <Text style={[styles.setting, { color: theme.ink }]} testID="mech-decoder-offset">+{k}</Text>
-          <Text style={[ref.type.meta, { color: theme.inkMuted }]}>
-            A <Text style={{ color: theme.inkMuted }}>→</Text> <Text style={[styles.under, { color: theme.stamp }]} testID="mech-decoder-letter">{under}</Text>
-          </Text>
-        </View>
-      </View>
+      </GestureDetector>
     </Stage>
   );
 }
+
+/** Wedges (between radii `from` and `to`, one letter wide) behind the letters at `places`, drawn in a square of `size`. */
+const Wedges = memo(function Wedges({ size, from, to, places, color, opacity }: { size: number; from: number; to: number; places: Set<number>; color: string; opacity: number }) {
+  if (!places.size) return null;
+  const c = size / 2;
+  const at = (a: number, r: number) => `${(c + r * Math.sin(a)).toFixed(2)} ${(c - r * Math.cos(a)).toFixed(2)}`;
+  const half = (STEP / 2) * (Math.PI / 180) * 0.92;
+  const d = [...places].map((p) => {
+    const a = p * STEP * (Math.PI / 180);
+    return `M${at(a - half, from)}L${at(a - half, to)}A${to} ${to} 0 0 1 ${at(a + half, to)}L${at(a + half, from)}A${from} ${from} 0 0 0 ${at(a - half, from)}Z`;
+  }).join("");
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Path d={d} fill={color} fillOpacity={opacity} />
+    </Svg>
+  );
+});
 
 /**
  * The coded line on a slip of paper, each coded letter over what it reads at this setting. Before its
@@ -215,13 +219,9 @@ function CodedLine({ coded, source, k, numeric, reads, width }: {
     );
   }
   const chars = [...coded];
-  const cell = Math.max(14, Math.min(26, (width - 120) / Math.max(1, chars.length)));
+  const cell = Math.max(14, Math.min(28, (width - 64) / Math.max(1, chars.length)));
   return (
     <View style={[styles.slip, { backgroundColor: p.note }]} testID="mech-decoder-line" accessible accessibilityLabel={`${source ?? "Coded line"}: ${coded}. At this setting it reads ${decodeLine(coded, k, numeric)}`}>
-      <View style={styles.slipLabels}>
-        <Text style={[styles.slipLabel, { color: p.inkSoft }]} numberOfLines={1}>{source ?? "Coded"}</Text>
-        <Text style={[styles.slipLabel, { color: reads !== null ? p.marker : p.pen }]}>{reads !== null ? "It reads" : "Reads"}</Text>
-      </View>
       <View style={styles.cells}>
         {chars.map((c, i) => {
           const letter = /[A-Za-z]/.test(c);
@@ -353,9 +353,7 @@ const InnerRing = memo(function InnerRing({ size, marked, ink, mark, markInk }: 
 });
 
 const styles = StyleSheet.create({
-  stage: { gap: ref.space.sm },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
-  side: { width: SIDE, alignItems: "center", justifyContent: "center", gap: 2 },
+  stage: { gap: ref.space.sm, alignItems: "center" },
   ring: { alignItems: "center", justifyContent: "center" },
   disc: { position: "absolute", alignItems: "center", justifyContent: "center" },
   spoke: { position: "absolute", alignItems: "center" },
@@ -365,16 +363,12 @@ const styles = StyleSheet.create({
   innerLetter: { fontSize: 12, lineHeight: 15, fontWeight: "600" },
   innerCell: { marginTop: 3, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   // The index bracket: an oxblood line round the pair that reads.
-  window: { position: "absolute", top: 1, width: 26, borderWidth: 2, borderRadius: ref.radius.tag, borderColor: LIT },
-  setting: { fontFamily: ref.font.typewriterBold, fontSize: 30, lineHeight: 36 },
-  under: { fontFamily: ref.font.typewriterBold, fontSize: 15, lineHeight: 18 },
+  window: { position: "absolute", top: 0, width: 28, borderWidth: 2.5, borderRadius: ref.radius.tag, borderColor: LIT },
   slip: {
     minHeight: 56, alignSelf: "stretch", marginHorizontal: ref.space.sm, borderRadius: 3, paddingVertical: 3, paddingHorizontal: ref.space.plate,
     flexDirection: "row", alignItems: "center", gap: ref.space.sm, transform: [{ rotate: "-0.8deg" }],
   },
   slipEmpty: { borderWidth: 1, borderStyle: "dashed", justifyContent: "center", transform: [] },
-  slipLabels: { width: 64, gap: 10 },
-  slipLabel: { fontFamily: ref.font.typewriter, fontSize: 11, lineHeight: 14, textTransform: "uppercase", letterSpacing: 0.5 },
   cells: { flex: 1, flexDirection: "row", justifyContent: "center", alignItems: "flex-start" },
   cell: { alignItems: "center" },
   coded: { fontFamily: ref.font.typewriterBold },

@@ -18,7 +18,7 @@
 // above the table, the stud or Android back to go. Reduced motion: no growing,
 // it is simply there.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { BackHandler, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import type { FinaleDef, ItemDef, StateValue } from "@/engine/v2";
@@ -26,6 +26,7 @@ import { useFeedback } from "@/game/feedback";
 import { useModeTheme } from "@/game/mode";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
+import { LETTER_FONT } from "@/theme/payoff";
 import { capitalise, ItemIcon } from "./ItemTray";
 import { JournalCard, lookOf } from "./journal/JournalCard";
 import { handType, journalPalette, UV } from "./journal/palette";
@@ -39,6 +40,9 @@ import { CloseStud, NameLabel, PlateButton, TABLE_EDGE, TableTop } from "./hud/T
 import { Mechanism } from "./mechanisms";
 import type { MechanismTarget } from "./mechanisms/types";
 import { tapMark } from "./useTapAway";
+import { useCardDef, useShown } from "./shown";
+import { photoOf, Snapshot } from "./journal/Snapshot";
+import { Thing, thingOf } from "./journal/Thing";
 
 export { capitalise };
 
@@ -158,7 +162,10 @@ export function InspectView(props: InspectViewProps) {
   // physically there the whole time: drawn in it at once, uncovered as it's pulled, closed or not.
   const lies = target.archetype !== null && (PULLS as readonly string[]).includes(target.archetype);
   const open = showsInside(state);
-  const inside = open || lies ? contents : [];
+  // What a pulled thing holds is laid in it before the first touch (the room says, shown.ts), so the first
+  // millimetre of the pull already shows it; the engine's own find takes its place as it comes back.
+  const preview = useHeld(target, state, contents, lies);
+  const inside = open || lies ? [...contents, ...preview] : [];
   // Opened (or there was nothing to open) and nothing in it: that is seen, not said (a screen reader is told).
   const empty = open && contents.length === 0 && (target.archetype === null || CONTAINER_KEYS.some((k) => state[k] === true));
   // Where that goes for a screen reader: in a drawer's or a cushion's own inside, else on the row above.
@@ -173,13 +180,16 @@ export function InspectView(props: InspectViewProps) {
   const found = (withEmpty: boolean) => (inside.length || (empty && withEmpty) ? (
     <>
       {inside.map((c, i) => {
+        // Laid there ahead of the engine: seen, not yet to be taken (it is the engine's to give).
+        const ahead = preview.includes(c);
         return (
           <Press
+            disabled={ahead}
             key={c.kind === "card" ? c.card.id : c.item.id}
             cue="none"
             onPress={() => {
               if (c.kind === "card") {
-                feedback.paper();
+                feedback.paper(false);
                 setReading(c.card);
               } else {
                 feedback.pickup();
@@ -287,21 +297,46 @@ export function InspectView(props: InspectViewProps) {
   );
 }
 
+/**
+ * What a pulled thing holds before the engine has said (its public `holds`, shown.ts): the items and notes
+ * lying in it, while it hasn't been opened, isn't locked, and nothing of it has been found yet.
+ */
+function useHeld(target: MechanismTarget, state: Record<string, StateValue>, contents: Content[], lies: boolean): Content[] {
+  const shown = useShown();
+  if (!lies || target.kind !== "object" || state.locked === true || CONTAINER_KEYS.some((k) => state[k] === true)) return [];
+  const holds = shown.objects.find((o) => o.id === target.id)?.holds;
+  if (!holds) return [];
+  const here = new Set(contents.map((c) => (c.kind === "card" ? c.card.id : c.item.id)));
+  const out: Content[] = [];
+  for (const id of holds.items) {
+    const item = shown.items.find((i) => i.id === id);
+    if (item && !here.has(id) && !shown.found.has(id)) out.push({ kind: "item", item });
+  }
+  for (const id of holds.cards) {
+    const card = shown.cards.find((c) => c.id === id);
+    if (card && !here.has(id) && !shown.found.has(id)) out.push({ kind: "card", card: { id, title: card.title, text: "" } });
+  }
+  return out;
+}
+
 /** A held item, examined: the thing itself large, and its card (read in full) if it has one. Never what it's for. */
 function ItemDetail({ name, item, contents }: { name: string; item?: ItemDef; contents: Content[] }) {
   const theme = useModeTheme();
   const m = useHudMaterials();
   const card = contents.find((c): c is Extract<Content, { kind: "card" }> => c.kind === "card")?.card;
   const kind = item?.kind ?? "prop";
+  const def = useCardDef(card?.id ?? "");
+  // A thing whose card is only what's stamped or engraved on it (or nothing at all): drawn on the thing, no paper.
+  const thing = card && !photoOf(card, def) ? thingOf(card, def?.look) : null;
 
   return (
     <View style={styles.detail} testID="v2-item-detail">
       {/* The thing itself, lying on the felt under the lamp. */}
-      <View style={styles.detailGlyph}>
+      <View style={[styles.detailGlyph, thing ? styles.detailThing : null]}>
         <GroundShadow width={104} height={26} color={m.shadow} opacity={0.9} style={styles.detailShadow} />
-        <ItemIcon item={item ?? { name, kind }} size={104} />
+        {thing && card ? <Thing title={item?.name ?? name} text={card.text} look={thing} size={104} ink={theme.ink} /> : <ItemIcon item={item ?? { name, kind }} size={104} />}
       </View>
-      {card ? (
+      {card && !thing ? (
         <View style={styles.detailPaper} testID={`v2-item-card-${card.id}`}>
           <JournalCard card={card} palette={journalPalette(theme)} hand={handType(theme)} index={0} />
         </View>
@@ -315,22 +350,35 @@ function ReadingNote({ card, onDone }: { card: FoundCard; onDone: () => void }) 
   const theme = useModeTheme();
   const p = journalPalette(theme);
   const hand = handType(theme);
+  // A photograph is turned over by a tap on it (the rest of the screen still puts it down).
+  const photo = photoOf(card, useCardDef(card.id));
   // (No "tap anywhere to put it down" under it: a tap anywhere does.)
   return (
     <View style={styles.reading} testID="v2-reading-layer">
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: theme.ground }, styles.readingScrim]} onPress={onDone} accessibilityRole="button" accessibilityLabel="Put the note down" testID="v2-reading" />
-      <View style={styles.readingPaper} pointerEvents="none">
+      <View style={styles.readingPaper} pointerEvents={photo ? "box-none" : "none"}>
         <JournalCard card={card} palette={p} hand={hand} index={0} large />
       </View>
     </View>
   );
 }
 
-/** A note lying in an object: a little folded scrap with a scribble and a strip of tape (a UV finding, violet). */
+/** A note lying in an object: a little folded scrap with a scribble and a strip of tape (a UV finding, violet); a photograph, the print itself. */
 function FoundNote({ card, index }: { card: FoundCard; index: number }) {
   const theme = useModeTheme();
   const p = journalPalette(theme);
+  const photo = photoOf(card, useCardDef(card.id));
   const uv = lookOf(card).look === "uv";
+  const def = useCardDef(card.id);
+  if (photo) return <Snapshot object={photo.object} back={photo.back} width={50} rotate={index % 2 ? 6 : -7} turns={false} />;
+  // Words engraved on the thing itself (inside a balance's lid): a little brass plate with them cut in it.
+  if (def?.look === "inscribed" && card.text.trim()) {
+    return (
+      <View style={[styles.plate, softShadow(theme.ground)]}>
+        <Text style={styles.plateText} numberOfLines={2} adjustsFontSizeToFit>{card.text}</Text>
+      </View>
+    );
+  }
   const ink = uv ? UV.ink : p.inkSoft;
   return (
     <View style={[styles.mini, { backgroundColor: uv ? UV.paper : p.note, transform: [{ rotate: `${index % 2 ? 5 : -6}deg` }] }, softShadow(theme.ground)]}>
@@ -370,6 +418,7 @@ const styles = StyleSheet.create({
   scenery: { minHeight: 140, alignItems: "center", justifyContent: "center", gap: ref.space.lg, paddingVertical: ref.space.lg },
   detail: { alignItems: "center", gap: ref.space.lg, paddingHorizontal: ref.space.lg, paddingTop: ref.space.lg, paddingBottom: ref.space.xl },
   detailGlyph: { width: 120, height: 112, alignItems: "center", justifyContent: "center" },
+  detailThing: { width: "100%", height: undefined, minHeight: 112 },
   detailShadow: { bottom: 0 },
   detailPaper: { alignSelf: "stretch" },
   lying: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: ref.space.lg },
@@ -379,6 +428,9 @@ const styles = StyleSheet.create({
   miniFold: { position: "absolute", top: 0, right: 0, width: 0, height: 0, borderTopWidth: 11, borderRightWidth: 11, borderLeftColor: "transparent", borderBottomColor: "transparent" },
   miniTape: { position: "absolute", top: -5, left: 9 },
   thing: { width: 54, height: 54, alignItems: "center", justifyContent: "center" },
+  // A brass plate (an engraving's), its words cut dark into it.
+  plate: { minWidth: 96, maxWidth: 150, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 4, backgroundColor: "#C9A35A", borderWidth: 1, borderColor: "#7A5A22" },
+  plateText: { fontFamily: LETTER_FONT.engraved, fontSize: 13, lineHeight: 17, color: "#3A2810", textAlign: "center", textShadowColor: "rgba(255, 236, 190, 0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 0 },
   thingShadow: { bottom: 0 },
   takeCorner: { position: "absolute", top: ref.space.sm, right: ref.space.lg },
   tray: { paddingHorizontal: ref.space.lg, paddingTop: ref.space.sm + SHELF_LIP, marginTop: ref.space.sm },

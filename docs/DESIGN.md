@@ -137,7 +137,7 @@ One vocabulary for the whole app. It follows Settings → Haptics and does nothi
 | `thud` | medium impact | the shutter, "Build the case", "Open the case" |
 | `success` / `warning` / `error` | notification | an item found, a lock opening, an escape, a case ready / a use that doesn't work, a failed build / a wrong code, a failed shot |
 
-**The game's own moments** (GAME_FEEL, see "Game feel" below). Each is named for the moment, not the vibration, and also plays its sound when Sound is on:
+**The game's own moments** (GAME_FEEL, see "Game feel" below). Each is named for the moment, not the vibration. The game is felt more than heard: only `paper`, `unlock`, `stamp`, `drawer`, `shutter`, `doorOut`, `candleOut` and `musicNote` have a sound (quiet, under the music; `docs/AUDIO.md`), and `paper`, `unlock` and `stamp` take `false` to stay silent:
 
 | Call | Feel | Used for |
 |---|---|---|
@@ -148,7 +148,7 @@ One vocabulary for the whole app. It follows Settings → Haptics and does nothi
 | `stamp` | heavy impact | CASE CLOSED, GUILTY |
 | `solved` | success, then light at 260 ms and medium at 400 ms | the case solved |
 | `shutter` | medium impact | the camera's shutter (was `thud`) |
-| `typewriter` | none (sound only) | the informant's new tip |
+| `typewriter` | none (now silent: does nothing) | the informant's new tip |
 
 A pattern's later beats are skipped if haptics were off when it started.
 
@@ -778,13 +778,13 @@ Reference: none. Its frame is 02 Camera's viewfinder and square button, its type
 Route: `app/capture/develop.tsx` (`/capture/develop`, optional `?roomId=<id>` from home's Continue). It routes each stage: the wait and ready go to `BuildWait`, everything else to the shared `StateScreen`.
 
 Files in `src/screens/develop/`:
-- `BuildWait.tsx`: the screen during the wait and at ready: the header's close, the room, the title, the status line, the stamp and the foot; the room tone, the typewriter cue, Android back and the ready cues.
+- `BuildWait.tsx`: the screen during the wait and at ready: the header's close, the room, the title, the status line, the stamp and the foot; Android back and the ready cues (felt, not heard: the wait makes no sound).
 - `RoomPanorama.tsx`: the room. The photos as a looping row of tiles, the drift and the drag, the torch beam, the lights coming up; the Reduce Motion still and the no-photos cover.
 - `copy.ts`: the title, the status lines per stage and per mode, the ready line and the stamp's word.
 
 Removed: `PlateStrip.tsx`, `DarkroomGlass.tsx`, `DarkroomHero.tsx`, and their tokens (`develop.plate`, `.veil`, `.glass`, `.stage`, `.clock`, the old `.gap` and `.drift`). The painted magnifier (`assets/brand/magnifier*.png`) is no longer drawn anywhere; the files are kept (see Needs you).
 
-Tests: `src/screens/develop/__tests__/darkroom-test.tsx` (52). The words per stage and mode; the loop's arithmetic; no old clutter; the live region; the line's rotation and size; the drift, the drag (it pauses the drift, follows the finger, coasts, rests and drifts again) and the settle; the baked photos and the no-photos cover with `?roomId`; Reduce Motion; the close (label, home, `press`), Android back, nothing while sending; ready's cue order (`stamp`, then `success`, then the pill) and Open the case (`thud`); send ticks; the typewriter's rules; the room tone; every StateScreen path (account, Pro, limit, error, retry, privacy flags, whole-set note, no photos); the plain-language sweep; the mode's colours and the shell.
+Tests: `src/screens/develop/__tests__/darkroom-test.tsx` (52). The words per stage and mode; the loop's arithmetic; no old clutter; the live region; the line's rotation and size; the drift, the drag (it pauses the drift, follows the finger, coasts, rests and drifts again) and the settle; the baked photos and the no-photos cover with `?roomId`; Reduce Motion; the close (label, home, `press`), Android back, nothing while sending; ready's cue order (`stamp`, then `success`, then the pill) and Open the case (`thud`); send ticks; the wait is silent; every StateScreen path (account, Pro, limit, error, retry, privacy flags, whole-set note, no photos); the plain-language sweep; the mode's colours and the shell.
 
 Tokens: `ref.layout.develop` (below), `ref.type.status` (new: Medium 22/28), the kit's `ThinkingStates` (new: the `status` variant and its `colors` and `hold` props), `ref.button.square`, `ref.radius.viewfinder`, `ref.layout.play.stamp` and `.complete.slam` (the stamp and its nudge), `ref.layout.review.tile.bake`, `ref.layout.state` (the foot).
 
@@ -860,12 +860,11 @@ Haptics use the shared vocabulary in `src/game/feedback.ts`, one per moment, nev
 | (nothing) | sending | No close and no back handler of ours: the photos must all go first (as before) | — |
 | The room | the wait | Drag to turn it (above). Not a button; hidden from screen readers | — |
 | A photo finishes sending | the count steps up | — | `tick` (never on mount or when resuming mid-send) |
-| The status changes meaning | queued, building, trying again | — | `typewriter` (sound only), never on mount, never for a photo count or a rotating line, at most once every 4 s (`TYPEWRITER_GAP`) |
-| The stamp lands | ready | — | `stamp` (heavy, with its sound) |
+| The status changes meaning | queued, building, trying again | — | nothing: the wait is silent (round 16; the old `typewriter` cue fired a second or two in, as `sending` became `queued`) |
+| The stamp lands | ready | — | `stamp(false)` (heavy; felt, not heard) |
 | Then | 180 ms later | — | `success` (not `solved`: the case isn't solved yet) |
 | **Open the case** (the guide's pill, testID `open-case`) | once the stamp has landed | Clears the photos, `router.replace("/play/<roomId>")` | `thud` on press-in |
 | The case failed | `failed` | StateScreen | `warning` (calm, never `error`) |
-| Room tone | while the wait or ready is on screen and has focus | `useRoomTone(true)`: the mode's 16 s loop at the play screen's lowered level, fading in over 1.6 s; it hands straight on to the play screen's own tone when the case opens | — |
 
 ### States
 
@@ -956,7 +955,7 @@ Accessibility: when not loading, the icon, title and body form one polite live r
 - **The title keeps one wording through the whole wait** ("Building your case"); the line carries the stage. The display face makes it the mode's.
 - **Light voice on the running lines only.** The counts, the queue and "Trying again" stay plain; no darkroom or film words; AI never mentioned.
 - **Ready is a reward:** lights on, CASE READY slammed (the victory screen's own stamp), `stamp` then `success` (not `solved`, which belongs to a solved case), and only then the pill. Its space is kept from the start so nothing jumps.
-- **Sound:** the room tone plays quietly from the wait, so the room already sounds like the case when it opens; `typewriter` marks a change of status, not every line, so a two-minute wait isn't a typing loop.
+- **Sound:** none. The wait is silent under the music; the ready seal is felt (`stamp(false)`), not heard.
 - **Kept:** "One moment" for the access check, the calm failure titles and "Your photos are safe", "Back to your photos", the guide's pill for Open the case with `thud`, and the send tick's rules.
 
 ### Shots
@@ -973,7 +972,6 @@ The harness is `buildwait/shoot.js`: it swaps `useDevelopment` for a store the s
 - **Feel it on a phone:** the drift speed (24 pt/s), the beam's darkness (0.84) and the drag's coast are tuned on the web build.
 - **The 720 bake** (07's, reused so nothing new bakes) is a little soft on a 3× phone at 440 pt tall; a bigger bake would mean baking every photo again as the wait starts.
 - **The painted magnifier** (`assets/brand/magnifier*.png`) is no longer used; delete it if nothing else will want it.
-- **Typewriter and room tone volumes** follow `src/game/sound.ts`; check them on a device.
 - **The StateScreen states still have no glyph;** one per state can be passed through `icon`.
 
 ## 07 · Review screen ("Photos", formerly the light table)
@@ -1537,15 +1535,14 @@ The brief: keep the premium quality, but make Escapd feel like a noir detective 
 
 ### 2. Sound
 
-Docs: `docs/AUDIO.md` lists every file, what it's for, how it's made, its licence, size and duration.
+Docs: `docs/AUDIO.md` lists every file, what it's for, how it's made, its licence, size and duration, and the rule (round 16): **felt, not heard**. No sound on buttons, taps or outcomes, nothing sounds because a screen opened; a sound only where something physical happens and the player earned it, quiet and under the music. Where this section and AUDIO.md disagree, AUDIO.md is current.
 - **Engine:** `src/game/sound.ts` preloads the effects once, replays them from the start and never throws; it's silent on the web.
 - **Silent switch:** the audio session is `playsInSilentMode: false` with `mixWithOthers`. Sounds follow the iOS silent switch, and on Android they don't play when the ringer is on silent or vibrate. The player's own music keeps playing at full volume, with no ducking. The app's music shares this session, so it plays alongside the player's own audio rather than pausing for it (the trade-off: a game's score usually gives way to another app's; mixing keeps one session for effects and music, and the player can turn Music off).
-- **Settings:** Settings → Sound saves the server's `sound_enabled`, Settings → Music `music_enabled` (one row, two switches). Sound, music and haptics are independent of each other: Sound covers the effects and the room tone, Music only the music.
-- **The sounds:** 13 files in `assets/audio/`, about 340 KB in all, all synthesized by `scripts/audio/generate.mjs` (Node plus ffmpeg, deterministic). There's no third-party audio.
-  - Effects: press (very quiet), thud (a knock), paper, shutter, typewriter, unlock, wrong code, pickup, stamp, and the solved sting (3.3 s, timed to its haptic beats).
-  - `tick`, `success`, `warning` and `error` are silent, so the app never clicks constantly.
-- **Room tone:** `useRoomTone(active)`, mounted by `/play/[roomId]` and `/tutorial`. It loops 16 s per mode: noir rain and hum, crime scene a tense beating hum, paranormal a cold wind and pad. It fades in over 1.6 s, crossfades when the mode changes, and fades out over 0.7 s on blur, in the background, when sound is turned off or on unmount.
-- **Music:** `useMusic()` (`src/game/useMusic.ts`, the player in `src/game/music.ts`), mounted once in `app/_layout.tsx` so it follows the active mode (`useMode()`) across every screen. The shell (home, Pro, account) and Detective Noir (its intro, capture flow, build wait and play screen) play the main theme; Crime Scene plays `crime.m4a` (the user's jazz), Paranormal `paranormal.mp3`. Each track's `trim` evens its loudness to the theme's. One looping track at a time, at 0.35 (`MUSIC.level`), under the effects (0.45 to 0.95; the press click 0.22) and over the room tone. A mode change crossfades over 1.2 s; moving between the shell and noir keeps the theme playing without a restart; a track coming back after another mode's starts from its top. Music off, or the app going inactive, fades out over 0.5 s; the background pauses it at once; it resumes where it was. While music plays the room tone drops to half its level (`MUSIC.roomTone` 0.5, over 1.2 s), so rain or a hum doesn't muddy it. It starts at app start (the ambient session needs no gesture on iOS or Android) and is silent on the web or when a load fails. Every level and fade is in `sound.ts` (`EFFECTS`, `TONES`, `MUSIC`).
+- **Settings:** Settings → Sound saves the server's `sound_enabled`, Settings → Music `music_enabled` (one row, two switches). Sound, music and haptics are independent of each other: Sound covers the effects, Music only the music.
+- **The sounds:** 13 files in `assets/audio/`, about 165 KB in all, all synthesized by `scripts/audio/foley.py` (Python plus ffmpeg, deterministic). There's no third-party audio.
+  - Effects: a page turned (`paper`), a lock giving way (`unlock`), a drawer, a stamp, the camera's shutter, the endings' door and candle, the music box's six notes. Every other cue is a haptic only.
+- **Room tone:** gone (round 16); `useRoomTone` is a no-op.
+- **Music:** `useMusic()` (`src/game/useMusic.ts`, the player in `src/game/music.ts`), mounted once in `app/_layout.tsx` so it follows the active mode (`useMode()`) across every screen. The shell (home, Pro, account) and Detective Noir (its intro, capture flow, build wait and play screen) play the main theme; Crime Scene plays `crime.m4a` (the user's jazz), Paranormal `paranormal.mp3`. Each track's `trim` evens its loudness to the theme's. One looping track at a time, at 0.35 (`MUSIC.level`), over the effects (0.05 to 0.18). A mode change crossfades over 1.2 s; moving between the shell and noir keeps the theme playing without a restart; a track coming back after another mode's starts from its top. Music off, or the app going inactive, fades out over 0.5 s; the background pauses it at once; it resumes where it was. It starts at app start (the ambient session needs no gesture on iOS or Android) and is silent on the web or when a load fails. Every level and fade is in `sound.ts` (`EFFECTS`, `MUSIC`).
 - **Not yet checked on a device:** the loudness balance and how the low end comes through a phone speaker (volumes live in `sound.ts`). expo-audio restarts the loop by seeking back, which may leave a gap of a few milliseconds. The music files are 4 s silent placeholders until the user's tracks land (`docs/AUDIO.md`); set each track's `trim` once they do.
 
 ### 4. The play screen as objects

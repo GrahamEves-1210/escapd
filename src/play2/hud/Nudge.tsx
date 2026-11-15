@@ -47,6 +47,9 @@ export function nudgeFor(target: { archetype: string | null; variant?: string; l
       return { kind: "FrameTilt", move: { at: { x: 0.5, y: 0.42 }, by: { x: 66, y: 0 } } };
     case "ClockHands":
       return { kind: "ClockHands", move: { at: { x: 0.5, y: 0.22 }, turn: { r: 62, deg: 80 } } };
+    case "Decoder":
+      // The cipher wheel's disc, turned by a finger on it (anticlockwise brings later letters under A).
+      return { kind: "Decoder", move: { at: { x: 0.5, y: 0.34 }, turn: { r: 76, deg: -55 } } };
     case "TuningDial":
       return { kind: "TuningDial", move: { at: { x: 0.42, y: 0.34 }, by: { x: 70, y: 0 } } };
     case "CombinationLock":

@@ -11,6 +11,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "
 import { TreatedImage } from "@/components/noir";
 import type { SceneSource } from "@/render/SceneView";
 import { useTheme } from "@/theme/ThemeProvider";
+import { PHOTO_CACHE } from "./Preload";
 
 export const TURN = { ms: 340, drift: 0.2 } as const;
 
@@ -44,7 +45,7 @@ export function TurnGhost({ source, cacheKey, frame, dir, darkness, onDone }: {
   if (reducedMotion) return null;
   return (
     <Animated.View style={[styles.ghost, { left: frame.x, top: frame.y, width: frame.width, height: frame.height }, style]} pointerEvents="none" testID="v2-turn-ghost">
-      <TreatedImage source={source} genre={null} cacheKey={cacheKey} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} />
+      <TreatedImage source={source} genre={null} cacheKey={cacheKey} cachePolicy={PHOTO_CACHE} style={StyleSheet.absoluteFill} contentFit="fill" accessible={false} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${Math.min(0.97, darkness + 0.02)})` }]} />
     </Animated.View>
   );

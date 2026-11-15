@@ -106,7 +106,7 @@ Deno.test("author: the noir chain says what each find gives and where its placeh
   assert(/→ the player gets the [A-Za-z]/.test(chain), chain);
   assert(/enter \{\{code_\d+\}\} on the door → the way out opens/.test(chain), chain);
   // Where each object is, so a card can say "by the window".
-  assert(/^desk = desk \[Drawer\/drawer\] \(photo \d, [a-z ]+\)$/m.test(brief), brief);
+  assert(/^desk = desk \[[A-Za-z]+\/[a-z]+\] \(photo \d, [a-z ]+\)$/m.test(brief), brief);
 });
 
 Deno.test("author: placeOf names the photo and the part of it", () => {

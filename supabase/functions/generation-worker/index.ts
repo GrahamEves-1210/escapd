@@ -9,6 +9,7 @@
 // provider and the database.
 import { admin, handler, json, requireCronSecret } from "../_shared/supabase.ts";
 import { DEADLINE_MS, type Genre, GenerationError, generatePuzzle, NotImplementedError } from "../_shared/ai.ts";
+import { featuredKinds } from "../_shared/v2/planner.ts";
 
 const LEASE_SECONDS = 300;
 const TIME_BUDGET_MS = 110_000;
@@ -82,6 +83,7 @@ async function processJob(job: Job): Promise<Record<string, unknown>> {
       outputSchemaVersion: job.output_schema_version,
       genre: job.genre ?? "noir",
       photos: signed,
+      ...(job.output_schema_version === 2 ? { recent: await recentFeatures(job.room_id) } : {}),
     });
 
     const { data: result, error: completeError } = await admin().rpc("worker_complete_generation_job", {
@@ -98,5 +100,28 @@ async function processJob(job: Job): Promise<Record<string, unknown>> {
     if (err instanceof GenerationError) return await fail(err.code, err.message, err.retryable, err.usage);
     console.error("generation failed", err);
     return await fail("worker_error", String(err), true);
+  }
+}
+
+/**
+ * What the owner's last three v2 cases featured (the UV light, a cipher wheel, a music box...), the most
+ * recent first, so the planner gives this one something else. One read of the room's owner and one of
+ * their latest published definitions (only the objects, items and cards). Never fatal: on any error the
+ * room is planned as if it were their first.
+ */
+async function recentFeatures(roomId: string): Promise<string[][]> {
+  try {
+    const { data: room, error } = await admin().from("rooms").select("owner_id").eq("id", roomId).maybeSingle();
+    if (error || !room?.owner_id) return [];
+    const { data: versions, error: vError } = await admin().from("puzzle_versions")
+      .select("objects:public_definition->objects, items:public_definition->items, cards:public_definition->cards")
+      .eq("owner_id", room.owner_id).eq("schema_version", 2).neq("room_id", roomId)
+      .order("created_at", { ascending: false }).limit(3);
+    if (vError || !Array.isArray(versions)) return [];
+    // deno-lint-ignore no-explicit-any
+    return versions.map((v: any) => featuredKinds({ objects: v.objects ?? [], items: v.items ?? [], cards: v.cards ?? [] }));
+  } catch (err) {
+    console.error("recent features: skipped", err);
+    return [];
   }
 }

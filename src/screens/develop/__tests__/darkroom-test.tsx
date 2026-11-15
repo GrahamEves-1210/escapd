@@ -16,9 +16,10 @@ import type { GenerationJob } from "@/lib/escapd-api";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { modeThemes, motion, ref } from "@/theme/tokens";
 import DarkroomScreen from "../../../../app/capture/develop";
-import { HOME_LABEL, LEAVE_LABEL, TITLE_SIZE, TYPEWRITER_GAP } from "../BuildWait";
+import { HOME_LABEL, LEAVE_LABEL, TITLE_SIZE } from "../BuildWait";
 import {
   BUILDING_LABEL,
+  BUILD_LINES,
   BUILD_TITLE,
   QUEUED_LINE,
   READY_TITLE,
@@ -28,7 +29,8 @@ import {
   waitStatus,
 } from "../copy";
 import { SEAL } from "@/render/keepsake";
-import { DARK, SCENE, SLOTS, hangAt, lineY, sceneLayout, slotOf } from "../Darkroom";
+import { BLINK, DARK, SCENE, SLOTS, hangAt, lineY, sceneLayout, slotOf } from "../Darkroom";
+import { SHIMMER_TITLE } from "../ShimmerTitle";
 
 let mockStage: DevStage = { kind: "checking" };
 const mockRetry = jest.fn();
@@ -243,8 +245,8 @@ describe("the wait: one visual, one title, one line", () => {
     expect(screen.getByTestId("build-room", hidden)).toBeTruthy();
     expect(screen.getByRole("header", { name: "Building your case" })).toBeTruthy();
     expect(screen.getByTestId("build-status")).toBeTruthy();
-    // The only control is the close (the cat over the room can be petted, which is play, not a control).
-    expect(screen.getAllByRole("button").filter((b) => b.props.testID !== "v2-cat-pet")).toHaveLength(1);
+    // The only control is the close.
+    expect(screen.getAllByRole("button")).toHaveLength(1);
     expect(screen.container.queryAll((node) => node.type === "ActivityIndicator")).toHaveLength(0);
   });
 
@@ -289,10 +291,50 @@ describe("the wait: one visual, one title, one line", () => {
 
   it("the title is small, in the game's own type, one line", async () => {
     await renderScreen(running);
-    const title = screen.getByRole("header", { name: "Building your case" });
+    expect(screen.getByRole("header", { name: "Building your case" })).toBeTruthy();
+    const title = screen.getByTestId("build-title-line", hidden);
     expect(styleOf(title).fontSize).toBe(TITLE_SIZE.shell);
     expect(styleOf(title).fontSize as number).toBeLessThan(D.titleSize.shell);
     expect(styleOf(title).lineHeight as number).toBeGreaterThanOrEqual(styleOf(title).fontSize as number);
+    expect(title.props.numberOfLines).toBe(1);
+  });
+
+  it("while it builds, the title shimmers and turns over to the next short line every few seconds; a screen reader hears one title", async () => {
+    await renderScreen(running);
+    const header = screen.getByRole("header", { name: BUILD_TITLE });
+    await fireEvent(header, "layout", { nativeEvent: { layout: { x: 0, y: 0, width: 340, height: 21 } } });
+    expect(screen.getAllByText(BUILD_TITLE, hidden).length).toBeGreaterThan(0);
+    // The sweep: the line again in the highlight, seen through a few windows riding across it.
+    expect(screen.getAllByText(BUILD_TITLE, hidden)).toHaveLength(1 + SHIMMER_TITLE.windows.length);
+    for (const line of BUILD_LINES.slice(1)) {
+      await advance(SHIMMER_TITLE.hold);
+      expect(screen.getAllByText(line, hidden).length).toBeGreaterThan(0);
+      // Still the one stable title for a screen reader; the turning lines are hidden from it.
+      expect(screen.getByRole("header", { name: BUILD_TITLE })).toBe(header);
+      expect(screen.queryByText(line)).toBeNull();
+    }
+    // Short, plain and honest: one line each, no counts or progress.
+    for (const line of BUILD_LINES) {
+      expect(line.length).toBeLessThanOrEqual(STATUS_MAX);
+      expect(line).not.toMatch(/\d|%/);
+    }
+    // Round again.
+    await advance(SHIMMER_TITLE.hold);
+    expect(screen.getAllByText(BUILD_TITLE, hidden).length).toBeGreaterThan(0);
+  });
+
+  it("while the photos send, the title is the title alone; ready, it says so, still", async () => {
+    await renderScreen(sending(2));
+    await advance(SHIMMER_TITLE.hold * 2);
+    expect(screen.queryByText(BUILD_LINES[1], hidden)).toBeNull();
+    expect(screen.getAllByText(BUILD_TITLE, hidden).length).toBeGreaterThan(0);
+  });
+
+  it("Reduce Motion: no sweep; the lines still turn, by a fade", async () => {
+    await renderScreen(running, true);
+    expect(screen.getAllByText(BUILD_TITLE, hidden)).toHaveLength(1);
+    await advance(SHIMMER_TITLE.hold);
+    expect(screen.getAllByText(BUILD_LINES[1], hidden)).toHaveLength(1);
   });
 
   it("queued and trying again: one calm line each", async () => {
@@ -463,15 +505,30 @@ describe("the darkroom: every print's state is one the server reported", () => {
     await act(() => setMode(null));
   });
 
-  it("the cat sits behind the bench, outside the hidden picture, watching the tray; ready, it looks up", async () => {
+  it("the cat is in the room's own picture, on the bench in its light: no drawn cat laid over it; now and then it blinks", async () => {
     await renderScreen(running);
-    const cat = screen.getByTestId("build-cat");
-    const seat = styleOf(cat);
-    // Its foot on the bench's back edge.
-    expect((seat.top as number) + (SCENE.cat.w * STAGE.s * 585) / 560).toBeGreaterThan(STAGE.edge - 2);
-    expect(seat.top as number).toBeLessThan(STAGE.edge);
-    // Not inside the picture's hidden subtree: it can still be petted.
-    expect(screen.getByTestId("v2-cat-pet")).toBeTruthy();
+    expect(screen.queryByTestId("build-cat", hidden)).toBeNull();
+    expect(screen.queryByTestId("v2-cat-pet", hidden)).toBeNull();
+    // The blink: its head with the eyes shut, over the head in the bench picture, at the picture's own scale.
+    const blink = screen.getByTestId("build-cat-blink", hidden);
+    const box = styleOf(blink);
+    expect(box.left).toBeCloseTo(STAGE.pic.left + SCENE.cat.x0 * STAGE.s, 6);
+    expect(box.top).toBeCloseTo(STAGE.pic.top + SCENE.cat.y0 * STAGE.s, 6);
+    expect(box.width).toBeCloseTo((SCENE.cat.x1 - SCENE.cat.x0) * STAGE.s, 6);
+    // On the bench, above its back edge, between the tray and the bottle.
+    expect(STAGE.pic.top + SCENE.cat.y1 * STAGE.s).toBeGreaterThan(STAGE.edge - 2);
+    expect(SCENE.cat.x0).toBeGreaterThan(SCENE.tray.x);
+    expect(animated("build-cat-blink").opacity ?? 0).toBe(0);
+    await advance(BLINK.gap[0] + 60);
+    expect(animated("build-cat-blink").opacity ?? 0).toBeGreaterThan(0.5);
+    await advance(BLINK.shut + 200);
+    expect(animated("build-cat-blink").opacity ?? 0).toBe(0);
+  });
+
+  it("Reduce Motion: the cat doesn't blink", async () => {
+    await renderScreen(running, true);
+    await advance(BLINK.gap[1] * 2);
+    expect(animated("build-cat-blink").opacity ?? 0).toBe(0);
   });
 });
 
@@ -509,6 +566,8 @@ describe("Reduce Motion", () => {
     await goTo(ready, true);
     expect(screen.getByText("CASE READY", hidden)).toBeTruthy();
     expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    // Felt, not heard: the seal's heavy haptic, without its sound.
+    expect(mockFeedback.stamp).toHaveBeenCalledWith(false);
     expect(mockFeedback.success).not.toHaveBeenCalled();
     await advance(D.ready.success);
     expect(mockFeedback.success).toHaveBeenCalledTimes(1);
@@ -540,7 +599,7 @@ describe("the way out", () => {
   it("isn't offered while the photos are still sending: nothing to press", async () => {
     const backPress = jest.spyOn(BackHandler, "addEventListener");
     await renderScreen(sending(2));
-    expect(screen.queryAllByRole("button").filter((b) => b.props.testID !== "v2-cat-pet")).toHaveLength(0);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(backPress).not.toHaveBeenCalled();
     backPress.mockRestore();
   });
@@ -565,6 +624,8 @@ describe("ready: the reward", () => {
     expect(screen.queryByRole("button", { name: "Open the case" })).toBeNull();
     await advance(D.ready.stampDelay + STAMP.slam + 16);
     expect(mockFeedback.stamp).toHaveBeenCalledTimes(1);
+    // Felt, not heard: the seal's heavy haptic, without its sound.
+    expect(mockFeedback.stamp).toHaveBeenCalledWith(false);
     expect(mockFeedback.success).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Open the case" })).toBeTruthy();
     await advance(D.ready.success);
@@ -606,19 +667,16 @@ describe("sound and haptics through the wait", () => {
     expect(mockFeedback.tick).not.toHaveBeenCalled();
   });
 
-  it("types when the status changes meaning, never on mount, never for a count or a rotation, and not twice within the gap", async () => {
+  it("the wait is silent: no sound as it starts, sends, queues, builds or tries again", async () => {
     await renderScreen(sending(0));
     await goTo(sending(1));
-    expect(mockFeedback.typewriter).not.toHaveBeenCalled();
     await goTo(queued);
-    expect(mockFeedback.typewriter).toHaveBeenCalledTimes(1);
-    // Straight on to building: too soon after the last.
     await goTo(running);
-    expect(mockFeedback.typewriter).toHaveBeenCalledTimes(1);
-    await advance(TYPEWRITER_GAP * 3);
-    expect(mockFeedback.typewriter).toHaveBeenCalledTimes(1);
+    await advance(10000);
     await goTo(retrying);
-    expect(mockFeedback.typewriter).toHaveBeenCalledTimes(2);
+    expect(mockFeedback.typewriter).not.toHaveBeenCalled();
+    expect(mockFeedback.paper).not.toHaveBeenCalled();
+    expect(mockFeedback.stamp).not.toHaveBeenCalled();
   });
 
   it("a failure stays a calm warning, once", async () => {
@@ -748,11 +806,16 @@ describe("inside a mode", () => {
     await renderScreen(running);
     expect(styleOf(screen.getByTestId("darkroom-root")).backgroundColor).toBe(theme.surface);
     expect(styleOf(screen.getByTestId("build-room", hidden)).backgroundColor).toBe(theme.ground);
-    expect(styleOf(screen.getByRole("header", { name: "Building your case" }))).toMatchObject({
+    expect(screen.getByRole("header", { name: "Building your case" })).toBeTruthy();
+    expect(styleOf(screen.getByTestId("build-title-line", hidden))).toMatchObject({
       fontFamily: theme.display.fontFamily,
       fontSize: TITLE_SIZE.paranormal,
-      color: theme.ink,
     });
+  });
+
+  it("Reduce Motion: the title in the mode's own ink, unswept", async () => {
+    await renderScreen(running, true);
+    expect(styleOf(screen.getByTestId("build-title-line", hidden))).toMatchObject({ fontFamily: theme.display.fontFamily, color: theme.ink });
   });
 
   it("the CASE READY seal pressed in gold foil, and the pill in its accent", async () => {

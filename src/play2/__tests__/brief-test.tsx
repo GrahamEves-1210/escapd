@@ -49,7 +49,7 @@ describe("the brief's words", () => {
 });
 
 describe("Brief", () => {
-  it.each(["noir", "crime_scene", "paranormal"] as const)("%s: the mode's page, the case's number (no invented title), the objective, the cat, Begin", async (mode) => {
+  it.each(["noir", "crime_scene", "paranormal"] as const)("%s: the mode's page, the case's number (no invented title), the objective, no cat, Begin", async (mode) => {
     const onBegin = jest.fn();
     jest.useFakeTimers();
     await render(<ThemeProvider reducedMotion><Brief def={def(mode)} roomId="room-1" onBegin={onBegin} /></ThemeProvider>);
@@ -58,7 +58,9 @@ describe("Brief", () => {
     expect(label.toLowerCase()).toBe(caseLabel("room-1").toLowerCase());
     expect(screen.queryByText("The Long Night")).toBeNull();
     expect(screen.getByTestId("brief-objective").props.accessibilityLabel).toBe(`${OBJECTIVE_LABEL[mode]}: ${OBJECTIVE}`);
-    expect(screen.getByLabelText(/^The black cat/)).toBeTruthy();
+    // No cat on the opening letter (the player's word: it waits in the room).
+    expect(screen.queryByLabelText(/black cat|pet the cat/i)).toBeNull();
+    expect(screen.queryByTestId("sitting-cat")).toBeNull();
     expect(screen.getByTestId("brief-postscript").props.children.replace(/\u00a0/g, " ")).toBe(BRIEF_POSTSCRIPT);
     // The context reads as the text itself (a typed slip is struck through, never read).
     expect(screen.getByTestId("brief-context").props.accessibilityLabel ?? screen.getByTestId("brief-context").props.children).toBe(BRIEF_OPENING[mode]);

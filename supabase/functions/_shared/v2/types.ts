@@ -43,6 +43,12 @@ export interface ObjectDef {
    *  mark on or near one, drawn only under the UV beam. The torch used on it reveals it (state
    *  `revealed`); the magnifier on it then reads its forensics report. Never tappable by itself. */
   trace?: TraceSpec;
+  /**
+   * A container's contents (a drawer, a cushion, a frame), when opening it needs nothing but opening it:
+   * the items and cards lying in, under or behind it. Public (no answer: what's under a cushion is seen
+   * the moment it's lifted), so the app lays them there before the first touch and they show as it opens.
+   */
+  holds?: { items: Id[]; cards: Id[] };
 }
 
 export const TRACE_KINDS = ["prints", "palm", "writing", "stain", "footprints"] as const;
@@ -102,7 +108,17 @@ export interface ItemDef {
   card?: Id;                           // what examining it shows
 }
 
-export const CARD_LOOKS = ["impression"] as const;
+/**
+ * How the app draws a card, when it is a thing and not only writing on paper:
+ *   impression  a key pressed into soap or wax; the text is exactly its {{slot}}, the key's cuts;
+ *   photo       a snapshot of a thing in the room (`object`: the app prints a crop of the player's own photo
+ *               round that object's box); the text is what is written on its back;
+ *   mirrored    writing set down back to front (the app draws it reversed); the text may be empty;
+ *   inscribed   the text is stamped or engraved on the thing itself (a weight, a ring, a lid), drawn on it.
+ * A card with no look is writing on paper. Either way the text is only what is literally written or
+ * printed on the thing: what it is and what it looks like, the app shows.
+ */
+export const CARD_LOOKS = ["impression", "photo", "mirrored", "inscribed"] as const;
 export type CardLook = typeof CARD_LOOKS[number];
 
 /**
@@ -134,6 +150,8 @@ export interface CardDef {
    * {{slot}}, a key's cuts bow to tip ("20313", depths 0-3), and the app draws the impression from it.
    */
   look?: CardLook;
+  /** look "photo": the room object the photograph shows (never a UV trace). */
+  object?: Id;
 }
 
 export interface AccuseOption { id: Id; name: string }

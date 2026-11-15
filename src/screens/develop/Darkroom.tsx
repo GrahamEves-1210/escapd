@@ -35,9 +35,15 @@
 // restarted), one sheet with the mode's drawn cover on it; in the shell, the
 // tray alone.
 //
+// The cat is in the bench picture itself (darkroom_cat.py): sitting on the
+// bench between the tray and the bottle, in the room's own perspective and
+// red light, its shadow on the walnut, its head turned to the tray. Now and
+// then it blinks: the same picture rendered with its eyes shut, cut to its
+// head (assets/develop/cat-lids.png, at SCENE.cat), shown for a moment over
+// it. Once the lights are up at ready, one slow blink. Reduced motion: it
+// doesn't blink.
+//
 // Decorative: hidden from screen readers (the status line carries the status).
-// The cat is the caller's (`children`): it sits behind the bench, outside the
-// hidden frame, so it can still be petted.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import { Image } from "expo-image";
@@ -62,7 +68,6 @@ import { useCapturePalette } from "@/capture/ui/palette";
 import { TreatedImage } from "@/components/noir";
 import { useModeTheme } from "@/game/mode";
 import type { Genre } from "@/lib/puzzle-types";
-import type { CatLook } from "@/play2/PeekingCat";
 import { ModeCover } from "@/screens/hub/art/ModeCover";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ref } from "@/theme/tokens";
@@ -80,6 +85,7 @@ const ART = {
   wet: require("../../../assets/develop/print-wet.png") as number,
   blank: require("../../../assets/develop/print-blank.png") as number,
   peg: require("../../../assets/develop/peg.png") as number,
+  lids: require("../../../assets/develop/cat-lids.png") as number,
 };
 /** A peg with its handles dipped in the mode's accent: the mode's one mark on the room. */
 const DIPPED: Record<Genre | "shell", number> = {
@@ -88,6 +94,12 @@ const DIPPED: Record<Genre | "shell", number> = {
   paranormal: require("../../../assets/develop/peg-paranormal.png") as number,
   shell: require("../../../assets/develop/peg-shell.png") as number,
 };
+
+/** The cat's head in the bench picture (points): the box darkroom_set.py prints as CAT_HEAD, and cuts cat-lids.png to. */
+const CAT_HEAD_BOX = { x0: 270, y0: 3, x1: 326, y1: 67 } as const;
+
+/** The cat's blink (ms): eyes shut for `shut`, every `gap` (a range); every third a double, `double` apart. Ready: a slow one, `after` the lights. */
+export const BLINK = { shut: 130, gap: [3800, 7400] as const, double: 150, slow: { after: 1500, hold: 650 } } as const;
 
 /**
  * The scene, in points on a `width` x `height` stage (the numbers the render
@@ -112,7 +124,8 @@ export const SCENE = {
   sheen: { w: 288, h: 158, columns: 4, rows: 3, count: 12 },
   line: { w: 440, h: 22, at: 25, top: 6, sag: 8 },
   peg: { w: 16, h: 40, grip: { x: 8, y: 30.02 }, bite: { x: 8, y: 35.45 } },
-  cat: { w: 68, dx: 58, sink: 3 },
+  // The cat's head in the bench picture: where its shut eyes are laid for a blink (darkroom_set.py's CAT_HEAD).
+  cat: CAT_HEAD_BOX,
   // The ready seal's middle, below the bench's back edge (clear of the cat).
   seal: 98,
 } as const;
@@ -194,7 +207,7 @@ type Layout = ReturnType<typeof sceneLayout> & { width: number; height: number }
 /** A fade of `ms`: opacity, so it plays under reduced motion too. */
 const faded = (ms: number) => ({ duration: ms, reduceMotion: ReduceMotion.Never });
 
-export function Darkroom({ photos, sent, developing, ready, style, seal, children }: {
+export function Darkroom({ photos, sent, developing, ready, style, seal }: {
   photos: readonly DarkroomPhoto[];
   /** How many of the photos have been sent: that many sheets lie in the tray. */
   sent: number;
@@ -206,8 +219,6 @@ export function Darkroom({ photos, sent, developing, ready, style, seal, childre
   style?: StyleProp<ViewStyle>;
   /** The ready seal: pressed onto the picture below the cat, over the tray. */
   seal?: ReactNode;
-  /** The cat, given where to sit (its width and box) and what to watch. */
-  children?: (seat: { width: number; look: CatLook }) => ReactNode;
 }) {
   const palette = useCapturePalette();
   const theme = useModeTheme();
@@ -298,23 +309,6 @@ export function Darkroom({ photos, sent, developing, ready, style, seal, childre
     },
   });
 
-  // The cat watches the tray: the newest print, its eyes going over and back with the liquid. Ready: it looks up.
-  const [side, setSide] = useState(1);
-  useEffect(() => {
-    if (reducedMotion || ready) return;
-    const id = setInterval(() => setSide((v) => -v), DARK.rock.period / 2);
-    return () => clearInterval(id);
-  }, [reducedMotion, ready]);
-  const catWidth = layout ? Math.round(SCENE.cat.w * layout.s) : SCENE.cat.w;
-  const catHeight = (catWidth * 585) / 560;
-  const seat = layout ? { left: layout.width / 2 + SCENE.cat.dx * layout.s - catWidth / 2, top: layout.edge + SCENE.cat.sink * layout.s - catHeight } : null;
-  const look: CatLook = !layout || !seat || ready ? null : {
-    x: layout.liquid.x + (reducedMotion ? 0 : side * 34 * layout.s) - (seat.left + catWidth / 2),
-    y: layout.liquid.y - (seat.top + catHeight / 2),
-    from: "cat",
-    quiet: true,
-  };
-
   const tray = useAnimatedStyle(() => ({ transform: [{ rotate: `${rock.get()}deg` }] }));
   const sheenRock = useAnimatedStyle(() => ({ transform: [{ rotate: `${rock.get()}deg` }] }));
   const sheenFrame = useAnimatedStyle(() => {
@@ -344,6 +338,7 @@ export function Darkroom({ photos, sent, developing, ready, style, seal, childre
           {layout ? (
             <>
               <Image source={ART.bench} style={[styles.abs, layout.pic]} contentFit="fill" testID="build-bench" />
+              <Blink layout={layout} ready={ready} reduced={reducedMotion} />
               <Animated.View pointerEvents="none" style={[styles.abs, glowBox(layout), pulse]} testID="build-safelight">
                 <Glow size={SCENE.glass.r * 2 * layout.s} />
               </Animated.View>
@@ -408,12 +403,50 @@ export function Darkroom({ photos, sent, developing, ready, style, seal, childre
           {seal}
         </View>
       ) : null}
-      {seat && children ? (
-        <View style={[styles.abs, seat]} pointerEvents="box-none" testID="build-cat">
-          {children({ width: catWidth, look })}
-        </View>
-      ) : null}
     </View>
+  );
+}
+
+/**
+ * The cat's blink: its head with the eyes shut, laid over the bench picture for `BLINK.shut` now and
+ * then (sometimes twice), never on a schedule you could count. Ready: once the lights are up, one slow
+ * blink. Reduced motion: its eyes stay open.
+ */
+function Blink({ layout, ready, reduced }: { layout: Layout; ready: boolean; reduced: boolean }) {
+  const shut = useSharedValue(0);
+  useEffect(() => {
+    if (reduced) {
+      shut.set(0);
+      return;
+    }
+    const { shut: ms, gap, double, slow } = BLINK;
+    const once = (hold: number) => [withTiming(1, { duration: 40 }), withDelay(hold, withTiming(0, { duration: 60 }))];
+    if (ready) {
+      shut.set(withDelay(slow.after, withSequence(withTiming(1, { duration: 220 }), withDelay(slow.hold, withTiming(0, { duration: 320 })))));
+      return;
+    }
+    let id: ReturnType<typeof setTimeout>;
+    let n = 0;
+    const next = () => {
+      n += 1;
+      const twice = n % 3 === 0;
+      shut.set(twice ? withSequence(...once(ms), withDelay(double, withTiming(1, { duration: 40 })), withDelay(ms, withTiming(0, { duration: 60 }))) : withSequence(...once(ms)));
+      id = setTimeout(next, gap[0] + ((n * 1733) % (gap[1] - gap[0])));
+    };
+    id = setTimeout(next, gap[0]);
+    return () => clearTimeout(id);
+  }, [ready, reduced, shut]);
+  const style = useAnimatedStyle(() => ({ opacity: shut.get() }));
+  const { x0, y0, x1, y1 } = SCENE.cat;
+  const s = layout.s;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.abs, { left: layout.pic.left + x0 * s, top: layout.pic.top + y0 * s, width: (x1 - x0) * s, height: (y1 - y0) * s }, style]}
+      testID="build-cat-blink"
+    >
+      <Image source={ART.lids} style={StyleSheet.absoluteFill} contentFit="fill" />
+    </Animated.View>
   );
 }
 

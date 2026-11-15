@@ -1,7 +1,7 @@
 // The cat mounts with its eyes and lids, takes a find and a wrong answer, thinks with "?"s, and dozes off when the light is still (long after a stuck glance would come).
 // It never says a word: guessing gets a slow blink and a huff, and it glances where it's told (a mark on that side, now and then a paw that way; thinking, quietly).
 // Stroked it purrs (no heart), a screen reader can pet it or rub it, and rough quick taps (never stroking) are too much. The sitting cat purrs too.
-// Its cues: a huff after three wrong answers in a row, a perk once per thing the light finds, glances when the player is stuck (at the way out once everything's been looked at).
+// Its cues: a huff after three wrong answers in a row, a rare perk once per thing the light finds, a rare glance when the player is idle a long while (at the way out once everything's been looked at).
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react-native";
 import { createGestureController } from "react-native-gesture-handler/jest-utils";
 import { makeMutable } from "react-native-reanimated";
@@ -9,7 +9,7 @@ import type { PlayState, RoomDefinitionV2 } from "@/engine/v2";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { PET, PeekingCat, pupilRoom } from "../PeekingCat";
 import { SittingCat, TAIL, WHIP, bendTail, restTail, stepTail, tailBends, type TailMood, type TailState } from "../SittingCat";
-import { useCatCues } from "../useCatCues";
+import { coolAfter, glanceDue, PATIENCE, useCatCues } from "../useCatCues";
 
 /** A hand on the cat, step by step (the petting gesture). Under fake timers: what the gesture hands the JS thread runs on a timer. */
 function hand() {
@@ -477,7 +477,7 @@ describe("useCatCues", () => {
   const state = { objects: {}, items: {}, inventory: [], solved: [], fired: [], cards: [], seen: [], overlays: [], completed: false } as PlayState;
   const frame = { x: 0, y: 100, width: 390, height: 600 };
 
-  it("huffs at a third wrong answer in a row and perks up once per thing, never saying a word", async () => {
+  it("huffs at a third wrong answer in a row and perks up once per thing, rarely and never in the room's first minutes", async () => {
     jest.useFakeTimers();
     try {
       const react = jest.fn();
@@ -495,73 +495,113 @@ describe("useCatCues", () => {
       });
       expect(react).toHaveBeenCalledWith(expect.objectContaining({ kind: "guess" }));
       react.mockClear();
+      // The room just opened: the light over the desk gets nothing.
       await act(async () => {
         result.current.hover("desk");
-        result.current.hover("desk");
       });
+      expect(react).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(PATIENCE.graceMs);
+        result.current.hover("desk");
+        result.current.hover("desk");
+        result.current.hover("lamp");
+      });
+      // Once for the desk; the lamp straight after is too soon.
       expect(react).toHaveBeenCalledTimes(1);
       expect(react).toHaveBeenCalledWith(expect.objectContaining({ kind: "warm" }));
+      await act(async () => {
+        jest.advanceTimersByTime(PATIENCE.perkGapMs);
+        result.current.hover("lamp");
+      });
+      expect(react).toHaveBeenCalledTimes(2);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it("glances at what hasn't been looked at when the player is stuck", async () => {
+  it("glances only after the room's first minutes and a long idle, and progress or any activity starts the idle again", async () => {
     jest.useFakeTimers();
     try {
       const { result, rerender } = await renderHook((p: { view: number; seen: string[] }) => useCatCues({
         def, state: { ...state, seen: p.seen }, view: p.view, photos: 2, frame, watching: true, cooldown: 0, contents: {}, react: () => {},
       }), { initialProps: { view: 0, seen: [] } });
+      // Stuck from the start, but nothing in the grace.
+      await act(async () => {
+        jest.advanceTimersByTime(PATIENCE.graceMs - 2000);
+      });
+      expect(result.current.lookAt).toBeNull();
+      // A sweep of the light near the end of the grace: the idle starts from there.
+      await act(async () => {
+        result.current.hover(null);
+        jest.advanceTimersByTime(PATIENCE.idleMs - 3000);
+      });
       expect(result.current.lookAt).toBeNull();
       await act(async () => {
-        jest.advanceTimersByTime(47000);
+        jest.advanceTimersByTime(5000);
       });
-      // The desk, on this view: its middle, in window points.
+      // The desk, on this view: its middle, in window points; the first glance is eyes only.
       expect(result.current.lookAt?.x).toBeCloseTo(0.3 * 390);
       expect(result.current.lookAt?.y).toBeCloseTo(100 + 0.4 * 600);
-      // The desk looked at: progress ends the glance; stuck again, it looks toward the lamp's side.
+      expect(result.current.lookAt?.paw).toBe(false);
+      // The desk looked at: progress ends the glance.
       await rerender({ view: 0, seen: ["desk"] });
       expect(result.current.lookAt).toBeNull();
+      // Idle again, long enough: still nothing, the wait after a glance is minutes.
       await act(async () => {
-        jest.advanceTimersByTime(47000);
+        jest.advanceTimersByTime(PATIENCE.idleMs + 5000);
       });
-      // The turn arrow's height (the photo's middle), on the right (the nearer way round, ties go forward).
+      expect(result.current.lookAt).toBeNull();
+      // The next comes the wait after the first glance later (it began at most 5 s before the desk was looked at).
+      let waited = PATIENCE.idleMs + 5000;
+      while (!result.current.lookAt && waited < coolAfter(1) + 10000) {
+        await act(async () => {
+          jest.advanceTimersByTime(1000);
+        });
+        waited += 1000;
+      }
+      expect(waited).toBeGreaterThanOrEqual(coolAfter(1) - 5000);
+      // The turn arrow's height (the photo's middle), on the right (the nearer way round, ties go forward), and a paw now.
       expect(result.current.lookAt?.y).toBe(400);
       expect(result.current.lookAt!.x).toBeGreaterThan(195);
+      expect(result.current.lookAt?.paw).toBe(true);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it("with everything looked at and the case open, glances at the way out (or its arrow), a paw that way now and then", async () => {
+  it("taps keep it quiet, and each glance's wait is longer than the last", async () => {
     jest.useFakeTimers();
-    const random = jest.spyOn(Math, "random").mockReturnValue(0);
     try {
       const withDoor = {
         objects: [...def.objects, { id: "door", label: "door", photo_index: 1, box: { x: 0.6, y: 0.2, w: 0.2, h: 0.6 }, archetype: "Door", controls: [], exit: true }],
       } as unknown as RoomDefinitionV2;
-      const { result, rerender } = await renderHook((p: { view: number }) => useCatCues({
-        def: withDoor, state: { ...state, seen: ["desk", "lamp", "door"] }, view: p.view, photos: 2, frame, watching: true, cooldown: 0, contents: {}, react: () => {},
-      }), { initialProps: { view: 1 } });
-      await act(async () => {
-        jest.advanceTimersByTime(47000);
-      });
-      // The door, on this view; the first glance points a paw there too.
-      expect(result.current.lookAt?.x).toBeCloseTo(0.7 * 390);
-      expect(result.current.lookAt?.paw).toBe(true);
-      expect(result.current.lookAt).not.toHaveProperty("line");
-      // On the other view: the arrow toward it.
-      await rerender({ view: 0 });
-      expect(result.current.lookAt?.y).toBe(400);
-      expect(result.current.lookAt?.paw).toBe(true);
-      // The glance after (12.5 s on, with no jitter): eyes only.
-      await act(async () => {
-        jest.advanceTimersByTime(12000);
-      });
-      expect(result.current.lookAt).not.toBeNull();
-      expect(result.current.lookAt?.paw).toBe(false);
+      const { result } = await renderHook(() => useCatCues({
+        def: withDoor, state: { ...state, seen: ["desk", "lamp", "door"] }, view: 1, photos: 2, frame, watching: true, cooldown: 0, contents: {}, react: () => {},
+      }));
+      // Tapping about every half minute for ten minutes: never a glance.
+      let shown = 0;
+      for (let t = 0; t < 20; t++) {
+        await act(async () => {
+          result.current.touch();
+          jest.advanceTimersByTime(30000);
+        });
+        if (result.current.lookAt) shown++;
+      }
+      expect(shown).toBe(0);
+      // Left alone: one glance at the way out (everything's been looked at), then it waits longer each time.
+      const at: number[] = [];
+      for (let s = 0; s < 3600 && at.length < 3; s++) {
+        await act(async () => {
+          jest.advanceTimersByTime(1000);
+        });
+        if (result.current.lookAt && (!at.length || s - at[at.length - 1] > 10)) at.push(s);
+      }
+      expect(at).toHaveLength(3);
+      expect(at[1] - at[0]).toBeGreaterThanOrEqual(coolAfter(1) / 1000 - 1);
+      expect(at[2] - at[1]).toBeGreaterThan(at[1] - at[0]);
+      expect(coolAfter(1)).toBeGreaterThanOrEqual(180000);
+      expect(glanceDue({ openedAt: 0, activeAt: 0, glancedAt: null, glances: 0 })).toBe(PATIENCE.graceMs);
     } finally {
-      random.mockRestore();
       jest.useRealTimers();
     }
   });

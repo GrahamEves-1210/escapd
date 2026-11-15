@@ -5,7 +5,7 @@
 // CONFIDENTIAL stamp that didn't take evenly; a print of her own room
 // paper-clipped to the corner; the summary typed into its box; the
 // assignment filled in by hand in blue ballpoint on the form's lines; the
-// cat's line on a sticky note stuck over the foot. The cat sits by it.
+// writer's line on a sticky note stuck over the foot.
 //
 // The reply, at the way out: the file's closing sheet, the door she walked
 // out of clipped to it, the headline printed heavy, the ending typed, and
@@ -36,7 +36,6 @@ export const CRIME_TYPE = {
   replyTyped: { fontFamily: LETTER_FONT.report, fontSize: 18, lineHeight: 26 },
 } as const;
 const PRINT = 104;
-const CAT = 70;
 
 /** A print of the room, paper-clipped on. */
 function Print({ photo, tilt, width = PRINT }: { photo: Photo; tilt: number; width?: number }) {
@@ -84,7 +83,7 @@ function Envelope({ seed }: { seed: string }) {
   );
 }
 
-export function CrimeBrief({ label, series, context, objective, objectiveLabel, postscript, catLabel, catDelay, photo }: BriefLetterProps) {
+export function CrimeBrief({ label, series, context, objective, objectiveLabel, postscript, photo }: BriefLetterProps) {
   return (
     <View style={styles.wrap}>
       <Envelope seed={label} />
@@ -114,11 +113,10 @@ export function CrimeBrief({ label, series, context, objective, objectiveLabel, 
         </View>
       </Paper>
       {photo ? <View style={styles.printAt}><Print photo={photo} tilt={5} /></View> : null}
-      {/* The sticky note with the cat's word. */}
+      {/* The sticky note with the writer's postscript. */}
       <Paper color={P.note} seed={`${label}:note`} grain={0.45} shade={alpha("#000000", 0.45)} lift={0.8} style={styles.note} padding={styles.notePad}>
         <Text style={[handType(19, 23), { color: P.noteInk }]} testID="brief-postscript">{keepTogether(postscript)}</Text>
       </Paper>
-      <LetterCat width={CAT} delay={catDelay} label={catLabel} style={styles.cat} />
     </View>
   );
 }
@@ -173,7 +171,6 @@ const styles = StyleSheet.create({
   printClip: { position: "absolute", top: -18, left: 18 },
   note: { position: "absolute", left: 18, bottom: 0, width: 200, transform: [{ rotate: "-3deg" }] },
   notePad: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 16 },
-  cat: { position: "absolute", right: 12, bottom: 4 },
   // The reply.
   replyWrap: { paddingTop: 12, paddingBottom: 26 },
   replySheet: { transform: [{ rotate: "1deg" }] },

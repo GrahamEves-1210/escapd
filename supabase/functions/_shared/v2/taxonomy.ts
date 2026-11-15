@@ -21,7 +21,8 @@ const TYPES = {
   // storage
   chest: ["storage", false], trunk: ["storage", false], box: ["storage", true], basket: ["storage", true],
   jar: ["storage", true], suitcase: ["storage", false], safe: ["storage", false], toolbox: ["storage", true],
-  bag: ["storage", true],
+  // A bag is opened and looked into where it lies (LiftUnder/inside), never pocketed as a find of its own.
+  bag: ["storage", false],
   // textiles
   pillow: ["textile", true], cushion: ["textile", true], rug: ["textile", false], curtain: ["textile", false],
   blanket: ["textile", false], towel: ["textile", true],
@@ -88,11 +89,13 @@ export const TYPICAL_FEATURES: Partial<Record<ObjectType, Feature[]>> = {
   map: ["wall_mounted"], noticeboard: ["wall_mounted"], wall_clock: ["has_hands", "wall_mounted"], alarm_clock: ["has_hands", "can_lift"],
   desk_lamp: ["light_source"], floor_lamp: ["light_source"], string_lights: ["light_source"], radio: ["has_dial"],
   record_player: ["has_dial"], guitar: ["has_strings"], keyboard_instrument: ["has_keys"], door: ["is_door", "can_open"],
-  mug: ["can_lift"], trophy: ["can_lift"], figurine: ["can_lift"], jar: ["can_open", "can_lift"], basket: ["can_lift", "holds_items"],
+  bag: ["can_open", "holds_items"], mug: ["can_lift"], trophy: ["can_lift"], figurine: ["can_lift"], jar: ["can_open", "can_lift"], basket: ["can_lift", "holds_items"],
 };
 
 /** Words in a label that name a type the taxonomy spells differently. First match wins. */
 const SYNONYMS: [RegExp, ObjectType][] = [
+  // (Before the pictures and plants: a canvas tote is a bag, and a backpack is never a pot.)
+  [/\b(backpack|rucksack|knapsack|handbag|purse|satchel|tote|duffel|duffle|holdall|messenger bag|shoulder bag)\b/, "bag"],
   [/\b(alarm clock|clock radio)\b/, "alarm_clock"],
   [/\bclock\b/, "wall_clock"],
   [/\b(couch|settee|loveseat)\b/, "sofa"],
@@ -121,7 +124,6 @@ const SYNONYMS: [RegExp, ObjectType][] = [
   [/\b(statue|ornament|sculpture)\b/, "figurine"],
   [/\b(tv|television|media console)\b/, "tv_stand"],
   [/\b(crate|bin|container)\b/, "box"],
-  [/\b(backpack|handbag|purse)\b/, "bag"],
   [/\b(doorway|entrance|exit)\b/, "door"],
 ];
 

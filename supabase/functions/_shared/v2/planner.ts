@@ -26,11 +26,12 @@ import { simulate, type SimReport } from "./simulate.ts";
 import { TRACE_SURFACES, traceSiteOk } from "./traces.ts";
 import { categoryOf, type InventoryObject, isPortableType, type ObjectCategory } from "./taxonomy.ts";
 import {
-  type AccuseOption, type CardDef, type Condition, type Effect, type FinaleDef, type ItemDef, type Mode, type MotifId, type ObjectDef, ORDER_RULES,
+  type AccuseOption, type CardDef, type CardLook, type Condition, type Effect, type FinaleDef, type ItemDef, type Mode, type MotifId, type ObjectDef, ORDER_RULES,
   orderHolds, type OrderRule, type Rect, type RoomDefinitionV2, type RoomSecretV2, type Rule, type SlotKind, type SlotValue, type StateValue, type StepDef,
   TRACE_HANDS, TRACE_PATTERNS, TRACE_SIZES, type TraceKind, type TraceSpec, type Trigger,
 } from "./types.ts";
 import { slotRefs, validateDefinition, wordClashes } from "./validate.ts";
+import { withShown } from "./shown.ts";
 
 export interface PlanOptions {
   mode: Mode;
@@ -42,6 +43,11 @@ export interface PlanOptions {
    * the app can play (none yet). The planner never puts one in a room unless it is named.
    */
   gadgets?: readonly Gadget[];
+  /**
+   * What the player's last few cases featured (featuredKinds of each, the most recent case first): the
+   * room leans away from those, so one case's UV light or cipher wheel isn't the next one's too.
+   */
+  recent?: readonly (readonly Featured[])[];
 }
 
 /**
@@ -84,7 +90,8 @@ const CONTAINERS: ArchetypeId[] = ["Drawer", "LiftUnder", "FrameTilt"];
 const SMALL_UNDER: ObjectCategory[] = ["decor", "plant"];
 const CONTAINER_CONTROL: Partial<Record<ArchetypeId, string>> = { Drawer: "open", LiftUnder: "lifted", FrameTilt: "tilted" };
 /** The last hint rung's verb for finding something in a container. */
-const verb = (b: Bound) => (b.archetype === "Drawer" ? (b.variant === "drawer" ? "Pull out" : "Open") : b.archetype === "LiftUnder" ? "Lift" : "Tilt");
+const verb = (b: Bound) => (b.archetype === "Drawer" ? (b.variant === "drawer" ? "Pull out" : "Open")
+  : b.archetype === "LiftUnder" ? (b.variant === "inside" ? "Look inside" : "Lift") : "Tilt");
 /** "the drawer", or "a drawer of the desk" when the object is the furniture around it. */
 const target = (b: Bound) => (b.archetype === "Drawer" && b.variant === "drawer" && !/\bdrawers?\b/i.test(b.inv.label) ? `a drawer of the ${b.inv.label}` : `the ${b.inv.label}`);
 /** Kinds whose card lines are whole sentences (crime-scene evidence, ritual fragments). */
@@ -235,6 +242,10 @@ class Builder {
   allow: ReadonlySet<Gadget> = new Set();
   /** The room's one reveal tool (seeded per room, so UV is one tool among several): "any" lifts the limit. */
   tool: RevealTool | "any" = "any";
+  /** What the player's last cases featured, each with how much it weighs against a repeat. */
+  recent: ReadonlyMap<Featured, number> = new Map();
+  /** A crime scene's UV evidence already is the room's one glowing reveal. */
+  glowTaken = false;
   names: (typeof ITEM_NAMES)[Mode];
 
   constructor(public mode: Mode, public pool: Bound[], public exit: Bound, public rng: () => number, public rint: RandomInt, public trng: () => number) {
@@ -389,8 +400,10 @@ class Builder {
     switch (this.slots[s].kind) {
       case "digits": return m.tag ? `${m.tag} ${ref}` : ref;
       case "page": return spoken ? `page ${ref}` : `p. ${ref}`;
-      case "offset": return spoken ? `plus ${ref}` : `+${ref}`;
-      case "cipher": return mark ? ref : `${ref}, letters that spell nothing`;
+      // A cipher key as the wheel shows it at its index: plain A over the letter that sits under it ("A=R").
+      case "offset": return spoken ? `A for ${ref}` : `A=${ref}`;
+      // The coded letters, and nothing said about them: they plainly spell nothing.
+      case "cipher": return ref;
       // On a surface, only the inspector's question; on a card, the evidence itself (never "ruled out").
       case "option": return mark ? `${ref}?` : (m.evidence?.line ?? "{{s}}").replace(/\{\{s\}\}/g, ref);
       case "object": return mark ? orderMark(m.order ?? "first", ref) : orderLine(m.order ?? "first", ref);
@@ -412,7 +425,7 @@ class Builder {
   clue(medium: Medium, slots: string[]): string {
     // One piece of crime-scene evidence found on its own is the document itself (a hotel register, a coroner's note).
     const ev = slots.length === 1 ? this.meta.get(slots[0])?.evidence : undefined;
-    let card: { title: string; text: string };
+    let card: { title: string; text: string; look?: CardLook };
     if (ev && (medium === "found" || medium === "read" || medium === "pages")) {
       card = { title: ev.title, text: ev.text.replace(/\{\{s\}\}/g, `{{${slots[0]}}}`) };
     } else {
@@ -424,13 +437,15 @@ class Builder {
       card = writeCard(this.mode, medium, values, list, this.fresh, kind, doc);
     }
     const after = slots.map((s) => this.meta.get(s)?.after).filter((a): a is string => !!a);
-    const text = after.length ? `${card.text}${card.text.includes("\n") ? "\n" : " "}${after.join(" ")}` : card.text;
-    return this.plainCard(card.title, text);
+    // (A second fact is a line of its own: a postscript, a memo.)
+    const text = after.length ? `${card.text}\n${after.join(" ")}` : card.text;
+    return this.plainCard(card.title, text, card.look);
   }
 
-  plainCard(title: string, text: string): string {
+  /** A card; `look`: how the app draws it when it's a thing, not paper (types.ts CARD_LOOKS). */
+  plainCard(title: string, text: string, look?: CardLook): string {
     const id = `card_${this.cards.length + 1}`;
-    this.cards.push({ id, title, text });
+    this.cards.push({ id, title, text, ...(look ? { look } : {}) });
     return id;
   }
 
@@ -482,6 +497,7 @@ class Builder {
     if (b.archetype === "Drawer") return b.variant === "drawer" ? "One of the drawers in this room isn't empty." : "Something here with a door or a lid is worth opening.";
     if (b.archetype === "FrameTilt") return "One of the things on the walls hangs slightly crooked.";
     if (b.archetype === "Readable") return ["bookshelf", "shelf", "book", "book_stack", "magazine", "notebook"].includes(t) ? "The books and papers here are worth a closer look." : "Something pinned or hung up here has writing on it.";
+    if (b.archetype === "LiftUnder" && b.variant === "inside") return "Somebody's bag was left here, and bags hold things.";
     if (cat === "textile") return "Something soft in this room sits a little higher than it should.";
     if (cat === "plant") return "Look under the green things.";
     return "Something small here could be lifted.";
@@ -499,7 +515,7 @@ class Builder {
   /** What finding a payload at `host` does: an item into the hand (its card, if it has one, shown), or a card to read. */
   give(p: Payload, host?: Bound): Effect[] {
     if ("note" in p) return [{ do: "show_card", card: this.clue("found", p.note) }];
-    if ("plain" in p) return [{ do: "show_card", card: this.plainCard(p.plain.title, p.plain.lead) }];
+    if ("plain" in p) return [{ do: "show_card", card: this.plainCard(p.plain.title, p.plain.lead, p.plain.look) }];
     if ("card" in p) return [{ do: "show_card", card: p.card }];
     const card = this.items.find((i) => i.id === p.item)?.card;
     return [{ do: "grant", item: p.item }, ...(card ? [{ do: "show_card", card } as Effect] : [])];
@@ -509,9 +525,15 @@ class Builder {
   choose(options: Option[], budget: number, depth: number): string | null {
     // (A room given the music box or the balance reaches for the lock they open.)
     const lean = (o: Option) => (o.motif === "contain_lock" && (this.tool === "tune" || this.tool === "weigh") ? 4 : 1);
-    const key = (o: Option) => -Math.log(1 - this.rng()) / ((MOTIFS[o.motif as Exclude<MotifId, "finale">]?.weight[this.mode] || 1) * lean(o));
+    // What the player's last cases featured weighs less (a cipher wheel two cases running).
+    const fresh = (o: Option) => this.recent.get(MOTIF_FEATURE[o.motif] as Featured) ?? 1;
+    const key = (o: Option) => -Math.log(1 - this.rng()) / ((MOTIFS[o.motif as Exclude<MotifId, "finale">]?.weight[this.mode] || 1) * lean(o) * fresh(o));
+    // One writing that comes up in light or heat per room, whichever it is (a UV torch, a lamp, a warmed letter);
+    // two only in the last round, for a room that plans no other way.
+    const glows = GLOW.reduce((n, m) => n + (this.used[m] ?? 0), this.glowTaken ? 1 : 0);
+    const glowCap = this.glowFirst ? 2 : 1;
     const ok = options.filter((o) => o.min <= budget && (depth > 0 || !(MOTIFS[o.motif as Exclude<MotifId, "finale">]?.leaf)) &&
-      (this.used[o.motif] ?? 0) < (MOTIFS[o.motif as Exclude<MotifId, "finale">]?.maxPerRoom ?? Infinity));
+      (this.used[o.motif] ?? 0) < (MOTIFS[o.motif as Exclude<MotifId, "finale">]?.maxPerRoom ?? Infinity) && (!GLOW.includes(o.motif) || glows < glowCap));
     const fills = (o: Option) => (o.fixed ? o.min === budget : true);
     const ordered = [...ok.filter(fills).map((o) => [key(o), o] as const).sort((a, b) => a[0] - b[0]),
       ...ok.filter((o) => !fills(o)).map((o) => [-o.min, o] as const).sort((a, b) => a[0] - b[0])].map(([, o]) => o);
@@ -827,7 +849,8 @@ class Builder {
   }
 
   roomChange(slots: string[], thread: number): string | null {
-    const lp = this.pickObject({ trigger: "set", thread, accept: (a, v) => a === "Light" && v !== "torch" });
+    // A plain lamp: a UV bulb only in a room whose tool is the UV light (else it's a second UV case in disguise).
+    const lp = this.pickObject({ trigger: "set", thread, accept: (a, v) => a === "Light" && (v === "lamp" || (v === "uv" && this.tool === "uv")) });
     if (!lp) return null;
     const lamp = this.bind(lp, thread, "set");
     // (Never on the thing the writing is for: a number glowing on the telephone it dials.)
@@ -892,11 +915,11 @@ class Builder {
    * thread lights (a braid). Shows `slots`.
    */
   warmReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
-    const lp = this.pickObject({ trigger: "warm", thread, preferUsed: true, accept: (a, v) => a === "Light" && v !== "torch" });
+    const lp = this.pickObject({ trigger: "warm", thread, preferUsed: true, accept: (a, v) => a === "Light" && v === "lamp" });
     if (!lp) return null;
     const lamp = this.bind(lp, thread, "warm");
     const n = this.names.letter;
-    const letter = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead) });
+    const letter = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead, n.look) });
     const up = this.deliver(letter, budget - 1, thread, depth);
     if (!up) return null;
     const card = this.clue("heat", slots);
@@ -918,7 +941,7 @@ class Builder {
     if (!mp) return null;
     const mirror = this.bind(mp, thread, "mirror");
     const n = this.names.backwards;
-    const note = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead) });
+    const note = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead, n.look) });
     const up = this.deliver(note, budget - 1, thread, depth);
     if (!up) return null;
     const card = this.clue("mirror", slots);
@@ -941,8 +964,8 @@ class Builder {
    */
   pairReveal(kind: "rub" | "lens", slots: string[], budget: number, thread: number, depth: number): string | null {
     const [h, t] = kind === "rub" ? [this.names.pad, this.names.pencil] : [this.names.printed, this.names.lens];
-    const holder = this.item("prop", h.title, { card: this.plainCard(h.title, h.lead) });
-    const tool = this.item("prop", t.title, { card: this.plainCard(t.title, t.lead) });
+    const holder = this.item("prop", h.title, { card: this.plainCard(h.title, h.lead, h.look) });
+    const tool = this.item("prop", t.title, { card: this.plainCard(t.title, t.lead, t.look) });
     // Found apart where the thread has room for two finds; else together (a pad with its pencil, a card with its lens).
     const apart = budget >= 3;
     const up = this.deliver(holder, budget - (apart ? 2 : 1), thread, depth);
@@ -970,7 +993,7 @@ class Builder {
    */
   foldReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
     const n = this.names.fold;
-    const page = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "folded", domain: { kind: "bool" } }] });
+    const page = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead, n.look), controls: [{ id: "folded", domain: { kind: "bool" } }] });
     const up = this.deliver(page, budget - 1, thread, depth);
     if (!up) return null;
     const card = this.clue("fold", slots);
@@ -996,8 +1019,9 @@ class Builder {
     const can = (v: string) => b.hostable.some((h) => h.archetype === "CombinationLock" && h.variant === v);
     if (this.tool === "tune" && can("symbols") && budget >= 3) return "tune";
     if (this.tool === "weigh" && can("symbols") && budget >= 4) return "weigh";
-    if (this.allow.has("dial") && can("dial") && this.rng() < (b.inv.type === "safe" ? 0.85 : 0.4)) return "dial";
-    if (this.allow.has("keys") && can("keys") && this.rng() < 0.25) return "keys";
+    const again = (k: Featured) => this.recent.get(k) ?? 1;
+    if (this.allow.has("dial") && can("dial") && this.rng() < (b.inv.type === "safe" ? 0.85 : 0.5) * again("dial")) return "dial";
+    if (this.allow.has("keys") && can("keys") && this.rng() < 0.55 * again("keys")) return "keys";
     const wheels = (["digits", "letters", "symbols"] as const).filter(can);
     return wheels[Math.floor(this.rng() * wheels.length)] ?? "digits";
   }
@@ -1031,7 +1055,7 @@ class Builder {
   /** A small music box (found somewhere), cranked: it plays `code`'s marks in order. The card is exactly the run. */
   tuneReveal(code: string, lock: Bound, budget: number, thread: number, depth: number): string | null {
     const n = this.names.musicBox;
-    const box = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "cranked", domain: { kind: "bool" } }] });
+    const box = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead, n.look), controls: [{ id: "cranked", domain: { kind: "bool" } }] });
     const up = this.waitingOn(lock, () => this.deliver(box, budget - 1, thread, depth));
     if (!up) return null;
     const card = this.plainCard("Music box tune", `{{${code}}}`);
@@ -1050,7 +1074,7 @@ class Builder {
   /** A typewriter ribbon (found somewhere), pulled out: the last line typed is struck into it. Shows `slots` (one line). */
   ribbonReveal(slots: string[], budget: number, thread: number, depth: number): string | null {
     const n = this.names.ribbon;
-    const spool = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead), controls: [{ id: "pulled", domain: { kind: "bool" } }] });
+    const spool = this.item("prop", n.title, { card: this.plainCard(n.title, n.lead, n.look), controls: [{ id: "pulled", domain: { kind: "bool" } }] });
     const up = this.deliver(spool, budget - 1, thread, depth);
     if (!up) return null;
     const card = this.clue("ribbon", slots);
@@ -1077,10 +1101,10 @@ class Builder {
     const n = this.names.balance, w = this.names.weight;
     // (Found in no telling order: the order is the balance's to show.)
     const shuffled = marks.map((m) => [this.rng(), m] as const).sort((a, b) => a[0] - b[0]).map(([, m]) => m);
-    const made = new Map(shuffled.map((m) => [m, this.item("prop", `${w.title} ${m}`, { card: this.plainCard(`${w.title} ${m}`, w.lead.replace("{m}", m)) })]));
+    const made = new Map(shuffled.map((m) => [m, this.item("prop", `${w.title} ${m}`, { card: this.plainCard(`${w.title} ${m}`, w.lead.replace("{m}", m), w.look) })]));
     const weights = shuffled.map((m) => made.get(m)!);
     const balance = this.item("tool", n.title, {
-      archetype: "Balance", variant: "pans", card: this.plainCard(n.title, n.lead), controls: [{ id: "pans", domain: { kind: "pans", of: weights } }],
+      archetype: "Balance", variant: "pans", card: this.plainCard(n.title, n.lead, n.look), controls: [{ id: "pans", domain: { kind: "pans", of: weights } }],
     });
     const got = this.waitingOn(lock, () => this.deliver(balance, budget - 2, thread, depth));
     const found = got && this.contain({ item: weights[0] }, thread);
@@ -1283,7 +1307,9 @@ class Builder {
 
   decode(slots: string[], budget: number, thread: number, depth: number): string | null {
     const wheel = this.item("decoder", this.names.wheel, { archetype: "Decoder", controls: [{ id: "offset", domain: { kind: "offset", max: 25 } }] });
-    const offset = this.slot("offset", this.mint("offset").value);
+    // The setting is written as the key letter (the cipher letter under plain A): what the wheel's index shows.
+    const k = this.mint("offset").value;
+    const offset = this.slot("offset", k, String.fromCharCode(65 + Number(k)));
     const enc = this.slot("cipher", "?");
     this.ciphers.push({ slot: enc, of: slots, offset: this.slots[offset].value });
     const encStep = this.info([enc], 1, thread, depth + 1);
@@ -1292,7 +1318,7 @@ class Builder {
     if (!encStep || !itemStep || !offStep) return null;
     const s = this.step("decode", thread, undefined, [encStep, itemStep, offStep], ["A coded line and a wheel to read it.",
       `The letters on ${this.sourceOf(encStep) ?? "the coded card"} spell nothing until the cipher wheel's ring is turned; ${this.sourceOf(offStep) ?? "another clue"} gives the setting.`,
-      `Set the cipher wheel to {{${offset}}} and read the coded line.`]);
+      `Turn the cipher wheel until {{${offset}}} sits under A, and read the coded line.`]);
     this.rule({ on: "control", target: wheel, control: "offset" }, [{ if: "control", target: wheel, control: "offset", eq: { slot: offset } }, { if: "solved", step: encStep }],
       [{ do: "show_card", card: this.clue("decoded", slots) }], s);
     return s;
@@ -1323,28 +1349,99 @@ export const TOOL_MOTIF: Record<Exclude<RevealTool, "none">, MotifId> = {
 const HANDS_ON: MotifId[] = ["warm_reveal", "mirror_reveal", "rub_reveal", "lens_reveal", "fold_reveal", "tune_reveal", "ribbon_reveal", "weigh"];
 
 /**
- * The room's one reveal tool, seeded by the room. UV weighs a little less than each of the others, and
- * most of them need nothing in the room, so UV is in under a quarter of rooms, with or without a lamp
- * or a mirror. The music box and the balance need something a lock can go on. The ribbon, the music box
- * and the balance are offered only where the app can play them (`gadgets`). No tool at all only where
- * a lamp can still change the room.
+ * The room's one reveal tool, seeded by the room and flavoured by the mode: a noir office leans to the
+ * typewriter ribbon, the mirror and the lens; a crime scene to the UV light, the pencil rubbing and the
+ * balance; a haunting to the mirror, the music box and the fold-in page. UV is one tool among many (in
+ * well under half of crime scenes and rarely elsewhere), and no tool at all (a lamp that changes the room)
+ * is rarer still. The music box and the balance need something a lock can go on. The ribbon, the music
+ * box and the balance are offered only where the app can play them (`gadgets`). A tool the player's last
+ * cases featured (`recent`) weighs less, so the next case reaches for another.
  */
-export function revealTool(objs: InventoryObject[], rng: () => number, gadgets: ReadonlySet<Gadget> = new Set()): RevealTool {
+export function revealTool(
+  objs: InventoryObject[], rng: () => number, gadgets: ReadonlySet<Gadget> = new Set(), mode: Mode = "noir", recent: ReadonlyMap<Featured, number> = new Map(),
+): RevealTool {
   const lamp = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "Light" && h.variant !== "torch"));
   const mirror = objs.some((o) => o.type === "mirror" || (o.features.includes("reflective") && categoryOf(o.type) !== "textile"));
   const lockable = objs.some((o) => hostableArchetypes(o).some((h) => h.archetype === "CombinationLock" && h.variant === "symbols"));
-  const tools: [RevealTool, number][] = [
-    ["uv", 0.8], ["rub", 1], ["lens", 1], ["fold", 1],
-    ...(gadgets.has("ribbon") ? [["ribbon", 1] as [RevealTool, number]] : []),
-    ...(lamp ? [["warm", 1.2] as [RevealTool, number], ["none", 0.6] as [RevealTool, number]] : []),
-    ...(mirror ? [["mirror", 1.2] as [RevealTool, number]] : []),
-    ...(lockable && gadgets.has("tune") ? [["tune", 1] as [RevealTool, number]] : []),
-    ...(lockable && gadgets.has("balance") ? [["weigh", 1] as [RevealTool, number]] : []),
+  const w = TOOL_WEIGHT[mode];
+  const tools: RevealTool[] = [
+    "uv", "rub", "lens", "fold",
+    ...(gadgets.has("ribbon") ? ["ribbon" as const] : []),
+    ...(lamp ? ["warm" as const, "none" as const] : []),
+    ...(mirror ? ["mirror" as const] : []),
+    ...(lockable && gadgets.has("tune") ? ["tune" as const] : []),
+    ...(lockable && gadgets.has("balance") ? ["weigh" as const] : []),
   ];
-  let r = rng() * tools.reduce((a, [, w]) => a + w, 0);
-  for (const [t, w] of tools) if ((r -= w) < 0) return t;
+  const weight = (t: RevealTool) => w[t] * (recent.get(TOOL_FEATURE[t]) ?? 1);
+  let r = rng() * tools.reduce((a, t) => a + weight(t), 0);
+  for (const t of tools) if ((r -= weight(t)) < 0) return t;
   return "fold";
 }
+
+/** How often each mode reaches for each tool (before what's in the room and the player's last cases). */
+const TOOL_WEIGHT: Record<Mode, Record<RevealTool, number>> = {
+  noir: { uv: 0.3, rub: 1, lens: 1.1, fold: 0.8, ribbon: 1.5, warm: 0.6, none: 0.25, mirror: 1.2, tune: 1.1, weigh: 1.1 },
+  crime_scene: { uv: 1, rub: 1.2, lens: 1, fold: 0.8, ribbon: 1, warm: 0.5, none: 0.25, mirror: 0.8, tune: 1.1, weigh: 1.6 },
+  paranormal: { uv: 0.35, rub: 0.8, lens: 0.9, fold: 1.2, ribbon: 0.8, warm: 0.9, none: 0.25, mirror: 1.6, tune: 1.6, weigh: 0.9 },
+};
+
+/**
+ * What a case features, as a player would remember it: the UV light, writing that glows under a lamp, a
+ * warmed letter, the other hands-on reveals, the gadgets, the cipher wheel, the clock and the radio. Read
+ * from the public definition alone (the generation worker reads the player's last few rooms this way).
+ */
+export const FEATURED = [
+  "uv", "glow", "heat", "mirror", "rub", "lens", "fold", "tune", "ribbon", "balance", "dial", "keys", "telephone", "cipher", "clock", "radio", "halves",
+] as const;
+export type Featured = typeof FEATURED[number];
+
+export function featuredKinds(def: Pick_<RoomDefinitionV2, "objects" | "items" | "cards">): Featured[] {
+  const out = new Set<Featured>();
+  const objects = Array.isArray(def.objects) ? def.objects : [], items = Array.isArray(def.items) ? def.items : [], cards = Array.isArray(def.cards) ? def.cards : [];
+  for (const c of cards) if (c && typeof c.reveal === "string") out.add(c.reveal === "heat" ? "heat" : c.reveal as Featured);
+  for (const i of items) {
+    if (i?.variant === "torch") out.add("uv");
+    if (i?.archetype === "Decoder") out.add("cipher");
+    if (i?.archetype === "Balance") out.add("balance");
+    if (i?.kind === "half") out.add("halves");
+  }
+  const lamps = objects.filter((o) => o?.archetype === "Light").length;
+  for (const o of objects) {
+    if (o?.trace) out.add("uv");
+    if (o?.archetype === "Light") out.add(o.variant === "uv" ? "uv" : "glow");
+    if (o?.archetype === "CombinationLock" && (o.variant === "dial" || o.variant === "keys")) out.add(o.variant);
+    if (o?.archetype === "Telephone") out.add("telephone");
+    if (o?.archetype === "ClockHands") out.add("clock");
+    if (o?.archetype === "TuningDial") out.add("radio");
+  }
+  // A lamp that only warmed a letter is the heat, not writing in the light.
+  if (out.has("heat") && out.has("glow") && lamps === 1) out.delete("glow");
+  return FEATURED.filter((k) => out.has(k));
+}
+
+/**
+ * The player's recent features as weights against a repeat: what the last case featured weighs a quarter,
+ * what the two before it, half. (Never zero: a room with only a lamp to work with still plans.)
+ */
+export function recentWeights(recent: readonly (readonly Featured[])[] = []): Map<Featured, number> {
+  const m = new Map<Featured, number>();
+  recent.slice(0, 3).forEach((ks, i) => {
+    if (!Array.isArray(ks)) return;
+    for (const k of ks) m.set(k, Math.min(m.get(k) ?? 1, i === 0 ? 0.25 : 0.5));
+  });
+  return m;
+}
+
+/** The feature each tool and each motif is. */
+const TOOL_FEATURE: Record<RevealTool, Featured> = {
+  uv: "uv", warm: "heat", mirror: "mirror", rub: "rub", lens: "lens", fold: "fold", tune: "tune", ribbon: "ribbon", weigh: "balance", none: "glow",
+};
+const MOTIF_FEATURE: Partial<Record<MotifId, Featured>> = {
+  decode: "cipher", tool_reveal: "uv", room_change: "glow", warm_reveal: "heat", mirror_reveal: "mirror", rub_reveal: "rub", lens_reveal: "lens",
+  fold_reveal: "fold", tune_reveal: "tune", ribbon_reveal: "ribbon", weigh: "balance", split: "halves",
+};
+/** Writing that comes up in light or heat: at most one of these per room. */
+const GLOW: MotifId[] = ["tool_reveal", "room_change", "warm_reveal"];
 
 /**
  * Crime scene: what the UV light will find on the photo (`look`), and the document about one suspect that
@@ -1432,7 +1529,7 @@ const NESTED = 0.6;
 
 function buildCandidate(
   inv: InventoryObject[], exitObj: InventoryObject, mode: Mode, rng: () => number, rint: RandomInt, nThreads: number, trng: () => number,
-  seed: string | number, glowFirst = false, gadgets: ReadonlySet<Gadget> = new Set(),
+  seed: string | number, glowFirst = false, gadgets: ReadonlySet<Gadget> = new Set(), recent: ReadonlyMap<Featured, number> = new Map(),
 ): Candidate | string {
   const taken = new Set<string>();
   const mk = (o: InventoryObject): Bound => ({ inv: o, id: slugId(o.label, taken), hostable: hostableArchetypes(o), archetype: null, roles: 0, triggers: [], threads: [], initial: {} });
@@ -1443,7 +1540,8 @@ function buildCandidate(
   // The room's reveal tool, seeded by the room (every candidate the same, so scoring can't always pick UV),
   // and lifted in the last round, for rooms that plan no other way.
   B.allow = gadgets;
-  B.tool = glowFirst ? "any" : revealTool(pool.map((b) => b.inv), seededRandom(`${seed}:${mode}:tool`), gadgets);
+  B.recent = recent;
+  B.tool = glowFirst ? "any" : revealTool(pool.map((b) => b.inv), seededRandom(`${seed}:${mode}:tool`), gadgets, mode, recent);
   const voice = MODE_COPY[mode];
 
   // Mode skeleton: the finale's inputs become thread goals.
@@ -1509,6 +1607,8 @@ function buildCandidate(
     // (Only a kind of trace the photos have room for: footprints need clear floor, prints a hard surface.)
     const fits = (["footprints", "prints", "writing"] as const).filter((k) => B.pool.some((b) => B.fitTrace(k, b)));
     const versus = uvCase && fits.length ? versusTrace(fits, rng, B.pick) : undefined;
+    // What the light finds by the suspect is the room's glowing reveal: no lamp or second UV find besides.
+    B.glowTaken = Boolean(versus);
     let given = 0;
     const second = (): SlotMeta => (versus ? { evidence: versus.evidence, versus } : { evidence: suspectEvidence(alibis.shift()!) });
     const pools: { name: string; meta: () => SlotMeta }[][] = [
@@ -1713,6 +1813,8 @@ function buildCandidate(
   }
   // Coded lines last, once every value they encode is final.
   for (const c of B.ciphers) B.slots[c.slot].value = encipher(c.of.map((s) => B.slots[s].text ?? B.slots[s].value).join(" "), Number(c.offset));
+  // What photographs show and containers hold, for the app to lay out before the player touches them (shown.ts).
+  Object.assign(definition, withShown(definition, secret));
   const errors = validateDefinition(definition, secret);
   if (errors.length) return `invalid: ${errors[0]}`;
 
@@ -1737,15 +1839,20 @@ function buildCandidate(
   const allPhotos = new Set(inv.map((o) => o.photo_index)).size;
   const motifs = required.map((s) => s.motif);
   const openings = required.filter((s) => s.requires.length === 0).length;
-  // Variety: the aha motifs (a torn note, a cipher) and a braid (a step needing another thread's card) score;
-  // the room that is only "UV flashlight, then a lamp" scores less, so rooms don't all run the same script.
+  // Variety: a braid (a step needing another thread's card) and a torn note score; the room that is only "UV
+  // flashlight, then a lamp", or a lamp's glowing writing beside a hands-on reveal, scores less, and so does
+  // the cipher wheel, so rooms don't all run the same script.
   const threadOf = new Map(B.steps.map((s) => [s.id, s.thread]));
   const braids = required.filter((s) => s.thread !== null && s.requires.some((r) => threadOf.get(r) !== null && threadOf.get(r) !== s.thread)).length;
   const has = (m: MotifId) => motifs.includes(m);
   const score = 2 * (photos / Math.min(allPhotos, 4)) + used.reduce((a, b) => a + b.inv.salience, 0) / Math.max(1, used.length) +
     0.4 * new Set(motifs).size + 0.5 * Math.min(revisits, 2) + 0.3 * Math.min(roomChanges, 2) + 0.3 * Math.min(openings, 3) -
-    0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7)) + 0.6 * Math.min(braids, 1) + 0.5 * (has("decode") ? 1 : 0) + 0.4 * (has("split") ? 1 : 0) -
-    (has("tool_reveal") && has("room_change") ? 0.6 : 0) +
+    0.5 * Math.abs(required.length - (mode === "noir" ? 8 : 7)) + 0.6 * Math.min(braids, 1) + 0.2 * (has("split") ? 1 : 0) -
+    // The cipher wheel is a classic, not the default: a candidate without one is preferred.
+    0.6 * (has("decode") ? 1 : 0) -
+    (has("tool_reveal") && has("room_change") ? 0.6 : 0) -
+    // A room with its hands-on breakthrough doesn't need the lamp's glowing writing as well (it's in most rooms that have a lamp otherwise).
+    (handsOn && has("room_change") ? 1 : 0) +
     // The room was given its tool: a plan that uses it wins over one that doesn't.
     (B.tool !== "any" && B.tool !== "none" && B.tool !== "uv" && has(TOOL_MOTIF[B.tool]) ? 0.8 : 0);
   return { definition, secret, summary: { threads: nThreads, motifs, objectsUsed: used.length + 1, photos, score, candidatesTried: 0 } };
@@ -1781,6 +1888,7 @@ function planWith(inventory: InventoryObject[], opts: PlanOptions, gadgets: read
 
   const rint = opts.randomInt ?? cryptoInt;
   const n = opts.candidates ?? 8;
+  const recent = recentWeights(opts.recent);
   let budget = PLAN_STATE_BUDGET;
   const failures = new Map<string, number>();
   const fail = (r: string) => { const k = r.replace(/[0-9]+/g, "#"); failures.set(k, (failures.get(k) ?? 0) + 1); };
@@ -1792,7 +1900,7 @@ function planWith(inventory: InventoryObject[], opts: PlanOptions, gadgets: read
       const threads = poolSize >= THREE_THREAD_POOL && c % 3 !== 2 ? 3 : 2;
       let r: Candidate | string;
       try {
-        r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2, new Set(gadgets));
+        r = buildCandidate(objs, exit, opts.mode, rng, rint, threads, seededRandom(`${opts.seed}:${opts.mode}:${c}:text`), opts.seed, round === 2, new Set(gadgets), recent);
       } catch (e) {
         // A candidate that couldn't mint what it needs is one more that didn't fit; anything else is a bug.
         if (!(e instanceof PlanSpin)) throw e;

@@ -1,7 +1,9 @@
 // The casebook's paper and pens, per mode (docs/ART_DIRECTION.md, "velvet &
-// ink"): a warm paper page inside the mode's dark sheet. Noir writes on blush
-// cream in a rose-gold pen; crime scene keeps a manila case file and a cherry
-// marker; paranormal's page is lavender and moonlit, in a violet pen. Gold
+// ink"): a warm paper page inside the mode's dark sheet. Noir writes on warm
+// cream in a wine-dark pen; crime scene keeps a manila case file and an
+// oxblood marker; paranormal's page is lavender and moonlit, in a violet pen.
+// Tape is kraft paper tape in every mode, pins brass, ink, green or teal:
+// never a pink anywhere (the user's rule). Gold
 // foil (one gold for the series) for the fleurons and chapter numbers. Every
 // writing colour is 4.5:1 or more on its paper (ink and inkSoft well over 6:1).
 import type { TextStyle } from "react-native";
@@ -25,7 +27,7 @@ export interface JournalPalette {
   pen: string;
   /** The marker that strikes an option off the evidence board. */
   marker: string;
-  /** Washi tape rolls. */
+  /** Kraft paper tape: three shades of brown paper. */
   tape: readonly [string, string, string];
   /** A polaroid's frame, and its photo's dark. */
   polaroid: string;
@@ -58,41 +60,41 @@ export const UV = { paper: "#2B1F52", ink: "#E6DAFF", glow: "#B98CFF", edge: "#3
 
 const PALETTES: Record<Genre, Omit<JournalPalette, "glow" | "sweet" | "shadow" | "foil" | "foilInk">> = {
   noir: {
-    paper: "#F7ECE6",
-    rule: "rgba(122, 72, 112, 0.13)",
-    margin: "rgba(196, 120, 120, 0.45)",
-    note: "#FFF8F1",
+    paper: "#F3EADB",
+    rule: "rgba(90, 64, 52, 0.13)",
+    margin: "rgba(122, 46, 58, 0.4)",
+    note: "#FBF6EC",
     ink: "#2E1A30",
-    inkSoft: "#644A63",
-    pen: "#A04E52",
-    marker: "#C9344B",
-    tape: ["#F4A7C0", "#E9B8A6", "#FFD9A8"],
-    polaroid: "#FDF9F5",
+    inkSoft: "#5E4A5A",
+    pen: "#7A2E3A",
+    marker: "#8E2626",
+    tape: ["#C8A878", "#B8955F", "#D6BE92"],
+    polaroid: "#F6F0E4",
     photo: "#2A1E30",
-    chalk: "#F3D9DE",
-    ribbon: "#7E2F4F",
+    chalk: "#EDE3CF",
+    ribbon: "#6A2638",
     series: "A Detective Noir Mystery",
-    string: "#B42F45",
-    pins: ["#E07A98", "#C9973C", "#7E2F4F"],
+    string: "#9E2B2B",
+    pins: ["#B8873A", "#5B2D4A", "#2F4F4A"],
     ring: "rgba(120, 70, 50, 0.2)",
   },
   crime_scene: {
     paper: "#EBDAB5",
     rule: "rgba(112, 82, 40, 0.15)",
-    margin: "rgba(214, 47, 72, 0.45)",
+    margin: "rgba(150, 40, 36, 0.45)",
     note: "#FBF3E2",
     ink: "#2A1712",
     inkSoft: "#5E4433",
-    pen: "#B3182F",
-    marker: "#D62F48",
-    tape: ["#F6D776", "#E8475D", "#F4B6A6"],
-    polaroid: "#FDFAF4",
+    pen: "#9A1F1F",
+    marker: "#A52A2A",
+    tape: ["#C8A878", "#D3BC8C", "#B8955F"],
+    polaroid: "#F8F2E6",
     photo: "#2A161B",
-    chalk: "#FBE3DA",
-    ribbon: "#B3182F",
+    chalk: "#F0E6D2",
+    ribbon: "#7A1F1F",
     series: "A True Crime Club Mystery",
-    string: "#C0172F",
-    pins: ["#D23A50", "#E2B43C", "#3A6EA5"],
+    string: "#A11F1F",
+    pins: ["#A52A2A", "#C9973C", "#2F5D46"],
     ring: "rgba(100, 60, 25, 0.24)",
   },
   paranormal: {
@@ -103,15 +105,15 @@ const PALETTES: Record<Genre, Omit<JournalPalette, "glow" | "sweet" | "shadow" |
     ink: "#1F1C45",
     inkSoft: "#4E4A7C",
     pen: "#5A3EC0",
-    marker: "#C9344B",
-    tape: ["#B8A6F7", "#9FF2D8", "#F3B6E6"],
+    marker: "#4B3A9E",
+    tape: ["#C9B98F", "#B7A97E", "#D3C6A0"],
     polaroid: "#FBFAFF",
     photo: "#191C38",
     chalk: "#DCD6FF",
     ribbon: "#4B3A9E",
     series: "A Moonlit Mystery",
-    string: "#B5305C",
-    pins: ["#8B6FE6", "#3FB592", "#D477C2"],
+    string: "#2F7F7A",
+    pins: ["#8B6FE6", "#3FB592", "#3A5BA8"],
     ring: "rgba(150, 110, 60, 0.22)",
   },
 };

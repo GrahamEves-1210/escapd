@@ -185,7 +185,7 @@ export async function generatePuzzle(input: GenerationInput, overrides: Partial<
 
     // Schema 2: gameplay v2's stages (v2/generate.ts): perception v2, the planner, the author call.
     if (input.outputSchemaVersion === 2) {
-      const out = await generateV2({ ctx, photos, photoIds, genre, roomId: input.roomId, randomInt: deps.randomInt, stage, fail });
+      const out = await generateV2({ ctx, photos, photoIds, genre, roomId: input.roomId, randomInt: deps.randomInt, stage, fail, recent: input.recent });
       return { ...out, usage: ledger.usage() };
     }
 

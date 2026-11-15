@@ -19,7 +19,7 @@ import { applyAuthor, writeAuthor } from "./author.ts";
 import { collectCandidatesV2, perceivePhotosV2, toInventory } from "./perceive.ts";
 import { segmentObjects } from "./segment.ts";
 import type { RandomInt } from "../mint.ts";
-import { planRoom } from "./planner.ts";
+import { FEATURED, type Featured, planRoom } from "./planner.ts";
 import { simulate } from "./simulate.ts";
 import type { RoomDefinitionV2, RoomSecretV2 } from "./types.ts";
 import { validateDefinition } from "./validate.ts";
@@ -36,6 +36,8 @@ export interface GenerateV2Input {
   stage: (name: string, fields?: Record<string, unknown>) => void;
   /** A GenerationError carrying the usage so far. */
   fail: (message: string, code: string, retryable: boolean) => GenerationError;
+  /** What the owner's last few cases featured (featuredKinds, the most recent first): the plan leans away from it. */
+  recent?: readonly (readonly string[])[];
 }
 
 export interface GeneratedV2 {
@@ -52,6 +54,7 @@ export function roomProblems(def: RoomDefinitionV2, secret: RoomSecretV2): strin
 
 export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
   const { ctx, photos, photoIds, genre, roomId, randomInt, stage, fail } = input;
+  const recent = (input.recent ?? []).map((ks) => ks.filter((k): k is Featured => (FEATURED as readonly string[]).includes(k)));
 
   // Perception v2, then the privacy gate (as v1: only a clearly visible face blocks).
   const perceptions = await perceivePhotosV2(ctx, photos);
@@ -75,7 +78,7 @@ export async function generateV2(input: GenerateV2Input): Promise<GeneratedV2> {
   const inventory = toInventory(objects, physical);
   stage("verification", { candidates: candidates.length, verified: verified.length, objects: inventory.length });
 
-  const plan = planRoom(inventory, { mode: genre, seed: roomId, randomInt });
+  const plan = planRoom(inventory, { mode: genre, seed: roomId, randomInt, recent });
   if (!plan.ok) {
     if (plan.reason === "no_exit") {
       throw fail("No door found to escape through. Add a photo that shows the room's door.", ErrorCode.tooFewObjects, false);

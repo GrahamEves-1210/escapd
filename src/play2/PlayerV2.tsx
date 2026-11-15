@@ -53,6 +53,9 @@ import { railHeight, TopRail } from "./hud/TopRail";
 import { TurnArrow } from "./hud/TurnArrow";
 import { Darkness, LightsOn } from "./transitions/LightsOn";
 import { TurnGhost } from "./transitions/TurnGhost";
+import { Neighbours } from "./transitions/Preload";
+import { TurnLights } from "./transitions/TurnLights";
+import { ShownProvider, type RoomShown } from "./shown";
 
 export interface PlayerV2Props {
   roomId: string;
@@ -112,9 +115,14 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
   // The photo just turned away from: it lingers in the dark and drifts off as the next slides in (transitions/TurnGhost).
   const [seenView, setSeenView] = useState(0);
   const [ghost, setGhost] = useState<{ view: number; dir: 1 | -1; id: number } | null>(null);
+  // Every turn, however it was made, goes dark and the torch catches on the next photo once it's there (transitions/TurnLights).
+  const [turnLight, setTurnLight] = useState<{ id: number; dark: boolean } | null>(null);
+  // The view whose photo has loaded in its Stage.
+  const [readyView, setReadyView] = useState(-1);
   if (seenView !== view) {
     setSeenView(view);
     setGhost((g) => ({ view: seenView, dir: turnDir === -1 ? -1 : 1, id: (g?.id ?? 0) + 1 }));
+    setTurnLight((t) => ({ id: (t?.id ?? 0) + 1, dark: t !== null }));
   }
   // From the brief to the room: the dark, the flashlight's click, the room in its beam (transitions/LightsOn).
   const [lightsOn, setLightsOn] = useState(false);
@@ -460,6 +468,18 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
     }
   };
 
+  // What the room's pictures show, for the cards and things drawn away from the photo (shown.tsx).
+  const roomShown = useMemo<RoomShown>(() => ({
+    genre: def?.mode ?? null,
+    cards: def?.cards ?? [], objects: def?.objects ?? [], items: def?.items ?? [],
+    photo: (i: number) => {
+      if (sources.kind !== "ready" || sources.sources[i] === undefined) return null;
+      const p = scene?.photos[i];
+      return { source: sources.sources[i], cacheKey: p && "photo_id" in p ? p.photo_id : undefined };
+    },
+    found: new Set([...(state?.inventory ?? []), ...(state?.cards ?? [])]),
+  }), [def, sources, scene, state?.inventory, state?.cards]);
+
   if (phase.kind === "loading" || phase.kind === "fallback" || !def || !state || !scene) {
     return (
       <View style={[styles.root, styles.center, { backgroundColor: theme.ground }]} testID="v2-loading">
@@ -733,6 +753,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
    * something in the room, or on the object up close, it tries the item there. Drags are left alone.
    */
   const tapAway = (x: number, y: number, where: TapPlace) => {
+    // Any tap is the player at work: the cat's idle starts again.
+    cues.touch();
     if (!shown || carrying || y >= trayTop) return;
     const itemId = shown;
     setShown(null);
@@ -751,6 +773,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
 
   return (
     <TapAwayView style={[styles.root, { backgroundColor: "#000000" }]} testID="v2-player" onTap={tapAway}>
+      <ShownProvider value={roomShown}>
       {/* The game view: the room, between the HUD's top band and its hotbar. */}
       <View
         ref={viewRef}
@@ -759,6 +782,8 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
         style={[styles.view, { top: hudTop, bottom: windowHeight - viewBottom }]}
         onLayout={measureView}
       >
+        {/* The photos either side, loaded before they're turned to (transitions/Preload). */}
+        {sources.kind === "ready" && photos > 1 ? <Neighbours sources={sources.sources} view={view} keyOf={photoKey} size={localFrame} /> : null}
         {ghost && localFrame && sources.kind === "ready" && sources.sources[ghost.view] !== undefined ? (
           <TurnGhost key={`ghost-${ghost.id}`} source={sources.sources[ghost.view]} cacheKey={photoKey(ghost.view)} frame={localFrame} dir={ghost.dir}
             darkness={V2.torch.darkness[def.mode]} onDone={() => setGhost(null)} />
@@ -784,11 +809,13 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
             onFrame={setLocalFrame}
             onLook={look}
             onPage={(dir) => { setTurnDir(dir); setView((v) => (v + dir + photos) % photos); }}
+            onReady={() => setReadyView(view)}
             enter={turnDir}
             burst={celebrate.stage}
             accessibilityLabel={`View ${view + 1} of ${photos}`}
           />
         ) : null}
+        {turnLight ? <TurnLights key={`turn-${turnLight.id}`} ready={readyView === view} fromDark={turnLight.dark} onDone={() => setTurnLight(null)} /> : null}
       </View>
 
       {/* The rail over the room: the way back (a brass key tab), the case (a slip, a tag, a plate), the casebook (a little book). */}
@@ -1020,6 +1047,7 @@ function Body({ roomId, onExit, onComplete, onFallback, v2 }: PlayerV2Props & { 
           level={celebrate.screen.level} count={celebrate.screen.count} seed={celebrate.screen.seed} />
       ) : null}
 
+      </ShownProvider>
     </TapAwayView>
   );
 }

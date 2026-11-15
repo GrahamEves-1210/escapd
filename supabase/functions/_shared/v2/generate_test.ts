@@ -4,7 +4,7 @@ import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { generatePuzzle, type GenerationInput, GenerationError, type PipelineConfig } from "../ai.ts";
 import { FakeProvider, photoBytes, seededRandomInt, segmentationHandler, textOf, verificationHandler } from "../test_fixtures.ts";
 import type { JsonCall } from "../provider.ts";
-import { applyAuthor, type AuthorText, authorBrief, cleanText } from "./author.ts";
+import { applyAuthor, type AuthorText, authorBrief, cleanText, keepsLook } from "./author.ts";
 import { initialState } from "./engine.ts";
 import { COOLDOWN_MS, play } from "./play.ts";
 import { simulate } from "./simulate.ts";
@@ -214,7 +214,8 @@ Deno.test("author: the crime-scene brief names each option's question and curren
 
 Deno.test("author: a card or hint that drops, adds or repeats a placeholder, or writes a digit, keeps the planner's words", async () => {
   const { definition, secret } = await planned();
-  const card = definition.cards.find((c) => c.text.includes("{{"))!;
+  // (A card the casebook doesn't draw by a word of its title, so the new title can be anything.)
+  const card = definition.cards.find((c) => c.text.includes("{{") && keepsLook(c.title, "Ticket"))!;
   const ref = /\{\{\s*([a-z0-9_]+)\s*\}\}/.exec(card.text)![0];
   const text = emptyText();
   text.brief = "Room 12 is cold.";                            // digit: rejected

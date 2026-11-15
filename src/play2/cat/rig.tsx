@@ -17,8 +17,10 @@ export const ART_W = 560;
 export const ART_H = 585;
 /** The fur (the art's, measured). */
 const FUR = "#0B0806";
-/** Its toe beans. */
-const BEAN = "#E7A1B5";
+/** Its toe beans: a black cat's, dusky taupe (never pink). */
+const BEAN = "#7A6A5E";
+/** Its cheeks warming, a ruddy amber (never pink). */
+const BLUSH = "#C98A5A";
 
 /**
  * The paws as cut out of the art (art px): the box, and the wrist (where it
@@ -60,7 +62,7 @@ function Paw({ art, side, width, height, f }: { art: number; side: "left" | "rig
     return { transform: [{ translateX: v[ix] * k }, { translateY: -v[iy] * k }, { rotate: `${v[ir]}deg` }] };
   });
   const arm = PAWS_CUT.arm * k;
-  // Lifted, its pink pads show (so a paw up reads as a paw, even on its black face).
+  // Lifted, its pads show (so a paw up reads as a paw, even on its black face).
   const beans = useAnimatedStyle(() => ({ opacity: Math.max(0, Math.min(1, (f.get()[iy] - 40) / 60)) }));
   const bw = 96 * k, bh = 80 * k;
   return (
@@ -110,11 +112,11 @@ export function PeekPaws({ art, width, height, f }: { art: number; width: number
 }
 
 /**
- * Its mouth: under its nose, opening for a yawn (a dark mouth, a pink tongue
+ * Its mouth: under its nose, opening for a yawn (a dark mouth, a tongue
  * curled in it), and the tip of its tongue out for a lick. Its cheeks blush
- * (`sweet`) when it's embarrassed.
+ * (a ruddy amber) when it's embarrassed.
  */
-export function Face({ width, f, sweet }: { width: number; f: SharedValue<number[]>; sweet: string }) {
+export function Face({ width, f }: { width: number; f: SharedValue<number[]>; /** No longer used: its cheeks warm amber in every mode. */ sweet?: string }) {
   const k = width / ART_W;
   const mw = MOUTH.w * k, mh = MOUTH.h * k;
   const mouth = useAnimatedStyle(() => {
@@ -133,24 +135,24 @@ export function Face({ width, f, sweet }: { width: number; f: SharedValue<number
       {CHEEKS.map((c, i) => (
         <Animated.View key={i} pointerEvents="none" style={[styles.piece, { left: c.x * k - bw / 2, top: c.y * k - bh / 2, width: bw, height: bh }, blush]}>
           <Svg width={bw} height={bh} viewBox="0 0 74 26">
-            <Ellipse cx={37} cy={13} rx={34} ry={11} fill={sweet} opacity={0.55} />
+            <Ellipse cx={37} cy={13} rx={34} ry={11} fill={BLUSH} opacity={0.45} />
             {/* Three little strokes of blush, in its ink's hand. */}
-            <Path d="M16 19 L24 7 M33 19 L41 7 M50 19 L58 7" stroke={sweet} strokeWidth={5} strokeLinecap="round" />
+            <Path d="M16 19 L24 7 M33 19 L41 7 M50 19 L58 7" stroke={BLUSH} strokeWidth={5} strokeLinecap="round" />
           </Svg>
         </Animated.View>
       ))}
       <Animated.View pointerEvents="none" style={[styles.piece, { left: MOUTH.x * k - mw / 2, top: MOUTH.y * k - mh * 0.2, width: mw, height: mh }, mouth]} testID="cat-mouth">
         <Svg width={mw} height={mh} viewBox="0 0 84 72">
           <Path d="M8 10 C10 2 74 2 76 10 C80 40 62 70 42 70 C22 70 4 40 8 10 Z" fill="#5E1A2C" stroke={FUR} strokeWidth={5} />
-          <Path d="M20 52 C26 38 58 38 64 52 C58 66 26 66 20 52 Z" fill="#E98AA2" />
+          <Path d="M20 52 C26 38 58 38 64 52 C58 66 26 66 20 52 Z" fill="#A85A50" />
           {/* Two little fangs. */}
           <Path d="M22 10 L27 22 L31 10 Z M53 10 L57 22 L62 10 Z" fill="#FFF4EE" />
         </Svg>
       </Animated.View>
       <Animated.View pointerEvents="none" style={[styles.piece, { left: MOUTH.x * k - tw / 2, top: MOUTH.y * k - th * 0.1, width: tw, height: th }, tongue]} testID="cat-tongue">
         <Svg width={tw} height={th} viewBox="0 0 34 30">
-          <Path d="M3 2 C3 20 9 28 17 28 C25 28 31 20 31 2 Z" fill="#E98AA2" stroke={FUR} strokeWidth={3} />
-          <Path d="M17 6 L17 18" stroke="#C2607A" strokeWidth={2.5} strokeLinecap="round" />
+          <Path d="M3 2 C3 20 9 28 17 28 C25 28 31 20 31 2 Z" fill="#B5645A" stroke={FUR} strokeWidth={3} />
+          <Path d="M17 6 L17 18" stroke="#8E4A42" strokeWidth={2.5} strokeLinecap="round" />
         </Svg>
       </Animated.View>
     </>

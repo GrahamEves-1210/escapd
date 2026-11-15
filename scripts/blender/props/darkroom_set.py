@@ -1,9 +1,11 @@
 # The darkroom (the build wait, src/screens/develop/Darkroom.tsx): a walnut bench under a red
 # safelight, seen from above. On it an enamel developing tray of developer, print tongs, a brown
-# glass bottle and the brass safelight itself, its ruby glass lit. One scene, one camera, three
+# glass bottle and the brass safelight itself, its ruby glass lit, and the cat sitting on the bench
+# between the tray and the bottle, watching the tray (darkroom_cat.py). One scene, one camera, four
 # kinds of picture with the same framing:
 #
 #   bench       everything but the tray (which still casts its shadow): the still ground of the screen
+#   lids        the bench again with the cat's eyes shut, cut to its head (CAT_HEAD): its blink
 #   tray        the tray and its liquid alone: the app rocks it, with the player's photos lying in it
 #   sheen       twelve frames of the light on the liquid's surface (a loop of slow ripples), which the
 #               app lays over the photos so they sit under the liquid (computed, not traced: sheen_frames)
@@ -11,13 +13,15 @@
 # The player's photos are not here: the app lays them into the tray (SHEET, LIQUID and SQUASH,
 # printed at the end, say where and how).
 #
-#   <bpy python> scripts/blender/props/darkroom_set.py [bench] [tray] [sheen]    # default: all three
+#   <bpy python> scripts/blender/props/darkroom_set.py [bench] [lids] [tray] [sheen]    # default: all four
 # The files in assets/develop were made with:
-#   PX=2 SS=1 SAMPLES=72 ... darkroom_set.py bench    # the ground is dark and soft: two sizes (the phone scales @2x up), under budget
+#   PX=2 SS=1 SAMPLES=72 ... darkroom_set.py bench lids    # the ground is dark and soft: two sizes (the phone scales @2x up), under budget;
+#                                                          # CAT_HEAD printed at the end goes in Darkroom.tsx (CAT_HEAD_BOX)
 #   PX=3 SS=1 SAMPLES=72 ... darkroom_set.py tray
 #   ... darkroom_set.py sheen
 #   PX=1 SS=1 SAMPLES=32 for a quick look; DRAFT_DIR=<dir> keeps drafts out of assets/
 from darkroom_common import *  # noqa: F401,F403
+from darkroom_cat import head_box, place_cat
 
 OUT = os.environ.get("DRAFT_DIR")
 RAW = export.scratch("darkroom")
@@ -155,6 +159,15 @@ def build():
     label = kit.lathe([(0.1765, 0.12), (0.178, 0.125), (0.178, 0.355), (0.1765, 0.36)], segments=64, name="label")
     label.location = (bx, by, 0.0)
     keep(label, M.paper("label", color=(0.80, 0.72, 0.56), age=0.6), "bottle")
+
+    # The cat, sitting on the bench between the tray and the bottle, watching the tray (darkroom_cat.py).
+    fur, whites, pupils = place_cat()
+    for ob in fur:
+        keep(ob, name="cat")
+    for ob in whites:
+        keep(ob, name="eyes")
+    for ob in pupils:
+        keep(ob, name="pupils")
     return made, named, pivot + aim * 0.26
 
 
@@ -186,12 +199,20 @@ def shoot(which):
     light(cam, glass_at)
     tray = named["tray"] + named["liquid"]
     rest = [o for o in made if o not in tray]
-    glow = named["glass"]
+    glow = named["glass"] + named["eyes"]
     out = {}
-    if "bench" in which:
+    if "bench" in which or "lids" in which:
         camera_only(made, rest)
-        kit.outline(3.5 * PX / 3, exclude=glow + tray, plain=named["bottle"])
+        kit.outline(3.5 * PX / 3, exclude=glow + tray + named["pupils"], plain=named["bottle"])
+    if "bench" in which:
         out["bench"] = kit.render(os.path.join(RAW, "bench.png"))
+    if "lids" in which:
+        # The same picture with the cat's eyes shut: the eyes gone, its face's fur closes over them.
+        for ob in named["eyes"] + named["pupils"]:
+            ob.hide_render = True
+        out["lids"] = kit.render(os.path.join(RAW, "bench-lids.png"))
+        for ob in named["eyes"] + named["pupils"]:
+            ob.hide_render = False
     if "tray" in which:
         camera_only(made, tray)
         kit.outline(3.5 * PX / 3, exclude=rest + named["liquid"])
@@ -199,6 +220,7 @@ def shoot(which):
     anchors = {
         "EDGE_Y": EDGE_Y, "TRAY": (PIC_W / 2, TRAY_Y), "LIQUID": (PIC_W / 2, round(LIQ_CY, 2)), "LIQUID_HALF": (round(LIQ_HW, 1), round(LIQ_HD, 1)),
         "SQUASH": round(SQUASH, 4), "GLASS": anchor(cam, tuple(glass_at), PIC_W, PIC_H), "SHEET": (round(SHEET_W * PT, 1), round(SHEET_H * PT, 1)),
+        "CAT_HEAD": head_box(cam),
     }
     return out, anchors
 
@@ -255,26 +277,41 @@ def sheen_frames():
     return frames
 
 
-def soft_top(im, points=18):
-    """The picture's top edge faded out over `points`: the lamp's halo reaches it, and must not end in a line."""
+def soft_top(im, points=18, keep=None):
+    """The picture's top edge faded out over `points`: the lamp's halo reaches it, and must not end in a line.
+    `keep`: columns (points, x0..x1) left whole, where something solid stands up into it (the cat's ears)."""
     import numpy as np
     from PIL import Image
     a = np.asarray(im, dtype=np.float32).copy()
     rows = round(points * im.height / PIC_H)
-    a[:rows, :, 3] *= (np.arange(rows) / rows)[:, None] ** 1.5
+    fade = np.repeat(((np.arange(rows) / rows) ** 1.5)[:, None], a.shape[1], axis=1)
+    if keep:
+        k = im.width / PIC_W
+        x0, x1 = round(keep[0] * k), round(keep[1] * k)
+        fade[:, x0:x1] = 1.0
+    a[:rows, :, 3] *= fade
     return Image.fromarray((a + 0.5).astype(np.uint8), "RGBA")
 
 
 if __name__ == "__main__":
-    which = [a for a in sys.argv[1:] if a in ("bench", "tray", "sheen")] or ["bench", "tray", "sheen"]
+    which = [a for a in sys.argv[1:] if a in ("bench", "lids", "tray", "sheen")] or ["bench", "lids", "tray", "sheen"]
     out, anchors = shoot([w for w in which if w != "sheen"]) if which != ["sheen"] else ({}, {})
     dest = (lambda name: os.path.join(OUT, name)) if OUT else (lambda name: "assets/develop/" + name)
     total = 0
-    if "bench" in out:
+    def finish(raw):
         # The lamp's halo, spilling past its bezel.
         gx, gy = anchors["GLASS"]
-        im = soft_top(export.bloom(export.load(out["bench"]), radius=0.035, strength=0.8, threshold=0.72, within=(gx / PIC_W, gy / PIC_W, 0.16), inside=0.5))
-        total += ship(im, dest("bench.png"), (PIC_W, PIC_H), budget_kb=150, scales=SCALES, errors=(10.0, 14.0, 20.0, 28.0, 40.0))
+        cat = anchors["CAT_HEAD"]
+        return soft_top(export.bloom(export.load(raw), radius=0.035, strength=0.8, threshold=0.72, within=(gx / PIC_W, gy / PIC_W, 0.16), inside=0.5), keep=(cat[0], cat[2]))
+    if "bench" in out:
+        total += ship(finish(out["bench"]), dest("bench.png"), (PIC_W, PIC_H), budget_kb=150, scales=SCALES, errors=(10.0, 14.0, 20.0, 28.0, 40.0))
+    if "lids" in out:
+        # The blink: the cat's head, eyes shut, cut from the second picture at exactly the bench's framing.
+        x0, y0, x1, y1 = anchors["CAT_HEAD"]
+        im = finish(out["lids"])
+        k = im.width / PIC_W
+        head = im.crop((round(x0 * k), round(y0 * k), round(x1 * k), round(y1 * k)))
+        total += ship(head, dest("cat-lids.png"), (x1 - x0, y1 - y0), budget_kb=30, scales=SCALES)
     if "tray" in out:
         total += ship(out["tray"], dest("tray.png"), (PIC_W, PIC_H), scales=SCALES, errors=(10.0, 14.0, 20.0, 28.0))
     if "sheen" in which:
